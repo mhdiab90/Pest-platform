@@ -458,7 +458,7 @@ function App(){
     if(!email || !username || !request.fullName.trim() || !request.jobTitle.trim() || request.password.length<6){
       setAuthError(rtl?'أكمل البيانات وتأكد أن كلمة المرور 6 أحرف على الأقل.':'Complete all fields and use a password of at least 6 characters.');setBusy(false);return;
     }
-    if(/[.#$\\[\\]/]/.test(username)){setAuthError(rtl?'اسم المستخدم يحتوي على رموز غير مسموح بها.':'Username contains invalid characters.');setBusy(false);return;}
+    if(['.','#','$','[',']','/'].some(ch=>username.includes(ch))){setAuthError(rtl?'اسم المستخدم يحتوي على رموز غير مسموح بها.':'Username contains invalid characters.');setBusy(false);return;}
     registrationInProgress.current=true;
     let credential=null;let requestSaved=false;let signOutWarning=false;
     try{
@@ -634,19 +634,115 @@ function App(){
           if(type==='client'||type==='vendor'){
             const path=(type==='client'?'clients/':'vendors/')+code;
             updates[path+'/code']=code;updates[path+'/name']=name;
-            const fieldAliases={phone:['phone','telephone','هاتف','الهاتف','تليفون'],mobile:['mobile','محمول'],alternatePhone:['alternatephone','phone2','هاتف اضافي'],email:['email','البريد الالكتروني','البريد الإلكتروني'],alternateEmail:['alternateemail','email2','بريد اضافي'],whatsapp:['whatsapp','واتساب'],website:['website','الموقع الالكتروني'],taxNumber:['taxnumber','taxregistration','taxregistrationnumber','رقم التسجيل الضريبي','الرقم الضريبي'],commercialRegister:['commercialregister','السجل التجاري'],contactPerson:['contactperson','الشخص المسؤول'],contactTitle:['contacttitle','صفة المسؤول'],address:['address','العنوان'],city:['city','المدينة'],country:['country','الدولة'],postalCode:['postalcode','الرمز البريدي'],paymentTerms:['paymentterms','شروط السداد'],creditLimit:['creditlimit','الحد الائتماني'],currency:['currency','العملة'],bankName:['bankname','اسم البنك'],bankAccount:['bankaccount','رقم الحساب'],iban:['iban'],notes:['notes','ملاحظات']};
-            Object.entries(fieldAliases).forEach(([field,keys])=>{updates[path+'/'+field]=get(row,keys);});imported++;
+            const fieldAliases={englishName:['englishname','english name','الاسم بالانجليزية','الاسم بالإنجليزية'],phone:['phone','telephone','هاتف','الهاتف','تليفون'],mobile:['mobile','محمول'],alternatePhone:['alternatephone','phone2','هاتف اضافي'],email:['email','البريد الالكتروني','البريد الإلكتروني'],alternateEmail:['alternateemail','email2','بريد اضافي'],whatsapp:['whatsapp','واتساب'],website:['website','الموقع الالكتروني'],taxNumber:['taxnumber','taxregistration','taxregistrationnumber','رقم التسجيل الضريبي','الرقم الضريبي'],commercialRegister:['commercialregister','السجل التجاري'],contactPerson:['contactperson','الشخص المسؤول'],contactTitle:['contacttitle','صفة المسؤول'],address:['address','العنوان'],city:['city','المدينة'],country:['country','الدولة'],postalCode:['postalcode','الرمز البريدي'],paymentTerms:['paymentterms','شروط السداد'],creditLimit:['creditlimit','الحد الائتماني'],currency:['currency','العملة'],bankName:['bankname','اسم البنك'],bankAccount:['bankaccount','رقم الحساب'],iban:['iban'],notes:['notes','ملاحظات']};
+            Object.entries(fieldAliases).forEach(([field,keys])=>{const value=get(row,keys);if(value!=='') updates[path+'/'+field]=value;});imported++;
           }else{
             const path='projects/'+code;
             const amountText=get(row,aliases.amount).replace(/,/g,'');
             const amount=Number(amountText||0);
-            updates[path+'/code']=code;updates[path+'/name']=name;updates[path+'/clientCode']=get(row,aliases.clientCode);updates[path+'/amount']=Number.isFinite(amount)?amount:0;updates[path+'/status']=get(row,aliases.status)||'جاري';updates[path+'/contractNo']=get(row,['contractno','رقم العقد']);updates[path+'/purchaseOrderNo']=get(row,['purchaseorderno','رقم امر الشراء']);updates[path+'/projectManager']=get(row,['projectmanager','مدير المشروع']);updates[path+'/location']=get(row,['location','موقع التنفيذ']);updates[path+'/notes']=get(row,['notes','ملاحظات']);updates[path+'/taxNumber']=get(row,['taxnumber','taxregistration','رقم التسجيل الضريبي']);imported++;
+            const setIfProvided=(field,value)=>{if(value!=='' && value!==undefined && value!==null) updates[path+'/'+field]=value;};
+            updates[path+'/code']=code;updates[path+'/name']=name;
+            const clientCodes=get(row,['clientcodes','customercodes','clientcode','customercode','كود العميل','اكواد العملاء']).split(/[;,|]/).map(x=>x.trim()).filter(Boolean);
+            const vendorCodes=get(row,['vendorcodes','suppliercodes','vendorcode','suppliercode','كود المورد','اكواد الموردين']).split(/[;,|]/).map(x=>x.trim()).filter(Boolean);
+            if(clientCodes.length){updates[path+'/clientCodes']=clientCodes;updates[path+'/clientCode']=clientCodes[0];}
+            if(vendorCodes.length) updates[path+'/vendorCodes']=vendorCodes;
+            setIfProvided('amount',amountText!=='' && Number.isFinite(amount)?amount:'');
+            setIfProvided('costBudget',get(row,['costbudget','estimatedcost','التكلفة التقديرية','التكلفة']));
+            setIfProvided('status',get(row,aliases.status));setIfProvided('currency',get(row,['currency','العملة']));
+            setIfProvided('contractNo',get(row,['contractno','رقم العقد']));setIfProvided('purchaseOrderNo',get(row,['purchaseorderno','رقم امر الشراء','رقم أمر الشراء']));
+            setIfProvided('projectManager',get(row,['projectmanager','مدير المشروع']));setIfProvided('projectType',get(row,['projecttype','نوع المشروع','نوع التوريد']));
+            setIfProvided('startDate',get(row,['startdate','تاريخ البدء']));setIfProvided('expectedEndDate',get(row,['expectedenddate','تاريخ الانتهاء المتوقع']));setIfProvided('actualEndDate',get(row,['actualenddate','تاريخ الانتهاء الفعلي']));
+            setIfProvided('location',get(row,['location','موقع التنفيذ']));setIfProvided('deliveryAddress',get(row,['deliveryaddress','عنوان التسليم']));
+            setIfProvided('paymentTerms',get(row,['paymentterms','شروط السداد']));setIfProvided('scope',get(row,['scope','نطاق الأعمال']));setIfProvided('notes',get(row,['notes','ملاحظات']));
+            imported++;
           }
         });
       });
       if(!imported) return alert(tr('importNoRows'));
       await db.ref().update(updates);await addLog('استيراد بيانات من Excel: '+imported+' سجل');setExcelSummary(tr('importSuccess')+imported+(skipped?' · '+skipped+' skipped':''));e.target.reset();
     }catch(err){console.error('Excel import:',err);alert(firebaseErrorMessage(err,tr));}
+  }
+
+  function triggerDownload(blob,filename){
+    const url=URL.createObjectURL(blob);
+    const link=document.createElement('a');
+    link.href=url;link.download=filename;link.style.display='none';
+    document.body.appendChild(link);link.click();link.remove();
+    window.setTimeout(()=>URL.revokeObjectURL(url),2000);
+  }
+
+  function backupFileStamp(){
+    return new Date().toISOString().replace(/[:.]/g,'-');
+  }
+
+  async function downloadProgramBackup(){
+    setBackupBusy('program');setBackupMessage('');
+    try{
+      const url='https://raw.githubusercontent.com/mhdiab90/Pest-platform/main/index.html';
+      const response=await fetch(url,{cache:'no-store'});
+      if(!response.ok) throw new Error('HTTP '+response.status);
+      triggerDownload(await response.blob(),'PestPlatform_program_backup_'+backupFileStamp()+'.html');
+      setBackupMessage(tr('backupCreated'));
+      void addLog('تنزيل نسخة احتياطية من البرنامج');
+    }catch(err){
+      console.error('Program backup:',err);
+      setBackupMessage(tr('backupFailed')+(err.message||''));
+    }finally{setBackupBusy('');}
+  }
+
+  function removeBackupSecrets(value){
+    if(Array.isArray(value)) return value.map(removeBackupSecrets);
+    if(!value || typeof value!=='object') return value;
+    const safe={};
+    Object.entries(value).forEach(([key,item])=>{
+      if(/^(password|passwordhash|accesstoken|refreshtoken|idtoken|secret)$/i.test(key)) return;
+      safe[key]=removeBackupSecrets(item);
+    });
+    return safe;
+  }
+
+  async function downloadDatabaseBackup(){
+    if(!isAdmin) return alert(tr('adminOnly'));
+    setBackupBusy('database');setBackupMessage('');
+    try{
+      const snapshot=await db.ref('/').once('value');
+      const payload={
+        backupType:'Pest Platform Realtime Database Backup',
+        createdAt:new Date().toISOString(),
+        createdBy:{uid:currentUser.uid,email:currentUser.email,username:currentUser.username},
+        data:removeBackupSecrets(snapshot.val()||{})
+      };
+      const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json;charset=utf-8'});
+      triggerDownload(blob,'PestPlatform_database_backup_'+backupFileStamp()+'.json');
+      setBackupMessage(tr('backupCreated'));
+      void addLog('تنزيل نسخة احتياطية من قاعدة البيانات');
+    }catch(err){
+      console.error('Database backup:',err);
+      const message=err && (err.code==='PERMISSION_DENIED' || String(err.message||'').toLowerCase().includes('permission'))
+        ? tr('backupPermission') : tr('backupFailed')+(err.message||'');
+      setBackupMessage(message);
+    }finally{setBackupBusy('');}
+  }
+
+  function exportWorkbook(){
+    if(!isAdmin) return alert(tr('adminOnly'));
+    try{
+      const workbook=XLSX.utils.book_new();
+      const addSheet=(name,rows)=>XLSX.utils.book_append_sheet(workbook,XLSX.utils.json_to_sheet(rows.length?rows:[{Info:'No data'}]),name);
+      addSheet('Clients',clients);
+      addSheet('Vendors',vendors);
+      addSheet('Projects',projects.map(({events,...projectRow})=>projectRow));
+      addSheet('ProjectEvents',projects.flatMap(p=>projectEvents(p).map(e=>({...e,projectCode:p.code,projectName:p.name}))));
+      addSheet('Quotes',quotes);
+      addSheet('Collections',inflows);
+      addSheet('Payments',outflows);
+      XLSX.writeFile(workbook,'PestPlatform_data_export_'+backupFileStamp()+'.xlsx');
+      setBackupMessage(tr('backupCreated'));
+      void addLog('تصدير بيانات النظام إلى Excel');
+    }catch(err){
+      console.error('Excel export:',err);
+      setBackupMessage(tr('backupFailed')+(err.message||''));
+    }
   }
 
   async function addMaster(e){
@@ -775,7 +871,7 @@ function App(){
     ? inflows.filter(x=>x.clientCode===account.code && collected(x.status)).reduce((s,x)=>s+Number(x.amount||0),0)
     : outflows.filter(x=>x.vendorCode===account.code && paid(x.status)).reduce((s,x)=>s+Number(x.amount||0),0);
 
-  const nav=[['dashboard','fa-gauge'],['statement','fa-file-invoice-dollar'],['master','fa-database'],['projects','fa-diagram-project'],...(selectedProjectCode?[['projectDetail','fa-folder-open']]:[]),['reports','fa-chart-pie'],['messages','fa-envelope'],['profile','fa-user-gear'],...(isAdmin?[['userRequests','fa-user-clock'],['companySettings','fa-building']]:[])];
+  const nav=[['dashboard','fa-gauge'],['statement','fa-file-invoice-dollar'],['master','fa-database'],['projects','fa-diagram-project'],...(selectedProjectCode?[['projectDetail','fa-folder-open']]:[]),['reports','fa-chart-pie'],['messages','fa-envelope'],['settings','fa-sliders'],['profile','fa-user-gear'],...(isAdmin?[['userRequests','fa-user-clock'],['companySettings','fa-building']]:[])];
 
   if(!currentUser){
     return <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
@@ -963,6 +1059,17 @@ function App(){
             <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th>{tr('eventDate')}</th><th>{tr('projectName')}</th><th>{tr('eventType')}</th><th>{tr('eventParty')}</th><th>{tr('referenceNo')}</th><th>{tr('quantity')}</th><th>{tr('eventAmount')}</th><th>{tr('eventStatus')}</th><th>{tr('eventNote')}</th></tr></thead><tbody>{reportRows.map(e=><tr key={e.projectCode+'_'+e.id}><td>{eventDateLabel(e.date)}</td><td>{e.projectName} ({e.projectCode})</td><td>{eventLabel(e.type)}</td><td>{e.partyCode?nameOfParty(e.partyType,e.partyCode):'—'}</td><td>{e.referenceNo||'—'}</td><td>{e.quantity||'—'} {e.unit||''}</td><td>{e.amount?money(e.amount)+' '+(e.currency||'EGP'):'—'}</td><td>{e.status||'—'}</td><td className="whitespace-pre-wrap">{e.note||'—'}</td></tr>)}</tbody></table>{reportRows.length===0&&<p className="text-gray-500 py-4">{tr('noData')}</p>}</div>
             <footer className="border-t pt-3 text-xs text-gray-500">{companyInfo.phone||''} {companyInfo.email||''} {companyInfo.address||''}</footer>
           </section>
+        </div>}
+
+        {tab==='settings'&&<div className="space-y-5 max-w-5xl">
+          <div><h2 className="font-bold text-xl">{tr('settings')} · {tr('backupSection')}</h2><p className="text-sm text-gray-500 mt-2">{tr('backupHelp')}</p></div>
+          <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            <article className="bg-white border rounded-xl shadow-sm p-5 flex flex-col gap-3"><div className="w-11 h-11 rounded-lg bg-blue-50 text-blue-700 grid place-items-center"><i className="fas fa-file-code text-xl"></i></div><h3 className="font-bold">{tr('programBackup')}</h3><p className="text-sm text-gray-500 flex-1">{rtl?'تنزيل ملف index.html المنشور حالياً على GitHub.':'Download the currently published index.html from GitHub.'}</p><button disabled={!!backupBusy} onClick={downloadProgramBackup} className="bg-blue-600 text-white rounded-lg px-4 py-3 font-bold">{backupBusy==='program'?tr('loading'):tr('programBackup')}</button></article>
+            <article className="bg-white border rounded-xl shadow-sm p-5 flex flex-col gap-3"><div className="w-11 h-11 rounded-lg bg-emerald-50 text-emerald-700 grid place-items-center"><i className="fas fa-database text-xl"></i></div><h3 className="font-bold">{tr('databaseBackup')}</h3><p className="text-sm text-gray-500 flex-1">{rtl?'تنزيل بيانات Realtime Database كاملة بصيغة JSON، بعد حذف أي حقول كلمات مرور قديمة.':'Download the Realtime Database as JSON, excluding legacy password fields.'}</p><button disabled={!isAdmin||!!backupBusy} onClick={downloadDatabaseBackup} className="bg-emerald-600 text-white rounded-lg px-4 py-3 font-bold">{backupBusy==='database'?tr('loading'):tr('databaseBackup')}</button>{!isAdmin&&<small className="text-amber-700">{tr('adminOnly')}</small>}</article>
+            <article className="bg-white border rounded-xl shadow-sm p-5 flex flex-col gap-3"><div className="w-11 h-11 rounded-lg bg-amber-50 text-amber-700 grid place-items-center"><i className="fas fa-file-excel text-xl"></i></div><h3 className="font-bold">{tr('exportWorkbook')}</h3><p className="text-sm text-gray-500 flex-1">{rtl?'تصدير العملاء والموردين والمشروعات وأحداثها وعروض الأسعار والتحصيلات والمدفوعات في أوراق منفصلة.':'Export clients, vendors, projects, project events, quotations, collections and payments into separate sheets.'}</p><button disabled={!isAdmin||!!backupBusy} onClick={exportWorkbook} className="bg-amber-600 text-white rounded-lg px-4 py-3 font-bold">{tr('exportWorkbook')}</button>{!isAdmin&&<small className="text-amber-700">{tr('adminOnly')}</small>}</article>
+          </section>
+          {backupMessage&&<div className={`rounded-lg p-4 text-sm ${backupMessage.includes(tr('backupFailed'))||backupMessage.includes(tr('backupPermission'))?'bg-red-50 text-red-700':'bg-green-50 text-green-700'}`}>{backupMessage}</div>}
+          <section className="bg-white rounded-xl border p-5"><h3 className="font-bold mb-2">{rtl?'استيراد Excel':'Excel import'}</h3><p className="text-sm text-gray-600">{rtl?'استيراد البيانات موجود في شاشة البيانات الأساسية، ولا يتم الاحتفاظ بملف Excel بعد قراءة محتواه.':'Excel import is available in Master Data. The workbook itself is not retained after its contents are read.'}</p><button onClick={()=>setTab('master')} className="mt-3 bg-gray-100 rounded-lg px-4 py-2 font-bold">{tr('master')}</button></section>
         </div>}
 
         {tab==='userRequests'&&isAdmin&&<div className="space-y-5"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-bold text-xl">{tr('requestsReport')}</h2><select className="border rounded-lg p-2" value={requestFilter} onChange={e=>setRequestFilter(e.target.value)}><option value="all">{tr('allRequests')}</option><option value="pending">{tr('pendingLabel')}</option><option value="approved">{tr('approvedLabel')}</option><option value="rejected">{tr('rejectedLabel')}</option></select></div><section className="bg-white rounded-xl border shadow-sm overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="p-3 text-start">{tr('requestedUser')}</th><th className="p-3 text-start">{tr('requestDate')}</th><th className="p-3 text-start">{tr('requestStatus')}</th><th className="p-3 text-start">{tr('updateStatus')}</th></tr></thead><tbody>{filteredRequests.slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).map(req=><tr key={req.uid} className="border-t align-top"><td className="p-3"><b>{req.fullName}</b><div className="text-gray-500">{req.email}</div><div className="text-gray-500">{req.username} · {req.jobTitle}</div>{!req._hasAuthUid&&<div className="text-amber-700 text-xs mt-1">{tr('legacyRequest')}</div>}</td><td className="p-3 whitespace-nowrap">{req.createdAt?new Date(req.createdAt).toLocaleString(rtl?'ar-EG':'en-US'):'—'}</td><td className="p-3"><span className="rounded-full bg-gray-100 px-2 py-1">{requestStatusLabel(req.status)}</span></td><td className="p-3 min-w-44"><select className="border rounded-lg p-2 w-full" value={requestStatusValue(req.status)} onChange={e=>updateRequestStatus(req,e.target.value)}><option value="pending">{tr('pendingLabel')}</option><option value="approved">{tr('approvedLabel')}</option><option value="rejected">{tr('rejectedLabel')}</option></select></td></tr>)}</tbody></table>{filteredRequests.length===0&&<p className="p-5 text-gray-500">{tr('noData')}</p>}</section></div>}
