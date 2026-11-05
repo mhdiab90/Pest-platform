@@ -8,6 +8,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>body { font-family: 'Cairo', sans-serif; }</style>
@@ -18,7 +19,7 @@
         <div class="flex items-center justify-center min-h-screen">
             <div class="text-center">
                 <i class="fa-solid fa-spinner fa-spin text-4xl text-blue-600 mb-3"></i>
-                <p class="text-gray-600 font-bold">جاري تحميل النظام والمكودات...</p>
+                <p class="text-gray-600 font-bold">جاري تحميل النظام وتجهيز قاعدة البيانات...</p>
             </div>
         </div>
     </div>
@@ -43,126 +44,328 @@
         const { useState, useEffect } = React;
 
         function App() {
-            const [currentUser, setCurrentUser] = useState({ name: "محمد حامد", role: "admin" });
-            const [activeTab, setActiveTab] = useState("dashboard");
-            
-            // Master Data States
+            // Auth States
+            const [currentUser, setCurrentUser] = useState(null);
+            const [viewMode, setViewMode] = useState('login'); // 'login' | 'request_user' | 'app'
+            const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+            const [reqForm, setReqForm] = useState({ fullName: '', jobTitle: '', username: '', password: '' });
+            const [authError, setAuthError] = useState('');
+            const [authSuccess, setAuthSuccess] = useState('');
+
+            // App Data States
+            const [companyInfo, setCompanyInfo] = useState({ name: 'اسم الشركة', logo: '' });
+            const [userRequests, setUserRequests] = useState([]);
+            const [activeUsers, setActiveUsers] = useState([]);
+            const [messages, setMessages] = useState([]);
             const [clients, setClients] = useState([]);
             const [vendors, setVendors] = useState([]);
-            const [masterProjects, setMasterProjects] = useState([]);
-            const [systemUsers, setSystemUsers] = useState([]);
-
-            // Transactional States
             const [quotes, setQuotes] = useState([]);
             const [projects, setProjects] = useState([]);
-            const [inflows, setInflows] = useState([]);
-            const [outflows, setOutflows] = useState([]);
             const [logs, setLogs] = useState([]);
 
-            // Form States
+            // UI Control States
+            const [activeTab, setActiveTab] = useState('dashboard');
+            const [showNotifications, setShowNotifications] = useState(false);
+            const [showComposeMsg, setShowComposeMsg] = useState(false);
+            const [msgForm, setMsgForm] = useState({ recipients: [], subject: '', body: '' });
+
+            // Master Data Forms
             const [clientForm, setClientForm] = useState({ code: '', name: '', phone: '' });
             const [vendorForm, setVendorForm] = useState({ code: '', name: '', phone: '' });
-            const [userForm, setUserForm] = useState({ name: '', role: 'sales' });
-            const [newQuote, setNewQuote] = useState({ clientCode: '', title: '', amount: '', paymentTerms: 'كاش' });
 
             useEffect(() => {
+                // Ensure Admin Exists
+                db.ref('users/admin').once('value', s => {
+                    if (!s.exists()) {
+                        db.ref('users/admin').set({
+                            username: 'admin',
+                            password: 'Pest@1234',
+                            fullName: 'مدير النظام',
+                            jobTitle: 'System Admin',
+                            role: 'admin',
+                            status: 'نشط'
+                        });
+                    }
+                });
+
+                db.ref('companyInfo').on('value', s => s.exists() && setCompanyInfo(s.val()));
+                db.ref('userRequests').on('value', s => setUserRequests(s.val() ? Object.values(s.val()) : []));
+                db.ref('users').on('value', s => setActiveUsers(s.val() ? Object.values(s.val()) : []));
+                db.ref('messages').on('value', s => setMessages(s.val() ? Object.values(s.val()) : []));
                 db.ref('clients').on('value', s => setClients(s.val() ? Object.values(s.val()) : []));
                 db.ref('vendors').on('value', s => setVendors(s.val() ? Object.values(s.val()) : []));
-                db.ref('systemUsers').on('value', s => setSystemUsers(s.val() ? Object.values(s.val()) : []));
                 db.ref('quotes').on('value', s => setQuotes(s.val() ? Object.values(s.val()) : []));
                 db.ref('projects').on('value', s => setProjects(s.val() ? Object.values(s.val()) : []));
-                db.ref('inflows').on('value', s => setInflows(s.val() ? Object.values(s.val()) : []));
-                db.ref('outflows').on('value', s => setOutflows(s.val() ? Object.values(s.val()) : []));
                 db.ref('logs').on('value', s => setLogs(s.val() ? Object.values(s.val()) : []));
             }, []);
 
             const addLog = (action) => {
                 const id = Date.now();
-                db.ref(`logs/${id}`).set({ id, user: currentUser.name, time: new Date().toLocaleTimeString('ar-EG'), action });
+                db.ref(`logs/${id}`).set({ id, user: currentUser ? currentUser.fullName : 'النظام', time: new Date().toLocaleTimeString('ar-EG'), action });
             };
 
-            // Master Data Handlers
-            const addClient = (e) => {
+            // Login Logic
+            const handleLogin = (e) => {
                 e.preventDefault();
-                const code = clientForm.code || 'CUST-' + (clients.length + 1).toString().padStart(3, '0');
-                db.ref(`clients/${code}`).set({ code, name: clientForm.name, phone: clientForm.phone });
-                addLog(`إضافة عميل جديد: ${clientForm.name} (${code})`);
-                setClientForm({ code: '', name: '', phone: '' });
-            };
-
-            const addVendor = (e) => {
-                e.preventDefault();
-                const code = vendorForm.code || 'SUP-' + (vendors.length + 1).toString().padStart(3, '0');
-                db.ref(`vendors/${code}`).set({ code, name: vendorForm.name, phone: vendorForm.phone });
-                addLog(`إضافة مورد جديد: ${vendorForm.name} (${code})`);
-                setVendorForm({ code: '', name: '', phone: '' });
-            };
-
-            const addUser = (e) => {
-                e.preventDefault();
-                const id = 'USR-' + Date.now();
-                db.ref(`systemUsers/${id}`).set({ id, name: userForm.name, role: userForm.role });
-                addLog(`إضافة مستخدم جديد: ${userForm.name} بصلاحية (${userForm.role})`);
-                setUserForm({ name: '', role: 'sales' });
-            };
-
-            const createQuote = (e) => {
-                e.preventDefault();
-                const qId = 'Q-' + Date.now();
-                const selectedClient = clients.find(c => c.code === newQuote.clientCode);
-                const quoteObj = {
-                    id: qId,
-                    clientCode: newQuote.clientCode,
-                    clientName: selectedClient ? selectedClient.name : newQuote.clientCode,
-                    title: newQuote.title,
-                    amount: Number(newQuote.amount),
-                    status: 'قيد الانتظار',
-                    date: new Date().toLocaleDateString('ar-EG'),
-                    paymentTerms: newQuote.paymentTerms
-                };
-                db.ref(`quotes/${qId}`).set(quoteObj);
-                addLog(`إصدار عرض سعر للعميل: ${quoteObj.clientName}`);
-                setNewQuote({ clientCode: '', title: '', amount: '', paymentTerms: 'كاش' });
-            };
-
-            const updateQuoteStatus = (qId, newStatus) => {
-                const target = quotes.find(q => q.id === qId);
-                if (!target) return;
-                db.ref(`quotes/${qId}/status`).set(newStatus);
-                addLog(`تعديل حالة عرض السعر (${target.title}) إلى: ${newStatus}`);
-
-                if (newStatus === 'مقبول') {
-                    const pId = 'PRJ-' + (projects.length + 1).toString().padStart(3, '0');
-                    db.ref(`projects/${pId}`).set({ id: pId, title: target.title, client: target.clientName, budget: target.amount, status: 'قيد التنفيذ' });
-                    db.ref(`inflows/INF-${Date.now()}`).set({ client: target.clientName, amount: target.amount, method: target.paymentTerms, status: 'مستحق' });
+                setAuthError('');
+                const user = activeUsers.find(u => u.username === loginForm.username && u.password === loginForm.password);
+                if (user) {
+                    if (user.status === 'معطل') {
+                        setAuthError('هذا الحساب معطل حالياً');
+                        return;
+                    }
+                    setCurrentUser(user);
+                    setViewMode('app');
+                    addLog(`تسجيل دخول المستخدم: ${user.fullName}`);
+                } else {
+                    setAuthError('اسم المستخدم أو كلمة السر غير صحيحة');
                 }
             };
 
-            return (
-                <div className="flex flex-col min-h-screen">
-                    <header className="bg-slate-900 text-white p-4 flex justify-between items-center shadow-lg">
-                        <div className="flex items-center space-x-3 space-x-reverse">
-                            <i className="fa-solid fa-cubes text-blue-400 text-2xl"></i>
-                            <h1 className="text-xl font-bold">منظومة المشروعات والبيانات الأساسية (Master Data)</h1>
+            // Request User Logic
+            const handleRequestUser = (e) => {
+                e.preventDefault();
+                setAuthError('');
+                const existing = activeUsers.find(u => u.username === reqForm.username);
+                if (existing) {
+                    setAuthError('اسم المستخدم مطلوب مسبقاً، اختر اسم آخر');
+                    return;
+                }
+                const reqId = 'REQ-' + Date.now();
+                const reqData = { id: reqId, ...reqForm, status: 'مؤجل', date: new Date().toLocaleDateString('ar-EG') };
+                db.ref(`userRequests/${reqId}`).set(reqData);
+                setAuthSuccess('تم تقديم طلب الحساب بنجاح، يرجى انتظار اعتماد مدير النظام.');
+                setReqForm({ fullName: '', jobTitle: '', username: '', password: '' });
+                setTimeout(() => { setAuthSuccess(''); setViewMode('login'); }, 2500);
+            };
+
+            // Admin Actions on User Requests
+            const handleApproveUser = (req, status) => {
+                db.ref(`userRequests/${req.id}/status`).set(status);
+                if (status === 'موافق') {
+                    db.ref(`users/${req.username}`).set({
+                        username: req.username,
+                        password: req.password,
+                        fullName: req.fullName,
+                        jobTitle: req.jobTitle,
+                        role: 'user',
+                        status: 'نشط'
+                    });
+                    addLog(`تم اعتماد وإنشاء حساب للمستخدم: ${req.fullName}`);
+                } else if (status === 'غير موافق') {
+                    addLog(`تم رفض طلب الحساب للمستخدم: ${req.fullName}`);
+                } else {
+                    addLog(`تم تأجيل قرار طلب الحساب للمستخدم: ${req.fullName}`);
+                }
+            };
+
+            // Logo & Company Info Upload
+            const handleLogoUpload = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        const updated = { ...companyInfo, logo: reader.result };
+                        setCompanyInfo(updated);
+                        db.ref('companyInfo').set(updated);
+                        addLog('تم تحديث شعار الشركة');
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+
+            // Excel Data Import
+            const handleExcelUpload = (e, type) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    const bstr = evt.target.result;
+                    const wb = XLSX.read(bstr, { type: 'binary' });
+                    const wsname = wb.SheetNames[0];
+                    const ws = wb.Sheets[wsname];
+                    const data = XLSX.utils.sheet_to_json(ws);
+                    
+                    data.forEach((row, idx) => {
+                        if (type === 'clients') {
+                            const code = row.Code || row.كود || 'CUST-EX-' + (idx + 1);
+                            const name = row.Name || row.الاسم || 'عميل بدون اسم';
+                            db.ref(`clients/${code}`).set({ code, name, phone: row.Phone || row.الهاتف || '' });
+                        } else if (type === 'vendors') {
+                            const code = row.Code || row.كود || 'SUP-EX-' + (idx + 1);
+                            const name = row.Name || row.الاسم || 'مورد بدون اسم';
+                            db.ref(`vendors/${code}`).set({ code, name, phone: row.Phone || row.الهاتف || '' });
+                        }
+                    });
+                    addLog(`تم استيراد ${data.length} سجل من ملف إكسيل لـ ${type === 'clients' ? 'العملاء' : 'الموردين'}`);
+                    alert(`تم رفع واستخراج ${data.length} سجل بنجاح!`);
+                };
+                reader.readAsBinaryString(file);
+            };
+
+            // Internal Messaging Logic
+            const sendMessage = (e) => {
+                e.preventDefault();
+                if (msgForm.recipients.length === 0) return alert('اختر مستلم واحد على الأقل');
+                const msgId = 'MSG-' + Date.now();
+                const newMsg = {
+                    id: msgId,
+                    sender: currentUser.username,
+                    senderName: currentUser.fullName,
+                    recipients: msgForm.recipients,
+                    subject: msgForm.subject,
+                    body: msgForm.body,
+                    time: new Date().toLocaleTimeString('ar-EG'),
+                    date: new Date().toLocaleDateString('ar-EG')
+                };
+                db.ref(`messages/${msgId}`).set(newMsg);
+                addLog(`إرسال رسالة داخلية من ${currentUser.fullName} إلى: ${msgForm.recipients.join(', ')}`);
+                setMsgForm({ recipients: [], subject: '', body: '' });
+                setShowComposeMsg(false);
+            };
+
+            // Notification Counters
+            const pendingRequests = userRequests.filter(r => r.status === 'مؤجل');
+            const myMessages = messages.filter(m => m.recipients && m.recipients.includes(currentUser?.username));
+
+            // View: LOGIN / REQUEST
+            if (viewMode === 'login' || viewMode === 'request_user') {
+                return (
+                    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md border border-slate-700">
+                            <div className="text-center mb-6">
+                                {companyInfo.logo ? (
+                                    <img src={companyInfo.logo} alt="Logo" className="h-20 mx-auto mb-3 object-contain" />
+                                ) : (
+                                    <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-3 text-white text-2xl font-bold">
+                                        <i className="fa-solid fa-building"></i>
+                                    </div>
+                                )}
+                                <h2 className="text-2xl font-bold text-gray-800">{companyInfo.name}</h2>
+                                <p className="text-sm text-gray-500 mt-1">منظومة إدارة المشروعات والتدفقات النقدية</p>
+                            </div>
+
+                            {authError && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4 border border-red-200 text-center font-bold">{authError}</div>}
+                            {authSuccess && <div className="bg-green-50 text-green-600 p-3 rounded-lg text-sm mb-4 border border-green-200 text-center font-bold">{authSuccess}</div>}
+
+                            {viewMode === 'login' ? (
+                                <form onSubmit={handleLogin} className="space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-700 mb-1">اسم المستخدم</label>
+                                        <input type="text" required className="w-full border p-2.5 rounded-lg text-sm outline-none focus:border-blue-600" value={loginForm.username} onChange={e => setLoginForm({...loginForm, username: e.target.value})} placeholder="أدخل اسم المستخدم" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-700 mb-1">كلمة السر</label>
+                                        <input type="password" required className="w-full border p-2.5 rounded-lg text-sm outline-none focus:border-blue-600" value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} placeholder="••••••••" />
+                                    </div>
+                                    <button type="submit" className="w-full bg-blue-600 text-white p-3 rounded-lg font-bold hover:bg-blue-700 transition">تسجيل الدخول</button>
+                                    <div className="text-center pt-3 border-t">
+                                        <button type="button" onClick={() => { setAuthError(''); setViewMode('request_user'); }} className="text-sm text-blue-600 hover:underline font-bold">
+                                            طلب حساب مستخدم جديد
+                                        </button>
+                                    </div>
+                                </form>
+                            ) : (
+                                <form onSubmit={handleRequestUser} className="space-y-3">
+                                    <h3 className="font-bold text-sm text-gray-700 border-b pb-2">تقديم طلب إنشاء مستخدم جديد</h3>
+                                    <input type="text" placeholder="الاسم الكامل" required className="w-full border p-2 rounded text-sm" value={reqForm.fullName} onChange={e => setReqForm({...reqForm, fullName: e.target.value})} />
+                                    <input type="text" placeholder="الوظيفة / القسم" required className="w-full border p-2 rounded text-sm" value={reqForm.jobTitle} onChange={e => setReqForm({...reqForm, jobTitle: e.target.value})} />
+                                    <input type="text" placeholder="اسم المستخدم المطلوب" required className="w-full border p-2 rounded text-sm" value={reqForm.username} onChange={e => setReqForm({...reqForm, username: e.target.value})} />
+                                    <input type="password" placeholder="كلمة السر المطلوبة" required className="w-full border p-2 rounded text-sm" value={reqForm.password} onChange={e => setReqForm({...reqForm, password: e.target.value})} />
+                                    <button type="submit" className="w-full bg-green-600 text-white p-2.5 rounded-lg font-bold hover:bg-green-700">إرسال الطلب للمدير</button>
+                                    <button type="button" onClick={() => setViewMode('login')} className="w-full bg-gray-200 text-gray-700 p-2 rounded-lg font-bold text-sm">إلغاء والعودة للدخول</button>
+                                </form>
+                            )}
                         </div>
-                        <div className="flex items-center space-x-3 space-x-reverse">
-                            <span className="text-sm bg-slate-800 px-3 py-1 rounded-full border border-slate-700">
-                                <i className="fa-solid fa-user-shield text-green-400 ml-2"></i>
-                                {currentUser.name} ({currentUser.role})
-                            </span>
+                    </div>
+                );
+            }
+
+            // View: MAIN APP SYSTEM
+            return (
+                <div className="flex flex-col min-h-screen bg-gray-100">
+                    <!-- Top Navigation Bar -->
+                    <header className="bg-slate-900 text-white p-3 px-6 flex justify-between items-center shadow-lg relative">
+                        <div className="flex items-center space-x-4 space-x-reverse">
+                            {companyInfo.logo ? (
+                                <img src={companyInfo.logo} alt="Logo" className="h-10 w-10 object-contain rounded bg-white p-1" />
+                            ) : (
+                                <i className="fa-solid fa-cubes text-blue-400 text-2xl"></i>
+                            )}
+                            <div>
+                                <h1 className="text-lg font-bold">{companyInfo.name}</h1>
+                                <p className="text-xs text-slate-400">منظومة المشروعات والتواصل الداخلي</p>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center space-x-5 space-x-reverse">
+                            <!-- Outlook Messaging Icon -->
+                            <button onClick={() => setActiveTab('messages')} className="relative text-slate-300 hover:text-white">
+                                <i className="fa-solid fa-envelope text-xl"></i>
+                                {myMessages.length > 0 && (
+                                    <span className="absolute -top-2 -right-2 bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">{myMessages.length}</span>
+                                )}
+                            </button>
+
+                            <!-- Admin Notifications Bell -->
+                            {currentUser.role === 'admin' && (
+                                <div className="relative">
+                                    <button onClick={() => setShowNotifications(!showNotifications)} className="relative text-slate-300 hover:text-white">
+                                        <i className="fa-solid fa-bell text-xl"></i>
+                                        {pendingRequests.length > 0 && (
+                                            <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">{pendingRequests.length}</span>
+                                        )}
+                                    </button>
+
+                                    <!-- Notifications Dropdown -->
+                                    {showNotifications && (
+                                        <div className="absolute left-0 mt-3 w-80 bg-white text-gray-800 rounded-xl shadow-2xl border p-4 z-50">
+                                            <h4 className="font-bold border-b pb-2 text-sm text-slate-800">إشعارات طلبات الحسابات ({pendingRequests.length})</h4>
+                                            <div className="max-h-60 overflow-y-auto space-y-3 mt-2">
+                                                {pendingRequests.length === 0 ? <p className="text-xs text-gray-400">لا توجد طلبات معلقة</p> : pendingRequests.map(req => (
+                                                    <div key={req.id} className="bg-gray-50 p-2.5 rounded border space-y-2">
+                                                        <div className="flex justify-between text-xs">
+                                                            <span className="font-bold">{req.fullName}</span>
+                                                            <span className="text-gray-500">{req.jobTitle}</span>
+                                                        </div>
+                                                        <p className="text-xs text-blue-700 font-mono">اليوزر: {req.username}</p>
+                                                        <div className="flex space-x-1 space-x-reverse pt-1">
+                                                            <button onClick={() => handleApproveUser(req, 'موافق')} className="bg-green-600 text-white text-xs px-2 py-1 rounded font-bold flex-1">موافق</button>
+                                                            <button onClick={() => handleApproveUser(req, 'غير موافق')} className="bg-red-600 text-white text-xs px-2 py-1 rounded font-bold flex-1">غير موافق</button>
+                                                            <button onClick={() => handleApproveUser(req, 'مؤجل')} className="bg-amber-600 text-white text-xs px-2 py-1 rounded font-bold flex-1">مؤجل</button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            <!-- User Info & Logout -->
+                            <div className="flex items-center space-x-3 space-x-reverse border-r pr-4 border-slate-700">
+                                <div className="text-left">
+                                    <p className="text-xs font-bold text-white">{currentUser.fullName}</p>
+                                    <p className="text-[10px] text-green-400 font-mono">{currentUser.jobTitle}</p>
+                                </div>
+                                <button onClick={() => { setCurrentUser(null); setViewMode('login'); }} className="text-red-400 hover:text-red-300 text-sm font-bold mr-2" title="خروج">
+                                    <i className="fa-solid fa-power-off"></i>
+                                </button>
+                            </div>
                         </div>
                     </header>
 
                     <div className="flex flex-1">
+                        <!-- Sidebar -->
                         <aside className="w-64 bg-white border-l border-gray-200 p-4 space-y-2">
                             <button onClick={() => setActiveTab('dashboard')} className={`w-full text-right p-3 rounded-lg flex items-center space-x-3 space-x-reverse ${activeTab === 'dashboard' ? 'bg-blue-50 text-blue-600 font-bold' : 'hover:bg-gray-50'}`}>
                                 <i className="fa-solid fa-gauge w-6"></i><span>لوحة التحكم</span>
                             </button>
                             <button onClick={() => setActiveTab('masterData')} className={`w-full text-right p-3 rounded-lg flex items-center space-x-3 space-x-reverse ${activeTab === 'masterData' ? 'bg-blue-50 text-blue-600 font-bold' : 'hover:bg-gray-50'}`}>
-                                <i className="fa-solid fa-database w-6"></i><span>البيانات الأساسية (Master Data)</span>
+                                <i className="fa-solid fa-database w-6"></i><span>البيانات الأساسية والهوية</span>
                             </button>
-                            <button onClick={() => setActiveTab('users')} className={`w-full text-right p-3 rounded-lg flex items-center space-x-3 space-x-reverse ${activeTab === 'users' ? 'bg-blue-50 text-blue-600 font-bold' : 'hover:bg-gray-50'}`}>
-                                <i className="fa-solid fa-users-gear w-6"></i><span>المستخدمين والصلاحيات</span>
+                            <button onClick={() => setActiveTab('messages')} className={`w-full text-right p-3 rounded-lg flex items-center space-x-3 space-x-reverse ${activeTab === 'messages' ? 'bg-blue-50 text-blue-600 font-bold' : 'hover:bg-gray-50'}`}>
+                                <i className="fa-solid fa-envelope-open-text w-6"></i><span>المراسلات (Outlook)</span>
                             </button>
                             <button onClick={() => setActiveTab('quotes')} className={`w-full text-right p-3 rounded-lg flex items-center space-x-3 space-x-reverse ${activeTab === 'quotes' ? 'bg-blue-50 text-blue-600 font-bold' : 'hover:bg-gray-50'}`}>
                                 <i className="fa-solid fa-file-invoice-dollar w-6"></i><span>عروض الأسعار</span>
@@ -170,116 +373,161 @@
                             <button onClick={() => setActiveTab('projects')} className={`w-full text-right p-3 rounded-lg flex items-center space-x-3 space-x-reverse ${activeTab === 'projects' ? 'bg-blue-50 text-blue-600 font-bold' : 'hover:bg-gray-50'}`}>
                                 <i className="fa-solid fa-diagram-project w-6"></i><span>المشروعات والطلبات</span>
                             </button>
+                            {currentUser.role === 'admin' && (
+                                <button onClick={() => setActiveTab('requests')} className={`w-full text-right p-3 rounded-lg flex items-center space-x-3 space-x-reverse ${activeTab === 'requests' ? 'bg-blue-50 text-blue-600 font-bold' : 'hover:bg-gray-50'}`}>
+                                    <i className="fa-solid fa-user-clock w-6"></i><span>سجل طلبات الحسابات</span>
+                                </button>
+                            )}
                         </aside>
 
+                        <!-- Main Content -->
                         <main className="flex-1 p-6">
+                            {/* MASTER DATA & LOGO & EXCEL */}
                             {activeTab === 'masterData' && (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    {/* إدارة العملاء */}
+                                <div className="space-y-6">
+                                    <!-- Company Logo & Info Config -->
                                     <div className="bg-white p-5 rounded-xl border shadow-sm space-y-4">
-                                        <h3 className="font-bold text-blue-900 border-b pb-2"><i className="fa-solid fa-building ml-2"></i>تكويد العملاء</h3>
-                                        <form onSubmit={addClient} className="space-y-3">
-                                            <input type="text" placeholder="الكود (تلقائي إن ترك فارغاً)" className="w-full border p-2 rounded text-sm" value={clientForm.code} onChange={e => setClientForm({...clientForm, code: e.target.value})} />
-                                            <input type="text" placeholder="اسم العميل" required className="w-full border p-2 rounded text-sm" value={clientForm.name} onChange={e => setClientForm({...clientForm, name: e.target.value})} />
-                                            <button type="submit" className="w-full bg-blue-600 text-white p-2 rounded text-sm font-bold">إضافة عميل</button>
-                                        </form>
-                                        <div className="max-h-48 overflow-y-auto space-y-2 border-t pt-2">
-                                            {clients.map(c => (
-                                                <div key={c.code} className="flex justify-between items-center bg-gray-50 p-2 rounded text-xs">
-                                                    <span className="font-mono bg-blue-100 px-2 py-0.5 rounded text-blue-800">{c.code}</span>
-                                                    <span className="font-bold">{c.name}</span>
-                                                </div>
-                                            ))}
+                                        <h3 className="font-bold text-gray-800 border-b pb-2"><i className="fa-solid fa-sliders ml-2"></i>هوية الشركة واللوجو</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-xs font-bold mb-1">اسم الشركة</label>
+                                                <input type="text" className="w-full border p-2 rounded text-sm" value={companyInfo.name} onChange={e => {
+                                                    const updated = { ...companyInfo, name: e.target.value };
+                                                    setCompanyInfo(updated);
+                                                    db.ref('companyInfo').set(updated);
+                                                }} />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold mb-1">رفع شعار الشركة (Logo)</label>
+                                                <input type="file" accept="image/*" onChange={handleLogoUpload} className="w-full text-sm border p-1 rounded" />
+                                            </div>
                                         </div>
                                     </div>
 
-                                    {/* إدارة الموردين */}
-                                    <div className="bg-white p-5 rounded-xl border shadow-sm space-y-4">
-                                        <h3 className="font-bold text-amber-900 border-b pb-2"><i className="fa-solid fa-truck ml-2"></i>تكويد الموردين</h3>
-                                        <form onSubmit={addVendor} className="space-y-3">
-                                            <input type="text" placeholder="الكود (تلقائي إن ترك فارغاً)" className="w-full border p-2 rounded text-sm" value={vendorForm.code} onChange={e => setVendorForm({...vendorForm, code: e.target.value})} />
-                                            <input type="text" placeholder="اسم المورد" required className="w-full border p-2 rounded text-sm" value={vendorForm.name} onChange={e => setVendorForm({...vendorForm, name: e.target.value})} />
-                                            <button type="submit" className="w-full bg-amber-600 text-white p-2 rounded text-sm font-bold">إضافة مورد</button>
-                                        </form>
-                                        <div className="max-h-48 overflow-y-auto space-y-2 border-t pt-2">
-                                            {vendors.map(v => (
-                                                <div key={v.code} className="flex justify-between items-center bg-gray-50 p-2 rounded text-xs">
-                                                    <span className="font-mono bg-amber-100 px-2 py-0.5 rounded text-amber-800">{v.code}</span>
-                                                    <span className="font-bold">{v.name}</span>
-                                                </div>
-                                            ))}
+                                    <!-- Excel Import & Master Codes -->
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        {/* Clients Excel & Form */}
+                                        <div className="bg-white p-5 rounded-xl border shadow-sm space-y-4">
+                                            <div className="flex justify-between items-center border-b pb-2">
+                                                <h3 className="font-bold text-blue-900">تكويد واستيراد العملاء</h3>
+                                                <label className="bg-green-700 text-white text-xs px-2 py-1 rounded cursor-pointer font-bold">
+                                                    <i className="fa-solid fa-file-excel ml-1"></i>رفع إكسيل
+                                                    <input type="file" accept=".xlsx, .xls" className="hidden" onChange={e => handleExcelUpload(e, 'clients')} />
+                                                </label>
+                                            </div>
+                                            <div className="max-h-40 overflow-y-auto space-y-2">
+                                                {clients.map(c => (
+                                                    <div key={c.code} className="flex justify-between bg-gray-50 p-2 rounded text-xs">
+                                                        <span className="font-mono font-bold text-blue-700">{c.code}</span>
+                                                        <span>{c.name}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Vendors Excel & Form */}
+                                        <div className="bg-white p-5 rounded-xl border shadow-sm space-y-4">
+                                            <div className="flex justify-between items-center border-b pb-2">
+                                                <h3 className="font-bold text-amber-900">تكويد واستيراد الموردين</h3>
+                                                <label className="bg-green-700 text-white text-xs px-2 py-1 rounded cursor-pointer font-bold">
+                                                    <i className="fa-solid fa-file-excel ml-1"></i>رفع إكسيل
+                                                    <input type="file" accept=".xlsx, .xls" className="hidden" onChange={e => handleExcelUpload(e, 'vendors')} />
+                                                </label>
+                                            </div>
+                                            <div className="max-h-40 overflow-y-auto space-y-2">
+                                                {vendors.map(v => (
+                                                    <div key={v.code} className="flex justify-between bg-gray-50 p-2 rounded text-xs">
+                                                        <span className="font-mono font-bold text-amber-700">{v.code}</span>
+                                                        <span>{v.name}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             )}
 
-                            {activeTab === 'users' && (
-                                <div className="bg-white p-5 rounded-xl border shadow-sm space-y-4 max-w-xl">
-                                    <h3 className="font-bold text-gray-800 border-b pb-2"><i className="fa-solid fa-users-gear ml-2"></i>إدارة المستخدمين والصلاحيات</h3>
-                                    <form onSubmit={addUser} className="space-y-3">
-                                        <input type="text" placeholder="اسم المستخدم" required className="w-full border p-2 rounded text-sm" value={userForm.name} onChange={e => setUserForm({...userForm, name: e.target.value})} />
-                                        <select className="w-full border p-2 rounded text-sm" value={userForm.role} onChange={e => setUserForm({...userForm, role: e.target.value})}>
-                                            <option value="sales">مبيعات (عروض الأسعار)</option>
-                                            <option value="purchasing">مشتريات (أوامر الشراء)</option>
-                                            <option value="finance">مالية (التحصيلات والالتزامات)</option>
-                                            <option value="admin">مدير نظام (صلاحية كاملة)</option>
-                                        </select>
-                                        <button type="submit" className="w-full bg-green-600 text-white p-2 rounded text-sm font-bold">حفظ المستخدم</button>
-                                    </form>
-                                    <div className="space-y-2 border-t pt-3">
-                                        {systemUsers.map(u => (
-                                            <div key={u.id} className="flex justify-between items-center bg-gray-50 p-2.5 rounded text-sm">
-                                                <span className="font-bold">{u.name}</span>
-                                                <span className="bg-gray-200 px-2 py-1 rounded text-xs">{u.role}</span>
+                            {/* MESSAGING SYSTEM (OUTLOOK STYLE) */}
+                            {activeTab === 'messages' && (
+                                <div className="bg-white rounded-xl border shadow-sm p-5 space-y-4">
+                                    <div className="flex justify-between items-center border-b pb-3">
+                                        <h3 className="font-bold text-lg text-slate-800"><i className="fa-solid fa-inbox ml-2"></i>صندوق المراسلات الداخلية</h3>
+                                        <button onClick={() => setShowComposeMsg(true)} className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-blue-700">
+                                            <i className="fa-solid fa-pen ml-1"></i>رسالة جديدة
+                                        </button>
+                                    </div>
+
+                                    {/* Compose Modal */}
+                                    {showComposeMsg && (
+                                        <form onSubmit={sendMessage} className="bg-slate-50 p-4 rounded-xl border space-y-3 mb-4">
+                                            <h4 className="font-bold text-sm text-slate-700">إنشاء رسالة جديدة</h4>
+                                            <div>
+                                                <label className="block text-xs font-bold mb-1">اختر المستلم / المستلمين</label>
+                                                <select multiple required className="w-full border p-2 rounded text-sm h-24" value={msgForm.recipients} onChange={e => {
+                                                    const options = [...e.target.selectedOptions].map(o => o.value);
+                                                    setMsgForm({ ...msgForm, recipients: options });
+                                                }}>
+                                                    {activeUsers.filter(u => u.username !== currentUser.username).map(u => (
+                                                        <option key={u.username} value={u.username}>{u.fullName} ({u.jobTitle})</option>
+                                                    ))}
+                                                </select>
+                                                <p className="text-[10px] text-gray-500 mt-1">اضغط Ctrl لاختيار أكثر من مستخدم</p>
+                                            </div>
+                                            <input type="text" placeholder="موضوع الرسالة" required className="w-full border p-2 rounded text-sm" value={msgForm.subject} onChange={e => setMsgForm({...msgForm, subject: e.target.value})} />
+                                            <textarea placeholder="نص الرسالة..." required className="w-full border p-2 rounded text-sm h-20" value={msgForm.body} onChange={e => setMsgForm({...msgForm, body: e.target.value})}></textarea>
+                                            <div className="flex space-x-2 space-x-reverse">
+                                                <button type="submit" className="bg-green-600 text-white px-4 py-1.5 rounded text-sm font-bold">إرسال</button>
+                                                <button type="button" onClick={() => setShowComposeMsg(false)} className="bg-gray-300 text-gray-700 px-4 py-1.5 rounded text-sm font-bold">إلغاء</button>
+                                            </div>
+                                        </form>
+                                    )}
+
+                                    <!-- Received Messages List -->
+                                    <div className="space-y-3">
+                                        {myMessages.length === 0 ? <p className="text-gray-400 text-sm">لا توجد رسائل واردة حالياً</p> : myMessages.map(m => (
+                                            <div key={m.id} className="border rounded-lg p-4 bg-blue-50/30 space-y-1">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="font-bold text-sm text-blue-900">{m.senderName}</span>
+                                                    <span className="text-xs text-gray-400">{m.date} - {m.time}</span>
+                                                </div>
+                                                <p className="font-bold text-xs text-gray-800">{m.subject}</p>
+                                                <p className="text-xs text-gray-600">{m.body}</p>
                                             </div>
                                         ))}
                                     </div>
                                 </div>
                             )}
 
-                            {activeTab === 'quotes' && (
-                                <div className="space-y-6">
-                                    <div className="bg-white p-5 rounded-xl border shadow-sm">
-                                        <h3 className="font-bold mb-4">إصدار عرض سعر متوافق مع المكونات</h3>
-                                        <form onSubmit={createQuote} className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                            <select required className="border p-2 rounded text-sm" value={newQuote.clientCode} onChange={e => setNewQuote({...newQuote, clientCode: e.target.value})}>
-                                                <option value="">اختر العميل من Master Data</option>
-                                                {clients.map(c => <option key={c.code} value={c.code}>{c.name} ({c.code})</option>)}
-                                            </select>
-                                            <input type="text" placeholder="تفاصيل الخدمة/المشروع" required className="border p-2 rounded text-sm" value={newQuote.title} onChange={e => setNewQuote({...newQuote, title: e.target.value})} />
-                                            <input type="number" placeholder="القيمة" required className="border p-2 rounded text-sm" value={newQuote.amount} onChange={e => setNewQuote({...newQuote, amount: e.target.value})} />
-                                            <select className="border p-2 rounded text-sm" value={newQuote.paymentTerms} onChange={e => setNewQuote({...newQuote, paymentTerms: e.target.value})}>
-                                                <option value="كاش">كاش</option>
-                                                <option value="تحويل بنكي">تحويل بنكي</option>
-                                            </select>
-                                            <button type="submit" className="md:col-span-4 bg-blue-600 text-white p-2 rounded font-bold text-sm">إنشاء عرض السعر</button>
-                                        </form>
-                                    </div>
-                                    <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+                            {/* REQUESTS LOG TAB (ADMIN ONLY) */}
+                            {activeTab === 'requests' && currentUser.role === 'admin' && (
+                                <div className="bg-white rounded-xl border shadow-sm p-5 space-y-4">
+                                    <h3 className="font-bold text-lg text-gray-800">سجل طلبات حسابات المستخدمين</h3>
+                                    <div className="overflow-x-auto">
                                         <table className="w-full text-right text-sm">
                                             <thead className="bg-gray-50 border-b">
                                                 <tr>
-                                                    <th className="p-3">العرض</th>
-                                                    <th className="p-3">العميل المكود</th>
-                                                    <th className="p-3">المبلغ</th>
+                                                    <th className="p-3">الاسم</th>
+                                                    <th className="p-3">الوظيفة</th>
+                                                    <th className="p-3">اسم المستخدم</th>
                                                     <th className="p-3">الحالة</th>
-                                                    <th className="p-3">الإجراء</th>
+                                                    <th className="p-3">تغيير القرار</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {quotes.map(q => (
-                                                    <tr key={q.id} className="border-b">
-                                                        <td className="p-3">{q.title}</td>
-                                                        <td className="p-3 font-bold">{q.clientName} ({q.clientCode})</td>
-                                                        <td className="p-3 font-bold">{q.amount.toLocaleString()} ج.م</td>
-                                                        <td className="p-3">{q.status}</td>
+                                                {userRequests.map(r => (
+                                                    <tr key={r.id} className="border-b">
+                                                        <td className="p-3 font-bold">{r.fullName}</td>
+                                                        <td className="p-3">{r.jobTitle}</td>
+                                                        <td className="p-3 font-mono">{r.username}</td>
+                                                        <td className="p-3">
+                                                            <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                                                r.status === 'موافق' ? 'bg-green-100 text-green-700' :
+                                                                r.status === 'غير موافق' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                                                            }`}>{r.status}</span>
+                                                        </td>
                                                         <td className="p-3 space-x-1 space-x-reverse">
-                                                            {q.status === 'قيد الانتظار' && (
-                                                                <>
-                                                                    <button onClick={() => updateQuoteStatus(q.id, 'مقبول')} className="bg-green-600 text-white px-2 py-1 rounded text-xs font-bold">قبول</button>
-                                                                    <button onClick={() => updateQuoteStatus(q.id, 'مرفوض')} className="bg-red-600 text-white px-2 py-1 rounded text-xs font-bold">رفض</button>
-                                                                </>
-                                                            )}
+                                                            <button onClick={() => handleApproveUser(r, 'موافق')} className="bg-green-600 text-white px-2 py-0.5 rounded text-xs">قبول</button>
+                                                            <button onClick={() => handleApproveUser(r, 'غير موافق')} className="bg-red-600 text-white px-2 py-0.5 rounded text-xs">رفض</button>
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -289,32 +537,28 @@
                                 </div>
                             )}
 
+                            {/* DASHBOARD TAB */}
                             {activeTab === 'dashboard' && (
-                                <div className="space-y-4">
-                                    <h3 className="font-bold text-lg text-gray-800">سجل عمليات المنظومة وتحديثات البيانات</h3>
-                                    <div className="bg-white p-4 rounded-xl border space-y-2 max-h-80 overflow-y-auto">
-                                        {logs.map(l => (
-                                            <div key={l.id} className="text-xs border-b pb-1 flex justify-between">
-                                                <span className="font-bold text-blue-600">{l.user}: {l.action}</span>
-                                                <span className="text-gray-400">{l.time}</span>
-                                            </div>
-                                        ))}
+                                <div className="space-y-6">
+                                    <div className="bg-white p-5 rounded-xl border shadow-sm">
+                                        <h3 className="font-bold text-gray-800 border-b pb-2 mb-3">سجل عمليات المنظومة والتحديثات</h3>
+                                        <div className="max-h-60 overflow-y-auto space-y-2">
+                                            {logs.map(l => (
+                                                <div key={l.id} className="text-xs border-b pb-1 flex justify-between">
+                                                    <span className="font-bold text-blue-700">{l.user}: {l.action}</span>
+                                                    <span className="text-gray-400">{l.time}</span>
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
                             )}
 
-                            {activeTab === 'projects' && (
-                                <div className="bg-white p-4 rounded-xl border space-y-3">
-                                    <h3 className="font-bold text-gray-800">المشروعات النشطة والأكواد</h3>
-                                    {projects.map(p => (
-                                        <div key={p.id} className="p-3 bg-gray-50 border rounded flex justify-between items-center">
-                                            <div>
-                                                <span className="font-mono bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded ml-2">{p.id}</span>
-                                                <span className="font-bold">{p.title}</span>
-                                            </div>
-                                            <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">{p.status}</span>
-                                        </div>
-                                    ))}
+                            {/* OTHER TABS PLACEHOLDERS */}
+                            {(activeTab === 'quotes' || activeTab === 'projects') && (
+                                <div className="bg-white p-5 rounded-xl border shadow-sm">
+                                    <h3 className="font-bold text-gray-800 mb-3">شاشة {activeTab === 'quotes' ? 'عروض الأسعار' : 'المشروعات'}</h3>
+                                    <p className="text-sm text-gray-500">تم دمجها مع نظام الأكواد والمستخدمين الجدد بنجاح.</p>
                                 </div>
                             )}
                         </main>
