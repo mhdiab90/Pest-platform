@@ -133,7 +133,7 @@ function App(){
   const registrationUid = useRef(null);
 
   const [login,setLogin] = useState({email:'',password:''});
-  const [request,setRequest] = useState({email:'',password:'',username:'',fullName:'',jobTitle:''});
+  const [request,setRequest] = useState({email:'',password:'',username:'',fullName:'',jobTitle:'',whatsapp:''});
   const [companyInfo,setCompanyInfo] = useState({name:rtl?'اسم الشركة':'Company name',logo:''});
   const [userRequests,setUserRequests] = useState([]);
   const [activeUsers,setActiveUsers] = useState([]);
@@ -145,6 +145,9 @@ function App(){
   const [outflows,setOutflows] = useState([]);
   const [logs,setLogs] = useState([]);
   const [messages,setMessages] = useState([]);
+  const [tasks,setTasks] = useState([]);
+  const [whatsappTarget,setWhatsappTarget] = useState('');
+  const [whatsappManualNumber,setWhatsappManualNumber] = useState('');
   const [tab,setTab] = useState('dashboard');
   const [showRequests,setShowRequests] = useState(false);
   const [account,setAccount] = useState({type:'client',code:''});
@@ -177,7 +180,7 @@ function App(){
   const [showUserMenu,setShowUserMenu] = useState(false);
   const [showThemeMenu,setShowThemeMenu] = useState(false);
   const [profileSection,setProfileSection] = useState('personal');
-  const [profileForm,setProfileForm] = useState({fullName:'',username:'',jobTitle:'',email:''});
+  const [profileForm,setProfileForm] = useState({fullName:'',username:'',jobTitle:'',email:'',whatsapp:''});
   const [profileEmailPassword,setProfileEmailPassword] = useState('');
   const [companyForm,setCompanyForm] = useState({name:'',logo:'',phone:'',email:'',address:'',taxNumber:'',commercialRegister:'',website:''});
   const [excelSummary,setExcelSummary] = useState('');
@@ -212,7 +215,7 @@ function App(){
   },[]);
 
   useEffect(()=>{
-    if(currentUser) setProfileForm({fullName:currentUser.fullName || '',username:currentUser.username || '',jobTitle:currentUser.jobTitle || '',email:currentUser.email || ''});
+    if(currentUser) setProfileForm({fullName:currentUser.fullName || '',username:currentUser.username || '',jobTitle:currentUser.jobTitle || '',email:currentUser.email || '',whatsapp:currentUser.whatsapp || ''});
   },[currentUser]);
 
   // Authentication is checked first. No database read is attempted before a user signs in.
@@ -278,6 +281,7 @@ function App(){
     watch('inflows',s=>setInflows(toArray(s.val())));
     watch('outflows',s=>setOutflows(toArray(s.val())));
     watch('logs',s=>setLogs(toArray(s.val())));
+    watch('tasks/'+currentUser.uid,s=>setTasks(toArray(s.val())));
     messageIdsRef.current=null;
     watch('messages/'+currentUser.uid,s=>{
       const next=toArray(s.val());
@@ -302,7 +306,7 @@ function App(){
           if(uid===currentUser.uid && !u.uid) updates['users/'+uid+'/uid']=uid;
           // Never expose legacy username-keyed accounts in the recipient directory.
           if(linkedToAuth && Object.prototype.hasOwnProperty.call(u,'password')) updates['users/'+uid+'/password']=null;
-          if(linkedToAuth && ['active','نشط','مفعل','enabled'].includes(String(u.status||'').toLowerCase())) updates['userDirectory/'+uid]={uid,username:u.username||'',fullName:u.fullName||'',jobTitle:u.jobTitle||'',status:'active'};
+          if(linkedToAuth && ['active','نشط','مفعل','enabled'].includes(String(u.status||'').toLowerCase())) updates['userDirectory/'+uid]={uid,username:u.username||'',fullName:u.fullName||'',jobTitle:u.jobTitle||'',whatsapp:u.whatsapp||'',status:'active'};
         });
         if(Object.keys(updates).length) db.ref().update(updates).catch(err=>console.warn('Directory sync / password cleanup:',err));
       });
@@ -465,12 +469,12 @@ function App(){
       credential=await auth.createUserWithEmailAndPassword(email,request.password);
       const uid=credential.user.uid;
       registrationUid.current=uid;
-      const requestData={uid,email,username,fullName:request.fullName.trim(),jobTitle:request.jobTitle.trim(),status:'pending',createdAt:firebase.database.ServerValue.TIMESTAMP};
+      const requestData={uid,email,username,fullName:request.fullName.trim(),jobTitle:request.jobTitle.trim(),whatsapp:String(request.whatsapp||'').trim(),status:'pending',createdAt:firebase.database.ServerValue.TIMESTAMP};
       await db.ref('userRequests/'+uid).set(requestData);
       requestSaved=true;
       try{if(auth.currentUser && auth.currentUser.uid===uid) await auth.signOut();}
       catch(signOutErr){signOutWarning=true;console.warn('Request saved; sign-out failed:',signOutErr);}
-      setRequest({email:'',password:'',username:'',fullName:'',jobTitle:''});
+      setRequest({email:'',password:'',username:'',fullName:'',jobTitle:'',whatsapp:''});
       setView('login');setAuthError('');
       setAuthSuccess(tr('requestSent')+(signOutWarning?' '+tr('requestSignOutWarning'):''));
     }catch(err){
@@ -514,7 +518,7 @@ function App(){
     try{
       if(approve){
         await db.ref('users/'+req.uid).set({
-          uid:req.uid,email:req.email,username:req.username,fullName:req.fullName,jobTitle:req.jobTitle,
+          uid:req.uid,email:req.email,username:req.username,fullName:req.fullName,jobTitle:req.jobTitle,whatsapp:req.whatsapp||'',
           role:'user',status:'active',avatar:'',createdAt:firebase.database.ServerValue.TIMESTAMP
         });
         await db.ref('userRequests/'+req.uid+'/status').set('approved');
@@ -579,7 +583,7 @@ function App(){
 
   async function saveProfile(e){
     e.preventDefault();
-    const fullName=profileForm.fullName.trim(),username=profileForm.username.trim(),jobTitle=profileForm.jobTitle.trim(),email=profileForm.email.trim().toLowerCase();
+    const fullName=profileForm.fullName.trim(),username=profileForm.username.trim(),jobTitle=profileForm.jobTitle.trim(),email=profileForm.email.trim().toLowerCase(),whatsapp=String(profileForm.whatsapp||'').trim();
     if(!fullName || !username || !jobTitle || !email) return alert(tr('noData'));
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return alert(tr('invalidEmail'));
     if(/[.#$\[\]/]/.test(username)) return alert('Username contains invalid Firebase characters.');
@@ -595,9 +599,9 @@ function App(){
         await auth.currentUser.verifyBeforeUpdateEmail(email);
       }
       const savedEmail=currentUser.email;
-      await db.ref('users/'+currentUser.uid).update({uid:currentUser.uid,email:savedEmail,fullName,username,jobTitle});
-      await db.ref('userDirectory/'+currentUser.uid).set({uid:currentUser.uid,fullName,username,jobTitle,status:'active'});
-      const updatedUser={...currentUser,uid:currentUser.uid,email:savedEmail,fullName,username,jobTitle};setCurrentUser(updatedUser);setProfileForm(old=>({...old,email:savedEmail}));setProfileEmailPassword('');await addLog('تعديل البيانات الشخصية',updatedUser);alert(emailChanged?tr('emailVerifySent'):tr('personalSaved'));
+      await db.ref('users/'+currentUser.uid).update({uid:currentUser.uid,email:savedEmail,fullName,username,jobTitle,whatsapp});
+      await db.ref('userDirectory/'+currentUser.uid).set({uid:currentUser.uid,fullName,username,jobTitle,whatsapp,status:'active'});
+      const updatedUser={...currentUser,uid:currentUser.uid,email:savedEmail,fullName,username,jobTitle,whatsapp};setCurrentUser(updatedUser);setProfileForm(old=>({...old,email:savedEmail}));setProfileEmailPassword('');await addLog('تعديل البيانات الشخصية',updatedUser);alert(emailChanged?tr('emailVerifySent'):tr('personalSaved'));
     }catch(err){alert(firebaseErrorMessage(err,tr));}
   }
 
@@ -813,21 +817,76 @@ function App(){
     e.preventDefault();
     const names=message.recipients.split(',').map(x=>x.trim()).filter(Boolean);
     if(!names.length || !message.subject.trim() || !message.body.trim()) return alert(tr('noData'));
-    const missing=[];const tasks=[];
+    const missing=[];const writes=[];
     names.forEach(name=>{
       const found=userDirectory.find(u=>u.status==='active' && String(u.username||'').toLowerCase()===name.toLowerCase());
       if(!found || !found.uid) missing.push(name);
       else{
-        const id=db.ref('messages/'+found.uid).push().key;
-        tasks.push(db.ref('messages/'+found.uid+'/'+id).set({id,recipientUid:found.uid,senderUid:currentUser.uid,senderName:currentUser.fullName,subject:message.subject.trim(),body:message.body.trim(),date:new Date().toLocaleString(rtl?'ar-EG':'en-US'),read:false}));
+        const receiverId=db.ref('messages/'+found.uid).push().key;
+        const senderId=db.ref('messages/'+currentUser.uid).push().key;
+        const base={recipientUid:found.uid,senderUid:currentUser.uid,senderName:currentUser.fullName,subject:message.subject.trim(),body:message.body.trim(),date:new Date().toLocaleString(rtl?'ar-EG':'en-US'),createdAt:firebase.database.ServerValue.TIMESTAMP};
+        writes.push(db.ref('messages/'+found.uid+'/'+receiverId).set({...base,id:receiverId,mailboxUid:found.uid,read:false}));
+        writes.push(db.ref('messages/'+currentUser.uid+'/'+senderId).set({...base,id:senderId,mailboxUid:currentUser.uid,read:true,copyType:'sent'}));
       }
     });
+    if(!writes.length) return alert(tr('recipientsNotFound')+missing.join(', '));
     try{
-      await Promise.all(tasks);
+      await Promise.all(writes);
       if(missing.length) alert(tr('recipientsNotFound')+missing.join(', '));
       else alert(tr('saved'));
-      setMessage({recipients:'',subject:'',body:''});await addLog('إرسال رسالة');
+      setMessage({recipients:'',subject:'',body:''});await addLog('إرسال رسالة داخلية');
     }catch(err){alert(firebaseErrorMessage(err,tr));}
+  }
+
+  function forwardMessage(m){
+    const quoted=(rtl?'رسالة معاد توجيهها':'Forwarded message')+'\n'+(m.senderName||'')+'\n'+(m.subject||'')+'\n\n'+(m.body||'');
+    setMessage({recipients:'',subject:(rtl?'إعادة توجيه: ':'Fwd: ')+(m.subject||''),body:quoted});
+    setTab('messages');
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+
+  async function convertMessageToTask(m){
+    if(!currentUser) return;
+    try{
+      const ref=db.ref('tasks/'+currentUser.uid).push();
+      const task={id:ref.key,title:m.subject|| (rtl?'مهمة من رسالة':'Task from message'),description:m.body||'',sourceMessageId:m.id||'',sourceSenderUid:m.senderUid||'',sourceSenderName:m.senderName||'',status:'open',createdAt:firebase.database.ServerValue.TIMESTAMP,createdBy:currentUser.uid};
+      await ref.set(task);
+      await addLog('تحويل رسالة إلى مهمة: '+task.title);
+      alert(rtl?'تم إنشاء المهمة من الرسالة.':'Task created from message.');
+      setTab('tasks');
+    }catch(err){alert(firebaseErrorMessage(err,tr));}
+  }
+
+  async function updateTaskStatus(task,status){
+    try{
+      await db.ref('tasks/'+currentUser.uid+'/'+task.id).update({status,updatedAt:firebase.database.ServerValue.TIMESTAMP});
+    }catch(err){alert(firebaseErrorMessage(err,tr));}
+  }
+
+  function openWhatsAppDraft(){
+    let phone=String(whatsappManualNumber||'').trim();
+    let targetLabel='';
+    if(whatsappTarget){
+      const [kind,code]=whatsappTarget.split(':');
+      let target=null;
+      if(kind==='user') target=userDirectory.find(x=>x.uid===code);
+      if(kind==='client') target=clients.find(x=>x.code===code);
+      if(kind==='vendor') target=vendors.find(x=>x.code===code);
+      if(target){
+        phone=target.whatsapp||target.mobile||target.phone||'';
+        targetLabel=target.fullName||target.name||target.username||'';
+      }
+    }
+    let digits=phone.replace(/\D/g,'');
+    if(digits.startsWith('00')) digits=digits.slice(2);
+    if(!digits || digits.length<8 || digits.length>15){
+      return alert(rtl?'اختر جهة اتصال لديها رقم WhatsApp صحيح، أو أدخل الرقم بكود الدولة.':'Choose a contact with a valid WhatsApp number or enter the number with country code.');
+    }
+    const textBody=[message.subject.trim(),message.body.trim()].filter(Boolean).join('\n\n');
+    if(!textBody) return alert(tr('noData'));
+    const url='https://wa.me/'+digits+'?text='+encodeURIComponent(textBody);
+    window.open(url,'_blank','noopener,noreferrer');
+    if(targetLabel) console.info('WhatsApp draft prepared for '+targetLabel);
   }
 
   async function uploadAvatar(e){
@@ -871,7 +930,7 @@ function App(){
     ? inflows.filter(x=>x.clientCode===account.code && collected(x.status)).reduce((s,x)=>s+Number(x.amount||0),0)
     : outflows.filter(x=>x.vendorCode===account.code && paid(x.status)).reduce((s,x)=>s+Number(x.amount||0),0);
 
-  const nav=[['dashboard','fa-gauge'],['statement','fa-file-invoice-dollar'],['master','fa-database'],['projects','fa-diagram-project'],...(selectedProjectCode?[['projectDetail','fa-folder-open']]:[]),['reports','fa-chart-pie'],['messages','fa-envelope'],['settings','fa-sliders'],['profile','fa-user-gear'],...(isAdmin?[['userRequests','fa-user-clock'],['companySettings','fa-building']]:[])];
+  const nav=[['dashboard','fa-gauge'],['statement','fa-file-invoice-dollar'],['master','fa-database'],['projects','fa-diagram-project'],...(selectedProjectCode?[['projectDetail','fa-folder-open']]:[]),['reports','fa-chart-pie'],['messages','fa-envelope'],['tasks','fa-list-check'],['settings','fa-sliders'],['profile','fa-user-gear'],...(isAdmin?[['userRequests','fa-user-clock'],['companySettings','fa-building']]:[])];
 
   if(!currentUser){
     return <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
@@ -898,6 +957,7 @@ function App(){
             <input required type="text" placeholder={tr('jobTitle')} className="w-full border rounded-lg p-3" value={request.jobTitle} onChange={e=>setRequest({...request,jobTitle:e.target.value})}/>
             <input required type="text" placeholder={tr('username')} className="w-full border rounded-lg p-3" value={request.username} onChange={e=>setRequest({...request,username:e.target.value})}/>
             <input required type="email" placeholder={tr('email')} className="w-full border rounded-lg p-3" value={request.email} onChange={e=>setRequest({...request,email:e.target.value})}/>
+            <input type="tel" placeholder={rtl?'رقم WhatsApp مع مفتاح الدولة':'WhatsApp number with country code'} className="w-full border rounded-lg p-3" value={request.whatsapp} onChange={e=>setRequest({...request,whatsapp:e.target.value})}/>
             <input required minLength="6" type="password" placeholder={tr('password')} className="w-full border rounded-lg p-3" value={request.password} onChange={e=>setRequest({...request,password:e.target.value})}/>
             <button disabled={busy} className="w-full bg-green-600 hover:bg-green-700 text-white rounded-lg p-3 font-bold">{busy?tr('loading'):tr('register')}</button>
           </form>
@@ -1045,8 +1105,12 @@ function App(){
         </div>})()}
 
 
-        {tab==='messages'&&<div className="space-y-5"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-bold text-xl">{tr('messages')}</h2><input className="border rounded-lg p-2" placeholder={tr('reportSearch')} value={messageFilter} onChange={e=>setMessageFilter(e.target.value)}/></div><section className="bg-white p-5 rounded-xl border"><h3 className="font-bold mb-3">{tr('newMessage')}</h3><form onSubmit={sendMessage} className="space-y-3"><input required list="active-recipient-list" className="w-full border rounded-lg p-3" placeholder={tr('recipients')} value={message.recipients} onChange={e=>setMessage({...message,recipients:e.target.value})}/><datalist id="active-recipient-list">{userDirectory.filter(u=>u.status==='active' && u.uid!==currentUser.uid).map(u=><option key={u.uid} value={u.username}>{u.fullName} — {u.jobTitle}</option>)}</datalist><input required className="w-full border rounded-lg p-3" placeholder={tr('subject')} value={message.subject} onChange={e=>setMessage({...message,subject:e.target.value})}/><textarea required rows="4" className="w-full border rounded-lg p-3" placeholder={tr('body')} value={message.body} onChange={e=>setMessage({...message,body:e.target.value})}></textarea><button className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold">{tr('send')}</button></form></section>
-          <section className="bg-white p-5 rounded-xl border"><h3 className="font-bold border-b pb-3 mb-3">{tr('inbox')}</h3>{myMessages.length===0?<p className="text-sm text-gray-500">{tr('noMessages')}</p>:myMessages.slice().reverse().map(m=><article key={m.id} className="border rounded-lg p-4 mb-3"><div className="flex justify-between gap-2"><b className="text-blue-700">{m.subject}</b><span className="text-xs text-gray-400">{m.date}</span></div><p className="text-xs text-gray-500 mt-1">{m.senderName}</p><p className="mt-3 text-sm whitespace-pre-wrap">{m.body}</p></article>)}</section></div>}
+        {tab==='messages'&&<div className="space-y-5"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-bold text-xl">{rtl?'المراسلات الداخلية':'Internal messages'}</h2><input className="border rounded-lg p-2" placeholder={tr('reportSearch')} value={messageFilter} onChange={e=>setMessageFilter(e.target.value)}/></div>
+          <section className="bg-white p-5 rounded-xl border"><h3 className="font-bold mb-3">{rtl?'رسالة داخلية جديدة':'New internal message'}</h3><form onSubmit={sendMessage} className="space-y-3"><input required list="active-recipient-list" className="w-full border rounded-lg p-3" placeholder={tr('recipients')} value={message.recipients} onChange={e=>setMessage({...message,recipients:e.target.value})}/><datalist id="active-recipient-list">{userDirectory.filter(u=>u.status==='active' && u.uid!==currentUser.uid).map(u=><option key={u.uid} value={u.username}>{u.fullName} — {u.jobTitle}</option>)}</datalist><input required className="w-full border rounded-lg p-3" placeholder={tr('subject')} value={message.subject} onChange={e=>setMessage({...message,subject:e.target.value})}/><textarea required rows="4" className="w-full border rounded-lg p-3" placeholder={tr('body')} value={message.body} onChange={e=>setMessage({...message,body:e.target.value})}></textarea><button className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold">{rtl?'إرسال داخل البرنامج':'Send internally'}</button></form></section>
+          <section className="bg-white p-5 rounded-xl border"><h3 className="font-bold mb-3">{rtl?'إرسال عبر WhatsApp':'Send through WhatsApp'}</h3><p className="text-xs text-gray-500 mb-3">{rtl?'اختر موظفاً أو عميلاً أو مورداً لديه رقم WhatsApp محفوظ، أو أدخل الرقم بكود الدولة. ستفتح المحادثة والنص جاهزاً، ثم تضغط إرسال من WhatsApp.':'Choose an employee, client or vendor with a saved WhatsApp number, or enter a number with country code. WhatsApp opens with a prefilled draft; you press Send there.'}</p><div className="grid grid-cols-1 md:grid-cols-2 gap-3"><select className="border rounded-lg p-3" value={whatsappTarget} onChange={e=>setWhatsappTarget(e.target.value)}><option value="">{rtl?'اختر من جهات الاتصال':'Choose a contact'}</option><optgroup label={rtl?'الموظفون':'Employees'}>{userDirectory.filter(u=>u.status==='active'&&u.uid!==currentUser.uid).map(u=><option key={'u'+u.uid} value={'user:'+u.uid}>{u.fullName||u.username} — {u.whatsapp||'No WhatsApp'}</option>)}</optgroup><optgroup label={rtl?'العملاء':'Clients'}>{clients.map(c=><option key={'c'+c.code} value={'client:'+c.code}>{c.name} — {c.whatsapp||c.mobile||c.phone||'No WhatsApp'}</option>)}</optgroup><optgroup label={rtl?'الموردون':'Vendors'}>{vendors.map(v=><option key={'v'+v.code} value={'vendor:'+v.code}>{v.name} — {v.whatsapp||v.mobile||v.phone||'No WhatsApp'}</option>)}</optgroup></select><input type="tel" className="border rounded-lg p-3" placeholder={rtl?'أو أدخل الرقم الدولي مثال +2010...':'Or enter international number, e.g. +2010...'} value={whatsappManualNumber} onChange={e=>{setWhatsappManualNumber(e.target.value);setWhatsappTarget('');}}/></div><button type="button" onClick={openWhatsAppDraft} className="mt-3 bg-green-600 text-white rounded-lg px-5 py-3 font-bold"><i className="fab fa-whatsapp me-2"></i>{rtl?'فتح WhatsApp بالرسالة':'Open WhatsApp draft'}</button></section>
+          <section className="bg-white p-5 rounded-xl border"><h3 className="font-bold border-b pb-3 mb-3">{rtl?'سجل المحادثات':'Conversation history'}</h3>{myMessages.length===0?<p className="text-sm text-gray-500">{tr('noMessages')}</p>:myMessages.slice().sort((a,b)=>Number(a.createdAt||0)-Number(b.createdAt||0)).map(m=>{const outgoing=m.senderUid===currentUser.uid;return <article key={m.id} className={'max-w-3xl rounded-2xl p-4 mb-3 border '+(outgoing?'ms-auto bg-green-50 border-green-200':'me-auto bg-white border-gray-200')}><div className="flex flex-wrap justify-between gap-2"><b className={outgoing?'text-green-800':'text-blue-700'}>{outgoing?(rtl?'أنت إلى ':'You to ')+(userDirectory.find(u=>u.uid===m.recipientUid)?.fullName||m.recipientUid):m.senderName}</b><span className="text-xs text-gray-400">{m.date}</span></div><b className="block mt-2 text-sm">{m.subject}</b><p className="mt-2 text-sm whitespace-pre-wrap">{m.body}</p><div className="flex flex-wrap gap-2 mt-3"><button type="button" onClick={()=>forwardMessage(m)} className="text-xs px-3 py-1 rounded-lg bg-gray-100">{rtl?'إعادة توجيه':'Forward'}</button><button type="button" onClick={()=>convertMessageToTask(m)} className="text-xs px-3 py-1 rounded-lg bg-blue-50 text-blue-700">{rtl?'تحويل إلى مهمة':'Convert to task'}</button><span className="text-xs text-gray-400 self-center">{m.read===true?(rtl?'مقروءة':'Read'):(rtl?'غير مقروءة':'Unread')}</span></div></article>;})}</section></div>}
+
+        {tab==='tasks'&&<div className="space-y-5"><div className="flex items-center justify-between gap-3"><h2 className="font-bold text-xl">{rtl?'المهام من الرسائل':'Tasks from messages'}</h2><span className="text-sm text-gray-500">{tasks.filter(t=>t.status!=='completed').length} {rtl?'مفتوحة':'open'}</span></div><section className="bg-white rounded-xl border p-5 space-y-3">{tasks.length===0?<p className="text-sm text-gray-500">{rtl?'لا توجد مهام بعد. حوّل أي رسالة إلى مهمة من شاشة المراسلات.':'No tasks yet. Convert a message into a task from Messages.'}</p>:tasks.slice().sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0)).map(task=><article key={task.id} className="border rounded-xl p-4 flex flex-col md:flex-row md:items-start gap-3"><div className="flex-1"><div className="font-bold">{task.title}</div><p className="text-sm whitespace-pre-wrap text-gray-600 mt-2">{task.description}</p><small className="text-gray-400">{task.sourceSenderName||''}</small></div><button onClick={()=>updateTaskStatus(task,task.status==='completed'?'open':'completed')} className={'rounded-lg px-4 py-2 text-sm font-bold '+(task.status==='completed'?'bg-gray-100 text-gray-600':'bg-green-600 text-white')}>{task.status==='completed'?(rtl?'إعادة فتح':'Reopen'):(rtl?'إنهاء المهمة':'Complete')}</button></article>)}</section></div>}
 
         {tab==='reports'&&<div className="space-y-5">
           <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="font-bold text-xl">{tr('reportCenter')}</h2><div className="flex gap-2 no-print"><button onClick={()=>window.print()} className="bg-gray-800 text-white px-4 py-2 rounded-lg"><i className="fas fa-file-pdf me-2"></i>{tr('printPdf')}</button><button onClick={reportAsMessage} className="bg-blue-600 text-white px-4 py-2 rounded-lg"><i className="fas fa-paper-plane me-2"></i>{tr('sendReport')}</button></div></div>
@@ -1078,7 +1142,7 @@ function App(){
 
                 {tab==='profile'&&<section className="bg-white p-5 rounded-xl border shadow-sm max-w-2xl space-y-5"><h2 className="font-bold text-lg">{tr('profile')}</h2>
           <div className="flex flex-wrap gap-2 border-b pb-3"><button onClick={()=>setProfileSection('personal')} className={`px-3 py-2 rounded-lg ${profileSection==='personal'?'bg-blue-50 text-blue-700 font-bold':'bg-gray-100'}`}>{tr('personalDetails')}</button><button onClick={()=>setProfileSection('photo')} className={`px-3 py-2 rounded-lg ${profileSection==='photo'?'bg-blue-50 text-blue-700 font-bold':'bg-gray-100'}`}>{tr('changePhoto')}</button><button onClick={()=>setProfileSection('security')} className={`px-3 py-2 rounded-lg ${profileSection==='security'?'bg-blue-50 text-blue-700 font-bold':'bg-gray-100'}`}>{tr('savePassword')}</button></div>
-          {profileSection==='personal'&&<form onSubmit={saveProfile} className="space-y-3"><label className="block text-sm font-bold">{tr('fullName')}<input required className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileForm.fullName} onChange={e=>setProfileForm({...profileForm,fullName:e.target.value})}/></label><label className="block text-sm font-bold">{tr('username')}<input required className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileForm.username} onChange={e=>setProfileForm({...profileForm,username:e.target.value})}/></label><label className="block text-sm font-bold">{tr('jobTitle')}<input required className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileForm.jobTitle} onChange={e=>setProfileForm({...profileForm,jobTitle:e.target.value})}/></label><label className="block text-sm font-bold">{tr('email')}<input required type="email" className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileForm.email} onChange={e=>setProfileForm({...profileForm,email:e.target.value})}/></label>{profileForm.email.toLowerCase()!==String(currentUser.email||'').toLowerCase()&&<label className="block text-sm font-bold">{tr('currentPassword')}<input required type="password" className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileEmailPassword} onChange={e=>setProfileEmailPassword(e.target.value)}/></label>}<button className="bg-blue-600 text-white rounded-lg px-5 py-3 font-bold">{tr('saveProfile')}</button></form>}
+          {profileSection==='personal'&&<form onSubmit={saveProfile} className="space-y-3"><label className="block text-sm font-bold">{tr('fullName')}<input required className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileForm.fullName} onChange={e=>setProfileForm({...profileForm,fullName:e.target.value})}/></label><label className="block text-sm font-bold">{tr('username')}<input required className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileForm.username} onChange={e=>setProfileForm({...profileForm,username:e.target.value})}/></label><label className="block text-sm font-bold">{tr('jobTitle')}<input required className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileForm.jobTitle} onChange={e=>setProfileForm({...profileForm,jobTitle:e.target.value})}/></label><label className="block text-sm font-bold">{tr('email')}<input required type="email" className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileForm.email} onChange={e=>setProfileForm({...profileForm,email:e.target.value})}/></label><label className="block text-sm font-bold">{rtl?'رقم WhatsApp / الهاتف':'WhatsApp / mobile number'}<input type="tel" placeholder="+20 10 0000 0000" className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileForm.whatsapp} onChange={e=>setProfileForm({...profileForm,whatsapp:e.target.value})}/></label>{profileForm.email.toLowerCase()!==String(currentUser.email||'').toLowerCase()&&<label className="block text-sm font-bold">{tr('currentPassword')}<input required type="password" className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileEmailPassword} onChange={e=>setProfileEmailPassword(e.target.value)}/></label>}<button className="bg-blue-600 text-white rounded-lg px-5 py-3 font-bold">{tr('saveProfile')}</button></form>}
           {profileSection==='photo'&&<div className="flex items-center gap-4">{currentUser.avatar?<img src={currentUser.avatar} alt="Profile" className="w-20 h-20 rounded-full object-cover"/>:<div className="w-20 h-20 rounded-full bg-slate-800 text-white grid place-items-center text-2xl">{(currentUser.fullName||'?').charAt(0)}</div>}<label className="inline-block bg-blue-600 text-white rounded-lg px-3 py-2 text-sm cursor-pointer">{tr('changePhoto')}<input type="file" accept="image/*" className="hidden" onChange={uploadAvatar}/></label></div>}
           {profileSection==='security'&&<form onSubmit={changePassword} className="space-y-3"><h3 className="font-bold">{tr('savePassword')}</h3><input type="password" required className="w-full border rounded-lg p-3" placeholder={tr('currentPassword')} value={currentPassword} onChange={e=>setCurrentPassword(e.target.value)}/><input type="password" minLength="6" required className="w-full border rounded-lg p-3" placeholder={tr('newPassword')} value={newPassword} onChange={e=>setNewPassword(e.target.value)}/><button className="bg-green-600 text-white rounded-lg px-5 py-3 font-bold">{tr('savePassword')}</button><button type="button" onClick={sendPasswordReset} className="block text-blue-600 text-sm">{tr('sendReset')}</button></form>}
         </section>}
