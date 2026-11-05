@@ -162,6 +162,9 @@ function App(){
   const [reportFrom,setReportFrom] = useState('');
   const [reportTo,setReportTo] = useState('');
   const [reportStatus,setReportStatus] = useState('all');
+  const [cashProjectFilter,setCashProjectFilter] = useState('all');
+  const [cashFrom,setCashFrom] = useState('');
+  const [cashTo,setCashTo] = useState('');
   const [globalSearch,setGlobalSearch] = useState('');
   const [messageFilter,setMessageFilter] = useState('');
   const [message,setMessage] = useState({recipients:'',subject:'',body:''});
@@ -338,6 +341,21 @@ function App(){
     ...outflows.filter(x=>paid(x.status)).map(x=>({...x,id:'legacy-outflow-'+x.id,type:'supplier_payment',partyType:'vendor',partyCode:x.vendorCode||'',projectCode:x.projectCode||'',projectName:projects.find(p=>p.code===x.projectCode)?.name||'',referenceNo:x.referenceNo||x.voucherNo||x.invoiceNo||'',date:x.date||x.transactionDate||x.createdAt||'',amount:Number(x.amount||0),currency:x.currency||'EGP',status:'full',note:x.note||x.notes||''}))
   ];
   const reportProject=projects.find(p=>p.code===reportEntity)||projects.find(p=>p.code===selectedProjectCode);
+  function rowDateKey(row){
+    const raw=row && (row.date || row.transactionDate || row.invoiceDate || row.createdAt || row.timestamp);
+    if(raw===undefined || raw===null || raw==='') return '';
+    let date;
+    if(typeof raw==='number') date=new Date(raw<1000000000000?raw*1000:raw);
+    else{
+      const value=String(raw);
+      if(/^\d{4}-\d{2}-\d{2}/.test(value)) return value.slice(0,10);
+      if(/^\d{10,13}$/.test(value)){const n=Number(value);date=new Date(n<1000000000000?n*1000:n);}
+      else date=new Date(value);
+    }
+    if(Number.isNaN(date.getTime())) return '';
+    return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+  }
+
   let reportRows=[];
   if(reportType==='project') reportRows=[...allTimeline,...legacyCashTimeline].filter(e=>!reportEntity||e.projectCode===reportEntity);
   else if(reportType==='vendor') reportRows=[...allTimeline.filter(e=>(e.partyType==='vendor'&&e.partyCode===reportEntity)||projects.some(p=>p.code===e.projectCode&&(p.vendorCodes||[]).includes(reportEntity))),...legacyCashTimeline.filter(e=>e.partyType==='vendor'&&e.partyCode===reportEntity)];
@@ -351,20 +369,6 @@ function App(){
   const sumByType=(rows,type)=>rows.filter(x=>x.type===type).reduce((sum,x)=>sum+Number(x.amount||0),0);
   const sumSettledByType=(rows,type)=>rows.filter(x=>x.type===type && cashEventSettled(x)).reduce((sum,x)=>sum+Number(x.amount||0),0);
 
-  const rowDateKey=row=>{
-    const raw=row && (row.date || row.transactionDate || row.invoiceDate || row.createdAt || row.timestamp);
-    if(raw===undefined || raw===null || raw==='') return '';
-    let date;
-    if(typeof raw==='number') date=new Date(raw<1000000000000?raw*1000:raw);
-    else{
-      const value=String(raw);
-      if(/^\d{4}-\d{2}-\d{2}/.test(value)) return value.slice(0,10);
-      if(/^\d{10,13}$/.test(value)){const n=Number(value);date=new Date(n<1000000000000?n*1000:n);}
-      else date=new Date(value);
-    }
-    if(Number.isNaN(date.getTime())) return '';
-    return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
-  };
   const inCashDateRange=row=>{
     const d=rowDateKey(row);
     // Undated legacy records remain visible in totals rather than disappearing silently.
@@ -963,7 +967,20 @@ function App(){
   </div>;
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+class AppErrorBoundary extends React.Component {
+  constructor(props){ super(props); this.state={hasError:false,error:null}; }
+  static getDerivedStateFromError(error){ return {hasError:true,error}; }
+  componentDidCatch(error,info){ console.error('Application render error:',error,info); }
+  render(){
+    if(this.state.hasError){
+      const msg=this.state.error && this.state.error.message ? this.state.error.message : 'Unknown error';
+      return <div className="min-h-screen bg-slate-100 flex items-center justify-center p-5"><div className="bg-white max-w-2xl w-full rounded-xl border shadow p-6"><h1 className="font-bold text-red-700 text-xl mb-3">تعذر عرض الشاشة الرئيسية</h1><p className="text-gray-700 mb-3">حدث خطأ أثناء تشغيل الواجهة. أرسل نص الخطأ التالي للدعم الفني:</p><pre className="whitespace-pre-wrap break-words bg-gray-100 rounded p-3 text-sm">{msg}</pre><button className="mt-4 bg-blue-600 text-white rounded px-4 py-2" onClick={()=>window.location.reload()}>إعادة تحميل البرنامج</button></div></div>;
+    }
+    return this.props.children;
+  }
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<AppErrorBoundary><App/></AppErrorBoundary>);
 </script>
 </body>
 </html>
