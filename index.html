@@ -37,7 +37,7 @@
     .app-sidebar .nav-btn:hover{background:rgba(255,255,255,.13);color:#fff}
     .app-sidebar .nav-btn.active{background:linear-gradient(100deg,rgba(255,255,255,.24),rgba(255,255,255,.09));color:#fff;border-color:rgba(255,255,255,.2);box-shadow:inset 3px 0 rgba(255,255,255,.75)}
     .app-workspace{position:relative;isolation:isolate;background:linear-gradient(135deg,rgba(248,250,252,.96),rgba(241,245,249,.88))}
-    .app-workspace:before{content:'';position:fixed;inset:72px 0 0 0;z-index:-1;pointer-events:none;background-image:var(--company-watermark),radial-gradient(ellipse at 80% 10%,color-mix(in srgb,var(--brand) 8%,transparent),transparent 38%),radial-gradient(ellipse at 10% 90%,rgba(148,163,184,.09),transparent 42%);background-repeat:no-repeat;background-position:center 54%,center,center;background-size:min(42vw,460px) auto,cover,cover;opacity:.075}
+    .app-workspace:before{content:'';position:fixed;top:50%;left:50%;right:auto;bottom:auto;width:min(62vw,560px);height:min(62vh,560px);transform:translate(-50%,-50%);z-index:-1;pointer-events:none;background-image:var(--company-watermark);background-repeat:no-repeat;background-position:center;background-size:contain;filter:grayscale(1);opacity:.085}
     .app-collapsible{border-color:color-mix(in srgb,var(--brand) 18%,#e5e7eb);box-shadow:0 8px 22px rgba(15,23,42,.035)}
     .app-collapsible>summary{background:linear-gradient(100deg,var(--brand-soft),rgba(255,255,255,.94) 72%);border-inline-start:3px solid var(--brand)}
     .app-workspace .bg-white.rounded-xl,.app-workspace section.bg-white{box-shadow:0 6px 20px rgba(15,23,42,.035)}
@@ -49,7 +49,7 @@
     .app-header-identity{display:flex;align-items:center;gap:9px;min-width:0}
     .app-header-identity>img,.app-header-identity>.app-user-fallback{width:38px;height:38px;flex:0 0 38px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,.8);box-shadow:0 2px 10px rgba(15,23,42,.18)}
     .app-header-identity>.app-user-fallback{display:grid;place-items:center;background:rgba(255,255,255,.18);font-weight:800}
-    @media(max-width:767px){.app-sidebar{border-radius:0 0 18px 18px;box-shadow:0 8px 20px rgba(15,23,42,.1)}.app-workspace:before{background-size:min(68vw,360px) auto,cover,cover;background-position:center 40%,center,center;opacity:.075}.app-header-identity>img,.app-header-identity>.app-user-fallback{width:34px;height:34px;flex-basis:34px}}
+    @media(max-width:767px){.app-sidebar{border-radius:0 0 18px 18px;box-shadow:0 8px 20px rgba(15,23,42,.1)}.app-workspace:before{width:min(78vw,380px);height:min(54vh,440px);opacity:.08}.app-header-identity>img,.app-header-identity>.app-user-fallback{width:34px;height:34px;flex-basis:34px}}
 
   </style>
 </head>
