@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Project & Cash Flow Management</title>
+  <title>Project, Supply & Cash Flow Management</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -20,6 +20,7 @@
     .nav-btn{transition:.15s}.nav-btn:hover{background:#f1f5f9}.nav-btn.active{background:var(--brand-soft);color:var(--brand);font-weight:700}
     .bg-blue-600{background-color:var(--brand)!important}.text-blue-600,.text-blue-700{color:var(--brand)!important}.border-blue-600{border-color:var(--brand)!important}.bg-blue-50{background-color:var(--brand-soft)!important}.hover\:bg-blue-700:hover{background-color:var(--brand-hover)!important}
     .menu-item{display:block;width:100%;text-align:start;padding:.6rem .75rem;border-radius:.5rem}.menu-item:hover{background:#f1f5f9}
+    @media print{body *{visibility:hidden!important}.print-area,.print-area *{visibility:visible!important}.print-area{position:absolute!important;inset:0!important;width:100%!important;background:#fff!important;padding:12mm!important}.no-print{display:none!important}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:start;font-size:10pt}.print-area h1,.print-area h2{color:#111!important}}
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -74,7 +75,9 @@ const words = {
     pendingLabel:'قيد المراجعة', approvedLabel:'مقبول', rejectedLabel:'مرفوض', updateStatus:'تحديث الحالة', requestUpdated:'تم تحديث حالة الطلب.', companySettings:'بيانات الشركة', companyName:'اسم الشركة', companyLogo:'شعار الشركة', uploadLogo:'اختيار الشعار', companyPhone:'هاتف الشركة', companyEmail:'البريد الإلكتروني للشركة', companyAddress:'عنوان الشركة', taxNumber:'الرقم الضريبي', commercialRegister:'السجل التجاري', website:'الموقع الإلكتروني', accountDetails:'بيانات الحساب', accountRole:'نوع المستخدم',
     excelImport:'استيراد من Excel', importHelp:'ملف واحد: أوراق Clients (Code, Name, Phone) وVendors (Code, Name, Phone) وProjects (Code, Name, ClientCode, Amount, Status)، أو ورقة واحدة بها عمود Type يحدد client أو vendor أو project.', importNow:'استيراد البيانات', importSuccess:'تم استيراد البيانات. عدد السجلات: ', importNoRows:'لم يتم العثور على سجلات صالحة.',
     settings:'الإعدادات', personalDetails:'البيانات الشخصية', editProfile:'تعديل البيانات', saveProfile:'حفظ البيانات', theme:'ألوان البرنامج', chooseTheme:'اختر لون البرنامج', messageNotice:'رسالة جديدة', openMessages:'عرض الرسائل', unread:'غير مقروء', markRead:'تمت القراءة', noRecipients:'لا يوجد مستخدمون نشطون.', personalSaved:'تم تحديث بياناتك.', emailVerifySent:'تم إرسال رابط تأكيد إلى البريد الجديد. أكمل التأكيد ثم سجّل الدخول بالبريد الجديد.', legacyRequest:'طلب قديم — يلزم إعادة تقديم الطلب بالبريد الإلكتروني لاعتماده.', legacyReapply:'هذا طلب من النظام القديم ولا يرتبط بحساب Firebase Authentication. اطلب من صاحبه تقديم طلب جديد بالبريد الإلكتروني.',
-    recipientUser:'المستلم (اسم المستخدم)', statusActive:'نشط', statusDisabled:'معطل', themeBlue:'أزرق', themeGreen:'أخضر', themePurple:'بنفسجي', themeTeal:'فيروزي', themeRed:'أحمر'
+    recipientUser:'المستلم (اسم المستخدم)', statusActive:'نشط', statusDisabled:'معطل', themeBlue:'أزرق', themeGreen:'أخضر', themePurple:'بنفسجي', themeTeal:'فيروزي', themeRed:'أحمر',
+    taxRegistration:'رقم التسجيل الضريبي', commercialReg:'السجل التجاري', contactPerson:'الشخص المسؤول', contactTitle:'الصفة الوظيفية', mobile:'المحمول', alternatePhone:'هاتف إضافي', email2:'بريد إضافي', whatsapp:'واتساب', city:'المدينة', country:'الدولة', postalCode:'الرمز البريدي', paymentTerms:'شروط السداد', creditLimit:'حد ائتماني', currency:'العملة', bankName:'اسم البنك', bankAccount:'رقم الحساب البنكي', iban:'IBAN', notes:'ملاحظات', address:'العنوان', websiteLabel:'الموقع الإلكتروني', edit:'تعديل', viewFile:'فتح ملف المشروع', projectFile:'ملف المشروع', suppliers:'الموردون المرتبطون', customers:'العملاء المرتبطون', scope:'نطاق الأعمال', manager:'مدير المشروع', contractNo:'رقم العقد', purchaseOrderNo:'رقم أمر الشراء', projectType:'نوع المشروع / التوريد', startDate:'تاريخ البدء', expectedEndDate:'تاريخ الانتهاء المتوقع', actualEndDate:'تاريخ الانتهاء الفعلي', location:'موقع التنفيذ', deliveryAddress:'عنوان التسليم', costBudget:'التكلفة التقديرية', timeline:'التسلسل الزمني للأحداث', addEvent:'إضافة حدث', eventType:'نوع الحدث', eventDate:'تاريخ الحدث', eventParty:'الطرف المرتبط', referenceNo:'رقم المستند / المرجع', quantity:'الكمية', unit:'الوحدة', eventAmount:'القيمة المالية', eventStatus:'حالة الإجراء / السداد', eventNote:'ملاحظة الحدث', purchaseRequest:'إرسال طلب شراء للمورد', supplierConfirmation:'تأكيد المورد للطلب', goodsReceived:'استلام البضاعة من المورد', customerDelivery:'توريد البضاعة للعميل', supplierPayment:'سداد للمورد', customerCollection:'تحصيل من العميل', generalNote:'ملاحظة عامة', partial:'جزئي', full:'كلي', open:'مفتوح', completed:'مكتمل', notPaid:'غير مسدد', reportCenter:'مركز التقارير', reportType:'نوع التقرير', projectReport:'تقرير مشروع / توريد', clientReport:'تقرير عميل', vendorReport:'تقرير مورد', cashReport:'تقرير السدادات والتحصيلات', printPdf:'طباعة / حفظ PDF', sendReport:'إرسال التقرير برسالة', reportSearch:'بحث داخل التقرير', fromDate:'من تاريخ', toDate:'إلى تاريخ', allStatuses:'كل الحالات', allProjects:'كل المشروعات', searchAll:'بحث شامل في البيانات', projectEvents:'أحداث المشروع', supplierPayments:'مدفوعات الموردين', customerCollections:'تحصيلات العملاء', noEvents:'لا توجد أحداث مسجلة بعد', saveEvent:'حفظ الحدث', eventSaved:'تم حفظ الحدث في ملف المشروع', reportSummary:'ملخص التقرير', relatedProjects:'المشروعات المرتبطة', totalPayments:'إجمالي المدفوعات', totalCollections:'إجمالي التحصيلات', filter:'تصفية', clear:'مسح', recordCount:'عدد السجلات', selectProject:'اختر المشروع', selectParty:'اختر الطرف', importDetails:'يدعم Excel حقول العملاء والموردين الموسعة، بالإضافة إلى المشروعات. لا يتم حفظ ملف Excel.',
+    cashFlow:'التدفق النقدي', actualCashIn:'المتحصلات الفعلية', actualCashOut:'المدفوعات الفعلية', netCashFlow:'صافي التدفق النقدي', receivables:'مستحقات لنا من العملاء', payables:'التزامات علينا للموردين', expectedNet:'صافي الموقف (مستحقات لنا - التزامات علينا)', surplus:'فائض', deficit:'عجز', cashFromDate:'حركة من تاريخ', cashToDate:'حركة إلى تاريخ', cashAllProjects:'كل المشروعات', projectStatusSummary:'ملخص حالة المشروعات', activeProjects:'مشروعات جارية', completedProjects:'مشروعات مكتملة', delayedProjects:'مشروعات متأخرة', totalContractValue:'إجمالي قيمة المشروعات', estimatedProjectCost:'التكلفة التقديرية للمشروعات', cashCurrency:'العملة', cashActualIn:'مقبوضات خلال الفترة', cashActualOut:'مدفوعات خلال الفترة', cashNet:'صافي الحركة', currentReceivables:'رصيد مستحق لنا', currentPayables:'رصيد مستحق علينا', projectPortfolio:'موقف المشروعات', projectMargin:'هامش تقديري', recentCashMoves:'آخر حركات التحصيل والسداد', cashScopeNote:'المقبوضات والمدفوعات الفعلية خلال الفترة تجمع أحداث التحصيل والسداد المعتمدة في ملفات المشروعات مع السجلات القديمة بالمقبوضات والمدفوعات؛ لا تسجل الحركة نفسها في المصدرين. السجلات القديمة التي لا تحتوي على تاريخ تبقى ضمن الإجمالي حتى يتم استكمال تاريخها. أرصدة العملاء والموردين أرصدة حالية من عروض الأسعار المعتمدة والمدفوعات المسجلة. التكلفة التقديرية للمشروعات تعرض منفصلة ولا تعامل كالتزام مستحق للمورد قبل تسجيله. كل عملة تظهر منفصلة دون خلط العملات.', expectedPosition:'الموقف المتوقع', noCashMoves:'لا توجد حركات تحصيل أو سداد في الفترة المحددة.', dueProjects:'متأخر عن تاريخ الانتهاء المتوقع', noDueProjects:'لا توجد مشروعات متأخرة حسب تاريخ الانتهاء المتوقع.'
   },
   en: {
     app:'Projects & Cash Flow Management', login:'Sign in', email:'Email address', password:'Password',
@@ -108,7 +111,9 @@ const words = {
     pendingLabel:'Pending review', approvedLabel:'Approved', rejectedLabel:'Rejected', updateStatus:'Update status', requestUpdated:'Request status updated.', companySettings:'Company settings', companyName:'Company name', companyLogo:'Company logo', uploadLogo:'Choose logo', companyPhone:'Company phone', companyEmail:'Company email', companyAddress:'Company address', taxNumber:'Tax number', commercialRegister:'Commercial register', website:'Website', accountDetails:'Account details', accountRole:'User role',
     excelImport:'Import from Excel', importHelp:'One workbook: Clients (Code, Name, Phone), Vendors (Code, Name, Phone), Projects (Code, Name, ClientCode, Amount, Status) sheets, or one sheet with a Type column (client/vendor/project).', importNow:'Import data', importSuccess:'Data imported. Records: ', importNoRows:'No valid records were found.',
     settings:'Settings', personalDetails:'Personal details', editProfile:'Edit profile', saveProfile:'Save details', theme:'App colors', chooseTheme:'Choose app color', messageNotice:'New message', openMessages:'Open messages', unread:'Unread', markRead:'Read', noRecipients:'No active users found.', personalSaved:'Your profile has been updated.', emailVerifySent:'A verification link was sent to the new email. Verify it, then sign in with the new address.', legacyRequest:'Legacy request — the applicant must submit a new email-based request before approval.', legacyReapply:'This is a legacy request without a Firebase Authentication account. Ask the applicant to submit a new request using their email address.',
-    recipientUser:'Recipient (username)', statusActive:'Active', statusDisabled:'Disabled', themeBlue:'Blue', themeGreen:'Green', themePurple:'Purple', themeTeal:'Teal', themeRed:'Red'
+    recipientUser:'Recipient (username)', statusActive:'Active', statusDisabled:'Disabled', themeBlue:'Blue', themeGreen:'Green', themePurple:'Purple', themeTeal:'Teal', themeRed:'Red',
+    taxRegistration:'Tax registration number', commercialReg:'Commercial register', contactPerson:'Contact person', contactTitle:'Contact title', mobile:'Mobile', alternatePhone:'Alternate phone', email2:'Alternate email', whatsapp:'WhatsApp', city:'City', country:'Country', postalCode:'Postal code', paymentTerms:'Payment terms', creditLimit:'Credit limit', currency:'Currency', bankName:'Bank name', bankAccount:'Bank account', iban:'IBAN', notes:'Notes', address:'Address', websiteLabel:'Website', edit:'Edit', viewFile:'Open project file', projectFile:'Project file', suppliers:'Linked suppliers', customers:'Linked customers', scope:'Scope of work', manager:'Project manager', contractNo:'Contract number', purchaseOrderNo:'Purchase order number', projectType:'Project / supply type', startDate:'Start date', expectedEndDate:'Expected end date', actualEndDate:'Actual end date', location:'Execution location', deliveryAddress:'Delivery address', costBudget:'Estimated cost', timeline:'Event timeline', addEvent:'Add event', eventType:'Event type', eventDate:'Event date', eventParty:'Related party', referenceNo:'Document / reference no.', quantity:'Quantity', unit:'Unit', eventAmount:'Financial amount', eventStatus:'Action / payment status', eventNote:'Event note', purchaseRequest:'Purchase request sent to supplier', supplierConfirmation:'Supplier confirmed order', goodsReceived:'Goods received from supplier', customerDelivery:'Goods delivered to customer', supplierPayment:'Payment to supplier', customerCollection:'Collection from customer', generalNote:'General note', partial:'Partial', full:'Full', open:'Open', completed:'Completed', notPaid:'Unpaid', reportCenter:'Reports center', reportType:'Report type', projectReport:'Project / supply report', clientReport:'Customer report', vendorReport:'Supplier report', cashReport:'Payments & collections report', printPdf:'Print / Save PDF', sendReport:'Send report as message', reportSearch:'Search in report', fromDate:'From date', toDate:'To date', allStatuses:'All statuses', allProjects:'All projects', searchAll:'Search all data', projectEvents:'Project events', supplierPayments:'Supplier payments', customerCollections:'Customer collections', noEvents:'No events recorded yet', saveEvent:'Save event', eventSaved:'Event saved to project file', reportSummary:'Report summary', relatedProjects:'Related projects', totalPayments:'Total payments', totalCollections:'Total collections', filter:'Filter', clear:'Clear', recordCount:'Record count', selectProject:'Select project', selectParty:'Select party', importDetails:'Supports expanded customer/supplier fields and projects. The Excel file itself is not stored.',
+    cashFlow:'Cash flow', actualCashIn:'Actual collections', actualCashOut:'Actual payments', netCashFlow:'Net cash flow', receivables:'Customer receivables', payables:'Supplier payables', expectedNet:'Net position (receivables - payables)', surplus:'Surplus', deficit:'Deficit', cashFromDate:'Movement from', cashToDate:'Movement to', cashAllProjects:'All projects', projectStatusSummary:'Project status summary', activeProjects:'Active projects', completedProjects:'Completed projects', delayedProjects:'Delayed projects', totalContractValue:'Total project contract value', estimatedProjectCost:'Estimated project cost', cashCurrency:'Currency', cashActualIn:'Receipts in period', cashActualOut:'Payments in period', cashNet:'Net movement', currentReceivables:'Current receivables', currentPayables:'Current payables', projectPortfolio:'Project portfolio', projectMargin:'Estimated margin', recentCashMoves:'Recent collection and payment movements', cashScopeNote:'Actual receipts and payments for the selected period combine confirmed project collection/payment events with legacy inflow/outflow records. Do not record the same movement in both sources. Undated legacy records remain included until their dates are completed. Customer and supplier balances are current balances based on approved quotations and recorded supplier obligations. Project cost budgets are shown separately and are not treated as payable until recorded as an obligation. Each currency is shown separately; currencies are not combined.', expectedPosition:'Expected position', noCashMoves:'No collection or payment movements in the selected period.', dueProjects:'Past expected end date', noDueProjects:'No projects are overdue based on expected end dates.'
   }
 };
 
@@ -140,8 +145,25 @@ function App(){
   const [tab,setTab] = useState('dashboard');
   const [showRequests,setShowRequests] = useState(false);
   const [account,setAccount] = useState({type:'client',code:''});
-  const [master,setMaster] = useState({type:'client',code:'',name:'',phone:''});
-  const [project,setProject] = useState({code:'',name:'',clientCode:'',amount:'',status:'جاري'});
+  const blankMaster = (type='client') => ({type,code:'',name:'',englishName:'',taxNumber:'',commercialRegister:'',contactPerson:'',contactTitle:'',phone:'',mobile:'',alternatePhone:'',email:'',alternateEmail:'',whatsapp:'',website:'',address:'',city:'',country:'',postalCode:'',paymentTerms:'',creditLimit:'',currency:'EGP',bankName:'',bankAccount:'',iban:'',notes:''});
+  const [master,setMaster] = useState(blankMaster());
+  const [editingMasterCode,setEditingMasterCode] = useState('');
+  const [masterFilter,setMasterFilter] = useState('');
+  const blankProject = () => ({code:'',name:'',contractNo:'',purchaseOrderNo:'',projectType:'supply',status:'جاري',clientCode:'',clientCodes:[],vendorCodes:[],projectManager:'',startDate:'',expectedEndDate:'',actualEndDate:'',location:'',deliveryAddress:'',currency:'EGP',amount:'',costBudget:'',paymentTerms:'',scope:'',notes:''});
+  const [project,setProject] = useState(blankProject());
+  const [editingProjectCode,setEditingProjectCode] = useState('');
+  const [projectFilter,setProjectFilter] = useState('');
+  const [selectedProjectCode,setSelectedProjectCode] = useState('');
+  const [projectEvent,setProjectEvent] = useState({type:'purchase_request',date:new Date().toISOString().slice(0,10),partyType:'vendor',partyCode:'',referenceNo:'',quantity:'',unit:'',amount:'',currency:'EGP',status:'open',note:''});
+  const [eventFilter,setEventFilter] = useState('');
+  const [reportType,setReportType] = useState('project');
+  const [reportEntity,setReportEntity] = useState('');
+  const [reportSearch,setReportSearch] = useState('');
+  const [reportFrom,setReportFrom] = useState('');
+  const [reportTo,setReportTo] = useState('');
+  const [reportStatus,setReportStatus] = useState('all');
+  const [globalSearch,setGlobalSearch] = useState('');
+  const [messageFilter,setMessageFilter] = useState('');
   const [message,setMessage] = useState({recipients:'',subject:'',body:''});
   const [newPassword,setNewPassword] = useState('');
   const [currentPassword,setCurrentPassword] = useState('');
@@ -194,6 +216,7 @@ function App(){
       if(!fbUser){
         setCurrentUser(null);
         setAuthReady(true);
+        setBusy(false);
         return;
       }
       try{
@@ -301,12 +324,114 @@ function App(){
   const money=n=>new Intl.NumberFormat(rtl?'ar-EG':'en-US',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n||0));
   const accepted=s=>['مقبول','approved','Approved'].includes(s);
   const collected=s=>['تم التحصيل','collected','Collected'].includes(s);
-  const paid=s=>['تم السداد','paid','Paid'].includes(s);
+  const paid=s=>['تم السداد','paid','Paid','full'].includes(s);
+  const projectEvents=p=>Object.entries((p&&p.events)||{}).map(([id,e])=>({...e,id:e.id||id})).sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')) || Number(a.createdAt||0)-Number(b.createdAt||0));
+  const eventLabel=type=>({purchase_request:tr('purchaseRequest'),supplier_confirmation:tr('supplierConfirmation'),goods_received:tr('goodsReceived'),customer_delivery:tr('customerDelivery'),supplier_payment:tr('supplierPayment'),customer_collection:tr('customerCollection'),general_note:tr('generalNote')}[type]||type||'');
+  const nameOfParty=(type,code)=>{const arr=type==='vendor'?vendors:clients;return arr.find(x=>x.code===code)?.name||code||'—';};
+  const eventDateLabel=value=>value?new Date(String(value).length===10?value+'T00:00:00':value).toLocaleDateString(rtl?'ar-EG':'en-US'):'—';
+  const includesText=(values,q)=>!q || String(values||'').toLowerCase().includes(q.toLowerCase());
+  const cashEventSettled=e=>['partial','full','completed','paid','collected','تم السداد','تم التحصيل','تم الدفع','تم القبض'].includes(String(e.status||'').toLowerCase());
+  const allTimeline=projects.flatMap(p=>projectEvents(p).map(e=>({...e,projectCode:p.code,projectName:p.name})));
+  const paymentsTimeline=allTimeline.filter(e=>['supplier_payment','customer_collection'].includes(e.type));
+  const legacyCashTimeline=[
+    ...inflows.filter(x=>collected(x.status)).map(x=>({...x,id:'legacy-inflow-'+x.id,type:'customer_collection',partyType:'client',partyCode:x.clientCode||'',projectCode:x.projectCode||'',projectName:projects.find(p=>p.code===x.projectCode)?.name||'',referenceNo:x.referenceNo||x.voucherNo||x.invoiceNo||'',date:x.date||x.transactionDate||x.createdAt||'',amount:Number(x.amount||0),currency:x.currency||'EGP',status:'full',note:x.note||x.notes||''})),
+    ...outflows.filter(x=>paid(x.status)).map(x=>({...x,id:'legacy-outflow-'+x.id,type:'supplier_payment',partyType:'vendor',partyCode:x.vendorCode||'',projectCode:x.projectCode||'',projectName:projects.find(p=>p.code===x.projectCode)?.name||'',referenceNo:x.referenceNo||x.voucherNo||x.invoiceNo||'',date:x.date||x.transactionDate||x.createdAt||'',amount:Number(x.amount||0),currency:x.currency||'EGP',status:'full',note:x.note||x.notes||''}))
+  ];
+  const reportProject=projects.find(p=>p.code===reportEntity)||projects.find(p=>p.code===selectedProjectCode);
+  let reportRows=[];
+  if(reportType==='project') reportRows=[...allTimeline,...legacyCashTimeline].filter(e=>!reportEntity||e.projectCode===reportEntity);
+  else if(reportType==='vendor') reportRows=[...allTimeline.filter(e=>(e.partyType==='vendor'&&e.partyCode===reportEntity)||projects.some(p=>p.code===e.projectCode&&(p.vendorCodes||[]).includes(reportEntity))),...legacyCashTimeline.filter(e=>e.partyType==='vendor'&&e.partyCode===reportEntity)];
+  else if(reportType==='client') reportRows=[...allTimeline.filter(e=>(e.partyType==='client'&&e.partyCode===reportEntity)||projects.some(p=>p.code===e.projectCode&&((p.clientCodes||[]).includes(reportEntity)||p.clientCode===reportEntity))),...legacyCashTimeline.filter(e=>e.partyType==='client'&&e.partyCode===reportEntity)];
+  else reportRows=[...paymentsTimeline.filter(cashEventSettled),...legacyCashTimeline];
+  reportRows=reportRows.filter(e=>{
+    const text=[e.projectCode,e.projectName,e.referenceNo,e.note,e.partyCode,nameOfParty(e.partyType,e.partyCode),eventLabel(e.type)].join(' ');
+    const date=rowDateKey(e);
+    return includesText(text,reportSearch) && (!reportFrom||!date||date>=reportFrom) && (!reportTo||!date||date<=reportTo) && (reportStatus==='all'||String(e.status||'')===reportStatus);
+  });
+  const sumByType=(rows,type)=>rows.filter(x=>x.type===type).reduce((sum,x)=>sum+Number(x.amount||0),0);
+  const sumSettledByType=(rows,type)=>rows.filter(x=>x.type===type && cashEventSettled(x)).reduce((sum,x)=>sum+Number(x.amount||0),0);
+
+  const rowDateKey=row=>{
+    const raw=row && (row.date || row.transactionDate || row.invoiceDate || row.createdAt || row.timestamp);
+    if(raw===undefined || raw===null || raw==='') return '';
+    let date;
+    if(typeof raw==='number') date=new Date(raw<1000000000000?raw*1000:raw);
+    else{
+      const value=String(raw);
+      if(/^\d{4}-\d{2}-\d{2}/.test(value)) return value.slice(0,10);
+      if(/^\d{10,13}$/.test(value)){const n=Number(value);date=new Date(n<1000000000000?n*1000:n);}
+      else date=new Date(value);
+    }
+    if(Number.isNaN(date.getTime())) return '';
+    return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+  };
+  const inCashDateRange=row=>{
+    const d=rowDateKey(row);
+    // Undated legacy records remain visible in totals rather than disappearing silently.
+    return !d || ((!cashFrom || d>=cashFrom) && (!cashTo || d<=cashTo));
+  };
+  const inCashProjectScope=row=>cashProjectFilter==='all' || String(row.projectCode||'')===cashProjectFilter;
+  const cashEventsAll=allTimeline.filter(e=>['supplier_payment','customer_collection'].includes(e.type) && cashEventSettled(e) && inCashProjectScope(e));
+  const cashEventsPeriod=cashEventsAll.filter(inCashDateRange);
+  const legacyReceiptsAll=inflows.filter(x=>collected(x.status) && inCashProjectScope(x));
+  const legacyReceiptsPeriod=legacyReceiptsAll.filter(inCashDateRange);
+  const legacyPaymentsAll=outflows.filter(x=>paid(x.status) && inCashProjectScope(x));
+  const legacyPaymentsPeriod=legacyPaymentsAll.filter(inCashDateRange);
+  const currencyMap=rows=>rows.reduce((map,row)=>{
+    const code=String(row.currency||'EGP').toUpperCase();
+    map[code]=(map[code]||0)+Number(row.amount||0);
+    return map;
+  },{});
+  const mapCombine=(a,b,sign=1)=>{
+    const out={...a};Object.entries(b).forEach(([k,v])=>{out[k]=(out[k]||0)+sign*Number(v||0);});return out;
+  };
+  const actualInMap=currencyMap([...cashEventsPeriod.filter(e=>e.type==='customer_collection'),...legacyReceiptsPeriod]);
+  const actualOutMap=currencyMap([...cashEventsPeriod.filter(e=>e.type==='supplier_payment'),...legacyPaymentsPeriod]);
+  const netCashMap=mapCombine(actualInMap,actualOutMap,-1);
+  const selectedProjectsForCash=projects.filter(p=>cashProjectFilter==='all'||p.code===cashProjectFilter);
+  const quoteRowsForCash=quotes.filter(q=>accepted(q.status) && (cashProjectFilter==='all'||String(q.projectCode||'')===cashProjectFilter));
+  let receivableGrossMap=currencyMap(quoteRowsForCash);
+  if(quoteRowsForCash.length===0){
+    receivableGrossMap=currencyMap(selectedProjectsForCash.filter(p=>Number(p.amount||0)>0).map(p=>({amount:p.amount,currency:p.currency||'EGP'})));
+  }
+  const receiptsAllMap=currencyMap([...cashEventsAll.filter(e=>e.type==='customer_collection'),...legacyReceiptsAll]);
+  const receivablesMap=mapCombine(receivableGrossMap,receiptsAllMap,-1);
+  const supplierObligationMap=currencyMap(outflows.filter(x=>inCashProjectScope(x)));
+  const supplierPaidLegacyMap=currencyMap(legacyPaymentsAll);
+  // Payables are based on registered supplier obligations only. Project cost budgets
+  // remain forecasts and are displayed separately, not treated as legally due balances.
+  const payablesMap=mapCombine(supplierObligationMap,supplierPaidLegacyMap,-1);
+  const expectedPositionMap=mapCombine(receivablesMap,payablesMap,-1);
+  const projectContractMap=currencyMap(selectedProjectsForCash);
+  const projectCostMap=currencyMap(selectedProjectsForCash.map(p=>({amount:p.costBudget||0,currency:p.currency||'EGP'})));
+  const currencyKeys=[...new Set([...Object.keys(actualInMap),...Object.keys(actualOutMap),...Object.keys(netCashMap),...Object.keys(receivablesMap),...Object.keys(payablesMap),...Object.keys(expectedPositionMap)])].sort();
+  const cashMapText=map=>{
+    const rows=Object.entries(map).filter(([,v])=>Math.abs(Number(v||0))>0.000001).sort(([a],[b])=>a.localeCompare(b));
+    return rows.length?rows.map(([currency,value])=>`${money(value)} ${currency}`).join('  |  '):`0.00 EGP`;
+  };
+  const isProjectCompleted=p=>/complete|completed|مكتمل|مغلق|منتهي|منتهى|done/i.test(String(p.status||''));
+  const nowLocal=new Date();
+  const todayKey=`${nowLocal.getFullYear()}-${String(nowLocal.getMonth()+1).padStart(2,'0')}-${String(nowLocal.getDate()).padStart(2,'0')}`;
+  const completedProjectCount=selectedProjectsForCash.filter(isProjectCompleted).length;
+  const delayedProjectCount=selectedProjectsForCash.filter(p=>!isProjectCompleted(p) && p.expectedEndDate && String(p.expectedEndDate)<todayKey).length;
+  const activeProjectCount=selectedProjectsForCash.length-completedProjectCount;
+  const recentCashEvents=cashEventsPeriod.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')) || Number(b.createdAt||0)-Number(a.createdAt||0)).slice(0,8);
+  const currentReportTitle=reportType==='project'?tr('projectReport'):reportType==='client'?tr('clientReport'):reportType==='vendor'?tr('vendorReport'):tr('cashReport');
+  const currentReportText=[currentReportTitle, reportEntity, ...reportRows.map(e=>`${e.date||''} | ${e.projectCode} ${e.projectName} | ${eventLabel(e.type)} | ${nameOfParty(e.partyType,e.partyCode)} | ${e.referenceNo||''} | ${e.amount||0} ${e.currency||'EGP'} | ${e.status||''} | ${e.note||''}`)].join('\n');
+  const filteredClients=clients.filter(x=>includesText([x.code,x.name,x.englishName,x.taxNumber,x.phone,x.mobile,x.email,x.contactPerson].join(' '),masterFilter||globalSearch));
+  const filteredVendors=vendors.filter(x=>includesText([x.code,x.name,x.englishName,x.taxNumber,x.phone,x.mobile,x.email,x.contactPerson].join(' '),masterFilter||globalSearch));
+  const filteredProjects=projects.filter(x=>includesText([x.code,x.name,x.contractNo,x.purchaseOrderNo,x.status,x.projectManager,x.location].join(' '),projectFilter||globalSearch));
 
   async function addLog(action,userOverride=currentUser){
-    if(!userOverride) return;
-    const id=db.ref('logs').push().key;
-    await db.ref('logs/'+id).set({id,user:userOverride.fullName || userOverride.email,time:new Date().toLocaleString(rtl?'ar-EG':'en-US'),action});
+    if(!userOverride) return false;
+    try{
+      const id=db.ref('logs').push().key;
+      await db.ref('logs/'+id).set({id,user:userOverride.fullName || userOverride.email,time:new Date().toLocaleString(rtl?'ar-EG':'en-US'),action});
+      return true;
+    }catch(err){
+      console.warn('Audit log could not be saved; the main operation is not cancelled:',err);
+      return false;
+    }
   }
 
   async function handleLogin(e){
@@ -322,23 +447,23 @@ function App(){
     if(!email || !username || !request.fullName.trim() || !request.jobTitle.trim() || request.password.length<6){
       setAuthError(rtl?'أكمل البيانات وتأكد أن كلمة المرور 6 أحرف على الأقل.':'Complete all fields and use a password of at least 6 characters.');setBusy(false);return;
     }
+    if(/[.#$\[\]/]/.test(username)){setAuthError(rtl?'اسم المستخدم يحتوي على رموز غير مسموح بها.':'Username contains invalid characters.');setBusy(false);return;}
     registrationInProgress.current=true;
-    let credential=null;
+    let credential=null;let requestSaved=false;
     try{
       credential=await auth.createUserWithEmailAndPassword(email,request.password);
       const uid=credential.user.uid;
-      await db.ref('userRequests/'+uid).set({
-        uid,email,username,fullName:request.fullName.trim(),jobTitle:request.jobTitle.trim(),
-        status:'pending',createdAt:firebase.database.ServerValue.TIMESTAMP
-      });
-      await auth.signOut();
+      await db.ref('userRequests/'+uid).set({uid,email,username,fullName:request.fullName.trim(),jobTitle:request.jobTitle.trim(),status:'pending',createdAt:firebase.database.ServerValue.TIMESTAMP});
+      requestSaved=true;
+      // Best-effort sign-out; once the request is saved, do not delete the Auth account or report a false failure.
+      try{await auth.signOut();}catch(signOutErr){console.warn('Request saved, but local sign-out needs retry:',signOutErr);}
       setRequest({email:'',password:'',username:'',fullName:'',jobTitle:''});
-      setView('login');setAuthSuccess(tr('requestSent'));
+      setView('login');setAuthError('');setAuthSuccess(tr('requestSent'));
     }catch(err){
       console.error('Account request:',err);
-      if(credential && credential.user){
-        await credential.user.delete().catch(()=>{});
-        await auth.signOut().catch(()=>{});
+      if(credential && credential.user && !requestSaved){
+        try{await credential.user.delete();}catch(deleteErr){console.warn('Temporary auth cleanup failed:',deleteErr);}
+        try{await auth.signOut();}catch(signOutErr){console.warn(signOutErr);}
       }
       setAuthError(firebaseErrorMessage(err,tr));
     }finally{registrationInProgress.current=false;setBusy(false);}
@@ -352,8 +477,19 @@ function App(){
   }
 
   async function logout(){
-    try{if(currentUser) await addLog('تسجيل خروج');await auth.signOut();setTab('dashboard');setMessages([]);}
-    catch(err){setAuthError(firebaseErrorMessage(err,tr));}
+    const leavingUser=currentUser;
+    setBusy(true);
+    setShowUserMenu(false);setShowThemeMenu(false);setNotificationToast(null);
+    // Do not let an audit-log write block sign-out; Firebase Authentication owns the session.
+    if(leavingUser) addLog('تسجيل خروج',leavingUser).catch(()=>{});
+    try{
+      await auth.signOut();
+    }catch(err){
+      console.error('Firebase signOut error:',err);
+    }finally{
+      setCurrentUser(null);setMessages([]);setUserRequests([]);setActiveUsers([]);
+      setTab('dashboard');setAuthError('');setAuthSuccess('');setBusy(false);setAuthReady(true);
+    }
   }
 
   async function approveRequest(req,approve){
@@ -383,16 +519,22 @@ function App(){
         await addLog('تعديل حالة طلب قديم '+req.fullName+' إلى '+status);
         return;
       }
+      const updates={};
+      updates['userRequests/'+req.uid+'/status']=status;
       if(status==='approved'){
-        await db.ref('users/'+req.uid).set({uid:req.uid,email:req.email,username:req.username,fullName:req.fullName,jobTitle:req.jobTitle,role:'user',status:'active',avatar:'',createdAt:firebase.database.ServerValue.TIMESTAMP});
-        await db.ref('userDirectory/'+req.uid).set({uid:req.uid,username:req.username,fullName:req.fullName,jobTitle:req.jobTitle,status:'active'});
+        updates['users/'+req.uid]={uid:req.uid,email:req.email,username:req.username,fullName:req.fullName,jobTitle:req.jobTitle,role:'user',status:'active',avatar:'',createdAt:firebase.database.ServerValue.TIMESTAMP};
+        updates['userDirectory/'+req.uid]={uid:req.uid,username:req.username,fullName:req.fullName,jobTitle:req.jobTitle,status:'active'};
       }else{
-        const existing=await db.ref('users/'+req.uid).once('value');
-        if(existing.exists()) await db.ref('users/'+req.uid+'/status').set('disabled');
-        const directoryEntry=await db.ref('userDirectory/'+req.uid).once('value');
-        if(directoryEntry.exists()) await db.ref('userDirectory/'+req.uid+'/status').set('disabled');
+        // Update profile/directory only when they already exist. A pending request
+        // does not yet have a users/{uid} profile, so creating one here breaks login.
+        const [userSnap,dirSnap]=await Promise.all([
+          db.ref('users/'+req.uid).once('value'),
+          db.ref('userDirectory/'+req.uid).once('value')
+        ]);
+        if(userSnap.exists()) updates['users/'+req.uid+'/status']=status==='rejected'?'disabled':'pending';
+        if(dirSnap.exists()) updates['userDirectory/'+req.uid+'/status']=status==='rejected'?'disabled':'pending';
       }
-      await db.ref('userRequests/'+req.uid+'/status').set(status);
+      await db.ref().update(updates);
       await addLog('تغيير حالة طلب '+req.fullName+' إلى '+status);
     }catch(err){alert(firebaseErrorMessage(err,tr));}
   }
@@ -474,12 +616,14 @@ function App(){
           if(!['client','vendor','project'].includes(type)||!code||!name||/[.#$\[\]/]/.test(code)){skipped++;return;}
           if(type==='client'||type==='vendor'){
             const path=(type==='client'?'clients/':'vendors/')+code;
-            updates[path+'/code']=code;updates[path+'/name']=name;updates[path+'/phone']=get(row,aliases.phone);imported++;
+            updates[path+'/code']=code;updates[path+'/name']=name;
+            const fieldAliases={phone:['phone','telephone','هاتف','الهاتف','تليفون'],mobile:['mobile','محمول'],alternatePhone:['alternatephone','phone2','هاتف اضافي'],email:['email','البريد الالكتروني','البريد الإلكتروني'],alternateEmail:['alternateemail','email2','بريد اضافي'],whatsapp:['whatsapp','واتساب'],website:['website','الموقع الالكتروني'],taxNumber:['taxnumber','taxregistration','taxregistrationnumber','رقم التسجيل الضريبي','الرقم الضريبي'],commercialRegister:['commercialregister','السجل التجاري'],contactPerson:['contactperson','الشخص المسؤول'],contactTitle:['contacttitle','صفة المسؤول'],address:['address','العنوان'],city:['city','المدينة'],country:['country','الدولة'],postalCode:['postalcode','الرمز البريدي'],paymentTerms:['paymentterms','شروط السداد'],creditLimit:['creditlimit','الحد الائتماني'],currency:['currency','العملة'],bankName:['bankname','اسم البنك'],bankAccount:['bankaccount','رقم الحساب'],iban:['iban'],notes:['notes','ملاحظات']};
+            Object.entries(fieldAliases).forEach(([field,keys])=>{updates[path+'/'+field]=get(row,keys);});imported++;
           }else{
             const path='projects/'+code;
             const amountText=get(row,aliases.amount).replace(/,/g,'');
             const amount=Number(amountText||0);
-            updates[path+'/code']=code;updates[path+'/name']=name;updates[path+'/clientCode']=get(row,aliases.clientCode);updates[path+'/amount']=Number.isFinite(amount)?amount:0;updates[path+'/status']=get(row,aliases.status)||'جاري';imported++;
+            updates[path+'/code']=code;updates[path+'/name']=name;updates[path+'/clientCode']=get(row,aliases.clientCode);updates[path+'/amount']=Number.isFinite(amount)?amount:0;updates[path+'/status']=get(row,aliases.status)||'جاري';updates[path+'/contractNo']=get(row,['contractno','رقم العقد']);updates[path+'/purchaseOrderNo']=get(row,['purchaseorderno','رقم امر الشراء']);updates[path+'/projectManager']=get(row,['projectmanager','مدير المشروع']);updates[path+'/location']=get(row,['location','موقع التنفيذ']);updates[path+'/notes']=get(row,['notes','ملاحظات']);updates[path+'/taxNumber']=get(row,['taxnumber','taxregistration','رقم التسجيل الضريبي']);imported++;
           }
         });
       });
@@ -490,31 +634,66 @@ function App(){
 
   async function addMaster(e){
     e.preventDefault();
-    const path=master.type==='client'?'clients':'vendors';
-    const code=master.code.trim();
-    if(!code || !master.name.trim()) return alert(tr('noData'));
-    if(/[.#$\[\]/]/.test(code)) return alert('The code contains invalid characters: . # $ [ ] /');
+    const type=master.type;const path=type==='client'?'clients':'vendors';
+    const code=String(master.code||'').trim();const name=String(master.name||'').trim();
+    if(!code||!name) return alert(tr('noData'));
+    if(/[.#$\[\]/]/.test(code)) return alert('Invalid code: . # $ [ ] /');
+    const record={...master,code,name,createdAt:master.createdAt||firebase.database.ServerValue.TIMESTAMP,updatedAt:firebase.database.ServerValue.TIMESTAMP};
+    delete record.type;
     try{
-      const ref=db.ref(path+'/'+code);
-      const snap=await ref.once('value');
-      if(snap.exists()) return alert(rtl?'الكود موجود بالفعل.':'This code already exists.');
-      await ref.set({code,name:master.name.trim(),phone:master.phone.trim(),createdAt:firebase.database.ServerValue.TIMESTAMP});
-      await addLog('إضافة '+(master.type==='client'?'عميل: ':'مورد: ')+master.name);
-      setMaster({...master,code:'',name:'',phone:''});alert(tr('saved'));
+      if(editingMasterCode && editingMasterCode!==code){
+        await db.ref(path+'/'+editingMasterCode).remove();
+      }
+      await db.ref(path+'/'+code).set(record);
+      await addLog((editingMasterCode?'تعديل ':'إضافة ')+(type==='client'?'عميل: ':'مورد: ')+name);
+      setMaster(blankMaster(type));setEditingMasterCode('');alert(tr('saved'));
     }catch(err){alert(firebaseErrorMessage(err,tr));}
+  }
+
+  function editMasterRecord(type,item){
+    setMaster({...blankMaster(type),...item,type});setEditingMasterCode(item.code||'');
+    setTab('master');window.scrollTo({top:0,behavior:'smooth'});
   }
 
   async function addProject(e){
     e.preventDefault();
-    const code=project.code.trim();
-    if(!code || !project.name.trim()) return alert(tr('noData'));
+    const code=String(project.code||'').trim();const name=String(project.name||'').trim();
+    if(!code||!name) return alert(tr('noData'));
     if(/[.#$\[\]/]/.test(code)) return alert('Invalid project code');
+    const record={...project,code,name,clientCodes:Array.isArray(project.clientCodes)?project.clientCodes:[],vendorCodes:Array.isArray(project.vendorCodes)?project.vendorCodes:[],amount:Number(project.amount||0),costBudget:Number(project.costBudget||0),updatedAt:firebase.database.ServerValue.TIMESTAMP};
+    if(!record.clientCodes.length && record.clientCode) record.clientCodes=[record.clientCode];
     try{
-      const ref=db.ref('projects/'+code);const snap=await ref.once('value');
-      if(snap.exists()) return alert(rtl?'كود المشروع موجود بالفعل.':'Project code already exists.');
-      await ref.set({...project,code,name:project.name.trim(),amount:Number(project.amount||0),createdAt:firebase.database.ServerValue.TIMESTAMP});
-      await addLog('إضافة مشروع: '+project.name);setProject({code:'',name:'',clientCode:'',amount:'',status:'جاري'});alert(tr('projectAdded'));
+      if(!editingProjectCode){const exists=await db.ref('projects/'+code).once('value');if(exists.exists()) return alert(rtl?'كود المشروع موجود بالفعل.':'Project code already exists.');record.createdAt=firebase.database.ServerValue.TIMESTAMP;}
+      await db.ref('projects/'+code).update(record);
+      await addLog((editingProjectCode?'تعديل ':'إضافة مشروع: ')+name);
+      setSelectedProjectCode(code);setProject(blankProject());setEditingProjectCode('');setTab('projectDetail');
+      alert(tr('projectAdded'));
     }catch(err){alert(firebaseErrorMessage(err,tr));}
+  }
+
+  function editProjectRecord(item){
+    setProject({...blankProject(),...item,clientCodes:item.clientCodes|| (item.clientCode?[item.clientCode]:[]),vendorCodes:item.vendorCodes||[]});
+    setEditingProjectCode(item.code);setTab('projects');window.scrollTo({top:0,behavior:'smooth'});
+  }
+
+  async function addProjectEvent(e){
+    e.preventDefault();
+    const code=selectedProjectCode;const target=projects.find(p=>p.code===code);
+    if(!target) return alert(tr('selectProject'));
+    const id=db.ref('projects/'+code+'/events').push().key;
+    const event={...projectEvent,id,projectCode:code,type:projectEvent.type,date:projectEvent.date||new Date().toISOString().slice(0,10),partyCode:projectEvent.partyCode||'',partyType:projectEvent.partyType||'',referenceNo:String(projectEvent.referenceNo||'').trim(),quantity:Number(projectEvent.quantity||0),unit:String(projectEvent.unit||''),amount:Number(projectEvent.amount||0),currency:projectEvent.currency||target.currency||'EGP',status:projectEvent.status||'open',note:String(projectEvent.note||'').trim(),createdBy:currentUser.uid,createdByName:currentUser.fullName,createdAt:firebase.database.ServerValue.TIMESTAMP};
+    try{
+      await db.ref('projects/'+code+'/events/'+id).set(event);
+      const lifecycleStatus={purchase_request:rtl?'تم إرسال طلب شراء':'Purchase request sent',supplier_confirmation:rtl?'تم تأكيد المورد':'Supplier confirmed',goods_received:rtl?'تم استلام البضاعة':'Goods received',customer_delivery:rtl?'تم التوريد للعميل':'Delivered to customer'};
+      await db.ref('projects/'+code).update({lastActivityAt:firebase.database.ServerValue.TIMESTAMP,lastActivityType:event.type,...(lifecycleStatus[event.type]?{status:lifecycleStatus[event.type]}:{})});
+      await addLog('إضافة حدث '+eventLabel(event.type)+' للمشروع '+code);
+      setProjectEvent({type:'purchase_request',date:new Date().toISOString().slice(0,10),partyType:'vendor',partyCode:'',referenceNo:'',quantity:'',unit:'',amount:'',currency:target.currency||'EGP',status:'open',note:''});
+      alert(tr('eventSaved'));
+    }catch(err){alert(firebaseErrorMessage(err,tr));}
+  }
+
+  function reportAsMessage(){
+    setMessage({recipients:'',subject:currentReportTitle+' - '+(reportEntity||''),body:currentReportText});setTab('messages');
   }
 
   async function sendMessage(e){
@@ -565,12 +744,12 @@ function App(){
 
   const pendingRequests=userRequests.filter(r=>['pending','مؤجل'].includes(String(r.status||'').toLowerCase()) && r.uid);
   const unreadMessages=messages.filter(m=>m.read!==true);
-  const myMessages=messages;
+  const myMessages=messages.filter(m=>includesText([m.subject,m.body,m.senderName,m.senderUid].join(' '),messageFilter||globalSearch));
   const requestStatusValue=v=>{const x=String(v||'pending').toLowerCase();if(['approved','موافق'].includes(x))return 'approved';if(['rejected','غير موافق','مرفوض'].includes(x))return 'rejected';return 'pending';};
   const requestStatusLabel=v=>{const x=requestStatusValue(v);return x==='approved'?tr('approvedLabel'):x==='rejected'?tr('rejectedLabel'):tr('pendingLabel');};
-  const filteredRequests=userRequests.filter(r=>requestFilter==='all'||requestStatusValue(r.status)===requestFilter);
+  const filteredRequests=userRequests.filter(r=>(requestFilter==='all'||requestStatusValue(r.status)===requestFilter) && includesText([r.fullName,r.email,r.username,r.jobTitle,r.uid].join(' '),globalSearch));
   const themeNames={blue:'themeBlue',green:'themeGreen',purple:'themePurple',teal:'themeTeal',red:'themeRed'};
-  const selectedItems=account.type==='client'?clients:vendors;
+  const selectedItems=(account.type==='client'?clients:vendors).filter(x=>includesText([x.code,x.name,x.taxNumber,x.phone,x.email].join(' '),globalSearch));
   const chosen=selectedItems.find(x=>x.code===account.code);
   const totalDue=account.type==='client'
     ? quotes.filter(q=>q.clientCode===account.code && accepted(q.status)).reduce((s,x)=>s+Number(x.amount||0),0)
@@ -579,7 +758,7 @@ function App(){
     ? inflows.filter(x=>x.clientCode===account.code && collected(x.status)).reduce((s,x)=>s+Number(x.amount||0),0)
     : outflows.filter(x=>x.vendorCode===account.code && paid(x.status)).reduce((s,x)=>s+Number(x.amount||0),0);
 
-  const nav=[['dashboard','fa-gauge'],['statement','fa-file-invoice-dollar'],['master','fa-database'],['projects','fa-diagram-project'],['messages','fa-envelope'],['profile','fa-user-gear'],...(isAdmin?[['userRequests','fa-user-clock'],['companySettings','fa-building']]:[])];
+  const nav=[['dashboard','fa-gauge'],['statement','fa-file-invoice-dollar'],['master','fa-database'],['projects','fa-diagram-project'],...(selectedProjectCode?[['projectDetail','fa-folder-open']]:[]),['reports','fa-chart-pie'],['messages','fa-envelope'],['profile','fa-user-gear'],...(isAdmin?[['userRequests','fa-user-clock'],['companySettings','fa-building']]:[])];
 
   if(!currentUser){
     return <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
@@ -619,7 +798,7 @@ function App(){
     <header className="text-white p-3 px-5 flex justify-between items-center gap-3 shadow-lg" style={{background:themeOptions[theme]?.main || themeOptions.blue.main}}>
       <div className="flex items-center gap-3">{companyInfo.logo?<img src={companyInfo.logo} alt="Logo" className="h-10 w-10 object-contain bg-white rounded p-1"/>:<i className="fas fa-cubes text-white text-2xl"></i>}<div><h1 className="font-bold">{companyInfo.name || tr('app')}</h1><p className="text-xs text-white/75">{tr('app')}</p></div></div>
       <div className="flex items-center gap-3">
-        <button onClick={()=>setLang(rtl?'en':'ar')} className="bg-black/20 px-3 py-2 rounded-lg text-sm">{tr('language')}</button>
+        <button onClick={()=>setLang(rtl?'en':'ar')} className="bg-black/20 px-3 py-2 rounded-lg text-sm">{tr('language')}</button><input value={globalSearch} onChange={e=>setGlobalSearch(e.target.value)} placeholder={tr('searchAll')} className="hidden lg:block rounded-lg px-3 py-2 text-slate-900 text-sm w-56" />
         <button onClick={openMessages} className="relative p-2" title={tr('messages')}><i className="fas fa-envelope text-xl"></i>{unreadMessages.length>0&&<span className="absolute -top-1 -right-1 rounded-full bg-red-600 text-xs px-1.5">{unreadMessages.length}</span>}</button>
         {isAdmin&&<button onClick={()=>{setTab('userRequests');setShowRequests(false);}} className="relative p-2" title={tr('pending')}><i className="fas fa-bell text-xl"></i>{pendingRequests.length>0&&<span className="absolute -top-1 -right-1 rounded-full bg-red-600 text-xs px-1.5">{pendingRequests.length}</span>}</button>}
         <div className="relative"><button onClick={()=>{setShowThemeMenu(!showThemeMenu);setShowUserMenu(false);}} className="p-2" title={tr('theme')}><i className="fas fa-palette text-xl"></i></button>
@@ -637,11 +816,26 @@ function App(){
         {nav.map(([id,icon])=><button key={id} onClick={()=>setTab(id)} className={`nav-btn ${tab===id?'active':''} w-full text-start p-3 rounded-lg flex items-center gap-3`}><i className={`fas ${icon} w-5`}></i><span>{tr(id==='userRequests'?'requestsReport':id)}</span></button>)}
       </aside>
       <main className="flex-1 p-4 md:p-6 overflow-auto">
-        {tab==='dashboard'&&<div className="space-y-5"><h2 className="font-bold text-xl">{tr('dashboard')}</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            {[[tr('clients'),clients.length,'fa-user-tie'],[tr('vendors'),vendors.length,'fa-truck'],[tr('projects'),projects.length,'fa-diagram-project'],[tr('users'),isAdmin?activeUsers.filter(u=>u._hasAuthUid || u.uid===currentUser.uid).length:'—','fa-users']].map(([label,value,icon])=><div key={label} className="bg-white p-5 rounded-xl border shadow-sm flex justify-between items-center"><div><p className="text-sm text-gray-500">{label}</p><p className="text-2xl font-bold mt-1">{value}</p></div><i className={`fas ${icon} text-2xl text-blue-500`}></i></div>)}
+        {tab==='dashboard'&&<div className="space-y-5 print-area">
+          <div className="flex flex-wrap justify-between items-center gap-3 no-print"><h2 className="font-bold text-xl">{tr('dashboard')} · {tr('cashFlow')}</h2><div className="flex gap-2 no-print"><button onClick={()=>setTab('reports')} className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-bold">{tr('reportCenter')}</button><button onClick={()=>window.print()} className="bg-gray-800 text-white rounded-lg px-4 py-2 text-sm">{tr('printPdf')}</button></div></div>
+          <section className="bg-white p-4 rounded-xl border shadow-sm grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 no-print">
+            <label className="text-sm font-bold">{tr('cashAllProjects')}<select className="block w-full border rounded-lg p-2 mt-1 font-normal" value={cashProjectFilter} onChange={e=>setCashProjectFilter(e.target.value)}><option value="all">{tr('cashAllProjects')}</option>{projects.map(p=><option key={p.code} value={p.code}>{p.name} ({p.code})</option>)}</select></label>
+            <label className="text-sm font-bold">{tr('cashFromDate')}<input type="date" className="block w-full border rounded-lg p-2 mt-1 font-normal" value={cashFrom} onChange={e=>setCashFrom(e.target.value)}/></label>
+            <label className="text-sm font-bold">{tr('cashToDate')}<input type="date" className="block w-full border rounded-lg p-2 mt-1 font-normal" value={cashTo} onChange={e=>setCashTo(e.target.value)}/></label>
+            <div className="flex items-end"><button onClick={()=>{setCashProjectFilter('all');setCashFrom('');setCashTo('');}} className="w-full bg-gray-100 rounded-lg p-2">{tr('clear')}</button></div>
+          </section>
+          <p className="text-xs text-gray-500">{tr('cashScopeNote')}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            {[[tr('actualCashIn'),cashMapText(actualInMap),'#059669','fa-arrow-down'],[tr('actualCashOut'),cashMapText(actualOutMap),'#dc2626','fa-arrow-up'],[tr('netCashFlow'),cashMapText(netCashMap),'#2563eb','fa-scale-balanced'],[tr('receivables'),cashMapText(receivablesMap),'#0891b2','fa-hand-holding-dollar'],[tr('payables'),cashMapText(payablesMap),'#d97706','fa-file-invoice-dollar'],[tr('expectedNet'),cashMapText(expectedPositionMap),'#7c3aed','fa-chart-line']].map(([label,value,color,icon])=><div key={label} className="bg-white p-5 rounded-xl border shadow-sm flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-sm text-gray-500 font-bold">{label}</p><p className="text-lg font-bold mt-2 break-words">{value}</p>{(label===tr('expectedNet')||label===tr('netCashFlow'))&&<p className="text-xs text-gray-500 mt-1">{Object.entries(label===tr('expectedNet')?expectedPositionMap:netCashMap).map(([cur,val])=>`${cur}: ${val>=0?tr('surplus'):tr('deficit')}`).join(' · ')}</p>}</div><i className={`fas ${icon} text-2xl`} style={{color}}></i></div>)}
           </div>
-          <section className="bg-white p-5 rounded-xl border shadow-sm"><h3 className="font-bold border-b pb-3 mb-3">{tr('activity')}</h3>{logs.length===0?<p className="text-sm text-gray-500">{tr('noLogs')}</p>:logs.slice().reverse().map(x=><div key={x.id} className="py-2 border-b text-sm flex flex-wrap justify-between gap-2"><b className="text-blue-700">{x.user}: {x.action}</b><span className="text-gray-400">{x.time}</span></div>)}</section>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            {[[tr('clients'),clients.length,'fa-user-tie'],[tr('vendors'),vendors.length,'fa-truck'],[tr('projects'),selectedProjectsForCash.length,'fa-diagram-project'],[tr('users'),isAdmin?activeUsers.filter(u=>u._hasAuthUid || u.uid===currentUser.uid).length:'—','fa-users']].map(([label,value,icon])=><div key={label} className="bg-white p-4 rounded-xl border shadow-sm flex justify-between items-center"><div><p className="text-sm text-gray-500">{label}</p><p className="text-2xl font-bold mt-1">{value}</p></div><i className={`fas ${icon} text-2xl text-blue-500`}></i></div>)}
+          </div>
+          <section className="bg-white p-5 rounded-xl border shadow-sm"><div className="flex flex-wrap justify-between gap-3 items-center mb-3"><h3 className="font-bold">{tr('projectStatusSummary')}</h3><span className="text-xs text-gray-500">{tr('totalContractValue')}: {cashMapText(projectContractMap)} · {tr('estimatedProjectCost')}: {cashMapText(projectCostMap)}</span></div><div className="grid grid-cols-1 sm:grid-cols-3 gap-3"><div className="bg-blue-50 rounded-lg p-4"><small className="text-gray-600">{tr('activeProjects')}</small><b className="block text-2xl mt-1">{activeProjectCount}</b></div><div className="bg-green-50 rounded-lg p-4"><small className="text-gray-600">{tr('completedProjects')}</small><b className="block text-2xl mt-1">{completedProjectCount}</b></div><div className="bg-red-50 rounded-lg p-4"><small className="text-gray-600">{tr('delayedProjects')}</small><b className="block text-2xl mt-1">{delayedProjectCount}</b></div></div></section>
+          <section className="bg-white p-5 rounded-xl border shadow-sm overflow-x-auto"><h3 className="font-bold mb-3">{tr('cashFlow')} · {tr('cashCurrency')}</h3><table className="w-full text-sm min-w-[760px]"><thead className="bg-gray-50"><tr><th className="p-3 text-start">{tr('cashCurrency')}</th><th className="p-3 text-start">{tr('cashActualIn')}</th><th className="p-3 text-start">{tr('cashActualOut')}</th><th className="p-3 text-start">{tr('cashNet')}</th><th className="p-3 text-start">{tr('currentReceivables')}</th><th className="p-3 text-start">{tr('currentPayables')}</th><th className="p-3 text-start">{tr('expectedPosition')}</th></tr></thead><tbody>{currencyKeys.map(cur=>{const net=netCashMap[cur]||0;const expected=expectedPositionMap[cur]||0;return <tr key={cur} className="border-t"><td className="p-3 font-bold">{cur}</td><td className="p-3 text-green-700">{money(actualInMap[cur]||0)}</td><td className="p-3 text-red-700">{money(actualOutMap[cur]||0)}</td><td className="p-3 font-bold">{money(net)}</td><td className="p-3">{money(receivablesMap[cur]||0)}</td><td className="p-3">{money(payablesMap[cur]||0)}</td><td className={`p-3 font-bold ${expected>=0?'text-green-700':'text-red-700'}`}>{money(expected)} · {expected>=0?tr('surplus'):tr('deficit')}</td></tr>})}{currencyKeys.length===0&&<tr><td colSpan="7" className="p-4 text-gray-500">{tr('noData')}</td></tr>}</tbody></table></section>
+          <section className="bg-white p-5 rounded-xl border shadow-sm overflow-x-auto"><div className="flex flex-wrap justify-between items-center gap-3 mb-3"><h3 className="font-bold">{tr('projectPortfolio')}</h3><button onClick={()=>setTab('projects')} className="text-blue-700 text-sm font-bold">{tr('projects')}</button></div><table className="w-full text-sm min-w-[760px]"><thead className="bg-gray-50"><tr><th className="p-3 text-start">{tr('projectName')}</th><th className="p-3 text-start">{tr('status')}</th><th className="p-3 text-start">{tr('customers')}</th><th className="p-3 text-start">{tr('suppliers')}</th><th className="p-3 text-start">{tr('amount')}</th><th className="p-3 text-start">{tr('costBudget')}</th><th className="p-3 text-start">{tr('projectMargin')}</th><th className="p-3 text-start"></th></tr></thead><tbody>{selectedProjectsForCash.slice().sort((a,b)=>String(a.expectedEndDate||'').localeCompare(String(b.expectedEndDate||''))).slice(0,12).map(p=>{const clientsText=(p.clientCodes|| (p.clientCode?[p.clientCode]:[])).map(code=>clients.find(c=>c.code===code)?.name||code).join('، ');const vendorsText=(p.vendorCodes||[]).map(code=>vendors.find(v=>v.code===code)?.name||code).join('، ');const margin=Number(p.amount||0)-Number(p.costBudget||0);return <tr key={p.code} className="border-t"><td className="p-3"><b>{p.name}</b><small className="block text-gray-500">{p.code}</small></td><td className="p-3">{p.status||tr('projectStatus')}</td><td className="p-3">{clientsText||'—'}</td><td className="p-3">{vendorsText||'—'}</td><td className="p-3">{money(p.amount||0)} {p.currency||'EGP'}</td><td className="p-3">{money(p.costBudget||0)} {p.currency||'EGP'}</td><td className={`p-3 font-bold ${margin>=0?'text-green-700':'text-red-700'}`}>{money(margin)} {p.currency||'EGP'}</td><td className="p-3"><button onClick={()=>{setSelectedProjectCode(p.code);setTab('projectDetail');}} className="text-blue-700 font-bold">{tr('viewFile')}</button></td></tr>})}{selectedProjectsForCash.length===0&&<tr><td colSpan="8" className="p-4 text-gray-500">{tr('noProjects')}</td></tr>}</tbody></table></section>
+          <section className="bg-white p-5 rounded-xl border shadow-sm"><h3 className="font-bold border-b pb-3 mb-3">{tr('recentCashMoves')}</h3>{recentCashEvents.length===0?<p className="text-sm text-gray-500">{tr('noCashMoves')}</p>:recentCashEvents.map(x=><div key={x.projectCode+'_'+x.id} className="py-3 border-b flex flex-wrap justify-between gap-2 text-sm"><div><b>{x.type==='customer_collection'?tr('customerCollection'):tr('supplierPayment')}</b> · {x.projectName} ({x.projectCode})<p className="text-gray-500 text-xs mt-1">{nameOfParty(x.partyType,x.partyCode)} · {x.referenceNo||'—'} {x.note?' · '+x.note:''}</p></div><div className="text-end"><b className={x.type==='customer_collection'?'text-green-700':'text-red-700'}>{money(x.amount)} {x.currency||'EGP'}</b><small className="block text-gray-400">{eventDateLabel(x.date)}</small></div></div>)}</section>
+          <section className="bg-white p-5 rounded-xl border shadow-sm"><h3 className="font-bold border-b pb-3 mb-3">{tr('activity')}</h3>{logs.length===0?<p className="text-sm text-gray-500">{tr('noLogs')}</p>:logs.slice().reverse().slice(0,20).map(x=><div key={x.id} className="py-2 border-b text-sm flex flex-wrap justify-between gap-2"><b className="text-blue-700">{x.user}: {x.action}</b><span className="text-gray-400">{x.time}</span></div>)}</section>
         </div>}
 
         {tab==='statement'&&<section className="bg-white rounded-xl border shadow-sm p-5 space-y-5"><h2 className="font-bold text-lg">{tr('statement')}</h2><div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
@@ -651,26 +845,108 @@ function App(){
         {chosen&&<div className="grid grid-cols-1 md:grid-cols-3 gap-4">{[[tr('due'),totalDue,'blue'],[tr('paid'),totalPaid,'green'],[tr('remaining'),totalDue-totalPaid,'amber']].map(([label,value,color])=><div key={label} className={`bg-${color}-50 border-r-4 border-${color}-600 p-4 rounded`}><p className="text-sm text-gray-500 font-bold">{label}</p><p className="text-2xl font-bold mt-2">{money(value)} EGP</p></div>)}</div>}
         </section>}
 
-        {tab==='master'&&<div className="space-y-5"><h2 className="font-bold text-xl">{tr('master')}</h2><section className="bg-white p-5 rounded-xl border shadow-sm"><form onSubmit={addMaster} className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <select className="border rounded-lg p-3" value={master.type} onChange={e=>setMaster({...master,type:e.target.value})}><option value="client">{tr('client')}</option><option value="vendor">{tr('vendor')}</option></select>
-          <input required className="border rounded-lg p-3" placeholder={tr('code')} value={master.code} onChange={e=>setMaster({...master,code:e.target.value})}/>
-          <input required className="border rounded-lg p-3" placeholder={tr('name')} value={master.name} onChange={e=>setMaster({...master,name:e.target.value})}/>
-          <input className="border rounded-lg p-3" placeholder={tr('phone')} value={master.phone} onChange={e=>setMaster({...master,phone:e.target.value})}/>
-          <button className="md:col-span-2 bg-blue-600 text-white rounded-lg p-3 font-bold"><i className="fas fa-plus mx-2"></i>{tr('add')}</button>
-        </form></section>
-        {isAdmin&&<section className="bg-white p-5 rounded-xl border shadow-sm"><h3 className="font-bold mb-2">{tr('excelImport')}</h3><p className="text-sm text-gray-500 mb-3">{tr('importHelp')}</p><form onSubmit={sendExcelImport} className="flex flex-col md:flex-row gap-3"><input name="excelFile" type="file" accept=".xlsx,.xls,.csv" required className="border rounded-lg p-3 flex-1"/><button className="bg-blue-600 text-white rounded-lg px-5 py-3 font-bold">{tr('importNow')}</button></form>{excelSummary&&<p className="text-green-700 text-sm mt-3">{excelSummary}</p>}</section>}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">{[[tr('clients'),clients],[tr('vendors'),vendors]].map(([label,list])=><section key={label} className="bg-white p-5 rounded-xl border"><h3 className="font-bold border-b pb-2 mb-2">{label}</h3><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="bg-gray-50"><th className="p-2">{tr('code')}</th><th className="p-2">{tr('name')}</th><th className="p-2">{tr('phone')}</th></tr></thead><tbody>{list.map(x=><tr key={x.code} className="border-t"><td className="p-2">{x.code}</td><td className="p-2">{x.name}</td><td className="p-2">{x.phone}</td></tr>)}</tbody></table></div>{list.length===0&&<p className="text-sm text-gray-500 mt-3">{tr('noData')}</p>}</section>)}</div></div>}
+        {tab==='master'&&<div className="space-y-5">
+          <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="font-bold text-xl">{tr('master')}</h2><input className="border rounded-lg p-2 min-w-64" placeholder={tr('searchAll')} value={masterFilter} onChange={e=>setMasterFilter(e.target.value)}/></div>
+          <section className="bg-white p-5 rounded-xl border shadow-sm"><div className="flex justify-between items-center mb-4"><h3 className="font-bold">{editingMasterCode?(rtl?'تعديل بيانات':'Edit record'):tr('add')}</h3>{editingMasterCode&&<button type="button" className="text-red-600" onClick={()=>{setMaster(blankMaster());setEditingMasterCode('');}}>{tr('clear')}</button>}</div>
+            <form onSubmit={addMaster} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              <select className="border rounded-lg p-3" value={master.type} onChange={e=>{setMaster({...master,type:e.target.value});setEditingMasterCode('');}}><option value="client">{tr('client')}</option><option value="vendor">{tr('vendor')}</option></select>
+              <input required className="border rounded-lg p-3" placeholder={tr('code')} value={master.code} onChange={e=>setMaster({...master,code:e.target.value})}/>
+              <input required className="border rounded-lg p-3" placeholder={tr('name')} value={master.name} onChange={e=>setMaster({...master,name:e.target.value})}/>
+              <input className="border rounded-lg p-3" placeholder={tr('taxRegistration')} value={master.taxNumber} onChange={e=>setMaster({...master,taxNumber:e.target.value})}/>
+              <input className="border rounded-lg p-3" placeholder={tr('commercialReg')} value={master.commercialRegister} onChange={e=>setMaster({...master,commercialRegister:e.target.value})}/>
+              <input className="border rounded-lg p-3" placeholder={tr('contactPerson')} value={master.contactPerson} onChange={e=>setMaster({...master,contactPerson:e.target.value})}/>
+              <input className="border rounded-lg p-3" placeholder={tr('contactTitle')} value={master.contactTitle} onChange={e=>setMaster({...master,contactTitle:e.target.value})}/>
+              <input className="border rounded-lg p-3" placeholder={tr('phone')} value={master.phone} onChange={e=>setMaster({...master,phone:e.target.value})}/>
+              <input className="border rounded-lg p-3" placeholder={tr('mobile')} value={master.mobile} onChange={e=>setMaster({...master,mobile:e.target.value})}/>
+              <input className="border rounded-lg p-3" placeholder={tr('alternatePhone')} value={master.alternatePhone} onChange={e=>setMaster({...master,alternatePhone:e.target.value})}/>
+              <input type="email" className="border rounded-lg p-3" placeholder={tr('email')} value={master.email} onChange={e=>setMaster({...master,email:e.target.value})}/>
+              <input type="email" className="border rounded-lg p-3" placeholder={tr('email2')} value={master.alternateEmail} onChange={e=>setMaster({...master,alternateEmail:e.target.value})}/>
+              <input className="border rounded-lg p-3" placeholder={tr('whatsapp')} value={master.whatsapp} onChange={e=>setMaster({...master,whatsapp:e.target.value})}/>
+              <input className="border rounded-lg p-3" placeholder={tr('websiteLabel')} value={master.website} onChange={e=>setMaster({...master,website:e.target.value})}/>
+              <input className="border rounded-lg p-3" placeholder={tr('city')} value={master.city} onChange={e=>setMaster({...master,city:e.target.value})}/>
+              <input className="border rounded-lg p-3" placeholder={tr('country')} value={master.country} onChange={e=>setMaster({...master,country:e.target.value})}/>
+              <input className="border rounded-lg p-3" placeholder={tr('postalCode')} value={master.postalCode} onChange={e=>setMaster({...master,postalCode:e.target.value})}/>
+              <input className="border rounded-lg p-3" placeholder={tr('paymentTerms')} value={master.paymentTerms} onChange={e=>setMaster({...master,paymentTerms:e.target.value})}/>
+              <input type="number" min="0" className="border rounded-lg p-3" placeholder={tr('creditLimit')} value={master.creditLimit} onChange={e=>setMaster({...master,creditLimit:e.target.value})}/>
+              <select className="border rounded-lg p-3" value={master.currency} onChange={e=>setMaster({...master,currency:e.target.value})}><option>EGP</option><option>USD</option><option>EUR</option><option>SAR</option><option>AED</option></select>
+              <input className="border rounded-lg p-3" placeholder={tr('bankName')} value={master.bankName} onChange={e=>setMaster({...master,bankName:e.target.value})}/>
+              <input className="border rounded-lg p-3" placeholder={tr('bankAccount')} value={master.bankAccount} onChange={e=>setMaster({...master,bankAccount:e.target.value})}/>
+              <input className="border rounded-lg p-3" placeholder={tr('iban')} value={master.iban} onChange={e=>setMaster({...master,iban:e.target.value})}/>
+              <textarea className="border rounded-lg p-3 md:col-span-2" rows="2" placeholder={tr('address')} value={master.address} onChange={e=>setMaster({...master,address:e.target.value})}></textarea>
+              <textarea className="border rounded-lg p-3 md:col-span-2" rows="2" placeholder={tr('notes')} value={master.notes} onChange={e=>setMaster({...master,notes:e.target.value})}></textarea>
+              <button className="md:col-span-3 bg-blue-600 text-white rounded-lg p-3 font-bold">{editingMasterCode?tr('save'):tr('add')}</button>
+            </form>
+          </section>
+          {isAdmin&&<section className="bg-white p-5 rounded-xl border shadow-sm"><h3 className="font-bold mb-2">{tr('excelImport')}</h3><p className="text-sm text-gray-500 mb-3">{tr('importHelp')} {tr('importDetails')}</p><form onSubmit={sendExcelImport} className="flex flex-col md:flex-row gap-3"><input name="excelFile" type="file" accept=".xlsx,.xls,.csv" required className="border rounded-lg p-3 flex-1"/><button className="bg-blue-600 text-white rounded-lg px-5 py-3 font-bold">{tr('importNow')}</button></form>{excelSummary&&<p className="text-green-700 text-sm mt-3">{excelSummary}</p>}</section>}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">{[[tr('clients'),filteredClients],[tr('vendors'),filteredVendors]].map(([label,list])=><section key={label} className="bg-white p-5 rounded-xl border"><h3 className="font-bold border-b pb-2 mb-2">{label} ({list.length})</h3><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="bg-gray-50"><th className="p-2">{tr('code')}</th><th className="p-2">{tr('name')}</th><th className="p-2">{tr('taxRegistration')}</th><th className="p-2">{tr('phone')}</th><th className="p-2">{tr('email')}</th><th className="p-2">{tr('edit')}</th></tr></thead><tbody>{list.map(x=><tr key={x.code} className="border-t"><td className="p-2">{x.code}</td><td className="p-2">{x.name}</td><td className="p-2">{x.taxNumber||'—'}</td><td className="p-2">{x.phone||x.mobile||'—'}</td><td className="p-2">{x.email||'—'}</td><td className="p-2"><button onClick={()=>editMasterRecord(label===tr('clients')?'client':'vendor',x)} className="text-blue-700 font-bold">{tr('edit')}</button></td></tr>)}</tbody></table></div>{list.length===0&&<p className="text-sm text-gray-500 mt-3">{tr('noData')}</p>}</section>)}</div>
+        </div>}
 
-        {tab==='projects'&&<div className="space-y-5"><h2 className="font-bold text-xl">{tr('projects')}</h2><section className="bg-white p-5 rounded-xl border"><form onSubmit={addProject} className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <input required className="border rounded-lg p-3" placeholder={tr('projectCode')} value={project.code} onChange={e=>setProject({...project,code:e.target.value})}/>
-          <input required className="border rounded-lg p-3" placeholder={tr('projectName')} value={project.name} onChange={e=>setProject({...project,name:e.target.value})}/>
-          <select className="border rounded-lg p-3" value={project.clientCode} onChange={e=>setProject({...project,clientCode:e.target.value})}><option value="">{tr('choose')}</option>{clients.map(c=><option key={c.code} value={c.code}>{c.name}</option>)}</select>
-          <input type="number" min="0" className="border rounded-lg p-3" placeholder={tr('amount')} value={project.amount} onChange={e=>setProject({...project,amount:e.target.value})}/>
-          <button className="md:col-span-2 bg-blue-600 text-white rounded-lg p-3 font-bold">{tr('add')}</button>
-        </form></section><section className="bg-white p-5 rounded-xl border overflow-x-auto"><table className="w-full text-sm"><thead><tr className="bg-gray-50"><th className="p-2">{tr('projectCode')}</th><th className="p-2">{tr('projectName')}</th><th className="p-2">{tr('projectClient')}</th><th className="p-2">{tr('amount')}</th><th className="p-2">{tr('status')}</th></tr></thead><tbody>{projects.map(p=><tr key={p.id} className="border-t"><td className="p-2">{p.code}</td><td className="p-2">{p.name}</td><td className="p-2">{clients.find(c=>c.code===p.clientCode)?.name||p.clientCode}</td><td className="p-2">{money(p.amount)}</td><td className="p-2">{p.status}</td></tr>)}</tbody></table>{projects.length===0&&<p className="text-sm text-gray-500 mt-3">{tr('noProjects')}</p>}</section></div>}
 
-        {tab==='messages'&&<div className="space-y-5"><h2 className="font-bold text-xl">{tr('messages')}</h2><section className="bg-white p-5 rounded-xl border"><h3 className="font-bold mb-3">{tr('newMessage')}</h3><form onSubmit={sendMessage} className="space-y-3"><input required list="active-recipient-list" className="w-full border rounded-lg p-3" placeholder={tr('recipients')} value={message.recipients} onChange={e=>setMessage({...message,recipients:e.target.value})}/><datalist id="active-recipient-list">{userDirectory.filter(u=>u.status==='active' && u.uid!==currentUser.uid).map(u=><option key={u.uid} value={u.username}>{u.fullName} — {u.jobTitle}</option>)}</datalist><input required className="w-full border rounded-lg p-3" placeholder={tr('subject')} value={message.subject} onChange={e=>setMessage({...message,subject:e.target.value})}/><textarea required rows="4" className="w-full border rounded-lg p-3" placeholder={tr('body')} value={message.body} onChange={e=>setMessage({...message,body:e.target.value})}></textarea><button className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold">{tr('send')}</button></form></section>
+        {tab==='projects'&&<div className="space-y-5">
+          <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="font-bold text-xl">{tr('projects')}</h2><input className="border rounded-lg p-2 min-w-64" placeholder={tr('searchAll')} value={projectFilter} onChange={e=>setProjectFilter(e.target.value)}/></div>
+          <section className="bg-white p-5 rounded-xl border"><h3 className="font-bold mb-3">{editingProjectCode?(rtl?'تعديل المشروع':'Edit project'):tr('add')}</h3><form onSubmit={addProject} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            <input required className="border rounded-lg p-3" placeholder={tr('projectCode')} value={project.code} onChange={e=>setProject({...project,code:e.target.value})}/>
+            <input required className="border rounded-lg p-3" placeholder={tr('projectName')} value={project.name} onChange={e=>setProject({...project,name:e.target.value})}/>
+            <input className="border rounded-lg p-3" placeholder={tr('contractNo')} value={project.contractNo} onChange={e=>setProject({...project,contractNo:e.target.value})}/>
+            <input className="border rounded-lg p-3" placeholder={tr('purchaseOrderNo')} value={project.purchaseOrderNo} onChange={e=>setProject({...project,purchaseOrderNo:e.target.value})}/>
+            <select className="border rounded-lg p-3" value={project.projectType} onChange={e=>setProject({...project,projectType:e.target.value})}><option value="supply">{rtl?'توريد':'Supply'}</option><option value="project">{rtl?'مشروع':'Project'}</option><option value="service">{rtl?'خدمة':'Service'}</option></select>
+            <input className="border rounded-lg p-3" placeholder={tr('status')} value={project.status} onChange={e=>setProject({...project,status:e.target.value})}/>
+            <label className="text-sm font-bold">{tr('customers')}<select multiple className="block border rounded-lg p-2 w-full mt-1 min-h-28" value={project.clientCodes||[]} onChange={e=>setProject({...project,clientCodes:Array.from(e.target.selectedOptions).map(o=>o.value),clientCode:Array.from(e.target.selectedOptions).map(o=>o.value)[0]||''})}>{clients.map(c=><option key={c.code} value={c.code}>{c.name} ({c.code})</option>)}</select><small className="text-gray-500">{rtl?'يمكن اختيار أكثر من عميل باستخدام Ctrl':'Hold Ctrl to select multiple customers'}</small></label>
+            <label className="text-sm font-bold">{tr('suppliers')}<select multiple className="block border rounded-lg p-2 w-full mt-1 min-h-28" value={project.vendorCodes||[]} onChange={e=>setProject({...project,vendorCodes:Array.from(e.target.selectedOptions).map(o=>o.value)})}>{vendors.map(v=><option key={v.code} value={v.code}>{v.name} ({v.code})</option>)}</select><small className="text-gray-500">{rtl?'يمكن اختيار أكثر من مورد باستخدام Ctrl':'Hold Ctrl to select multiple suppliers'}</small></label>
+            <input className="border rounded-lg p-3" placeholder={tr('manager')} value={project.projectManager} onChange={e=>setProject({...project,projectManager:e.target.value})}/>
+            <input type="date" className="border rounded-lg p-3" title={tr('startDate')} value={project.startDate} onChange={e=>setProject({...project,startDate:e.target.value})}/>
+            <input type="date" className="border rounded-lg p-3" title={tr('expectedEndDate')} value={project.expectedEndDate} onChange={e=>setProject({...project,expectedEndDate:e.target.value})}/>
+            <input type="date" className="border rounded-lg p-3" title={tr('actualEndDate')} value={project.actualEndDate} onChange={e=>setProject({...project,actualEndDate:e.target.value})}/>
+            <input className="border rounded-lg p-3" placeholder={tr('location')} value={project.location} onChange={e=>setProject({...project,location:e.target.value})}/>
+            <input className="border rounded-lg p-3" placeholder={tr('deliveryAddress')} value={project.deliveryAddress} onChange={e=>setProject({...project,deliveryAddress:e.target.value})}/>
+            <input type="number" min="0" className="border rounded-lg p-3" placeholder={tr('amount')} value={project.amount} onChange={e=>setProject({...project,amount:e.target.value})}/>
+            <input type="number" min="0" className="border rounded-lg p-3" placeholder={tr('costBudget')} value={project.costBudget} onChange={e=>setProject({...project,costBudget:e.target.value})}/>
+            <select className="border rounded-lg p-3" value={project.currency} onChange={e=>setProject({...project,currency:e.target.value})}><option>EGP</option><option>USD</option><option>EUR</option><option>SAR</option><option>AED</option></select>
+            <input className="border rounded-lg p-3" placeholder={tr('paymentTerms')} value={project.paymentTerms} onChange={e=>setProject({...project,paymentTerms:e.target.value})}/>
+            <textarea className="border rounded-lg p-3 md:col-span-2" rows="2" placeholder={tr('scope')} value={project.scope} onChange={e=>setProject({...project,scope:e.target.value})}></textarea>
+            <textarea className="border rounded-lg p-3 md:col-span-2" rows="2" placeholder={tr('notes')} value={project.notes} onChange={e=>setProject({...project,notes:e.target.value})}></textarea>
+            <div className="md:col-span-3 flex flex-wrap gap-2"><button className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold">{editingProjectCode?tr('save'):tr('add')}</button>{editingProjectCode&&<button type="button" onClick={()=>{setProject(blankProject());setEditingProjectCode('');}} className="bg-gray-100 rounded-lg px-5 py-3">{tr('clear')}</button>}</div>
+          </form></section>
+          <section className="bg-white p-5 rounded-xl border overflow-x-auto"><table className="w-full text-sm"><thead><tr className="bg-gray-50"><th className="p-2">{tr('projectCode')}</th><th className="p-2">{tr('projectName')}</th><th className="p-2">{tr('customers')}</th><th className="p-2">{tr('suppliers')}</th><th className="p-2">{tr('amount')}</th><th className="p-2">{tr('status')}</th><th className="p-2">{tr('viewFile')}</th></tr></thead><tbody>{filteredProjects.map(p=><tr key={p.code} className="border-t"><td className="p-2">{p.code}</td><td className="p-2">{p.name}</td><td className="p-2">{(p.clientCodes|| (p.clientCode?[p.clientCode]:[])).map(c=>clients.find(x=>x.code===c)?.name||c).join('، ')||'—'}</td><td className="p-2">{(p.vendorCodes||[]).map(c=>vendors.find(x=>x.code===c)?.name||c).join('، ')||'—'}</td><td className="p-2">{money(p.amount)} {p.currency||'EGP'}</td><td className="p-2">{p.status}</td><td className="p-2 whitespace-nowrap"><button onClick={()=>{setSelectedProjectCode(p.code);setTab('projectDetail');}} className="text-blue-700 font-bold me-2">{tr('viewFile')}</button><button onClick={()=>editProjectRecord(p)} className="text-gray-600">{tr('edit')}</button></td></tr>)}</tbody></table>{filteredProjects.length===0&&<p className="text-sm text-gray-500 mt-3">{tr('noProjects')}</p>}</section>
+        </div>}
+
+        {tab==='projectDetail'&&selectedProjectCode&&(()=>{const p=projects.find(x=>x.code===selectedProjectCode);if(!p)return <div className="bg-white p-5 rounded-xl">{tr('noProjects')}</div>;const events=projectEvents(p).filter(x=>includesText([x.type,x.referenceNo,x.note,x.partyCode,nameOfParty(x.partyType,x.partyCode)].join(' '),eventFilter));const payments=sumByType(projectEvents(p),'supplier_payment');const collections=sumByType(projectEvents(p),'customer_collection');return <div className="space-y-5">
+          <div className="flex flex-wrap justify-between gap-3 items-center"><div><h2 className="font-bold text-xl">{tr('projectFile')}: {p.name}</h2><p className="text-sm text-gray-500">{p.code} · {p.status}</p></div><div className="flex gap-2 no-print"><button onClick={()=>editProjectRecord(p)} className="bg-gray-100 px-4 py-2 rounded-lg">{tr('edit')}</button><button onClick={()=>{setReportType('project');setReportEntity(p.code);setTab('reports');}} className="bg-blue-600 text-white px-4 py-2 rounded-lg">{tr('reportCenter')}</button></div></div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3"><div className="bg-white rounded-xl p-4 border"><small className="text-gray-500">{tr('totalPayments')}</small><b className="block text-xl mt-1">{money(payments)} {p.currency||'EGP'}</b></div><div className="bg-white rounded-xl p-4 border"><small className="text-gray-500">{tr('totalCollections')}</small><b className="block text-xl mt-1">{money(collections)} {p.currency||'EGP'}</b></div><div className="bg-white rounded-xl p-4 border"><small className="text-gray-500">{tr('recordCount')}</small><b className="block text-xl mt-1">{events.length}</b></div></div>
+          <section className="bg-white rounded-xl border p-5"><h3 className="font-bold mb-3">{tr('projectFile')}</h3><div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">{[[tr('contractNo'),p.contractNo],[tr('purchaseOrderNo'),p.purchaseOrderNo],[tr('manager'),p.projectManager],[tr('startDate'),p.startDate],[tr('expectedEndDate'),p.expectedEndDate],[tr('actualEndDate'),p.actualEndDate],[tr('location'),p.location],[tr('deliveryAddress'),p.deliveryAddress],[tr('amount'),money(p.amount)+' '+(p.currency||'EGP')],[tr('costBudget'),money(p.costBudget)+' '+(p.currency||'EGP')],[tr('paymentTerms'),p.paymentTerms],[tr('scope'),p.scope],[tr('notes'),p.notes]].map(([k,v])=><div key={k} className="border-b pb-2"><span className="text-gray-500 block">{k}</span><b>{v||'—'}</b></div>)}</div><div className="mt-4"><b>{tr('customers')}:</b> {(p.clientCodes|| (p.clientCode?[p.clientCode]:[])).map(c=>clients.find(x=>x.code===c)?.name||c).join('، ')||'—'}<br/><b>{tr('suppliers')}:</b> {(p.vendorCodes||[]).map(c=>vendors.find(x=>x.code===c)?.name||c).join('، ')||'—'}</div></section>
+          <section className="bg-white rounded-xl border p-5"><h3 className="font-bold mb-3">{tr('addEvent')}</h3><form onSubmit={addProjectEvent} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            <select className="border rounded-lg p-3" value={projectEvent.type} onChange={e=>{const type=e.target.value;setProjectEvent({...projectEvent,type,partyType:['supplier_payment','purchase_request','supplier_confirmation','goods_received'].includes(type)?'vendor':['customer_delivery','customer_collection'].includes(type)?'client':projectEvent.partyType});}}><option value="purchase_request">{tr('purchaseRequest')}</option><option value="supplier_confirmation">{tr('supplierConfirmation')}</option><option value="goods_received">{tr('goodsReceived')}</option><option value="customer_delivery">{tr('customerDelivery')}</option><option value="supplier_payment">{tr('supplierPayment')}</option><option value="customer_collection">{tr('customerCollection')}</option><option value="general_note">{tr('generalNote')}</option></select>
+            <input type="date" required className="border rounded-lg p-3" value={projectEvent.date} onChange={e=>setProjectEvent({...projectEvent,date:e.target.value})}/>
+            <select className="border rounded-lg p-3" value={projectEvent.partyType} onChange={e=>setProjectEvent({...projectEvent,partyType:e.target.value,partyCode:''})}><option value="vendor">{tr('vendor')}</option><option value="client">{tr('client')}</option><option value="">—</option></select>
+            <select className="border rounded-lg p-3" value={projectEvent.partyCode} onChange={e=>setProjectEvent({...projectEvent,partyCode:e.target.value})}><option value="">{tr('selectParty')}</option>{(projectEvent.partyType==='vendor'?vendors:clients).map(x=><option key={x.code} value={x.code}>{x.name} ({x.code})</option>)}</select>
+            <input className="border rounded-lg p-3" placeholder={tr('referenceNo')} value={projectEvent.referenceNo} onChange={e=>setProjectEvent({...projectEvent,referenceNo:e.target.value})}/>
+            <input type="number" min="0" step="any" className="border rounded-lg p-3" placeholder={tr('quantity')} value={projectEvent.quantity} onChange={e=>setProjectEvent({...projectEvent,quantity:e.target.value})}/>
+            <input className="border rounded-lg p-3" placeholder={tr('unit')} value={projectEvent.unit} onChange={e=>setProjectEvent({...projectEvent,unit:e.target.value})}/>
+            <input type="number" min="0" step="any" className="border rounded-lg p-3" placeholder={tr('eventAmount')} value={projectEvent.amount} onChange={e=>setProjectEvent({...projectEvent,amount:e.target.value})}/>
+            <select className="border rounded-lg p-3" value={projectEvent.currency} onChange={e=>setProjectEvent({...projectEvent,currency:e.target.value})}><option>EGP</option><option>USD</option><option>EUR</option><option>SAR</option><option>AED</option></select>
+            <select className="border rounded-lg p-3" value={projectEvent.status} onChange={e=>setProjectEvent({...projectEvent,status:e.target.value})}><option value="open">{tr('open')}</option><option value="partial">{tr('partial')}</option><option value="full">{tr('full')}</option><option value="completed">{tr('completed')}</option><option value="notPaid">{tr('notPaid')}</option></select>
+            <textarea rows="2" className="border rounded-lg p-3 md:col-span-2" placeholder={tr('eventNote')} value={projectEvent.note} onChange={e=>setProjectEvent({...projectEvent,note:e.target.value})}></textarea>
+            <button className="bg-blue-600 text-white rounded-lg p-3 font-bold">{tr('saveEvent')}</button>
+          </form></section>
+          <section className="bg-white rounded-xl border p-5"><div className="flex flex-wrap justify-between gap-3 mb-3"><h3 className="font-bold">{tr('timeline')}</h3><input className="border rounded-lg p-2" placeholder={tr('reportSearch')} value={eventFilter} onChange={e=>setEventFilter(e.target.value)}/></div><div className="space-y-3">{events.length===0?<p className="text-gray-500">{tr('noEvents')}</p>:events.slice().reverse().map(ev=><article key={ev.id} className="border-s-4 border-blue-500 bg-gray-50 rounded-lg p-4"><div className="flex flex-wrap justify-between gap-2"><b>{eventLabel(ev.type)}</b><span className="text-xs text-gray-500">{eventDateLabel(ev.date)}</span></div><p className="text-sm mt-2">{ev.partyCode?nameOfParty(ev.partyType,ev.partyCode):''} {ev.referenceNo?'· '+ev.referenceNo:''}</p><p className="text-sm mt-1">{ev.quantity?`${ev.quantity} ${ev.unit||''}`:''} {ev.amount?`· ${money(ev.amount)} ${ev.currency||'EGP'}`:''} · {ev.status||''}</p>{ev.note&&<p className="mt-2 text-sm text-gray-700 whitespace-pre-wrap">{ev.note}</p>}<small className="text-xs text-gray-400">{ev.createdByName||''}</small></article>)}</div></section>
+        </div>})()}
+
+
+        {tab==='messages'&&<div className="space-y-5"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-bold text-xl">{tr('messages')}</h2><input className="border rounded-lg p-2" placeholder={tr('reportSearch')} value={messageFilter} onChange={e=>setMessageFilter(e.target.value)}/></div><section className="bg-white p-5 rounded-xl border"><h3 className="font-bold mb-3">{tr('newMessage')}</h3><form onSubmit={sendMessage} className="space-y-3"><input required list="active-recipient-list" className="w-full border rounded-lg p-3" placeholder={tr('recipients')} value={message.recipients} onChange={e=>setMessage({...message,recipients:e.target.value})}/><datalist id="active-recipient-list">{userDirectory.filter(u=>u.status==='active' && u.uid!==currentUser.uid).map(u=><option key={u.uid} value={u.username}>{u.fullName} — {u.jobTitle}</option>)}</datalist><input required className="w-full border rounded-lg p-3" placeholder={tr('subject')} value={message.subject} onChange={e=>setMessage({...message,subject:e.target.value})}/><textarea required rows="4" className="w-full border rounded-lg p-3" placeholder={tr('body')} value={message.body} onChange={e=>setMessage({...message,body:e.target.value})}></textarea><button className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold">{tr('send')}</button></form></section>
           <section className="bg-white p-5 rounded-xl border"><h3 className="font-bold border-b pb-3 mb-3">{tr('inbox')}</h3>{myMessages.length===0?<p className="text-sm text-gray-500">{tr('noMessages')}</p>:myMessages.slice().reverse().map(m=><article key={m.id} className="border rounded-lg p-4 mb-3"><div className="flex justify-between gap-2"><b className="text-blue-700">{m.subject}</b><span className="text-xs text-gray-400">{m.date}</span></div><p className="text-xs text-gray-500 mt-1">{m.senderName}</p><p className="mt-3 text-sm whitespace-pre-wrap">{m.body}</p></article>)}</section></div>}
+
+        {tab==='reports'&&<div className="space-y-5">
+          <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="font-bold text-xl">{tr('reportCenter')}</h2><div className="flex gap-2 no-print"><button onClick={()=>window.print()} className="bg-gray-800 text-white px-4 py-2 rounded-lg"><i className="fas fa-file-pdf me-2"></i>{tr('printPdf')}</button><button onClick={reportAsMessage} className="bg-blue-600 text-white px-4 py-2 rounded-lg"><i className="fas fa-paper-plane me-2"></i>{tr('sendReport')}</button></div></div>
+          <section className="bg-white p-4 rounded-xl border grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3 no-print"><select className="border rounded-lg p-3" value={reportType} onChange={e=>{setReportType(e.target.value);setReportEntity('');}}><option value="project">{tr('projectReport')}</option><option value="client">{tr('clientReport')}</option><option value="vendor">{tr('vendorReport')}</option><option value="cash">{tr('cashReport')}</option></select>{reportType==='project'?<select className="border rounded-lg p-3" value={reportEntity} onChange={e=>setReportEntity(e.target.value)}><option value="">{tr('allProjects')}</option>{projects.map(p=><option key={p.code} value={p.code}>{p.name} ({p.code})</option>)}</select>:reportType==='client'?<select className="border rounded-lg p-3" value={reportEntity} onChange={e=>setReportEntity(e.target.value)}><option value="">{tr('choose')}</option>{clients.map(c=><option key={c.code} value={c.code}>{c.name} ({c.code})</option>)}</select>:reportType==='vendor'?<select className="border rounded-lg p-3" value={reportEntity} onChange={e=>setReportEntity(e.target.value)}><option value="">{tr('choose')}</option>{vendors.map(v=><option key={v.code} value={v.code}>{v.name} ({v.code})</option>)}</select>:<span className="text-sm text-gray-500 self-center">{tr('supplierPayments')} / {tr('customerCollections')}</span>}<input className="border rounded-lg p-3" placeholder={tr('reportSearch')} value={reportSearch} onChange={e=>setReportSearch(e.target.value)}/><select className="border rounded-lg p-3" value={reportStatus} onChange={e=>setReportStatus(e.target.value)}><option value="all">{tr('allStatuses')}</option><option value="open">{tr('open')}</option><option value="partial">{tr('partial')}</option><option value="full">{tr('full')}</option><option value="completed">{tr('completed')}</option><option value="notPaid">{tr('notPaid')}</option></select><label className="text-sm">{tr('fromDate')}<input type="date" className="block border rounded-lg p-2 w-full" value={reportFrom} onChange={e=>setReportFrom(e.target.value)}/></label><label className="text-sm">{tr('toDate')}<input type="date" className="block border rounded-lg p-2 w-full" value={reportTo} onChange={e=>setReportTo(e.target.value)}/></label><button onClick={()=>{setReportSearch('');setReportFrom('');setReportTo('');setReportStatus('all');}} className="bg-gray-100 rounded-lg p-3">{tr('clear')}</button></section>
+          <section className="print-area bg-white rounded-xl border shadow-sm p-5 space-y-4"><div className="flex justify-between items-start gap-4 border-b pb-3"> <div>{companyInfo.logo&&<img src={companyInfo.logo} alt="Company" className="h-12 max-w-40 object-contain mb-2"/>}<h1 className="text-xl font-bold">{companyInfo.name||tr('app')}</h1><p className="text-sm text-gray-500">{companyInfo.taxNumber?tr('taxNumber')+': '+companyInfo.taxNumber:''}</p></div><div className="text-end"><h2 className="font-bold text-lg">{currentReportTitle}</h2><small className="text-gray-500">{new Date().toLocaleDateString(rtl?'ar-EG':'en-US')}</small></div></div>
+            {reportType==='project'&&reportProject&&<div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">{[[tr('projectCode'),reportProject.code],[tr('projectName'),reportProject.name],[tr('status'),reportProject.status],[tr('amount'),money(reportProject.amount)+' '+(reportProject.currency||'EGP')],[tr('customers'),(reportProject.clientCodes||[]).map(c=>clients.find(x=>x.code===c)?.name||c).join('، ')],[tr('suppliers'),(reportProject.vendorCodes||[]).map(c=>vendors.find(x=>x.code===c)?.name||c).join('، ')],[tr('manager'),reportProject.projectManager],[tr('location'),reportProject.location]].map(([k,v])=><div key={k} className="border-b pb-2"><small className="block text-gray-500">{k}</small><b>{v||'—'}</b></div>)}</div>}
+            {reportType==='client'&&clients.find(x=>x.code===reportEntity)&&(()=>{const c=clients.find(x=>x.code===reportEntity);return <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">{[[tr('name'),c.name],[tr('code'),c.code],[tr('taxRegistration'),c.taxNumber],[tr('contactPerson'),c.contactPerson],[tr('phone'),c.phone],[tr('mobile'),c.mobile],[tr('email'),c.email],[tr('address'),c.address],[tr('paymentTerms'),c.paymentTerms]].map(([k,v])=><div key={k}><small className="text-gray-500 block">{k}</small><b>{v||'—'}</b></div>)}</div>})()}
+            {reportType==='vendor'&&vendors.find(x=>x.code===reportEntity)&&(()=>{const v=vendors.find(x=>x.code===reportEntity);return <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">{[[tr('name'),v.name],[tr('code'),v.code],[tr('taxRegistration'),v.taxNumber],[tr('contactPerson'),v.contactPerson],[tr('phone'),v.phone],[tr('mobile'),v.mobile],[tr('email'),v.email],[tr('address'),v.address],[tr('paymentTerms'),v.paymentTerms]].map(([k,val])=><div key={k}><small className="text-gray-500 block">{k}</small><b>{val||'—'}</b></div>)}</div>})()}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3"><div className="bg-gray-50 p-3 rounded-lg"><small>{tr('recordCount')}</small><b className="block text-xl">{reportRows.length}</b></div><div className="bg-red-50 p-3 rounded-lg"><small>{tr('totalPayments')}</small><b className="block text-xl">{cashMapText(reportRows.filter(e=>e.type==='supplier_payment' && cashEventSettled(e)))}</b></div><div className="bg-green-50 p-3 rounded-lg"><small>{tr('totalCollections')}</small><b className="block text-xl">{cashMapText(reportRows.filter(e=>e.type==='customer_collection' && cashEventSettled(e)))}</b></div></div>
+            <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th>{tr('eventDate')}</th><th>{tr('projectName')}</th><th>{tr('eventType')}</th><th>{tr('eventParty')}</th><th>{tr('referenceNo')}</th><th>{tr('quantity')}</th><th>{tr('eventAmount')}</th><th>{tr('eventStatus')}</th><th>{tr('eventNote')}</th></tr></thead><tbody>{reportRows.map(e=><tr key={e.projectCode+'_'+e.id}><td>{eventDateLabel(e.date)}</td><td>{e.projectName} ({e.projectCode})</td><td>{eventLabel(e.type)}</td><td>{e.partyCode?nameOfParty(e.partyType,e.partyCode):'—'}</td><td>{e.referenceNo||'—'}</td><td>{e.quantity||'—'} {e.unit||''}</td><td>{e.amount?money(e.amount)+' '+(e.currency||'EGP'):'—'}</td><td>{e.status||'—'}</td><td className="whitespace-pre-wrap">{e.note||'—'}</td></tr>)}</tbody></table>{reportRows.length===0&&<p className="text-gray-500 py-4">{tr('noData')}</p>}</div>
+            <footer className="border-t pt-3 text-xs text-gray-500">{companyInfo.phone||''} {companyInfo.email||''} {companyInfo.address||''}</footer>
+          </section>
+        </div>}
 
         {tab==='userRequests'&&isAdmin&&<div className="space-y-5"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-bold text-xl">{tr('requestsReport')}</h2><select className="border rounded-lg p-2" value={requestFilter} onChange={e=>setRequestFilter(e.target.value)}><option value="all">{tr('allRequests')}</option><option value="pending">{tr('pendingLabel')}</option><option value="approved">{tr('approvedLabel')}</option><option value="rejected">{tr('rejectedLabel')}</option></select></div><section className="bg-white rounded-xl border shadow-sm overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="p-3 text-start">{tr('requestedUser')}</th><th className="p-3 text-start">{tr('requestDate')}</th><th className="p-3 text-start">{tr('requestStatus')}</th><th className="p-3 text-start">{tr('updateStatus')}</th></tr></thead><tbody>{filteredRequests.slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).map(req=><tr key={req.uid} className="border-t align-top"><td className="p-3"><b>{req.fullName}</b><div className="text-gray-500">{req.email}</div><div className="text-gray-500">{req.username} · {req.jobTitle}</div>{!req._hasAuthUid&&<div className="text-amber-700 text-xs mt-1">{tr('legacyRequest')}</div>}</td><td className="p-3 whitespace-nowrap">{req.createdAt?new Date(req.createdAt).toLocaleString(rtl?'ar-EG':'en-US'):'—'}</td><td className="p-3"><span className="rounded-full bg-gray-100 px-2 py-1">{requestStatusLabel(req.status)}</span></td><td className="p-3 min-w-44"><select className="border rounded-lg p-2 w-full" value={requestStatusValue(req.status)} onChange={e=>updateRequestStatus(req,e.target.value)}><option value="pending">{tr('pendingLabel')}</option><option value="approved">{tr('approvedLabel')}</option><option value="rejected">{tr('rejectedLabel')}</option></select></td></tr>)}</tbody></table>{filteredRequests.length===0&&<p className="p-5 text-gray-500">{tr('noData')}</p>}</section></div>}
 
