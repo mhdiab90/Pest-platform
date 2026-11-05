@@ -11,10 +11,15 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet" />
   <style>
-    body{font-family:'Cairo',sans-serif}button:disabled{opacity:.55;cursor:not-allowed}input,select,textarea{font:inherit}.nav-btn{transition:.15s}.nav-btn:hover{background:#f1f5f9}.nav-btn.active{background:#eff6ff;color:#1d4ed8;font-weight:700}
+    :root{--brand:#2563eb;--brand-hover:#1d4ed8;--brand-soft:#eff6ff}
+    body{font-family:'Cairo',sans-serif}button:disabled{opacity:.55;cursor:not-allowed}input,select,textarea{font:inherit}
+    .nav-btn{transition:.15s}.nav-btn:hover{background:#f1f5f9}.nav-btn.active{background:var(--brand-soft);color:var(--brand);font-weight:700}
+    .bg-blue-600{background-color:var(--brand)!important}.text-blue-600,.text-blue-700{color:var(--brand)!important}.border-blue-600{border-color:var(--brand)!important}.bg-blue-50{background-color:var(--brand-soft)!important}.hover\:bg-blue-700:hover{background-color:var(--brand-hover)!important}
+    .menu-item{display:block;width:100%;text-align:start;padding:.6rem .75rem;border-radius:.5rem}.menu-item:hover{background:#f1f5f9}
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -65,7 +70,11 @@ const words = {
     company:'اسم الشركة', signInHint:'استخدم البريد الإلكتروني وكلمة المرور المسجلين في النظام.',
     registrationHint:'سيتم إنشاء حساب دخول وإرسال طلب موافقة للمدير. لن تتمكن من استخدام النظام قبل الموافقة.',
     profile:'الملف الشخصي', adminOnly:'هذه الوظيفة متاحة لمدير النظام فقط.',
-    noAccount:'لا يوجد ملف مستخدم نشط لهذا الحساب.'
+    noAccount:'لا يوجد ملف مستخدم نشط لهذا الحساب.', requestsReport:'طلبات المستخدمين', allRequests:'كل الطلبات', requestDate:'تاريخ الطلب', requestStatus:'حالة الطلب', requestedUser:'بيانات مقدم الطلب',
+    pendingLabel:'قيد المراجعة', approvedLabel:'مقبول', rejectedLabel:'مرفوض', updateStatus:'تحديث الحالة', requestUpdated:'تم تحديث حالة الطلب.', companySettings:'بيانات الشركة', companyName:'اسم الشركة', companyLogo:'شعار الشركة', uploadLogo:'اختيار الشعار', companyPhone:'هاتف الشركة', companyEmail:'البريد الإلكتروني للشركة', companyAddress:'عنوان الشركة', taxNumber:'الرقم الضريبي', commercialRegister:'السجل التجاري', website:'الموقع الإلكتروني', accountDetails:'بيانات الحساب', accountRole:'نوع المستخدم',
+    excelImport:'استيراد من Excel', importHelp:'ملف واحد: أوراق Clients (Code, Name, Phone) وVendors (Code, Name, Phone) وProjects (Code, Name, ClientCode, Amount, Status)، أو ورقة واحدة بها عمود Type يحدد client أو vendor أو project.', importNow:'استيراد البيانات', importSuccess:'تم استيراد البيانات. عدد السجلات: ', importNoRows:'لم يتم العثور على سجلات صالحة.',
+    settings:'الإعدادات', personalDetails:'البيانات الشخصية', editProfile:'تعديل البيانات', saveProfile:'حفظ البيانات', theme:'ألوان البرنامج', chooseTheme:'اختر لون البرنامج', messageNotice:'رسالة جديدة', openMessages:'عرض الرسائل', unread:'غير مقروء', markRead:'تمت القراءة', noRecipients:'لا يوجد مستخدمون نشطون.', personalSaved:'تم تحديث بياناتك.', emailVerifySent:'تم إرسال رابط تأكيد إلى البريد الجديد. أكمل التأكيد ثم سجّل الدخول بالبريد الجديد.', legacyRequest:'طلب قديم — يلزم إعادة تقديم الطلب بالبريد الإلكتروني لاعتماده.', legacyReapply:'هذا طلب من النظام القديم ولا يرتبط بحساب Firebase Authentication. اطلب من صاحبه تقديم طلب جديد بالبريد الإلكتروني.',
+    recipientUser:'المستلم (اسم المستخدم)', statusActive:'نشط', statusDisabled:'معطل', themeBlue:'أزرق', themeGreen:'أخضر', themePurple:'بنفسجي', themeTeal:'فيروزي', themeRed:'أحمر'
   },
   en: {
     app:'Projects & Cash Flow Management', login:'Sign in', email:'Email address', password:'Password',
@@ -95,7 +104,11 @@ const words = {
     company:'Company name', signInHint:'Use the email address and password registered in the system.',
     registrationHint:'A sign-in account and an approval request will be created. You cannot use the system before approval.',
     profile:'Profile', adminOnly:'This action is available to the administrator only.',
-    noAccount:'No active user profile is linked to this account.'
+    noAccount:'No active user profile is linked to this account.', requestsReport:'User requests', allRequests:'All requests', requestDate:'Request date', requestStatus:'Request status', requestedUser:'Applicant details',
+    pendingLabel:'Pending review', approvedLabel:'Approved', rejectedLabel:'Rejected', updateStatus:'Update status', requestUpdated:'Request status updated.', companySettings:'Company settings', companyName:'Company name', companyLogo:'Company logo', uploadLogo:'Choose logo', companyPhone:'Company phone', companyEmail:'Company email', companyAddress:'Company address', taxNumber:'Tax number', commercialRegister:'Commercial register', website:'Website', accountDetails:'Account details', accountRole:'User role',
+    excelImport:'Import from Excel', importHelp:'One workbook: Clients (Code, Name, Phone), Vendors (Code, Name, Phone), Projects (Code, Name, ClientCode, Amount, Status) sheets, or one sheet with a Type column (client/vendor/project).', importNow:'Import data', importSuccess:'Data imported. Records: ', importNoRows:'No valid records were found.',
+    settings:'Settings', personalDetails:'Personal details', editProfile:'Edit profile', saveProfile:'Save details', theme:'App colors', chooseTheme:'Choose app color', messageNotice:'New message', openMessages:'Open messages', unread:'Unread', markRead:'Read', noRecipients:'No active users found.', personalSaved:'Your profile has been updated.', emailVerifySent:'A verification link was sent to the new email. Verify it, then sign in with the new address.', legacyRequest:'Legacy request — the applicant must submit a new email-based request before approval.', legacyReapply:'This is a legacy request without a Firebase Authentication account. Ask the applicant to submit a new request using their email address.',
+    recipientUser:'Recipient (username)', statusActive:'Active', statusDisabled:'Disabled', themeBlue:'Blue', themeGreen:'Green', themePurple:'Purple', themeTeal:'Teal', themeRed:'Red'
   }
 };
 
@@ -132,12 +145,45 @@ function App(){
   const [message,setMessage] = useState({recipients:'',subject:'',body:''});
   const [newPassword,setNewPassword] = useState('');
   const [currentPassword,setCurrentPassword] = useState('');
+  const [userDirectory,setUserDirectory] = useState([]);
+  const [showUserMenu,setShowUserMenu] = useState(false);
+  const [showThemeMenu,setShowThemeMenu] = useState(false);
+  const [profileSection,setProfileSection] = useState('personal');
+  const [profileForm,setProfileForm] = useState({fullName:'',username:'',jobTitle:'',email:''});
+  const [profileEmailPassword,setProfileEmailPassword] = useState('');
+  const [companyForm,setCompanyForm] = useState({name:'',logo:'',phone:'',email:'',address:'',taxNumber:'',commercialRegister:'',website:''});
+  const [excelSummary,setExcelSummary] = useState('');
+  const [notificationToast,setNotificationToast] = useState(null);
+  const messageIdsRef = useRef(null);
+  const [requestFilter,setRequestFilter] = useState('all');
+  const [theme,setTheme] = useState(()=>localStorage.getItem('pestTheme') || 'blue');
 
   useEffect(()=>{
     document.documentElement.lang = lang;
     document.documentElement.dir = rtl ? 'rtl' : 'ltr';
     localStorage.setItem('pestLang',lang);
   },[lang]);
+
+  const themeOptions={blue:{main:'#2563eb',hover:'#1d4ed8',soft:'#eff6ff'},green:{main:'#059669',hover:'#047857',soft:'#ecfdf5'},purple:{main:'#7c3aed',hover:'#6d28d9',soft:'#f5f3ff'},teal:{main:'#0d9488',hover:'#0f766e',soft:'#f0fdfa'},red:{main:'#dc2626',hover:'#b91c1c',soft:'#fef2f2'}};
+  useEffect(()=>{
+    const chosen=themeOptions[theme] || themeOptions.blue;
+    document.documentElement.style.setProperty('--brand',chosen.main);
+    document.documentElement.style.setProperty('--brand-hover',chosen.hover);
+    document.documentElement.style.setProperty('--brand-soft',chosen.soft);
+    localStorage.setItem('pestTheme',theme);
+  },[theme]);
+
+  // Company name and logo are intentionally public branding data; writes remain admin-only.
+  useEffect(()=>{
+    const ref=db.ref('companyInfo');
+    const handler=s=>{const value=s.val() || {};setCompanyInfo(value);setCompanyForm({name:value.name || '',logo:value.logo || '',phone:value.phone || '',email:value.email || '',address:value.address || '',taxNumber:value.taxNumber || '',commercialRegister:value.commercialRegister || '',website:value.website || ''});};
+    ref.on('value',handler,err=>console.error('Company settings listener:',err));
+    return ()=>ref.off('value',handler);
+  },[]);
+
+  useEffect(()=>{
+    if(currentUser) setProfileForm({fullName:currentUser.fullName || '',username:currentUser.username || '',jobTitle:currentUser.jobTitle || '',email:currentUser.email || ''});
+  },[currentUser]);
 
   // Authentication is checked first. No database read is attempted before a user signs in.
   useEffect(()=>{
@@ -166,6 +212,10 @@ function App(){
           await auth.signOut();
           return;
         }
+        if(fbUser.email && profile.email!==fbUser.email){
+          db.ref('users/'+fbUser.uid+'/email').set(fbUser.email).catch(err=>console.warn('Email profile sync:',err));
+          profile.email=fbUser.email;
+        }
         setCurrentUser({...profile,uid:fbUser.uid,email:fbUser.email || profile.email || ''});
         setAuthError('');
       }catch(err){
@@ -188,7 +238,7 @@ function App(){
       ref.on('value',handler,err=>console.error('Database listener '+path,err));
       refs.push({ref,handler});
     };
-    watch('companyInfo',s=>setCompanyInfo(s.val() || {name:tr('company'),logo:''}));
+    watch('userDirectory',s=>setUserDirectory(toArray(s.val())));
     watch('clients',s=>setClients(toArray(s.val())));
     watch('vendors',s=>setVendors(toArray(s.val())));
     watch('quotes',s=>setQuotes(toArray(s.val())));
@@ -196,10 +246,40 @@ function App(){
     watch('inflows',s=>setInflows(toArray(s.val())));
     watch('outflows',s=>setOutflows(toArray(s.val())));
     watch('logs',s=>setLogs(toArray(s.val())));
-    watch('messages/'+currentUser.uid,s=>setMessages(toArray(s.val())));
+    messageIdsRef.current=null;
+    watch('messages/'+currentUser.uid,s=>{
+      const next=toArray(s.val());
+      if(messageIdsRef.current===null){messageIdsRef.current=new Set(next.map(m=>m.id));}
+      else{
+        next.forEach(m=>{
+          if(!messageIdsRef.current.has(m.id) && m.senderUid!==currentUser.uid && m.read!==true){
+            setNotificationToast(m);
+          }
+        });
+        messageIdsRef.current=new Set(next.map(m=>m.id));
+      }
+      setMessages(next);
+    });
     if(currentUser.role==='admin'){
-      watch('users',s=>setActiveUsers(toArray(s.val())));
-      watch('userRequests',s=>setUserRequests(toArray(s.val())));
+      watch('users',s=>{
+        const rawUsers=s.val()||{};const users=toArray(rawUsers);setActiveUsers(users);
+        const updates={};
+        Object.entries(rawUsers).forEach(([uid,u])=>{
+          if(!u) return;
+          const linkedToAuth=Boolean(u.uid) || uid===currentUser.uid;
+          if(uid===currentUser.uid && !u.uid) updates['users/'+uid+'/uid']=uid;
+          // Never expose legacy username-keyed accounts in the recipient directory.
+          if(linkedToAuth && Object.prototype.hasOwnProperty.call(u,'password')) updates['users/'+uid+'/password']=null;
+          if(linkedToAuth && ['active','نشط','مفعل','enabled'].includes(String(u.status||'').toLowerCase())) updates['userDirectory/'+uid]={uid,username:u.username||'',fullName:u.fullName||'',jobTitle:u.jobTitle||'',status:'active'};
+        });
+        if(Object.keys(updates).length) db.ref().update(updates).catch(err=>console.warn('Directory sync / password cleanup:',err));
+      });
+      watch('userRequests',s=>{
+        const rawRequests=s.val()||{};setUserRequests(toArray(rawRequests));
+        const cleanup={};
+        Object.entries(rawRequests).forEach(([key,req])=>{if(req && Object.prototype.hasOwnProperty.call(req,'password')) cleanup['userRequests/'+key+'/password']=null;});
+        if(Object.keys(cleanup).length) db.ref().update(cleanup).catch(err=>console.warn('Legacy request password cleanup:',err));
+      });
     }else{
       setActiveUsers([]);setUserRequests([]);
     }
@@ -216,17 +296,17 @@ function App(){
     if(code==='PERMISSION_DENIED' || String(err && err.message).toLowerCase().includes('permission')) return tfn('permission');
     return tfn('generic')+(err && err.message ? err.message : 'Unknown error');
   }
-  function toArray(obj){return obj ? Object.entries(obj).map(([key,val])=>({...val,id:val && val.id ? val.id : key,uid:val && val.uid ? val.uid : key})) : [];}
+  function toArray(obj){return obj ? Object.entries(obj).map(([key,val])=>({...val,id:val && val.id ? val.id : key,uid:val && val.uid ? val.uid : key,_hasAuthUid:Boolean(val && val.uid)})) : [];}
   const isAdmin=currentUser && currentUser.role==='admin';
   const money=n=>new Intl.NumberFormat(rtl?'ar-EG':'en-US',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n||0));
   const accepted=s=>['مقبول','approved','Approved'].includes(s);
   const collected=s=>['تم التحصيل','collected','Collected'].includes(s);
   const paid=s=>['تم السداد','paid','Paid'].includes(s);
 
-  async function addLog(action){
-    if(!currentUser) return;
+  async function addLog(action,userOverride=currentUser){
+    if(!userOverride) return;
     const id=db.ref('logs').push().key;
-    await db.ref('logs/'+id).set({id,user:currentUser.fullName || currentUser.email,time:new Date().toLocaleString(rtl?'ar-EG':'en-US'),action});
+    await db.ref('logs/'+id).set({id,user:userOverride.fullName || userOverride.email,time:new Date().toLocaleString(rtl?'ar-EG':'en-US'),action});
   }
 
   async function handleLogin(e){
@@ -265,7 +345,7 @@ function App(){
   }
 
   async function sendPasswordReset(){
-    const email=(view==='login'?login.email:request.email).trim();
+    const email=(auth.currentUser?.email || (view==='login'?login.email:request.email)).trim();
     if(!email){setAuthError(rtl?'أدخل بريدك الإلكتروني أولاً.':'Enter your email address first.');return;}
     try{await auth.sendPasswordResetEmail(email);setAuthError('');setAuthSuccess(tr('sentReset'));}
     catch(err){setAuthError(firebaseErrorMessage(err,tr));}
@@ -291,6 +371,121 @@ function App(){
         await addLog('رفض طلب حساب: '+req.fullName);
       }
     }catch(err){alert(firebaseErrorMessage(err,tr));}
+  }
+
+
+  async function updateRequestStatus(req,status){
+    if(!isAdmin || !req.uid) return;
+    try{
+      if(!req._hasAuthUid){
+        if(status==='approved') return alert(tr('legacyReapply'));
+        await db.ref('userRequests/'+req.id+'/status').set(status==='pending'?'مؤجل':'غير موافق');
+        await addLog('تعديل حالة طلب قديم '+req.fullName+' إلى '+status);
+        return;
+      }
+      if(status==='approved'){
+        await db.ref('users/'+req.uid).set({uid:req.uid,email:req.email,username:req.username,fullName:req.fullName,jobTitle:req.jobTitle,role:'user',status:'active',avatar:'',createdAt:firebase.database.ServerValue.TIMESTAMP});
+        await db.ref('userDirectory/'+req.uid).set({uid:req.uid,username:req.username,fullName:req.fullName,jobTitle:req.jobTitle,status:'active'});
+      }else{
+        const existing=await db.ref('users/'+req.uid).once('value');
+        if(existing.exists()) await db.ref('users/'+req.uid+'/status').set('disabled');
+        const directoryEntry=await db.ref('userDirectory/'+req.uid).once('value');
+        if(directoryEntry.exists()) await db.ref('userDirectory/'+req.uid+'/status').set('disabled');
+      }
+      await db.ref('userRequests/'+req.uid+'/status').set(status);
+      await addLog('تغيير حالة طلب '+req.fullName+' إلى '+status);
+    }catch(err){alert(firebaseErrorMessage(err,tr));}
+  }
+
+  async function saveCompany(e){
+    e.preventDefault();if(!isAdmin) return;
+    const name=companyForm.name.trim();if(!name) return alert(tr('companyName'));
+    try{await db.ref('companyInfo').update({name,logo:companyForm.logo || '',phone:companyForm.phone.trim(),email:companyForm.email.trim(),address:companyForm.address.trim(),taxNumber:companyForm.taxNumber.trim(),commercialRegister:companyForm.commercialRegister.trim(),website:companyForm.website.trim(),updatedAt:firebase.database.ServerValue.TIMESTAMP});await addLog('تحديث بيانات الشركة');alert(tr('saved'));}
+    catch(err){alert(firebaseErrorMessage(err,tr));}
+  }
+
+  function readImageFile(file,maxBytes=450000){
+    return new Promise((resolve,reject)=>{
+      if(!file || !file.type.startsWith('image/')) return reject(new Error(rtl?'اختر ملف صورة صالحاً.':'Choose a valid image file.'));
+      if(file.size>maxBytes) return reject(new Error(rtl?'حجم الصورة أكبر من الحد المسموح.':'Image exceeds the allowed size.'));
+      const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('FILE_READ_ERROR'));reader.readAsDataURL(file);
+    });
+  }
+
+  async function uploadCompanyLogo(e){
+    const file=e.target.files && e.target.files[0];if(!file) return;
+    try{const logo=await readImageFile(file);setCompanyForm(old=>({...old,logo}));}
+    catch(err){alert(err.message);}
+  }
+
+  async function saveProfile(e){
+    e.preventDefault();
+    const fullName=profileForm.fullName.trim(),username=profileForm.username.trim(),jobTitle=profileForm.jobTitle.trim(),email=profileForm.email.trim().toLowerCase();
+    if(!fullName || !username || !jobTitle || !email) return alert(tr('noData'));
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return alert(tr('invalidEmail'));
+    if(/[.#$\[\]/]/.test(username)) return alert('Username contains invalid Firebase characters.');
+    try{
+      const directory=await db.ref('userDirectory').once('value');
+      const duplicate=Object.entries(directory.val()||{}).some(([uid,u])=>uid!==currentUser.uid && String(u.username||'').toLowerCase()===username.toLowerCase());
+      if(duplicate) return alert(rtl?'اسم المستخدم مستخدم بالفعل.':'Username is already in use.');
+      const emailChanged=email.toLowerCase()!==String(currentUser.email||'').toLowerCase();
+      if(emailChanged){
+        if(!profileEmailPassword) return alert(tr('oldPasswordRequired'));
+        const credential=firebase.auth.EmailAuthProvider.credential(auth.currentUser.email,profileEmailPassword);
+        await auth.currentUser.reauthenticateWithCredential(credential);
+        await auth.currentUser.verifyBeforeUpdateEmail(email);
+      }
+      const savedEmail=currentUser.email;
+      await db.ref('users/'+currentUser.uid).update({uid:currentUser.uid,email:savedEmail,fullName,username,jobTitle});
+      await db.ref('userDirectory/'+currentUser.uid).set({uid:currentUser.uid,fullName,username,jobTitle,status:'active'});
+      const updatedUser={...currentUser,uid:currentUser.uid,email:savedEmail,fullName,username,jobTitle};setCurrentUser(updatedUser);setProfileForm(old=>({...old,email:savedEmail}));setProfileEmailPassword('');await addLog('تعديل البيانات الشخصية',updatedUser);alert(emailChanged?tr('emailVerifySent'):tr('personalSaved'));
+    }catch(err){alert(firebaseErrorMessage(err,tr));}
+  }
+
+  async function openMessages(){
+    setTab('messages');setNotificationToast(null);
+    const unread=messages.filter(m=>m.read!==true);
+    await Promise.all(unread.map(m=>db.ref('messages/'+currentUser.uid+'/'+m.id).update({read:true}).catch(err=>console.warn('Mark message read:',err))));
+  }
+
+  async function sendExcelImport(e){
+    e.preventDefault();if(!isAdmin) return;
+    const file=e.target.elements.excelFile.files[0];if(!file) return alert(tr('noData'));
+    try{
+      const buffer=await file.arrayBuffer();
+      const workbook=XLSX.read(buffer,{type:'array'});
+      const updates={};let imported=0;let skipped=0;
+      const norm=v=>String(v||'').trim().toLowerCase().replace(/[\s_\-]+/g,'');
+      const aliases={type:['type','recordtype','نوع','النوع'],phone:['phone','mobile','telephone','هاتف','الهاتف','تليفون'],clientCode:['clientcode','customercode','كود العميل','كودالعميل'],amount:['amount','value','القيمة','المبلغ'],status:['status','الحالة']};
+      const get=(row,keys)=>{for(const [k,v] of Object.entries(row)){if(keys.map(norm).includes(norm(k)) && v!==undefined && v!==null && String(v).trim()!=='') return String(v).trim();}return '';};
+      workbook.SheetNames.forEach(sheetName=>{
+        const rows=XLSX.utils.sheet_to_json(workbook.Sheets[sheetName],{defval:'',raw:false});
+        rows.forEach(row=>{
+          const typeRaw=get(row,aliases.type).toLowerCase();
+          const sheet=norm(sheetName);
+          let type=typeRaw;
+          if(!type){if(['clients','client','customers','customer','العملاء','عميل'].includes(sheet)) type='client';else if(['vendors','vendor','suppliers','supplier','الموردون','الموردين','مورد'].includes(sheet)) type='vendor';else if(['projects','project','المشروعات','المشاريع','مشروع'].includes(sheet)) type='project';}
+          if(['clients','customer','customers','العملاء','عميل'].includes(type)) type='client';
+          if(['vendors','supplier','suppliers','الموردون','الموردين','مورد'].includes(type)) type='vendor';
+          if(['projects','المشروعات','المشاريع','مشروع'].includes(type)) type='project';
+          const codeKeys=type==='project'?['projectcode','code','كودالمشروع','كود']:type==='vendor'?['vendorcode','suppliercode','code','كودالمورد','كود']:['clientcode','customercode','code','كودالعميل','كود'];
+          const nameKeys=type==='project'?['projectname','name','اسم المشروع','اسمالمشروع','الاسم','اسم']:type==='vendor'?['vendorname','suppliername','name','اسم المورد','اسمالمورد','الاسم','اسم']:['clientname','customername','name','اسم العميل','اسمالعميل','الاسم','اسم'];
+          const code=get(row,codeKeys),name=get(row,nameKeys);
+          if(!['client','vendor','project'].includes(type)||!code||!name||/[.#$\[\]/]/.test(code)){skipped++;return;}
+          if(type==='client'||type==='vendor'){
+            const path=(type==='client'?'clients/':'vendors/')+code;
+            updates[path+'/code']=code;updates[path+'/name']=name;updates[path+'/phone']=get(row,aliases.phone);imported++;
+          }else{
+            const path='projects/'+code;
+            const amountText=get(row,aliases.amount).replace(/,/g,'');
+            const amount=Number(amountText||0);
+            updates[path+'/code']=code;updates[path+'/name']=name;updates[path+'/clientCode']=get(row,aliases.clientCode);updates[path+'/amount']=Number.isFinite(amount)?amount:0;updates[path+'/status']=get(row,aliases.status)||'جاري';imported++;
+          }
+        });
+      });
+      if(!imported) return alert(tr('importNoRows'));
+      await db.ref().update(updates);await addLog('استيراد بيانات من Excel: '+imported+' سجل');setExcelSummary(tr('importSuccess')+imported+(skipped?' · '+skipped+' skipped':''));e.target.reset();
+    }catch(err){console.error('Excel import:',err);alert(firebaseErrorMessage(err,tr));}
   }
 
   async function addMaster(e){
@@ -324,16 +519,15 @@ function App(){
 
   async function sendMessage(e){
     e.preventDefault();
-    if(!isAdmin) return;
     const names=message.recipients.split(',').map(x=>x.trim()).filter(Boolean);
     if(!names.length || !message.subject.trim() || !message.body.trim()) return alert(tr('noData'));
     const missing=[];const tasks=[];
     names.forEach(name=>{
-      const found=activeUsers.find(u=>u.email && u.uid && String(u.username||'').toLowerCase()===name.toLowerCase());
+      const found=userDirectory.find(u=>u.status==='active' && String(u.username||'').toLowerCase()===name.toLowerCase());
       if(!found || !found.uid) missing.push(name);
       else{
         const id=db.ref('messages/'+found.uid).push().key;
-        tasks.push(db.ref('messages/'+found.uid+'/'+id).set({id,recipientUid:found.uid,senderUid:currentUser.uid,senderName:currentUser.fullName,subject:message.subject.trim(),body:message.body.trim(),date:new Date().toLocaleString(rtl?'ar-EG':'en-US')}));
+        tasks.push(db.ref('messages/'+found.uid+'/'+id).set({id,recipientUid:found.uid,senderUid:currentUser.uid,senderName:currentUser.fullName,subject:message.subject.trim(),body:message.body.trim(),date:new Date().toLocaleString(rtl?'ar-EG':'en-US'),read:false}));
       }
     });
     try{
@@ -369,8 +563,13 @@ function App(){
     }catch(err){alert(firebaseErrorMessage(err,tr));}
   }
 
-  const pendingRequests=userRequests.filter(r=>r.status==='pending' && r.uid);
+  const pendingRequests=userRequests.filter(r=>['pending','مؤجل'].includes(String(r.status||'').toLowerCase()) && r.uid);
+  const unreadMessages=messages.filter(m=>m.read!==true);
   const myMessages=messages;
+  const requestStatusValue=v=>{const x=String(v||'pending').toLowerCase();if(['approved','موافق'].includes(x))return 'approved';if(['rejected','غير موافق','مرفوض'].includes(x))return 'rejected';return 'pending';};
+  const requestStatusLabel=v=>{const x=requestStatusValue(v);return x==='approved'?tr('approvedLabel'):x==='rejected'?tr('rejectedLabel'):tr('pendingLabel');};
+  const filteredRequests=userRequests.filter(r=>requestFilter==='all'||requestStatusValue(r.status)===requestFilter);
+  const themeNames={blue:'themeBlue',green:'themeGreen',purple:'themePurple',teal:'themeTeal',red:'themeRed'};
   const selectedItems=account.type==='client'?clients:vendors;
   const chosen=selectedItems.find(x=>x.code===account.code);
   const totalDue=account.type==='client'
@@ -380,14 +579,14 @@ function App(){
     ? inflows.filter(x=>x.clientCode===account.code && collected(x.status)).reduce((s,x)=>s+Number(x.amount||0),0)
     : outflows.filter(x=>x.vendorCode===account.code && paid(x.status)).reduce((s,x)=>s+Number(x.amount||0),0);
 
-  const nav=[['dashboard','fa-gauge'],['statement','fa-file-invoice-dollar'],['master','fa-database'],['projects','fa-diagram-project'],['messages','fa-envelope'],['profile','fa-user-gear']];
+  const nav=[['dashboard','fa-gauge'],['statement','fa-file-invoice-dollar'],['master','fa-database'],['projects','fa-diagram-project'],['messages','fa-envelope'],['profile','fa-user-gear'],...(isAdmin?[['userRequests','fa-user-clock'],['companySettings','fa-building']]:[])];
 
   if(!currentUser){
     return <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
       <div className="absolute top-4 left-4"><button onClick={()=>setLang(rtl?'en':'ar')} className="bg-white text-slate-900 px-4 py-2 rounded-lg font-bold">{tr('language')}</button></div>
       <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-7">
-        <div className="text-center mb-6"><div className="w-16 h-16 rounded-full bg-blue-600 text-white grid place-items-center mx-auto mb-3 text-2xl"><i className="fas fa-building"></i></div>
-          <h1 className="text-xl font-bold text-slate-800">{tr('app')}</h1><p className="text-sm text-gray-500 mt-2">{companyInfo.name}</p></div>
+        <div className="text-center mb-6">{companyInfo.logo?<img src={companyInfo.logo} alt="Company logo" className="h-20 max-w-48 object-contain mx-auto mb-3"/>:<div className="w-16 h-16 rounded-full bg-blue-600 text-white grid place-items-center mx-auto mb-3 text-2xl"><i className="fas fa-building"></i></div>}
+          <h1 className="text-xl font-bold text-slate-800">{companyInfo.name || tr('app')}</h1><p className="text-sm text-gray-500 mt-2">{tr('app')}</p></div>
         {authError && <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-lg mb-3 text-sm">{authError}</div>}
         {authSuccess && <div className="bg-green-50 border border-green-200 text-green-700 p-3 rounded-lg mb-3 text-sm">{authSuccess}</div>}
         {!authReady && <div className="text-center text-sm text-gray-500 mb-3"><i className="fas fa-spinner fa-spin mr-2"></i>{tr('loading')}</div>}
@@ -417,28 +616,30 @@ function App(){
   }
 
   return <div className="min-h-screen flex flex-col bg-gray-100">
-    <header className="bg-slate-900 text-white p-3 px-5 flex justify-between items-center gap-3">
-      <div className="flex items-center gap-3"><i className="fas fa-cubes text-blue-400 text-2xl"></i><div><h1 className="font-bold">{companyInfo.name || tr('app')}</h1><p className="text-xs text-slate-400">{tr('app')}</p></div></div>
+    <header className="text-white p-3 px-5 flex justify-between items-center gap-3 shadow-lg" style={{background:themeOptions[theme]?.main || themeOptions.blue.main}}>
+      <div className="flex items-center gap-3">{companyInfo.logo?<img src={companyInfo.logo} alt="Logo" className="h-10 w-10 object-contain bg-white rounded p-1"/>:<i className="fas fa-cubes text-white text-2xl"></i>}<div><h1 className="font-bold">{companyInfo.name || tr('app')}</h1><p className="text-xs text-white/75">{tr('app')}</p></div></div>
       <div className="flex items-center gap-3">
-        <button onClick={()=>setLang(rtl?'en':'ar')} className="bg-slate-700 px-3 py-2 rounded-lg text-sm">{tr('language')}</button>
-        <button onClick={()=>setTab('messages')} className="relative"><i className="fas fa-envelope text-xl"></i>{myMessages.length>0&&<span className="absolute -top-2 -right-2 rounded-full bg-blue-600 text-xs px-1.5">{myMessages.length}</span>}</button>
-        {isAdmin&&<div className="relative"><button onClick={()=>setShowRequests(!showRequests)} className="relative"><i className="fas fa-bell text-xl"></i>{pendingRequests.length>0&&<span className="absolute -top-2 -right-2 rounded-full bg-red-600 text-xs px-1.5">{pendingRequests.length}</span>}</button>
-          {showRequests&&<div className="absolute top-9 right-0 z-50 w-80 bg-white text-slate-800 rounded-xl shadow-xl p-4"><h3 className="font-bold border-b pb-2">{tr('pending')} ({pendingRequests.length})</h3><div className="max-h-72 overflow-auto space-y-3 mt-3">
-            {pendingRequests.length===0&&<p className="text-sm text-gray-500">{tr('noData')}</p>}
-            {pendingRequests.map(req=><div key={req.uid} className="border rounded-lg p-3 text-sm"><p className="font-bold">{req.fullName}</p><p>{req.email}</p><p className="text-gray-500">{req.jobTitle} · {req.username}</p><div className="flex gap-2 mt-2"><button onClick={()=>approveRequest(req,true)} className="bg-green-600 text-white rounded px-3 py-1 flex-1">{tr('approve')}</button><button onClick={()=>approveRequest(req,false)} className="bg-red-600 text-white rounded px-3 py-1 flex-1">{tr('reject')}</button></div></div>)}
-          </div></div>}</div>}
-        <div className="hidden sm:block text-right"><p className="font-bold text-sm">{currentUser.fullName}</p><p className="text-xs text-green-300">{currentUser.jobTitle}</p></div>
-        <button onClick={logout} title={tr('logout')} className="text-red-300"><i className="fas fa-power-off text-xl"></i></button>
+        <button onClick={()=>setLang(rtl?'en':'ar')} className="bg-black/20 px-3 py-2 rounded-lg text-sm">{tr('language')}</button>
+        <button onClick={openMessages} className="relative p-2" title={tr('messages')}><i className="fas fa-envelope text-xl"></i>{unreadMessages.length>0&&<span className="absolute -top-1 -right-1 rounded-full bg-red-600 text-xs px-1.5">{unreadMessages.length}</span>}</button>
+        {isAdmin&&<button onClick={()=>{setTab('userRequests');setShowRequests(false);}} className="relative p-2" title={tr('pending')}><i className="fas fa-bell text-xl"></i>{pendingRequests.length>0&&<span className="absolute -top-1 -right-1 rounded-full bg-red-600 text-xs px-1.5">{pendingRequests.length}</span>}</button>}
+        <div className="relative"><button onClick={()=>{setShowThemeMenu(!showThemeMenu);setShowUserMenu(false);}} className="p-2" title={tr('theme')}><i className="fas fa-palette text-xl"></i></button>
+          {showThemeMenu&&<div className="absolute top-10 right-0 z-50 w-48 bg-white text-slate-800 rounded-xl shadow-xl p-3"><p className="font-bold text-sm mb-2">{tr('chooseTheme')}</p>{Object.keys(themeOptions).map(k=><button key={k} onClick={()=>{setTheme(k);setShowThemeMenu(false);}} className="menu-item flex items-center gap-2"><span className="w-4 h-4 rounded-full" style={{background:themeOptions[k].main}}></span>{tr(themeNames[k])}{theme===k?' ✓':''}</button>)}</div>}
+        </div>
+        <div className="relative"><button onClick={()=>{setShowUserMenu(!showUserMenu);setShowThemeMenu(false);}} className="flex items-center gap-2 p-1 rounded-lg hover:bg-black/10"><span className="hidden sm:block text-end"><b className="block text-sm">{currentUser.fullName}</b><small className="text-white/75">{currentUser.jobTitle}</small></span><i className="fas fa-cog text-xl"></i></button>
+          {showUserMenu&&<div className="absolute top-11 end-0 z-50 w-72 bg-white text-slate-800 rounded-xl shadow-xl border p-3"><div className="flex items-center gap-3 border-b pb-3 mb-2">{currentUser.avatar?<img src={currentUser.avatar} alt="Profile" className="w-12 h-12 rounded-full object-cover"/>:<div className="w-12 h-12 rounded-full bg-blue-600 text-white grid place-items-center font-bold">{(currentUser.fullName||'?').charAt(0)}</div>}<div className="min-w-0"><b className="block truncate">{currentUser.fullName}</b><small className="block text-gray-500 truncate">{currentUser.email}</small><small className="block text-gray-500 truncate">@{currentUser.username} · {currentUser.jobTitle}</small></div></div><p className="text-xs font-bold text-gray-400 px-2 py-1">{tr('accountDetails')}</p><button className="menu-item" onClick={()=>{setTab('profile');setProfileSection('personal');setShowUserMenu(false);}}><i className="fas fa-user ml-2"></i>{tr('personalDetails')}</button><button className="menu-item" onClick={()=>{setTab('profile');setProfileSection('security');setShowUserMenu(false);}}><i className="fas fa-key ml-2"></i>{tr('savePassword')}</button><button className="menu-item" onClick={()=>{setTab('profile');setProfileSection('photo');setShowUserMenu(false);}}><i className="fas fa-image ml-2"></i>{tr('changePhoto')}</button><button className="menu-item" onClick={()=>{setTab('messages');setShowUserMenu(false);}}><i className="fas fa-envelope ml-2"></i>{tr('messages')}</button></div>}
+        </div>
+        <button onClick={logout} title={tr('logout')} className="p-2 rounded-lg hover:bg-black/10 text-white"><i className="fas fa-sign-out-alt text-xl"></i></button>
       </div>
     </header>
+    {notificationToast&&<div className="fixed top-20 end-4 z-[70] bg-white border shadow-xl rounded-xl p-4 max-w-sm"><p className="font-bold">{tr('messageNotice')}</p><p className="text-sm text-gray-600 mt-1">{notificationToast.senderName}: {notificationToast.subject}</p><button onClick={openMessages} className="mt-2 text-sm text-blue-700 font-bold">{tr('openMessages')}</button><button onClick={()=>setNotificationToast(null)} className="ms-4 text-sm text-gray-500">×</button></div>}
     <div className="flex flex-1 flex-col md:flex-row">
       <aside className="w-full md:w-60 bg-white border-gray-200 p-3 space-y-1">
-        {nav.map(([id,icon])=><button key={id} onClick={()=>setTab(id)} className={`nav-btn ${tab===id?'active':''} w-full text-start p-3 rounded-lg flex items-center gap-3`}><i className={`fas ${icon} w-5`}></i><span>{tr(id)}</span></button>)}
+        {nav.map(([id,icon])=><button key={id} onClick={()=>setTab(id)} className={`nav-btn ${tab===id?'active':''} w-full text-start p-3 rounded-lg flex items-center gap-3`}><i className={`fas ${icon} w-5`}></i><span>{tr(id==='userRequests'?'requestsReport':id)}</span></button>)}
       </aside>
       <main className="flex-1 p-4 md:p-6 overflow-auto">
         {tab==='dashboard'&&<div className="space-y-5"><h2 className="font-bold text-xl">{tr('dashboard')}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            {[[tr('clients'),clients.length,'fa-user-tie'],[tr('vendors'),vendors.length,'fa-truck'],[tr('projects'),projects.length,'fa-diagram-project'],[tr('users'),isAdmin?activeUsers.length:'—','fa-users']].map(([label,value,icon])=><div key={label} className="bg-white p-5 rounded-xl border shadow-sm flex justify-between items-center"><div><p className="text-sm text-gray-500">{label}</p><p className="text-2xl font-bold mt-1">{value}</p></div><i className={`fas ${icon} text-2xl text-blue-500`}></i></div>)}
+            {[[tr('clients'),clients.length,'fa-user-tie'],[tr('vendors'),vendors.length,'fa-truck'],[tr('projects'),projects.length,'fa-diagram-project'],[tr('users'),isAdmin?activeUsers.filter(u=>u._hasAuthUid || u.uid===currentUser.uid).length:'—','fa-users']].map(([label,value,icon])=><div key={label} className="bg-white p-5 rounded-xl border shadow-sm flex justify-between items-center"><div><p className="text-sm text-gray-500">{label}</p><p className="text-2xl font-bold mt-1">{value}</p></div><i className={`fas ${icon} text-2xl text-blue-500`}></i></div>)}
           </div>
           <section className="bg-white p-5 rounded-xl border shadow-sm"><h3 className="font-bold border-b pb-3 mb-3">{tr('activity')}</h3>{logs.length===0?<p className="text-sm text-gray-500">{tr('noLogs')}</p>:logs.slice().reverse().map(x=><div key={x.id} className="py-2 border-b text-sm flex flex-wrap justify-between gap-2"><b className="text-blue-700">{x.user}: {x.action}</b><span className="text-gray-400">{x.time}</span></div>)}</section>
         </div>}
@@ -457,6 +658,7 @@ function App(){
           <input className="border rounded-lg p-3" placeholder={tr('phone')} value={master.phone} onChange={e=>setMaster({...master,phone:e.target.value})}/>
           <button className="md:col-span-2 bg-blue-600 text-white rounded-lg p-3 font-bold"><i className="fas fa-plus mx-2"></i>{tr('add')}</button>
         </form></section>
+        {isAdmin&&<section className="bg-white p-5 rounded-xl border shadow-sm"><h3 className="font-bold mb-2">{tr('excelImport')}</h3><p className="text-sm text-gray-500 mb-3">{tr('importHelp')}</p><form onSubmit={sendExcelImport} className="flex flex-col md:flex-row gap-3"><input name="excelFile" type="file" accept=".xlsx,.xls,.csv" required className="border rounded-lg p-3 flex-1"/><button className="bg-blue-600 text-white rounded-lg px-5 py-3 font-bold">{tr('importNow')}</button></form>{excelSummary&&<p className="text-green-700 text-sm mt-3">{excelSummary}</p>}</section>}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">{[[tr('clients'),clients],[tr('vendors'),vendors]].map(([label,list])=><section key={label} className="bg-white p-5 rounded-xl border"><h3 className="font-bold border-b pb-2 mb-2">{label}</h3><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="bg-gray-50"><th className="p-2">{tr('code')}</th><th className="p-2">{tr('name')}</th><th className="p-2">{tr('phone')}</th></tr></thead><tbody>{list.map(x=><tr key={x.code} className="border-t"><td className="p-2">{x.code}</td><td className="p-2">{x.name}</td><td className="p-2">{x.phone}</td></tr>)}</tbody></table></div>{list.length===0&&<p className="text-sm text-gray-500 mt-3">{tr('noData')}</p>}</section>)}</div></div>}
 
         {tab==='projects'&&<div className="space-y-5"><h2 className="font-bold text-xl">{tr('projects')}</h2><section className="bg-white p-5 rounded-xl border"><form onSubmit={addProject} className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -467,11 +669,18 @@ function App(){
           <button className="md:col-span-2 bg-blue-600 text-white rounded-lg p-3 font-bold">{tr('add')}</button>
         </form></section><section className="bg-white p-5 rounded-xl border overflow-x-auto"><table className="w-full text-sm"><thead><tr className="bg-gray-50"><th className="p-2">{tr('projectCode')}</th><th className="p-2">{tr('projectName')}</th><th className="p-2">{tr('projectClient')}</th><th className="p-2">{tr('amount')}</th><th className="p-2">{tr('status')}</th></tr></thead><tbody>{projects.map(p=><tr key={p.id} className="border-t"><td className="p-2">{p.code}</td><td className="p-2">{p.name}</td><td className="p-2">{clients.find(c=>c.code===p.clientCode)?.name||p.clientCode}</td><td className="p-2">{money(p.amount)}</td><td className="p-2">{p.status}</td></tr>)}</tbody></table>{projects.length===0&&<p className="text-sm text-gray-500 mt-3">{tr('noProjects')}</p>}</section></div>}
 
-        {tab==='messages'&&<div className="space-y-5"><h2 className="font-bold text-xl">{tr('messages')}</h2>{isAdmin&&<section className="bg-white p-5 rounded-xl border"><h3 className="font-bold mb-3">{tr('newMessage')}</h3><form onSubmit={sendMessage} className="space-y-3"><input required className="w-full border rounded-lg p-3" placeholder={tr('recipients')} value={message.recipients} onChange={e=>setMessage({...message,recipients:e.target.value})}/><input required className="w-full border rounded-lg p-3" placeholder={tr('subject')} value={message.subject} onChange={e=>setMessage({...message,subject:e.target.value})}/><textarea required rows="4" className="w-full border rounded-lg p-3" placeholder={tr('body')} value={message.body} onChange={e=>setMessage({...message,body:e.target.value})}></textarea><button className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold">{tr('send')}</button></form></section>}
+        {tab==='messages'&&<div className="space-y-5"><h2 className="font-bold text-xl">{tr('messages')}</h2><section className="bg-white p-5 rounded-xl border"><h3 className="font-bold mb-3">{tr('newMessage')}</h3><form onSubmit={sendMessage} className="space-y-3"><input required list="active-recipient-list" className="w-full border rounded-lg p-3" placeholder={tr('recipients')} value={message.recipients} onChange={e=>setMessage({...message,recipients:e.target.value})}/><datalist id="active-recipient-list">{userDirectory.filter(u=>u.status==='active' && u.uid!==currentUser.uid).map(u=><option key={u.uid} value={u.username}>{u.fullName} — {u.jobTitle}</option>)}</datalist><input required className="w-full border rounded-lg p-3" placeholder={tr('subject')} value={message.subject} onChange={e=>setMessage({...message,subject:e.target.value})}/><textarea required rows="4" className="w-full border rounded-lg p-3" placeholder={tr('body')} value={message.body} onChange={e=>setMessage({...message,body:e.target.value})}></textarea><button className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold">{tr('send')}</button></form></section>
           <section className="bg-white p-5 rounded-xl border"><h3 className="font-bold border-b pb-3 mb-3">{tr('inbox')}</h3>{myMessages.length===0?<p className="text-sm text-gray-500">{tr('noMessages')}</p>:myMessages.slice().reverse().map(m=><article key={m.id} className="border rounded-lg p-4 mb-3"><div className="flex justify-between gap-2"><b className="text-blue-700">{m.subject}</b><span className="text-xs text-gray-400">{m.date}</span></div><p className="text-xs text-gray-500 mt-1">{m.senderName}</p><p className="mt-3 text-sm whitespace-pre-wrap">{m.body}</p></article>)}</section></div>}
 
-        {tab==='profile'&&<section className="bg-white p-5 rounded-xl border shadow-sm max-w-xl space-y-5"><h2 className="font-bold text-lg">{tr('profile')}</h2><div className="flex items-center gap-4">{currentUser.avatar?<img src={currentUser.avatar} className="w-20 h-20 rounded-full object-cover"/>:<div className="w-20 h-20 rounded-full bg-slate-800 text-white grid place-items-center text-2xl">{(currentUser.fullName||'?').charAt(0)}</div>}<div><b>{currentUser.fullName}</b><p className="text-sm text-gray-500">{currentUser.email}</p><label className="inline-block mt-2 bg-blue-600 text-white rounded-lg px-3 py-2 text-sm cursor-pointer">{tr('changePhoto')}<input type="file" accept="image/*" className="hidden" onChange={uploadAvatar}/></label></div></div>
-          <form onSubmit={changePassword} className="border-t pt-4 space-y-3"><h3 className="font-bold">{tr('savePassword')}</h3><input type="password" required className="w-full border rounded-lg p-3" placeholder={tr('currentPassword')} value={currentPassword} onChange={e=>setCurrentPassword(e.target.value)}/><input type="password" minLength="6" required className="w-full border rounded-lg p-3" placeholder={tr('newPassword')} value={newPassword} onChange={e=>setNewPassword(e.target.value)}/><button className="bg-green-600 text-white rounded-lg px-5 py-3 font-bold">{tr('savePassword')}</button></form>
+        {tab==='userRequests'&&isAdmin&&<div className="space-y-5"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-bold text-xl">{tr('requestsReport')}</h2><select className="border rounded-lg p-2" value={requestFilter} onChange={e=>setRequestFilter(e.target.value)}><option value="all">{tr('allRequests')}</option><option value="pending">{tr('pendingLabel')}</option><option value="approved">{tr('approvedLabel')}</option><option value="rejected">{tr('rejectedLabel')}</option></select></div><section className="bg-white rounded-xl border shadow-sm overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="p-3 text-start">{tr('requestedUser')}</th><th className="p-3 text-start">{tr('requestDate')}</th><th className="p-3 text-start">{tr('requestStatus')}</th><th className="p-3 text-start">{tr('updateStatus')}</th></tr></thead><tbody>{filteredRequests.slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).map(req=><tr key={req.uid} className="border-t align-top"><td className="p-3"><b>{req.fullName}</b><div className="text-gray-500">{req.email}</div><div className="text-gray-500">{req.username} · {req.jobTitle}</div>{!req._hasAuthUid&&<div className="text-amber-700 text-xs mt-1">{tr('legacyRequest')}</div>}</td><td className="p-3 whitespace-nowrap">{req.createdAt?new Date(req.createdAt).toLocaleString(rtl?'ar-EG':'en-US'):'—'}</td><td className="p-3"><span className="rounded-full bg-gray-100 px-2 py-1">{requestStatusLabel(req.status)}</span></td><td className="p-3 min-w-44"><select className="border rounded-lg p-2 w-full" value={requestStatusValue(req.status)} onChange={e=>updateRequestStatus(req,e.target.value)}><option value="pending">{tr('pendingLabel')}</option><option value="approved">{tr('approvedLabel')}</option><option value="rejected">{tr('rejectedLabel')}</option></select></td></tr>)}</tbody></table>{filteredRequests.length===0&&<p className="p-5 text-gray-500">{tr('noData')}</p>}</section></div>}
+
+        {tab==='companySettings'&&isAdmin&&<div className="max-w-3xl space-y-5"><h2 className="font-bold text-xl">{tr('companySettings')}</h2><section className="bg-white p-5 rounded-xl border shadow-sm"><form onSubmit={saveCompany} className="grid grid-cols-1 md:grid-cols-2 gap-4"><label className="block text-sm font-bold md:col-span-2">{tr('companyName')}<input required className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.name} onChange={e=>setCompanyForm({...companyForm,name:e.target.value})}/></label><label className="block text-sm font-bold">{tr('companyPhone')}<input className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.phone} onChange={e=>setCompanyForm({...companyForm,phone:e.target.value})}/></label><label className="block text-sm font-bold">{tr('companyEmail')}<input type="email" className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.email} onChange={e=>setCompanyForm({...companyForm,email:e.target.value})}/></label><label className="block text-sm font-bold">{tr('taxNumber')}<input className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.taxNumber} onChange={e=>setCompanyForm({...companyForm,taxNumber:e.target.value})}/></label><label className="block text-sm font-bold">{tr('commercialRegister')}<input className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.commercialRegister} onChange={e=>setCompanyForm({...companyForm,commercialRegister:e.target.value})}/></label><label className="block text-sm font-bold">{tr('website')}<input className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.website} onChange={e=>setCompanyForm({...companyForm,website:e.target.value})}/></label><label className="block text-sm font-bold md:col-span-2">{tr('companyAddress')}<textarea rows="2" className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.address} onChange={e=>setCompanyForm({...companyForm,address:e.target.value})}></textarea></label><div className="md:col-span-2"><p className="text-sm font-bold mb-2">{tr('companyLogo')}</p>{companyForm.logo&&<img src={companyForm.logo} alt="Company logo" className="h-24 max-w-56 object-contain border rounded-lg p-2 mb-3"/>}<label className="inline-block bg-gray-100 border rounded-lg px-4 py-2 cursor-pointer">{tr('uploadLogo')}<input type="file" accept="image/*" className="hidden" onChange={uploadCompanyLogo}/></label><button type="button" onClick={()=>setCompanyForm({...companyForm,logo:''})} className="text-red-600 text-sm ms-3">{rtl?'إزالة الشعار':'Remove logo'}</button></div><div className="md:col-span-2"><button className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold">{tr('save')}</button></div></form></section></div>}
+
+                {tab==='profile'&&<section className="bg-white p-5 rounded-xl border shadow-sm max-w-2xl space-y-5"><h2 className="font-bold text-lg">{tr('profile')}</h2>
+          <div className="flex flex-wrap gap-2 border-b pb-3"><button onClick={()=>setProfileSection('personal')} className={`px-3 py-2 rounded-lg ${profileSection==='personal'?'bg-blue-50 text-blue-700 font-bold':'bg-gray-100'}`}>{tr('personalDetails')}</button><button onClick={()=>setProfileSection('photo')} className={`px-3 py-2 rounded-lg ${profileSection==='photo'?'bg-blue-50 text-blue-700 font-bold':'bg-gray-100'}`}>{tr('changePhoto')}</button><button onClick={()=>setProfileSection('security')} className={`px-3 py-2 rounded-lg ${profileSection==='security'?'bg-blue-50 text-blue-700 font-bold':'bg-gray-100'}`}>{tr('savePassword')}</button></div>
+          {profileSection==='personal'&&<form onSubmit={saveProfile} className="space-y-3"><label className="block text-sm font-bold">{tr('fullName')}<input required className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileForm.fullName} onChange={e=>setProfileForm({...profileForm,fullName:e.target.value})}/></label><label className="block text-sm font-bold">{tr('username')}<input required className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileForm.username} onChange={e=>setProfileForm({...profileForm,username:e.target.value})}/></label><label className="block text-sm font-bold">{tr('jobTitle')}<input required className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileForm.jobTitle} onChange={e=>setProfileForm({...profileForm,jobTitle:e.target.value})}/></label><label className="block text-sm font-bold">{tr('email')}<input required type="email" className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileForm.email} onChange={e=>setProfileForm({...profileForm,email:e.target.value})}/></label>{profileForm.email.toLowerCase()!==String(currentUser.email||'').toLowerCase()&&<label className="block text-sm font-bold">{tr('currentPassword')}<input required type="password" className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileEmailPassword} onChange={e=>setProfileEmailPassword(e.target.value)}/></label>}<button className="bg-blue-600 text-white rounded-lg px-5 py-3 font-bold">{tr('saveProfile')}</button></form>}
+          {profileSection==='photo'&&<div className="flex items-center gap-4">{currentUser.avatar?<img src={currentUser.avatar} alt="Profile" className="w-20 h-20 rounded-full object-cover"/>:<div className="w-20 h-20 rounded-full bg-slate-800 text-white grid place-items-center text-2xl">{(currentUser.fullName||'?').charAt(0)}</div>}<label className="inline-block bg-blue-600 text-white rounded-lg px-3 py-2 text-sm cursor-pointer">{tr('changePhoto')}<input type="file" accept="image/*" className="hidden" onChange={uploadAvatar}/></label></div>}
+          {profileSection==='security'&&<form onSubmit={changePassword} className="space-y-3"><h3 className="font-bold">{tr('savePassword')}</h3><input type="password" required className="w-full border rounded-lg p-3" placeholder={tr('currentPassword')} value={currentPassword} onChange={e=>setCurrentPassword(e.target.value)}/><input type="password" minLength="6" required className="w-full border rounded-lg p-3" placeholder={tr('newPassword')} value={newPassword} onChange={e=>setNewPassword(e.target.value)}/><button className="bg-green-600 text-white rounded-lg px-5 py-3 font-bold">{tr('savePassword')}</button><button type="button" onClick={sendPasswordReset} className="block text-blue-600 text-sm">{tr('sendReset')}</button></form>}
         </section>}
       </main>
     </div>
