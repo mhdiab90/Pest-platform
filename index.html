@@ -611,6 +611,59 @@ function App(){
     await Promise.all(unread.map(m=>db.ref('messages/'+currentUser.uid+'/'+m.id).update({read:true}).catch(err=>console.warn('Mark message read:',err))));
   }
 
+  function downloadExcelImportTemplate(){
+    if(!window.XLSX) return alert(rtl?'تعذر تحميل مكتبة Excel. حدّث الصفحة وحاول مرة أخرى.':'Excel library is unavailable. Refresh the page and try again.');
+    try{
+      const wb=XLSX.utils.book_new();
+      const guideRows=[
+        ['Pest Platform - Excel Import Template','قالب استيراد بيانات Pest Platform'],
+        ['Important','Do not rename the worksheets or change the header row. Enter data starting from row 2.'],
+        ['مهم','لا تغيّر أسماء الأوراق أو عناوين الأعمدة. ابدأ إدخال البيانات من الصف الثاني.'],
+        ['Sheet','Required columns','Notes'],
+        ['Clients','Code, Name','One client per row. Code must be unique and must not contain . # $ [ ] /.'],
+        ['Vendors','Code, Name','One vendor per row. Code must be unique and must not contain . # $ [ ] /.'],
+        ['Projects','Code, Name','One project per row. Code must be unique and must not contain . # $ [ ] /.'],
+        ['Client/Vendor details','EnglishName, TaxNumber, CommercialRegister, ContactPerson, ContactTitle, Phone, Mobile, AlternatePhone, Email, AlternateEmail, WhatsApp, Website, Address, City, Country, PostalCode, PaymentTerms, CreditLimit, Currency, BankName, BankAccount, IBAN, Notes','Optional columns. Leave cells empty when not available.'],
+        ['Project details','ContractNo, PurchaseOrderNo, ProjectType, Status, ClientCodes, VendorCodes, ProjectManager, StartDate, ExpectedEndDate, ActualEndDate, Location, DeliveryAddress, Amount, CostBudget, Currency, PaymentTerms, Scope, Notes','Optional columns.'],
+        ['Multiple linked codes','ClientCodes / VendorCodes','Separate multiple existing codes with a comma, for example C001,C002. Import clients and vendors before projects, or ensure their codes already exist.'],
+        ['Dates','StartDate / ExpectedEndDate / ActualEndDate','Use YYYY-MM-DD, for example 2026-11-05.'],
+        ['Numbers','Amount / CostBudget / CreditLimit','Enter numeric values only; do not type currency symbols.'],
+        ['Currency','Currency','Use a code such as EGP, USD, EUR, SAR or AED.'],
+        ['Import behavior','Code','A row without Code or Name is skipped. An existing record with the same code is updated only for the fields provided.'],
+        ['ورقة التعليمات','Instructions','هذه الورقة للشرح فقط ولن يستوردها البرنامج.']
+      ];
+      const guide=XLSX.utils.aoa_to_sheet(guideRows);
+      guide['!cols']=[{wch:24},{wch:62},{wch:92}];
+      guide['!autofilter']={ref:'A4:C14'};
+      XLSX.utils.book_append_sheet(wb,guide,'Instructions');
+
+      const clientVendorHeaders=[
+        'Code','Name','EnglishName','TaxNumber','CommercialRegister','ContactPerson','ContactTitle',
+        'Phone','Mobile','AlternatePhone','Email','AlternateEmail','WhatsApp','Website','Address',
+        'City','Country','PostalCode','PaymentTerms','CreditLimit','Currency','BankName','BankAccount','IBAN','Notes'
+      ];
+      const projectHeaders=[
+        'Code','Name','ContractNo','PurchaseOrderNo','ProjectType','Status','ClientCodes','VendorCodes',
+        'ProjectManager','StartDate','ExpectedEndDate','ActualEndDate','Location','DeliveryAddress',
+        'Amount','CostBudget','Currency','PaymentTerms','Scope','Notes'
+      ];
+      const addBlankSheet=(sheetName,headers)=>{
+        const ws=XLSX.utils.aoa_to_sheet([headers]);
+        ws['!cols']=headers.map(h=>({wch:Math.max(15,Math.min(28,h.length+4))}));
+        ws['!autofilter']={ref:'A1:'+XLSX.utils.encode_col(headers.length-1)+'1'};
+        XLSX.utils.book_append_sheet(wb,ws,sheetName);
+      };
+      addBlankSheet('Clients',clientVendorHeaders);
+      addBlankSheet('Vendors',clientVendorHeaders);
+      addBlankSheet('Projects',projectHeaders);
+      XLSX.writeFile(wb,'PestPlatform_Import_Template.xlsx',{bookType:'xlsx',compression:true});
+      setExcelSummary(rtl?'تم تنزيل قالب Excel. املأ أوراق Clients وVendors وProjects ثم ارفع الملف دون تغيير عناوين الأعمدة.':'Excel template downloaded. Fill in Clients, Vendors and Projects, then upload without changing the column headers.');
+    }catch(err){
+      console.error('Excel template download:',err);
+      alert((rtl?'تعذر إنشاء قالب Excel: ':'Could not create Excel template: ')+(err.message||'Unknown error'));
+    }
+  }
+
   async function sendExcelImport(e){
     e.preventDefault();if(!isAdmin) return;
     const file=e.target.elements.excelFile.files[0];if(!file) return alert(tr('noData'));
@@ -621,8 +674,31 @@ function App(){
       const norm=v=>String(v||'').trim().toLowerCase().replace(/[\s_\-]+/g,'');
       const aliases={type:['type','recordtype','نوع','النوع'],phone:['phone','mobile','telephone','هاتف','الهاتف','تليفون'],clientCode:['clientcode','customercode','كود العميل','كودالعميل'],amount:['amount','value','القيمة','المبلغ'],status:['status','الحالة']};
       const get=(row,keys)=>{for(const [k,v] of Object.entries(row)){if(keys.map(norm).includes(norm(k)) && v!==undefined && v!==null && String(v).trim()!=='') return String(v).trim();}return '';};
+      const normalizeExcelDate=value=>{
+        const raw=String(value||'').trim();
+        if(!raw) return '';
+        const formatDate=(y,m,d)=>String(y)+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+        if(/^\d{4}-\d{1,2}-\d{1,2}$/.test(raw)){
+          const parts=raw.split('-').map(Number);
+          return formatDate(parts[0],parts[1],parts[2]);
+        }
+        if(/^\d+(\.\d+)?$/.test(raw) && XLSX.SSF && XLSX.SSF.parse_date_code){
+          const serial=XLSX.SSF.parse_date_code(Number(raw));
+          if(serial && serial.y && serial.m && serial.d) return formatDate(serial.y,serial.m,serial.d);
+        }
+        const dmy=raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+        if(dmy){
+          const day=Number(dmy[1]),month=Number(dmy[2]),year=Number(dmy[3]);
+          if(day>=1&&day<=31&&month>=1&&month<=12) return formatDate(year,month,day);
+        }
+        const parsed=new Date(raw);
+        if(!Number.isNaN(parsed.getTime())) return formatDate(parsed.getFullYear(),parsed.getMonth()+1,parsed.getDate());
+        return raw;
+      };
       workbook.SheetNames.forEach(sheetName=>{
-        const rows=XLSX.utils.sheet_to_json(workbook.Sheets[sheetName],{defval:'',raw:false});
+        const sheetKey=norm(sheetName);
+        if(['instructions','readme','guide','تعليمات','ارشادات','إرشادات'].includes(sheetKey)) return;
+        const rows=XLSX.utils.sheet_to_json(workbook.Sheets[sheetName],{defval:'',raw:true});
         rows.forEach(row=>{
           const typeRaw=get(row,aliases.type).toLowerCase();
           const sheet=norm(sheetName);
@@ -655,7 +731,7 @@ function App(){
             setIfProvided('status',get(row,aliases.status));setIfProvided('currency',get(row,['currency','العملة']));
             setIfProvided('contractNo',get(row,['contractno','رقم العقد']));setIfProvided('purchaseOrderNo',get(row,['purchaseorderno','رقم امر الشراء','رقم أمر الشراء']));
             setIfProvided('projectManager',get(row,['projectmanager','مدير المشروع']));setIfProvided('projectType',get(row,['projecttype','نوع المشروع','نوع التوريد']));
-            setIfProvided('startDate',get(row,['startdate','تاريخ البدء']));setIfProvided('expectedEndDate',get(row,['expectedenddate','تاريخ الانتهاء المتوقع']));setIfProvided('actualEndDate',get(row,['actualenddate','تاريخ الانتهاء الفعلي']));
+            setIfProvided('startDate',normalizeExcelDate(get(row,['startdate','تاريخ البدء'])));setIfProvided('expectedEndDate',normalizeExcelDate(get(row,['expectedenddate','تاريخ الانتهاء المتوقع'])));setIfProvided('actualEndDate',normalizeExcelDate(get(row,['actualenddate','تاريخ الانتهاء الفعلي'])));
             setIfProvided('location',get(row,['location','موقع التنفيذ']));setIfProvided('deliveryAddress',get(row,['deliveryaddress','عنوان التسليم']));
             setIfProvided('paymentTerms',get(row,['paymentterms','شروط السداد']));setIfProvided('scope',get(row,['scope','نطاق الأعمال']));setIfProvided('notes',get(row,['notes','ملاحظات']));
             imported++;
@@ -1050,7 +1126,7 @@ function App(){
               <button className="md:col-span-3 bg-blue-600 text-white rounded-lg p-3 font-bold">{editingMasterCode?tr('save'):tr('add')}</button>
             </form>
           </section>
-          {isAdmin&&<section className="bg-white p-5 rounded-xl border shadow-sm"><h3 className="font-bold mb-2">{tr('excelImport')}</h3><p className="text-sm text-gray-500 mb-3">{tr('importHelp')} {tr('importDetails')}</p><form onSubmit={sendExcelImport} className="flex flex-col md:flex-row gap-3"><input name="excelFile" type="file" accept=".xlsx,.xls,.csv" required className="border rounded-lg p-3 flex-1"/><button className="bg-blue-600 text-white rounded-lg px-5 py-3 font-bold">{tr('importNow')}</button></form>{excelSummary&&<p className="text-green-700 text-sm mt-3">{excelSummary}</p>}</section>}
+          {isAdmin&&<section className="bg-white p-5 rounded-xl border shadow-sm"><div className="flex flex-wrap items-center justify-between gap-3 mb-2"><h3 className="font-bold">{tr('excelImport')}</h3><button type="button" onClick={downloadExcelImportTemplate} className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg px-4 py-2 font-bold"><i className="fas fa-download me-2"></i>{rtl?'تحميل قالب Excel':'Download Excel template'}</button></div><p className="text-sm text-gray-600 mb-3">{rtl?'حمّل القالب أولاً، ثم أدخل البيانات في الصفوف أسفل عناوين الأعمدة دون تغييرها. يحتوي الملف على أوراق Clients وVendors وProjects وورقة Instructions للشرح فقط. الكود والاسم إلزاميان، والتواريخ بصيغة YYYY-MM-DD.':'Download the template first, then enter data below the existing headers without renaming them. It contains Clients, Vendors and Projects sheets plus an Instructions sheet. Code and Name are required; dates must use YYYY-MM-DD.'} {tr('importDetails')}</p><form onSubmit={sendExcelImport} className="flex flex-col md:flex-row gap-3"><input name="excelFile" type="file" accept=".xlsx,.xls,.csv" required className="border rounded-lg p-3 flex-1"/><button className="bg-blue-600 text-white rounded-lg px-5 py-3 font-bold">{tr('importNow')}</button></form>{excelSummary&&<p className="text-green-700 text-sm mt-3">{excelSummary}</p>}</section>}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">{[[tr('clients'),filteredClients],[tr('vendors'),filteredVendors]].map(([label,list])=><section key={label} className="bg-white p-5 rounded-xl border"><h3 className="font-bold border-b pb-2 mb-2">{label} ({list.length})</h3><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="bg-gray-50"><th className="p-2">{tr('code')}</th><th className="p-2">{tr('name')}</th><th className="p-2">{tr('taxRegistration')}</th><th className="p-2">{tr('phone')}</th><th className="p-2">{tr('email')}</th><th className="p-2">{tr('edit')}</th></tr></thead><tbody>{list.map(x=><tr key={x.code} className="border-t"><td className="p-2">{x.code}</td><td className="p-2">{x.name}</td><td className="p-2">{x.taxNumber||'—'}</td><td className="p-2">{x.phone||x.mobile||'—'}</td><td className="p-2">{x.email||'—'}</td><td className="p-2"><button onClick={()=>editMasterRecord(label===tr('clients')?'client':'vendor',x)} className="text-blue-700 font-bold">{tr('edit')}</button></td></tr>)}</tbody></table></div>{list.length===0&&<p className="text-sm text-gray-500 mt-3">{tr('noData')}</p>}</section>)}</div>
         </div>}
 
