@@ -55,6 +55,48 @@
     .app-header-identity>.app-user-fallback{display:grid;place-items:center;background:rgba(255,255,255,.18);font-weight:800}
     @media(max-width:767px){.app-sidebar{border-radius:0 0 18px 18px;box-shadow:0 8px 20px rgba(15,23,42,.1)}.app-workspace:before{width:min(78vw,380px);height:min(54vh,440px);opacity:.08}.app-header-identity>img,.app-header-identity>.app-user-fallback{width:34px;height:34px;flex-basis:34px}}
 
+
+    /* User-selectable navigation layouts and recently opened screens */
+    .app-sidebar{display:flex;flex-direction:column;gap:8px}
+    .app-sidebar-nav-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+    .app-recent-screens{flex:0 0 auto;border-top:1px solid rgba(100,116,139,.18);padding-top:10px;margin-top:8px}
+    .app-recent-heading{display:flex;align-items:center;gap:7px;color:#64748b;font-size:.78rem;font-weight:800;padding:0 7px 7px}
+    .app-recent-list{display:flex;flex-direction:column;gap:4px}
+    .app-recent-item{display:flex;align-items:center;gap:8px;min-width:0;width:100%;padding:7px 9px;border:1px solid transparent;border-radius:8px;text-align:start;color:#475569;font-size:.82rem;transition:background .15s,border-color .15s}
+    .app-recent-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .app-recent-item:hover{background:rgba(255,255,255,.7);border-color:rgba(100,116,139,.13)}
+    .app-recent-item.active{background:var(--brand-soft);color:var(--brand-hover);border-color:color-mix(in srgb,var(--brand) 18%,white);font-weight:700}
+    .app-top-navigation{position:relative;z-index:35;flex:0 0 auto;width:100%;padding:10px 14px 8px;background:rgba(255,255,255,.76);border-bottom:1px solid rgba(100,116,139,.13);box-shadow:0 5px 16px rgba(15,23,42,.035);backdrop-filter:blur(10px)}
+    .app-top-navigation-main{overflow:visible}
+    .app-nav-grid-top{display:flex;flex-wrap:wrap;align-items:center;gap:7px}
+    .app-nav-grid-top .app-nav-group{position:relative;flex:0 0 auto;margin:0}
+    .app-nav-grid-top .app-nav-parent{width:auto;min-height:40px;padding:9px 12px;white-space:nowrap;background:rgba(255,255,255,.72)}
+    .app-nav-grid-top .nav-btn{width:auto;min-height:40px;padding:9px 12px;white-space:nowrap}
+    .app-nav-grid-top .app-nav-children{position:absolute;top:calc(100% + 5px);inset-inline-start:0;z-index:120;min-width:220px;max-width:min(88vw,320px);max-height:62vh;overflow:auto;margin:0;padding:7px;background:#fff;border:1px solid rgba(100,116,139,.18);border-inline-start-width:1px;border-radius:12px;box-shadow:0 14px 34px rgba(15,23,42,.15)}
+    .app-nav-grid-top .app-nav-child{padding:9px 10px;border-radius:8px}
+    .app-nav-grid-top .app-nav-group.has-active>.app-nav-parent{background:var(--brand-soft);color:var(--brand-hover);border-color:color-mix(in srgb,var(--brand) 22%,white)}
+    .app-recent-screens.is-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-top:0;border-bottom:0;padding-top:8px;margin-top:7px}
+    .app-recent-screens.is-top .app-recent-heading{padding:0;white-space:nowrap}
+    .app-recent-screens.is-top .app-recent-list{flex:1 1 auto;display:flex;flex-direction:row;flex-wrap:wrap;gap:6px;min-width:0}
+    .app-recent-screens.is-top .app-recent-item{width:auto;max-width:220px;padding:5px 9px;background:rgba(255,255,255,.66);border-color:rgba(100,116,139,.12)}
+    .app-recent-screens.is-top .app-recent-item.active{background:var(--brand-soft);border-color:color-mix(in srgb,var(--brand) 20%,white)}
+    .app-layout-toggle{flex:0 0 auto;display:grid;place-items:center;width:38px;height:38px;color:#334155;border:1px solid rgba(100,116,139,.15);background:rgba(255,255,255,.26)}
+    .app-layout-toggle:hover{background:rgba(255,255,255,.58)}
+    @media(max-width:767px){
+      .app-sidebar{max-height:none;overflow:visible}
+      .app-sidebar-nav-scroll{overflow:visible}
+      .app-recent-screens{padding:9px 2px 0}
+      .app-recent-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+      .app-top-navigation{padding:8px}
+      .app-nav-grid-top{display:flex;flex-wrap:wrap;gap:5px}
+      .app-nav-grid-top .app-nav-parent,.app-nav-grid-top .nav-btn{min-height:38px;padding:8px 9px;font-size:.82rem}
+      .app-nav-grid-top .app-nav-children{inset-inline-start:auto;inset-inline-end:0;max-width:min(88vw,300px)}
+      .app-recent-screens.is-top{align-items:flex-start;gap:7px}
+      .app-recent-screens.is-top .app-recent-list{display:flex;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}
+      .app-recent-screens.is-top .app-recent-item{flex:0 0 auto;max-width:180px}
+      .app-layout-toggle{width:34px;height:34px}
+    }
+
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -186,6 +228,7 @@ function App(){
   const [whatsappTarget,setWhatsappTarget] = useState('');
   const [whatsappManualNumber,setWhatsappManualNumber] = useState('');
   const [tab,setTab] = useState('dashboard');
+  const [navPreferences,setNavPreferences] = useState({uid:'',mode:'side',recent:[]});
   const [expandedNavGroup,setExpandedNavGroup] = useState('');
   const [notificationOpen,setNotificationOpen] = useState(false);
   const [seenRequestIds,setSeenRequestIds] = useState([]);
@@ -1167,8 +1210,50 @@ function App(){
     ...(isAdmin?[{id:'adminGroup',label:rtl?'إدارة النظام':'Administration',icon:'fa-user-shield',children:[{id:'userRequests',label:tr('requestsReport'),icon:'fa-user-clock'}]}]:[])
   ];
   const navGroupByTab={master:'masterGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',userRequests:'adminGroup'};
-  useEffect(()=>{if(navGroupByTab[tab])setExpandedNavGroup(navGroupByTab[tab]);},[tab]);
-  function navigateToTab(nextTab){setTab(nextTab);setExpandedNavGroup(navGroupByTab[nextTab]||'');setNotificationOpen(false);}
+  const navCatalog=navGroups.flatMap(group=>group.tab?[{id:group.tab,label:group.label,icon:group.icon}]:((group.children||[]).map(item=>({...item}))));
+  const navMode=navPreferences.uid===(currentUser&&currentUser.uid)?navPreferences.mode:'side';
+  const recentNavItems=(navPreferences.uid===(currentUser&&currentUser.uid)?navPreferences.recent:[]).map(id=>navCatalog.find(item=>item.id===id)).filter(Boolean).slice(0,5);
+  const activeNavItem=navCatalog.find(item=>item.id===tab);
+  useEffect(()=>{
+    const uid=currentUser&&currentUser.uid;
+    if(!uid){setNavPreferences({uid:'',mode:'side',recent:[]});return;}
+    try{
+      const saved=JSON.parse(localStorage.getItem('pestNavigation:'+uid)||'{}');
+      setNavPreferences({uid,mode:saved.mode==='top'?'top':'side',recent:Array.isArray(saved.recent)?saved.recent.filter(id=>typeof id==='string').slice(0,6):[]});
+    }catch(_){setNavPreferences({uid,mode:'side',recent:[]});}
+  },[currentUser&&currentUser.uid]);
+  useEffect(()=>{
+    const uid=currentUser&&currentUser.uid;
+    if(!uid||navPreferences.uid!==uid)return;
+    try{localStorage.setItem('pestNavigation:'+uid,JSON.stringify({mode:navPreferences.mode,recent:navPreferences.recent}));}catch(_){}
+  },[navPreferences,currentUser&&currentUser.uid]);
+  useEffect(()=>{
+    const uid=currentUser&&currentUser.uid;
+    if(!uid||navPreferences.uid!==uid||!activeNavItem)return;
+    setNavPreferences(old=>{
+      if(old.uid!==uid)return old;
+      const recent=[tab,...old.recent.filter(id=>id!==tab)].slice(0,6);
+      return recent.join('|')===old.recent.join('|')?old:{...old,recent};
+    });
+  },[tab,currentUser&&currentUser.uid,navPreferences.uid]);
+  useEffect(()=>{if(navMode==='top')setExpandedNavGroup('');else if(navGroupByTab[tab])setExpandedNavGroup(navGroupByTab[tab]);},[tab,navMode]);
+  function navigateToTab(nextTab){setTab(nextTab);setExpandedNavGroup(navMode==='top'?'':(navGroupByTab[nextTab]||''));setNotificationOpen(false);}
+  function toggleNavigationMode(){
+    const uid=currentUser&&currentUser.uid;if(!uid)return;
+    setNavPreferences(old=>({uid,mode:(old.uid===uid?old.mode:'side')==='side'?'top':'side',recent:old.uid===uid?old.recent:[]}));
+    setExpandedNavGroup('');setShowUserMenu(false);
+  }
+  const renderNavigation=()=> <div className={'app-nav-grid '+(navMode==='top'?'app-nav-grid-top':'')} aria-label={rtl?'قائمة التنقل':'Main navigation'}>
+    {navGroups.map(group=><div className={'app-nav-group'+(group.children&&group.children.some(item=>item.id===tab)?' has-active':'')} key={group.id}>
+      {group.tab?<button type="button" onClick={()=>navigateToTab(group.tab)} className={'nav-btn '+(tab===group.tab?'active':'')+' w-full text-start p-3 rounded-lg flex items-center gap-3'}><i className={'fas '+group.icon+' w-5'}></i><span className="truncate">{group.label}</span></button>:
+        <><button type="button" aria-expanded={expandedNavGroup===group.id} onClick={()=>setExpandedNavGroup(expandedNavGroup===group.id?'':group.id)} className="app-nav-parent"><span className="flex items-center gap-2 min-w-0"><i className={'fas '+group.icon+' w-5'}></i><span className="truncate">{group.label}</span></span><i className={'fas '+(expandedNavGroup===group.id?'fa-chevron-up':'fa-chevron-down')+' text-xs text-gray-400'}></i></button>
+        {expandedNavGroup===group.id&&<div className="app-nav-children">{group.children.map(item=><button type="button" key={item.id} onClick={()=>navigateToTab(item.id)} className={'app-nav-child '+(tab===item.id?'active':'')}><i className={'fas '+item.icon+' w-4'}></i><span>{item.label}</span></button>)}</div>}</>}
+    </div>)}
+  </div>;
+  const renderRecentScreens=()=>recentNavItems.length===0?null:<section className={'app-recent-screens'+(navMode==='top'?' is-top':'')}>
+    <div className="app-recent-heading"><i className="fas fa-clock-rotate-left"></i><span>{rtl?'آخر الشاشات':'Recent screens'}</span></div>
+    <div className="app-recent-list">{recentNavItems.map(item=><button type="button" key={item.id} title={item.label} onClick={()=>navigateToTab(item.id)} className={'app-recent-item '+(tab===item.id?'active':'')}><i className={'fas '+(item.icon||'fa-clock')}></i><span>{item.label}</span></button>)}</div>
+  </section>;
 
   if(!currentUser){
     return <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
@@ -1228,22 +1313,21 @@ function App(){
         <div className="relative"><button onClick={()=>{setShowThemeMenu(!showThemeMenu);setShowUserMenu(false);}} className="p-2" title={tr('theme')}><i className="fas fa-palette text-xl"></i></button>
           {showThemeMenu&&<div className="absolute top-10 right-0 z-50 w-56 max-h-[70vh] overflow-y-auto bg-white text-slate-800 rounded-xl shadow-xl border border-slate-100 p-3"><p className="font-bold text-sm mb-2">{tr('chooseTheme')}</p>{Object.keys(themeOptions).map(k=><button key={k} onClick={()=>{setTheme(k);setShowThemeMenu(false);}} className="menu-item flex items-center gap-2"><span className="w-7 h-4 rounded-full shadow-sm" style={{background:themeOptions[k].gradient}}></span>{tr(themeNames[k])}{theme===k?' ✓':''}</button>)}</div>}
         </div>
+        <button type="button" onClick={toggleNavigationMode} title={navMode==='side'?(rtl?'تحويل القائمة إلى علوية':'Switch to top navigation'):(rtl?'تحويل القائمة إلى جانبية':'Switch to sidebar navigation')} aria-label={navMode==='side'?(rtl?'تحويل القائمة إلى علوية':'Switch to top navigation'):(rtl?'تحويل القائمة إلى جانبية':'Switch to sidebar navigation')} className="app-layout-toggle p-2 rounded-lg hover:bg-black/10"><i className={'fas '+(navMode==='side'?'fa-bars-staggered':'fa-table-columns')+' text-lg'}></i></button>
         <div className="relative"><button onClick={()=>{setShowUserMenu(!showUserMenu);setShowThemeMenu(false);}} className="flex items-center gap-2 p-1 rounded-lg hover:bg-black/10"><span className="app-header-identity">{currentUser.avatar?<img src={currentUser.avatar} alt=""/>:<span className="app-user-fallback">{(currentUser.fullName||'?').charAt(0)}</span>}<span className="hidden sm:block text-end"><b className="block text-sm">{currentUser.fullName}</b><small className="text-white/75">{currentUser.jobTitle}</small></span></span><i className="fas fa-cog text-xl"></i></button>
           {showUserMenu&&<div className="absolute top-11 end-0 z-50 w-72 bg-white text-slate-800 rounded-xl shadow-xl border p-3"><div className="flex items-center gap-3 border-b pb-3 mb-2">{currentUser.avatar?<img src={currentUser.avatar} alt="Profile" className="w-12 h-12 rounded-full object-cover"/>:<div className="w-12 h-12 rounded-full bg-blue-600 text-white grid place-items-center font-bold">{(currentUser.fullName||'?').charAt(0)}</div>}<div className="min-w-0"><b className="block truncate">{currentUser.fullName}</b><small className="block text-gray-500 truncate">{currentUser.email}</small><small className="block text-gray-500 truncate">@{currentUser.username} · {currentUser.jobTitle}</small></div></div><p className="text-xs font-bold text-gray-400 px-2 py-1">{tr('accountDetails')}</p><button className="menu-item" onClick={()=>{setTab('profile');setProfileSection('personal');setShowUserMenu(false);}}><i className="fas fa-user ml-2"></i>{tr('personalDetails')}</button><button className="menu-item" onClick={()=>{setTab('profile');setProfileSection('security');setShowUserMenu(false);}}><i className="fas fa-key ml-2"></i>{tr('savePassword')}</button><button className="menu-item" onClick={()=>{setTab('profile');setProfileSection('photo');setShowUserMenu(false);}}><i className="fas fa-image ml-2"></i>{tr('changePhoto')}</button><button className="menu-item" onClick={()=>{setTab('messages');setShowUserMenu(false);}}><i className="fas fa-envelope ml-2"></i>{tr('messages')}</button></div>}
         </div>
         <button onClick={logout} title={tr('logout')} className="p-2 rounded-lg hover:bg-black/10 text-white"><i className="fas fa-sign-out-alt text-xl"></i></button>
       </div>
     </header>
-    <div className="flex flex-1 flex-col md:flex-row">
-      <aside className="app-sidebar w-full md:w-60 border-gray-200 p-2 md:p-3 space-y-1">
-        <div className="app-nav-grid">
-          {navGroups.map(group=><div className="app-nav-group" key={group.id}>
-            {group.tab?<button onClick={()=>navigateToTab(group.tab)} className={'nav-btn '+(tab===group.tab?'active':'')+' w-full text-start p-3 rounded-lg flex items-center gap-3'}><i className={'fas '+group.icon+' w-5'}></i><span className="truncate">{group.label}</span></button>:
-              <><button type="button" aria-expanded={expandedNavGroup===group.id} onClick={()=>setExpandedNavGroup(expandedNavGroup===group.id?'':group.id)} className="app-nav-parent"><span className="flex items-center gap-2 min-w-0"><i className={'fas '+group.icon+' w-5'}></i><span className="truncate">{group.label}</span></span><i className={'fas '+(expandedNavGroup===group.id?'fa-chevron-up':'fa-chevron-down')+' text-xs text-gray-400'}></i></button>
-              {expandedNavGroup===group.id&&<div className="app-nav-children">{group.children.map(item=><button key={item.id} onClick={()=>navigateToTab(item.id)} className={'app-nav-child '+(tab===item.id?'active':'')}><i className={'fas '+item.icon+' w-4'}></i><span>{item.label}</span></button>)}</div>}</>}
-          </div>)}
-        </div>
-      </aside>
+    <div className={'flex flex-1 min-h-0 '+(navMode==='top'?'flex-col':'flex-col md:flex-row')}>
+      {navMode==='side'?<aside className="app-sidebar w-full md:w-60 border-gray-200 p-2 md:p-3 space-y-1">
+        <div className="app-sidebar-nav-scroll">{renderNavigation()}</div>
+        {renderRecentScreens()}
+      </aside>:<div className="app-top-navigation">
+        <div className="app-top-navigation-main">{renderNavigation()}</div>
+        {renderRecentScreens()}
+      </div>}
       <main className="flex-1 overflow-auto app-workspace" style={{'--company-watermark':companyInfo.logo?'url("'+companyInfo.logo+'")':'none'}}>
         {tab==='dashboard'&&<div className="space-y-5 print-area">
           <div className="flex flex-wrap justify-between items-center gap-3 no-print"><h2 className="font-bold text-xl">{tr('dashboard')} · {tr('cashFlow')}</h2><div className="flex gap-2 no-print"><button onClick={()=>setTab('reports')} className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-bold">{tr('reportCenter')}</button><button onClick={()=>window.print()} className="bg-gray-800 text-white rounded-lg px-4 py-2 text-sm">{tr('printPdf')}</button></div></div>
