@@ -3,71 +3,2709 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>منظومة إدارة المشروعات</title>
+    <title>Project Management System</title>
+
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <style>body { font-family: 'Cairo', sans-serif; }</style>
+
+    <style>
+        body {
+            font-family: 'Cairo', sans-serif;
+        }
+
+        button:disabled {
+            cursor: not-allowed;
+            opacity: .6;
+        }
+
+        input, select, textarea {
+            font-family: inherit;
+        }
+
+        .sidebar-button {
+            transition: .2s;
+        }
+
+        .sidebar-button:hover {
+            background: #f1f5f9;
+        }
+
+        .sidebar-button.active {
+            background: #eff6ff;
+            color: #2563eb;
+            font-weight: 700;
+        }
+    </style>
 </head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center">
 
-    <div id="root" class="w-full max-w-md p-4"></div>
+<body class="bg-gray-100 min-h-screen">
 
-    <script type="text/babel">
-        function App() {
-            const [isLoggedIn, setIsLoggedIn] = React.useState(false);
-            const [username, setUsername] = React.useState('');
-            const [password, setPassword] = React.useState('');
-            const [error, setError] = React.useState('');
+<div id="root">
+    <div class="min-h-screen flex items-center justify-center">
+        <div class="text-center">
+            <i class="fas fa-spinner fa-spin text-4xl text-blue-600"></i>
+            <p class="mt-3 text-gray-600">Loading system...</p>
+        </div>
+    </div>
+</div>
 
-            const handleLogin = (e) => {
-                e.preventDefault();
-                if (username === 'admin' && password === 'Pest@1234') {
-                    setIsLoggedIn(true);
-                    setError('');
-                } else {
-                    setError('اسم المستخدم أو كلمة المرور غير صحيحة (استخدم admin / Pest@1234)');
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<script type="text/babel">
+
+const { useState, useEffect } = React;
+
+/* =====================================================
+   1. FIREBASE CONFIGURATION
+===================================================== */
+
+const firebaseConfig = {
+    apiKey: "AIzaSyBPrzHFEIM3AOFclTzJ1SpG_Nq6BKHgrSo",
+    authDomain: "pest-plat-form.firebaseapp.com",
+    databaseURL: "https://pest-plat-form-default-rtdb.firebaseio.com",
+    projectId: "pest-plat-form",
+    storageBucket: "pest-plat-form.firebasestorage.app",
+    messagingSenderId: "237071041951",
+    appId: "1:237071041951:web:a501285338ec178a65a9aa"
+};
+
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
+
+const db = firebase.database();
+
+
+/* =====================================================
+   2. TRANSLATIONS
+===================================================== */
+
+const translations = {
+
+    ar: {
+        appName: "منظومة إدارة المشروعات والتدفقات النقدية",
+        subtitle: "نظام إدارة المشروعات",
+
+        login: "تسجيل الدخول",
+        username: "اسم المستخدم",
+        password: "كلمة المرور",
+        enterUsername: "أدخل اسم المستخدم",
+        enterPassword: "أدخل كلمة المرور",
+        loggingIn: "جاري التحقق...",
+        requestAccount: "طلب حساب مستخدم جديد",
+
+        fullName: "الاسم الكامل",
+        jobTitle: "الوظيفة / القسم",
+        submitRequest: "إرسال الطلب",
+        cancel: "إلغاء",
+        requestSent: "تم إرسال طلبك بنجاح",
+        waitingApproval: "يرجى انتظار موافقة مدير النظام",
+
+        dashboard: "لوحة التحكم",
+        statement: "كشف حساب عميل / مورد",
+        masterData: "البيانات الأساسية",
+        projects: "المشروعات",
+        messages: "المراسلات",
+        profile: "الملف الشخصي",
+
+        welcome: "مرحباً بك",
+        logout: "تسجيل الخروج",
+        notifications: "الإشعارات",
+        pendingRequests: "طلبات المستخدمين المعلقة",
+
+        approve: "موافقة",
+        reject: "رفض",
+
+        client: "عميل",
+        vendor: "مورد",
+        clients: "العملاء",
+        vendors: "الموردون",
+
+        selectAccount: "اختر الحساب",
+        accountType: "نوع الحساب",
+        selectClient: "اختر العميل",
+        selectVendor: "اختر المورد",
+
+        totalDue: "إجمالي المستحق",
+        totalPaid: "إجمالي المسدد / المحصل",
+        remaining: "الرصيد المتبقي",
+
+        code: "الكود",
+        name: "الاسم",
+        phone: "رقم الهاتف",
+        add: "إضافة",
+        save: "حفظ",
+        required: "هذا الحقل مطلوب",
+        noData: "لا توجد بيانات",
+
+        projectName: "اسم المشروع",
+        projectCode: "كود المشروع",
+        projectAmount: "قيمة المشروع",
+        projectStatus: "حالة المشروع",
+        projectClient: "العميل",
+
+        newMessage: "رسالة جديدة",
+        recipients: "أسماء المستخدمين (افصل بينها بفاصلة)",
+        subject: "الموضوع",
+        messageBody: "نص الرسالة",
+        send: "إرسال",
+        inbox: "صندوق الوارد",
+
+        userInfo: "بيانات المستخدم",
+        changePhoto: "تغيير الصورة الشخصية",
+        newPassword: "كلمة المرور الجديدة",
+        changePassword: "تغيير كلمة المرور",
+
+        activityLog: "سجل العمليات",
+        activeUsers: "المستخدمون",
+        totalClients: "العملاء",
+        totalVendors: "الموردون",
+        totalProjects: "المشروعات",
+
+        approved: "مقبول",
+        collected: "تم التحصيل",
+        paid: "تم السداد",
+        active: "نشط",
+        inactive: "معطل",
+        pending: "معلق",
+
+        loading: "جاري التحميل...",
+        connectionError: "تعذر الاتصال بقاعدة البيانات",
+        permissionError: "ليس لديك صلاحية الوصول إلى قاعدة البيانات",
+        userNotFound: "اسم المستخدم غير موجود",
+        wrongPassword: "كلمة المرور غير صحيحة",
+        disabledAccount: "هذا الحساب معطل",
+        enterAllData: "يرجى إدخال جميع البيانات",
+        saved: "تم الحفظ بنجاح",
+        passwordChanged: "تم تغيير كلمة المرور بنجاح",
+        loginSuccess: "تم تسجيل الدخول بنجاح",
+        noMessages: "لا توجد رسائل",
+        noProjects: "لا توجد مشروعات",
+        noLogs: "لا توجد عمليات مسجلة",
+        initializationError: "تعذر تجهيز قاعدة البيانات",
+
+        companyName: "اسم الشركة",
+        direction: "اتجاه العرض",
+        systemAdmin: "مدير النظام",
+        user: "مستخدم",
+        date: "التاريخ",
+        time: "الوقت",
+        action: "العملية",
+        status: "الحالة",
+        amount: "القيمة",
+        balance: "الرصيد",
+        details: "التفاصيل",
+        back: "رجوع",
+        search: "بحث",
+        choose: "اختر...",
+        allUsers: "جميع المستخدمين",
+        noAccountSelected: "يرجى اختيار حساب لعرض كشف الحساب"
+    },
+
+    en: {
+        appName: "Projects & Cash Flow Management",
+        subtitle: "Project Management System",
+
+        login: "Login",
+        username: "Username",
+        password: "Password",
+        enterUsername: "Enter username",
+        enterPassword: "Enter password",
+        loggingIn: "Verifying...",
+        requestAccount: "Request New Account",
+
+        fullName: "Full Name",
+        jobTitle: "Job Title / Department",
+        submitRequest: "Submit Request",
+        cancel: "Cancel",
+        requestSent: "Your request was submitted successfully",
+        waitingApproval: "Waiting for system administrator approval",
+
+        dashboard: "Dashboard",
+        statement: "Account Statement",
+        masterData: "Master Data",
+        projects: "Projects",
+        messages: "Messages",
+        profile: "My Profile",
+
+        welcome: "Welcome",
+        logout: "Logout",
+        notifications: "Notifications",
+        pendingRequests: "Pending User Requests",
+
+        approve: "Approve",
+        reject: "Reject",
+
+        client: "Client",
+        vendor: "Vendor",
+        clients: "Clients",
+        vendors: "Vendors",
+
+        selectAccount: "Select Account",
+        accountType: "Account Type",
+        selectClient: "Select Client",
+        selectVendor: "Select Vendor",
+
+        totalDue: "Total Due",
+        totalPaid: "Total Paid / Collected",
+        remaining: "Remaining Balance",
+
+        code: "Code",
+        name: "Name",
+        phone: "Phone",
+        add: "Add",
+        save: "Save",
+        required: "This field is required",
+        noData: "No data available",
+
+        projectName: "Project Name",
+        projectCode: "Project Code",
+        projectAmount: "Project Amount",
+        projectStatus: "Project Status",
+        projectClient: "Client",
+
+        newMessage: "New Message",
+        recipients: "Usernames (comma separated)",
+        subject: "Subject",
+        messageBody: "Message",
+        send: "Send",
+        inbox: "Inbox",
+
+        userInfo: "User Information",
+        changePhoto: "Change Profile Picture",
+        newPassword: "New Password",
+        changePassword: "Change Password",
+
+        activityLog: "Activity Log",
+        activeUsers: "Users",
+        totalClients: "Clients",
+        totalVendors: "Vendors",
+        totalProjects: "Projects",
+
+        approved: "Approved",
+        collected: "Collected",
+        paid: "Paid",
+        active: "Active",
+        inactive: "Disabled",
+        pending: "Pending",
+
+        loading: "Loading...",
+        connectionError: "Cannot connect to database",
+        permissionError: "Database permission denied",
+        userNotFound: "Username not found",
+        wrongPassword: "Incorrect password",
+        disabledAccount: "This account is disabled",
+        enterAllData: "Please fill in all required fields",
+        saved: "Saved successfully",
+        passwordChanged: "Password changed successfully",
+        loginSuccess: "Login successful",
+        noMessages: "No messages",
+        noProjects: "No projects",
+        noLogs: "No activity recorded",
+        initializationError: "Database initialization failed",
+
+        companyName: "Company Name",
+        direction: "Layout Direction",
+        systemAdmin: "System Administrator",
+        user: "User",
+        date: "Date",
+        time: "Time",
+        action: "Action",
+        status: "Status",
+        amount: "Amount",
+        balance: "Balance",
+        details: "Details",
+        back: "Back",
+        search: "Search",
+        choose: "Choose...",
+        allUsers: "All Users",
+        noAccountSelected: "Please select an account to view its statement"
+    }
+
+};
+
+
+/* =====================================================
+   3. GENERAL HELPERS
+===================================================== */
+
+const timeoutPromise = (promise, milliseconds = 15000) => {
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => {
+            setTimeout(() => {
+                reject(new Error("REQUEST_TIMEOUT"));
+            }, milliseconds);
+        })
+    ]);
+};
+
+const convertSnapshot = (snapshot) => {
+    const data = snapshot.val() || {};
+
+    return Object.entries(data).map(([key, value]) => ({
+        ...value,
+        id: value.id || key
+    }));
+};
+
+const isAccepted = (status) => {
+    return ["مقبول", "approved", "Approved"].includes(status);
+};
+
+const isCollected = (status) => {
+    return ["تم التحصيل", "collected", "Collected", "paid"].includes(status);
+};
+
+const isPaid = (status) => {
+    return ["تم السداد", "paid", "Paid"].includes(status);
+};
+
+
+/* =====================================================
+   4. MAIN APPLICATION
+===================================================== */
+
+function App() {
+
+    /* LANGUAGE */
+
+    const [lang, setLang] = useState(() => {
+        try {
+            return localStorage.getItem("appLanguage") || "ar";
+        } catch {
+            return "ar";
+        }
+    });
+
+    const t = (key) => {
+        return translations[lang]?.[key] || translations.en[key] || key;
+    };
+
+    useEffect(() => {
+        document.documentElement.lang = lang;
+        document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
+
+        try {
+            localStorage.setItem("appLanguage", lang);
+        } catch (e) {
+            console.warn(e);
+        }
+    }, [lang]);
+
+    const toggleLanguage = () => {
+        setLang(current => current === "ar" ? "en" : "ar");
+    };
+
+
+    /* AUTHENTICATION */
+
+    const [currentUser, setCurrentUser] = useState(null);
+    const [viewMode, setViewMode] = useState("login");
+    const [authLoading, setAuthLoading] = useState(false);
+    const [dbReady, setDbReady] = useState(false);
+    const [initError, setInitError] = useState("");
+
+    const [loginForm, setLoginForm] = useState({
+        username: "",
+        password: ""
+    });
+
+    const [reqForm, setReqForm] = useState({
+        fullName: "",
+        jobTitle: "",
+        username: "",
+        password: ""
+    });
+
+    const [authError, setAuthError] = useState("");
+    const [authSuccess, setAuthSuccess] = useState("");
+
+
+    /* DATABASE DATA */
+
+    const [companyInfo, setCompanyInfo] = useState({
+        name: "Company Name",
+        logo: ""
+    });
+
+    const [userRequests, setUserRequests] = useState([]);
+    const [activeUsers, setActiveUsers] = useState([]);
+    const [messages, setMessages] = useState([]);
+    const [clients, setClients] = useState([]);
+    const [vendors, setVendors] = useState([]);
+    const [quotes, setQuotes] = useState([]);
+    const [projects, setProjects] = useState([]);
+    const [inflows, setInflows] = useState([]);
+    const [outflows, setOutflows] = useState([]);
+    const [logs, setLogs] = useState([]);
+
+
+    /* NAVIGATION */
+
+    const [activeTab, setActiveTab] = useState("dashboard");
+    const [showNotifications, setShowNotifications] = useState(false);
+
+
+    /* ACCOUNT STATEMENT */
+
+    const [selectedAccount, setSelectedAccount] = useState({
+        type: "client",
+        code: ""
+    });
+
+
+    /* MASTER DATA */
+
+    const [newMaster, setNewMaster] = useState({
+        type: "client",
+        code: "",
+        name: "",
+        phone: ""
+    });
+
+
+    /* PROJECT FORM */
+
+    const [projectForm, setProjectForm] = useState({
+        code: "",
+        name: "",
+        clientCode: "",
+        amount: "",
+        status: "جاري"
+    });
+
+
+    /* MESSAGE FORM */
+
+    const [msgForm, setMsgForm] = useState({
+        recipients: "",
+        subject: "",
+        body: ""
+    });
+
+
+    /* PROFILE */
+
+    const [profilePass, setProfilePass] = useState("");
+
+
+
+    /* =================================================
+       5. DATABASE INITIALIZATION
+    ================================================= */
+
+    useEffect(() => {
+
+        let mounted = true;
+
+        async function initializeDatabase() {
+
+            try {
+
+                const adminRef = db.ref("users/admin");
+
+                const adminSnapshot = await timeoutPromise(
+                    adminRef.once("value")
+                );
+
+                if (!adminSnapshot.exists()) {
+
+                    await timeoutPromise(
+                        adminRef.set({
+                            username: "admin",
+                            password: "Pest@1234",
+                            fullName: "مدير النظام",
+                            jobTitle: "System Admin",
+                            role: "admin",
+                            status: "نشط",
+                            avatar: ""
+                        })
+                    );
+
                 }
+
+                if (mounted) {
+                    setDbReady(true);
+                    setInitError("");
+                }
+
+            } catch (error) {
+
+                console.error("Database Initialization:", error);
+
+                if (mounted) {
+                    setInitError(
+                        error.message === "REQUEST_TIMEOUT"
+                            ? t("connectionError")
+                            : t("initializationError") + ": " + (error.message || "")
+                    );
+                    setDbReady(false);
+                }
+            }
+        }
+
+        initializeDatabase();
+
+        return () => {
+            mounted = false;
+        };
+
+    }, []);
+
+
+
+    /* =================================================
+       6. LOAD DATABASE DATA AFTER LOGIN
+    ================================================= */
+
+    useEffect(() => {
+
+        if (!currentUser) return;
+
+        const subscriptions = [];
+
+        const subscribe = (path, setter, mapper = convertSnapshot) => {
+
+            const ref = db.ref(path);
+
+            const success = (snapshot) => {
+                setter(mapper(snapshot));
             };
 
-            if (!isLoggedIn) {
-                return (
-                    <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-200">
-                        <div className="text-center mb-6">
-                            <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-3 text-white text-2xl font-bold">
-                                <i className="fa-solid fa-building"></i>
-                            </div>
-                            <h2 className="text-2xl font-bold text-gray-800">تسجيل الدخول للنظام</h2>
-                        </div>
-                        {error && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-xs mb-4 text-center font-bold">{error}</div>}
-                        <form onSubmit={handleLogin} className="space-y-4">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-700 mb-1">اسم المستخدم</label>
-                                <input type="text" required className="w-full border p-2.5 rounded-lg text-sm outline-none focus:border-blue-600" value={username} onChange={e => setUsername(e.target.value)} placeholder="admin" />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-700 mb-1">كلمة المرور</label>
-                                <input type="password" required className="w-full border p-2.5 rounded-lg text-sm outline-none focus:border-blue-600" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" />
-                            </div>
-                            <button type="submit" className="w-full bg-blue-600 text-white p-3 rounded-lg font-bold hover:bg-blue-700 transition">دخول</button>
-                        </form>
-                    </div>
+            const failure = (error) => {
+                console.error("Firebase listener error:", path, error);
+            };
+
+            ref.on("value", success, failure);
+
+            subscriptions.push({
+                ref,
+                success,
+                failure
+            });
+        };
+
+
+        subscribe(
+            "companyInfo",
+            (value) => setCompanyInfo(
+                value || { name: "Company Name", logo: "" }
+            ),
+            snapshot => snapshot.val()
+        );
+
+        subscribe("userRequests", setUserRequests);
+        subscribe("users", setActiveUsers);
+        subscribe("messages", setMessages);
+        subscribe("clients", setClients);
+        subscribe("vendors", setVendors);
+        subscribe("quotes", setQuotes);
+        subscribe("projects", setProjects);
+        subscribe("inflows", setInflows);
+        subscribe("outflows", setOutflows);
+        subscribe("logs", setLogs);
+
+
+        return () => {
+
+            subscriptions.forEach(item => {
+                item.ref.off("value", item.success);
+            });
+
+        };
+
+    }, [currentUser]);
+
+
+
+    /* =================================================
+       7. ACTIVITY LOG
+    ================================================= */
+
+    const addLog = async (action, user = currentUser) => {
+
+        try {
+
+            const id = Date.now();
+
+            await db.ref("logs/" + id).set({
+                id,
+                user: user?.fullName || "System",
+                time: new Date().toLocaleTimeString(
+                    lang === "ar" ? "ar-EG" : "en-US"
+                ),
+                action
+            });
+
+        } catch (error) {
+            console.error("Log error:", error);
+        }
+    };
+
+
+
+    /* =================================================
+       8. LOGIN - FIXED
+    ================================================= */
+
+    const handleLogin = async (e) => {
+
+        e.preventDefault();
+
+        setAuthError("");
+        setAuthSuccess("");
+
+        const username = String(loginForm.username || "").trim();
+        const password = String(loginForm.password || "");
+
+        if (!username || !password) {
+            setAuthError(t("enterAllData"));
+            return;
+        }
+
+        if (!dbReady) {
+            setAuthError(initError || t("initializationError"));
+            return;
+        }
+
+        setAuthLoading(true);
+
+        try {
+
+            /*
+              IMPORTANT:
+              Read the database directly.
+              Do not depend on activeUsers state,
+              because Firebase listeners may not have loaded yet.
+            */
+
+            const snapshot = await timeoutPromise(
+                db.ref("users").once("value")
+            );
+
+            const users = snapshot.val() || {};
+
+            const found = Object.entries(users).find(([key, item]) => {
+
+                const storedUsername = String(
+                    item.username || key
+                ).trim();
+
+                return storedUsername.toLowerCase()
+                    === username.toLowerCase();
+
+            });
+
+            if (!found) {
+                setAuthError(t("userNotFound"));
+                return;
+            }
+
+            const [userKey, user] = found;
+
+            if (String(user.password || "") !== password) {
+                setAuthError(t("wrongPassword"));
+                return;
+            }
+
+            const status = String(user.status || "").toLowerCase();
+
+            if (
+                status === "معطل" ||
+                status === "disabled" ||
+                status === "inactive" ||
+                status === "غير نشط"
+            ) {
+                setAuthError(t("disabledAccount"));
+                return;
+            }
+
+            const loggedUser = {
+                ...user,
+                username: user.username || userKey,
+                _key: userKey
+            };
+
+            // Change application state only after successful verification.
+
+            setCurrentUser(loggedUser);
+            setActiveTab("dashboard");
+            setViewMode("app");
+
+            setLoginForm({
+                username: "",
+                password: ""
+            });
+
+            await addLog(
+                "تسجيل دخول",
+                loggedUser
+            );
+
+        } catch (error) {
+
+            console.error("LOGIN ERROR:", error);
+
+            if (error.message === "REQUEST_TIMEOUT") {
+                setAuthError(t("connectionError"));
+            } else if (
+                error.code === "PERMISSION_DENIED" ||
+                String(error.message).toLowerCase().includes("permission")
+            ) {
+                setAuthError(t("permissionError"));
+            } else if (!navigator.onLine) {
+                setAuthError("No internet connection");
+            } else {
+                setAuthError(
+                    t("connectionError") + ": " +
+                    (error.message || "Unknown error")
                 );
             }
 
-            return (
-                <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-200 text-center space-y-4">
-                    <h2 className="text-2xl font-bold text-green-600">مرحباً بك يا مدير النظام!</h2>
-                    <p className="text-gray-600 text-sm">تم تسجيل الدخول بنجاح والاتصال بالواجهة الرئيسية.</p>
-                    <button onClick={() => setIsLoggedIn(false)} className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold">تسجيل الخروج</button>
-                </div>
-            );
+        } finally {
+            setAuthLoading(false);
         }
 
-        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-    </script>
+    };
+
+
+
+    /* =================================================
+       9. NEW USER REQUEST
+    ================================================= */
+
+    const handleRequestUser = async (e) => {
+
+        e.preventDefault();
+
+        setAuthError("");
+        setAuthSuccess("");
+
+        const fullName = reqForm.fullName.trim();
+        const jobTitle = reqForm.jobTitle.trim();
+        const username = reqForm.username.trim();
+        const password = reqForm.password;
+
+        if (!fullName || !jobTitle || !username || !password) {
+            setAuthError(t("enterAllData"));
+            return;
+        }
+
+        if (/[.#$[\]/]/.test(username)) {
+            setAuthError(
+                "Username contains invalid Firebase characters"
+            );
+            return;
+        }
+
+        setAuthLoading(true);
+
+        try {
+
+            const snapshot = await timeoutPromise(
+                db.ref("users").once("value")
+            );
+
+            const users = snapshot.val() || {};
+
+            const existing = Object.entries(users).some(([key, value]) => {
+                return String(value.username || key).toLowerCase()
+                    === username.toLowerCase();
+            });
+
+            if (existing) {
+                setAuthError("Username already exists");
+                return;
+            }
+
+            const requestId = "REQ-" + Date.now();
+
+            const requestData = {
+                id: requestId,
+                fullName,
+                jobTitle,
+                username,
+                password,
+                status: "مؤجل",
+                date: new Date().toLocaleDateString()
+            };
+
+            await db.ref("userRequests/" + requestId).set(requestData);
+
+            setAuthSuccess(t("requestSent") + " - " + t("waitingApproval"));
+
+            setReqForm({
+                fullName: "",
+                jobTitle: "",
+                username: "",
+                password: ""
+            });
+
+            setTimeout(() => {
+                setViewMode("login");
+                setAuthSuccess("");
+            }, 3000);
+
+        } catch (error) {
+
+            console.error(error);
+            setAuthError(error.message || t("connectionError"));
+
+        } finally {
+            setAuthLoading(false);
+        }
+    };
+
+
+
+    /* =================================================
+       10. APPROVE / REJECT USER
+    ================================================= */
+
+    const handleApproveUser = async (req, status) => {
+
+        try {
+
+            await db.ref("userRequests/" + req.id + "/status")
+                .set(status);
+
+            if (status === "موافق") {
+
+                await db.ref("users/" + req.username).set({
+                    username: req.username,
+                    password: req.password,
+                    fullName: req.fullName,
+                    jobTitle: req.jobTitle,
+                    role: "user",
+                    status: "نشط",
+                    avatar: ""
+                });
+
+                await addLog("اعتماد حساب: " + req.fullName);
+
+            }
+
+        } catch (error) {
+            console.error(error);
+            alert(error.message);
+        }
+
+    };
+
+
+
+    /* =================================================
+       11. LOGOUT
+    ================================================= */
+
+    const handleLogout = async () => {
+
+        await addLog("تسجيل خروج");
+
+        setCurrentUser(null);
+        setViewMode("login");
+        setActiveTab("dashboard");
+
+        setAuthError("");
+        setAuthSuccess("");
+
+    };
+
+
+
+    /* =================================================
+       12. MASTER DATA
+    ================================================= */
+
+    const handleAddMaster = async (e) => {
+
+        e.preventDefault();
+
+        const code = newMaster.code.trim();
+        const name = newMaster.name.trim();
+
+        if (!code || !name) {
+            alert(t("enterAllData"));
+            return;
+        }
+
+        if (/[.#$[\]/]/.test(code)) {
+            alert("Invalid code");
+            return;
+        }
+
+        const path = newMaster.type === "client"
+            ? "clients"
+            : "vendors";
+
+        try {
+
+            const existing = await db.ref(path + "/" + code)
+                .once("value");
+
+            if (existing.exists()) {
+                alert("Code already exists");
+                return;
+            }
+
+            await db.ref(path + "/" + code).set({
+                code,
+                name,
+                phone: newMaster.phone,
+                date: new Date().toISOString()
+            });
+
+            await addLog("إضافة " + name);
+
+            setNewMaster({
+                type: newMaster.type,
+                code: "",
+                name: "",
+                phone: ""
+            });
+
+            alert(t("saved"));
+
+        } catch (error) {
+            console.error(error);
+            alert(error.message);
+        }
+
+    };
+
+
+
+    /* =================================================
+       13. ADD PROJECT
+    ================================================= */
+
+    const handleAddProject = async (e) => {
+
+        e.preventDefault();
+
+        const code = projectForm.code.trim();
+        const name = projectForm.name.trim();
+
+        if (!code || !name) {
+            alert(t("enterAllData"));
+            return;
+        }
+
+        if (/[.#$[\]/]/.test(code)) {
+            alert("Invalid project code");
+            return;
+        }
+
+        try {
+
+            await db.ref("projects/" + code).set({
+                ...projectForm,
+                code,
+                name,
+                amount: Number(projectForm.amount || 0),
+                date: new Date().toISOString()
+            });
+
+            await addLog("إضافة مشروع: " + name);
+
+            setProjectForm({
+                code: "",
+                name: "",
+                clientCode: "",
+                amount: "",
+                status: "جاري"
+            });
+
+            alert(t("saved"));
+
+        } catch (error) {
+            console.error(error);
+            alert(error.message);
+        }
+
+    };
+
+
+
+    /* =================================================
+       14. MESSAGES
+    ================================================= */
+
+    const handleSendMessage = async (e) => {
+
+        e.preventDefault();
+
+        try {
+
+            const recipients = msgForm.recipients
+                .split(",")
+                .map(x => x.trim())
+                .filter(Boolean);
+
+            if (!recipients.length || !msgForm.subject || !msgForm.body) {
+                alert(t("enterAllData"));
+                return;
+            }
+
+            const id = Date.now();
+
+            await db.ref("messages/" + id).set({
+                id,
+                sender: currentUser.username,
+                senderName: currentUser.fullName,
+                recipients,
+                subject: msgForm.subject,
+                body: msgForm.body,
+                date: new Date().toLocaleString()
+            });
+
+            setMsgForm({
+                recipients: "",
+                subject: "",
+                body: ""
+            });
+
+            await addLog("إرسال رسالة");
+
+            alert(t("saved"));
+
+        } catch (error) {
+            console.error(error);
+            alert(error.message);
+        }
+
+    };
+
+
+
+    /* =================================================
+       15. PROFILE PICTURE
+    ================================================= */
+
+    const handleAvatarUpload = (e) => {
+
+        const file = e.target.files?.[0];
+
+        if (!file || !currentUser) return;
+
+        if (file.size > 1024 * 1024) {
+            alert("Image must be smaller than 1 MB");
+            e.target.value = "";
+            return;
+        }
+
+        const reader = new FileReader();
+
+        reader.onloadend = async () => {
+
+            try {
+
+                await db.ref(
+                    "users/" + (currentUser._key || currentUser.username) + "/avatar"
+                ).set(reader.result);
+
+                setCurrentUser(old => ({
+                    ...old,
+                    avatar: reader.result
+                }));
+
+                await addLog("تحديث الصورة الشخصية");
+
+            } catch (error) {
+                console.error(error);
+                alert(error.message);
+            }
+
+        };
+
+        reader.readAsDataURL(file);
+
+    };
+
+
+
+    /* =================================================
+       16. CHANGE PASSWORD
+    ================================================= */
+
+    const updatePassword = async (e) => {
+
+        e.preventDefault();
+
+        if (!profilePass) return;
+
+        try {
+
+            await db.ref(
+                "users/" + (currentUser._key || currentUser.username) + "/password"
+            ).set(profilePass);
+
+            setCurrentUser(old => ({
+                ...old,
+                password: profilePass
+            }));
+
+            setProfilePass("");
+
+            await addLog("تغيير كلمة المرور");
+
+            alert(t("passwordChanged"));
+
+        } catch (error) {
+            console.error(error);
+            alert(error.message);
+        }
+
+    };
+
+
+
+    /* =================================================
+       17. CALCULATIONS
+    ================================================= */
+
+    const pendingRequests = userRequests.filter(
+        r => r.status === "مؤجل"
+    );
+
+    const myMessages = messages.filter(m => {
+        return Array.isArray(m.recipients) &&
+            m.recipients.includes(currentUser?.username);
+    });
+
+    const formatMoney = (amount) => {
+
+        return new Intl.NumberFormat(
+            lang === "ar" ? "ar-EG" : "en-US",
+            {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }
+        ).format(Number(amount || 0));
+
+    };
+
+    const clientDue = selectedAccount.code
+        ? quotes.filter(q =>
+            q.clientCode === selectedAccount.code &&
+            isAccepted(q.status)
+        ).reduce((sum, item) => sum + Number(item.amount || 0), 0)
+        : 0;
+
+    const clientPaid = selectedAccount.code
+        ? inflows.filter(i =>
+            i.clientCode === selectedAccount.code &&
+            isCollected(i.status)
+        ).reduce((sum, item) => sum + Number(item.amount || 0), 0)
+        : 0;
+
+    const vendorDue = selectedAccount.code
+        ? outflows.filter(o =>
+            o.vendorCode === selectedAccount.code
+        ).reduce((sum, item) => sum + Number(item.amount || 0), 0)
+        : 0;
+
+    const vendorPaid = selectedAccount.code
+        ? outflows.filter(o =>
+            o.vendorCode === selectedAccount.code &&
+            isPaid(o.status)
+        ).reduce((sum, item) => sum + Number(item.amount || 0), 0)
+        : 0;
+
+    const totalDue = selectedAccount.type === "client"
+        ? clientDue
+        : vendorDue;
+
+    const totalPaid = selectedAccount.type === "client"
+        ? clientPaid
+        : vendorPaid;
+
+    const remaining = totalDue - totalPaid;
+
+
+
+    /* =================================================
+       18. LOGIN AND REQUEST SCREENS
+    ================================================= */
+
+    if (viewMode === "login" || viewMode === "request_user") {
+
+        return (
+
+            <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+
+                <div className="absolute top-5 right-5">
+                    <button
+                        onClick={toggleLanguage}
+                        className="bg-white text-slate-900 px-4 py-2 rounded-lg font-bold shadow"
+                    >
+                        <i className="fas fa-language mr-2"></i>
+                        {lang === "ar" ? "English" : "العربية"}
+                    </button>
+                </div>
+
+                <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
+
+                    <div className="text-center mb-6">
+
+                        {companyInfo.logo ? (
+
+                            <img
+                                src={companyInfo.logo}
+                                alt="Logo"
+                                className="h-20 mx-auto mb-3 object-contain"
+                            />
+
+                        ) : (
+
+                            <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-3 text-white text-2xl">
+                                <i className="fas fa-building"></i>
+                            </div>
+
+                        )}
+
+                        <h2 className="text-2xl font-bold text-gray-800">
+                            {companyInfo.name || t("appName")}
+                        </h2>
+
+                        <p className="text-sm text-gray-500 mt-2">
+                            {t("subtitle")}
+                        </p>
+
+                    </div>
+
+
+                    {!dbReady && (
+
+                        <div className="bg-yellow-50 text-yellow-800 rounded-lg p-3 mb-4 text-sm text-center">
+
+                            <i className="fas fa-spinner fa-spin mr-2"></i>
+
+                            {initError || t("loading")}
+
+                        </div>
+
+                    )}
+
+
+                    {authError && (
+
+                        <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4 text-center font-bold">
+
+                            {authError}
+
+                        </div>
+
+                    )}
+
+
+                    {authSuccess && (
+
+                        <div className="bg-green-50 text-green-600 p-3 rounded-lg text-sm mb-4 text-center font-bold">
+
+                            {authSuccess}
+
+                        </div>
+
+                    )}
+
+
+
+                    {viewMode === "login" ? (
+
+                        <form
+                            onSubmit={handleLogin}
+                            className="space-y-4"
+                        >
+
+                            <div>
+
+                                <label className="block text-sm font-bold text-gray-700 mb-1">
+                                    {t("username")}
+                                </label>
+
+                                <input
+                                    type="text"
+                                    autoComplete="username"
+                                    required
+                                    disabled={!dbReady || authLoading}
+                                    className="w-full border p-3 rounded-lg outline-none focus:border-blue-600"
+                                    value={loginForm.username}
+                                    onChange={e =>
+                                        setLoginForm({
+                                            ...loginForm,
+                                            username: e.target.value
+                                        })
+                                    }
+                                    placeholder={t("enterUsername")}
+                                />
+
+                            </div>
+
+
+                            <div>
+
+                                <label className="block text-sm font-bold text-gray-700 mb-1">
+                                    {t("password")}
+                                </label>
+
+                                <input
+                                    type="password"
+                                    autoComplete="current-password"
+                                    required
+                                    disabled={!dbReady || authLoading}
+                                    className="w-full border p-3 rounded-lg outline-none focus:border-blue-600"
+                                    value={loginForm.password}
+                                    onChange={e =>
+                                        setLoginForm({
+                                            ...loginForm,
+                                            password: e.target.value
+                                        })
+                                    }
+                                    placeholder="••••••••"
+                                />
+
+                            </div>
+
+
+                            <button
+                                type="submit"
+                                disabled={!dbReady || authLoading}
+                                className="w-full bg-blue-600 text-white p-3 rounded-lg font-bold hover:bg-blue-700 transition"
+                            >
+
+                                {authLoading
+                                    ? t("loggingIn")
+                                    : t("login")
+                                }
+
+                            </button>
+
+
+                            <div className="text-center pt-3 border-t">
+
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setAuthError("");
+                                        setAuthSuccess("");
+                                        setViewMode("request_user");
+                                    }}
+                                    className="text-sm text-blue-600 font-bold hover:underline"
+                                >
+                                    {t("requestAccount")}
+                                </button>
+
+                            </div>
+
+                        </form>
+
+                    ) : (
+
+                        <form
+                            onSubmit={handleRequestUser}
+                            className="space-y-3"
+                        >
+
+                            <h3 className="font-bold text-gray-700 border-b pb-2">
+                                {t("requestAccount")}
+                            </h3>
+
+                            <input
+                                type="text"
+                                required
+                                placeholder={t("fullName")}
+                                className="w-full border p-3 rounded-lg"
+                                value={reqForm.fullName}
+                                onChange={e =>
+                                    setReqForm({
+                                        ...reqForm,
+                                        fullName: e.target.value
+                                    })
+                                }
+                            />
+
+                            <input
+                                type="text"
+                                required
+                                placeholder={t("jobTitle")}
+                                className="w-full border p-3 rounded-lg"
+                                value={reqForm.jobTitle}
+                                onChange={e =>
+                                    setReqForm({
+                                        ...reqForm,
+                                        jobTitle: e.target.value
+                                    })
+                                }
+                            />
+
+                            <input
+                                type="text"
+                                required
+                                placeholder={t("username")}
+                                className="w-full border p-3 rounded-lg"
+                                value={reqForm.username}
+                                onChange={e =>
+                                    setReqForm({
+                                        ...reqForm,
+                                        username: e.target.value
+                                    })
+                                }
+                            />
+
+                            <input
+                                type="password"
+                                required
+                                placeholder={t("password")}
+                                className="w-full border p-3 rounded-lg"
+                                value={reqForm.password}
+                                onChange={e =>
+                                    setReqForm({
+                                        ...reqForm,
+                                        password: e.target.value
+                                    })
+                                }
+                            />
+
+                            <button
+                                type="submit"
+                                disabled={authLoading}
+                                className="w-full bg-green-600 text-white p-3 rounded-lg font-bold"
+                            >
+                                {authLoading ? t("loading") : t("submitRequest")}
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setViewMode("login");
+                                    setAuthError("");
+                                }}
+                                className="w-full bg-gray-200 text-gray-700 p-3 rounded-lg font-bold"
+                            >
+                                {t("cancel")}
+                            </button>
+
+                        </form>
+
+                    )}
+
+                </div>
+
+            </div>
+
+        );
+
+    }
+
+
+
+    /* =================================================
+       19. MAIN APPLICATION
+    ================================================= */
+
+    const tabs = [
+        {
+            id: "dashboard",
+            label: "dashboard",
+            icon: "fa-gauge"
+        },
+        {
+            id: "statement",
+            label: "statement",
+            icon: "fa-file-invoice-dollar"
+        },
+        {
+            id: "masterData",
+            label: "masterData",
+            icon: "fa-database"
+        },
+        {
+            id: "projects",
+            label: "projects",
+            icon: "fa-diagram-project"
+        },
+        {
+            id: "messages",
+            label: "messages",
+            icon: "fa-envelope"
+        },
+        {
+            id: "profile",
+            label: "profile",
+            icon: "fa-user-gear"
+        }
+    ];
+
+
+    return (
+
+        <div className="min-h-screen flex flex-col bg-gray-100">
+
+            {/* HEADER */}
+
+            <header className="bg-slate-900 text-white p-3 px-5 flex justify-between items-center shadow-lg">
+
+                <div className="flex items-center gap-3">
+
+                    {companyInfo.logo ? (
+
+                        <img
+                            src={companyInfo.logo}
+                            alt="Logo"
+                            className="h-10 w-10 object-contain bg-white rounded p-1"
+                        />
+
+                    ) : (
+
+                        <i className="fas fa-cubes text-blue-400 text-2xl"></i>
+
+                    )}
+
+                    <div>
+
+                        <h1 className="font-bold text-lg">
+                            {companyInfo.name || t("appName")}
+                        </h1>
+
+                        <p className="text-xs text-slate-400">
+                            {t("subtitle")}
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <div className="flex items-center gap-4">
+
+                    <button
+                        onClick={toggleLanguage}
+                        className="bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded-lg text-sm"
+                    >
+                        {lang === "ar" ? "EN" : "ع"}
+                    </button>
+
+
+                    <button
+                        onClick={() => setActiveTab("messages")}
+                        className="relative text-slate-300 hover:text-white"
+                    >
+
+                        <i className="fas fa-envelope text-xl"></i>
+
+                        {myMessages.length > 0 && (
+
+                            <span className="absolute -top-2 -right-2 bg-blue-600 text-white text-xs px-1.5 rounded-full">
+                                {myMessages.length}
+                            </span>
+
+                        )}
+
+                    </button>
+
+
+                    {currentUser.role === "admin" && (
+
+                        <div className="relative">
+
+                            <button
+                                onClick={() =>
+                                    setShowNotifications(!showNotifications)
+                                }
+                                className="relative text-slate-300 hover:text-white"
+                            >
+
+                                <i className="fas fa-bell text-xl"></i>
+
+                                {pendingRequests.length > 0 && (
+
+                                    <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs px-1.5 rounded-full">
+                                        {pendingRequests.length}
+                                    </span>
+
+                                )}
+
+                            </button>
+
+
+                            {showNotifications && (
+
+                                <div className={`absolute ${lang === "ar" ? "left-0" : "right-0"} top-10 w-80 bg-white text-gray-800 rounded-xl shadow-2xl border p-4 z-50`}>
+
+                                    <h4 className="font-bold border-b pb-2 text-sm">
+                                        {t("pendingRequests")}
+                                        ({pendingRequests.length})
+                                    </h4>
+
+                                    <div className="max-h-72 overflow-y-auto space-y-3 mt-3">
+
+                                        {pendingRequests.length === 0 && (
+                                            <p className="text-sm text-gray-500">
+                                                {t("noData")}
+                                            </p>
+                                        )}
+
+                                        {pendingRequests.map(req => (
+
+                                            <div
+                                                key={req.id}
+                                                className="bg-gray-50 p-3 rounded border space-y-2 text-xs"
+                                            >
+
+                                                <div className="font-bold">
+                                                    {req.fullName}
+                                                </div>
+
+                                                <div className="text-gray-500">
+                                                    {req.jobTitle}
+                                                </div>
+
+                                                <div className="flex gap-2">
+
+                                                    <button
+                                                        onClick={() => handleApproveUser(req, "موافق")}
+                                                        className="bg-green-600 text-white px-3 py-2 rounded flex-1"
+                                                    >
+                                                        {t("approve")}
+                                                    </button>
+
+                                                    <button
+                                                        onClick={() => handleApproveUser(req, "غير موافق")}
+                                                        className="bg-red-600 text-white px-3 py-2 rounded flex-1"
+                                                    >
+                                                        {t("reject")}
+                                                    </button>
+
+                                                </div>
+
+                                            </div>
+
+                                        ))}
+
+                                    </div>
+
+                                </div>
+
+                            )}
+
+                        </div>
+
+                    )}
+
+
+                    <div className="flex items-center gap-2 border-r border-slate-700 pr-3">
+
+                        {currentUser.avatar ? (
+
+                            <img
+                                src={currentUser.avatar}
+                                alt="Profile"
+                                className="w-9 h-9 rounded-full object-cover"
+                            />
+
+                        ) : (
+
+                            <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center">
+                                {currentUser.fullName?.charAt(0)}
+                            </div>
+
+                        )}
+
+                        <div className="hidden md:block">
+
+                            <p className="text-xs font-bold">
+                                {currentUser.fullName}
+                            </p>
+
+                            <p className="text-xs text-green-400">
+                                {currentUser.jobTitle}
+                            </p>
+
+                        </div>
+
+                    </div>
+
+
+                    <button
+                        onClick={handleLogout}
+                        title={t("logout")}
+                        className="text-red-400 hover:text-red-300"
+                    >
+                        <i className="fas fa-power-off text-lg"></i>
+                    </button>
+
+                </div>
+
+            </header>
+
+
+
+            <div className="flex flex-1 flex-col md:flex-row">
+
+                {/* SIDEBAR */}
+
+                <aside className="w-full md:w-64 bg-white border-gray-200 p-3 space-y-2">
+
+                    {tabs.map(tab => (
+
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`sidebar-button w-full p-3 rounded-lg flex items-center gap-3 ${
+                                activeTab === tab.id ? "active" : ""
+                            }`}
+                        >
+
+                            <i className={`fas ${tab.icon} w-6`}></i>
+
+                            <span>{t(tab.label)}</span>
+
+                        </button>
+
+                    ))}
+
+                </aside>
+
+
+
+                {/* MAIN CONTENT */}
+
+                <main className="flex-1 p-4 md:p-6 overflow-auto">
+
+
+
+                    {/* DASHBOARD */}
+
+                    {activeTab === "dashboard" && (
+
+                        <div className="space-y-5">
+
+                            <h2 className="text-xl font-bold text-slate-800">
+                                {t("dashboard")}
+                            </h2>
+
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+
+                                {[
+                                    {
+                                        label: "activeUsers",
+                                        value: activeUsers.length,
+                                        icon: "fa-users",
+                                        color: "blue"
+                                    },
+                                    {
+                                        label: "totalClients",
+                                        value: clients.length,
+                                        icon: "fa-user-tie",
+                                        color: "green"
+                                    },
+                                    {
+                                        label: "totalVendors",
+                                        value: vendors.length,
+                                        icon: "fa-truck",
+                                        color: "amber"
+                                    },
+                                    {
+                                        label: "totalProjects",
+                                        value: projects.length,
+                                        icon: "fa-diagram-project",
+                                        color: "purple"
+                                    }
+                                ].map((item, index) => (
+
+                                    <div
+                                        key={index}
+                                        className="bg-white p-5 rounded-xl shadow-sm border"
+                                    >
+
+                                        <div className="flex justify-between items-center">
+
+                                            <div>
+                                                <p className="text-sm text-gray-500">
+                                                    {t(item.label)}
+                                                </p>
+
+                                                <p className="text-2xl font-bold mt-2">
+                                                    {item.value}
+                                                </p>
+                                            </div>
+
+                                            <i className={`fas ${item.icon} text-2xl text-${item.color}-500`}></i>
+
+                                        </div>
+
+                                    </div>
+
+                                ))}
+
+                            </div>
+
+
+                            <div className="bg-white p-5 rounded-xl border shadow-sm">
+
+                                <h3 className="font-bold text-gray-800 border-b pb-3 mb-3">
+                                    {t("activityLog")}
+                                </h3>
+
+                                <div className="max-h-96 overflow-y-auto space-y-2">
+
+                                    {logs.length === 0 && (
+                                        <p className="text-gray-500 text-sm">
+                                            {t("noLogs")}
+                                        </p>
+                                    )}
+
+                                    {[...logs].reverse().map(log => (
+
+                                        <div
+                                            key={log.id}
+                                            className="text-sm border-b pb-2 flex flex-wrap justify-between gap-2"
+                                        >
+
+                                            <span className="font-bold text-blue-700">
+                                                {log.user}: {log.action}
+                                            </span>
+
+                                            <span className="text-gray-400 text-xs">
+                                                {log.time}
+                                            </span>
+
+                                        </div>
+
+                                    ))}
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    )}
+
+
+
+                    {/* ACCOUNT STATEMENT */}
+
+                    {activeTab === "statement" && (
+
+                        <div className="bg-white p-5 md:p-6 rounded-xl border shadow-sm space-y-6">
+
+                            <h3 className="font-bold text-lg text-slate-800 border-b pb-3">
+                                <i className="fas fa-calculator ml-2"></i>
+                                {t("statement")}
+                            </h3>
+
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
+
+                                <div>
+
+                                    <label className="block text-sm font-bold mb-2">
+                                        {t("accountType")}
+                                    </label>
+
+                                    <select
+                                        className="w-full border p-3 rounded-lg"
+                                        value={selectedAccount.type}
+                                        onChange={e =>
+                                            setSelectedAccount({
+                                                type: e.target.value,
+                                                code: ""
+                                            })
+                                        }
+                                    >
+
+                                        <option value="client">
+                                            {t("client")}
+                                        </option>
+
+                                        <option value="vendor">
+                                            {t("vendor")}
+                                        </option>
+
+                                    </select>
+
+                                </div>
+
+
+                                <div>
+
+                                    <label className="block text-sm font-bold mb-2">
+                                        {t("selectAccount")}
+                                    </label>
+
+                                    <select
+                                        className="w-full border p-3 rounded-lg"
+                                        value={selectedAccount.code}
+                                        onChange={e =>
+                                            setSelectedAccount({
+                                                ...selectedAccount,
+                                                code: e.target.value
+                                            })
+                                        }
+                                    >
+
+                                        <option value="">
+                                            {t("choose")}
+                                        </option>
+
+                                        {(selectedAccount.type === "client"
+                                            ? clients
+                                            : vendors
+                                        ).map(item => (
+
+                                            <option
+                                                key={item.code}
+                                                value={item.code}
+                                            >
+                                                {item.name} ({item.code})
+                                            </option>
+
+                                        ))}
+
+                                    </select>
+
+                                </div>
+
+                            </div>
+
+
+                            {selectedAccount.code ? (
+
+                                <div className="space-y-5">
+
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+                                        <div className="bg-blue-50 border-r-4 border-blue-600 p-5 rounded">
+
+                                            <p className="text-sm text-gray-600 font-bold">
+                                                {t("totalDue")}
+                                            </p>
+
+                                            <p className="text-2xl font-bold text-blue-900 mt-2">
+                                                {formatMoney(totalDue)}
+                                            </p>
+
+                                        </div>
+
+
+                                        <div className="bg-green-50 border-r-4 border-green-600 p-5 rounded">
+
+                                            <p className="text-sm text-gray-600 font-bold">
+                                                {t("totalPaid")}
+                                            </p>
+
+                                            <p className="text-2xl font-bold text-green-900 mt-2">
+                                                {formatMoney(totalPaid)}
+                                            </p>
+
+                                        </div>
+
+
+                                        <div className="bg-amber-50 border-r-4 border-amber-600 p-5 rounded">
+
+                                            <p className="text-sm text-gray-600 font-bold">
+                                                {t("remaining")}
+                                            </p>
+
+                                            <p className="text-2xl font-bold text-amber-900 mt-2">
+                                                {formatMoney(remaining)}
+                                            </p>
+
+                                        </div>
+
+                                    </div>
+
+                                </div>
+
+                            ) : (
+
+                                <p className="text-gray-500 text-sm text-center py-6">
+                                    {t("noAccountSelected")}
+                                </p>
+
+                            )}
+
+                        </div>
+
+                    )}
+
+
+
+                    {/* MASTER DATA */}
+
+                    {activeTab === "masterData" && (
+
+                        <div className="space-y-5">
+
+                            <h2 className="text-xl font-bold">
+                                {t("masterData")}
+                            </h2>
+
+
+                            <div className="bg-white p-5 rounded-xl border shadow-sm">
+
+                                <h3 className="font-bold border-b pb-3 mb-4">
+                                    {t("add")} {t("clients")} / {t("vendors")}
+                                </h3>
+
+                                <form
+                                    onSubmit={handleAddMaster}
+                                    className="grid grid-cols-1 md:grid-cols-2 gap-4"
+                                >
+
+                                    <div>
+
+                                        <label className="block text-sm font-bold mb-1">
+                                            {t("accountType")}
+                                        </label>
+
+                                        <select
+                                            className="w-full border p-3 rounded-lg"
+                                            value={newMaster.type}
+                                            onChange={e =>
+                                                setNewMaster({
+                                                    ...newMaster,
+                                                    type: e.target.value
+                                                })
+                                            }
+                                        >
+
+                                            <option value="client">
+                                                {t("client")}
+                                            </option>
+
+                                            <option value="vendor">
+                                                {t("vendor")}
+                                            </option>
+
+                                        </select>
+
+                                    </div>
+
+
+                                    <div>
+
+                                        <label className="block text-sm font-bold mb-1">
+                                            {t("code")}
+                                        </label>
+
+                                        <input
+                                            required
+                                            className="w-full border p-3 rounded-lg"
+                                            value={newMaster.code}
+                                            onChange={e =>
+                                                setNewMaster({
+                                                    ...newMaster,
+                                                    code: e.target.value
+                                                })
+                                            }
+                                        />
+
+                                    </div>
+
+
+                                    <div>
+
+                                        <label className="block text-sm font-bold mb-1">
+                                            {t("name")}
+                                        </label>
+
+                                        <input
+                                            required
+                                            className="w-full border p-3 rounded-lg"
+                                            value={newMaster.name}
+                                            onChange={e =>
+                                                setNewMaster({
+                                                    ...newMaster,
+                                                    name: e.target.value
+                                                })
+                                            }
+                                        />
+
+                                    </div>
+
+
+                                    <div>
+
+                                        <label className="block text-sm font-bold mb-1">
+                                            {t("phone")}
+                                        </label>
+
+                                        <input
+                                            className="w-full border p-3 rounded-lg"
+                                            value={newMaster.phone}
+                                            onChange={e =>
+                                                setNewMaster({
+                                                    ...newMaster,
+                                                    phone: e.target.value
+                                                })
+                                            }
+                                        />
+
+                                    </div>
+
+
+                                    <div className="md:col-span-2">
+
+                                        <button
+                                            type="submit"
+                                            className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold"
+                                        >
+                                            <i className="fas fa-plus ml-2"></i>
+                                            {t("add")}
+                                        </button>
+
+                                    </div>
+
+                                </form>
+
+                            </div>
+
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+                                <div className="bg-white p-5 rounded-xl border">
+
+                                    <h3 className="font-bold mb-3 border-b pb-2">
+                                        {t("clients")}
+                                    </h3>
+
+                                    <div className="overflow-x-auto">
+
+                                        <table className="w-full text-sm">
+
+                                            <thead>
+                                                <tr className="bg-gray-50">
+                                                    <th className="p-2">{t("code")}</th>
+                                                    <th className="p-2">{t("name")}</th>
+                                                    <th className="p-2">{t("phone")}</th>
+                                                </tr>
+                                            </thead>
+
+                                            <tbody>
+
+                                                {clients.map(item => (
+
+                                                    <tr key={item.code} className="border-t">
+                                                        <td className="p-2">{item.code}</td>
+                                                        <td className="p-2">{item.name}</td>
+                                                        <td className="p-2">{item.phone}</td>
+                                                    </tr>
+
+                                                ))}
+
+                                            </tbody>
+
+                                        </table>
+
+                                        {clients.length === 0 && (
+                                            <p className="text-gray-500 text-sm py-4">
+                                                {t("noData")}
+                                            </p>
+                                        )}
+
+                                    </div>
+
+                                </div>
+
+
+                                <div className="bg-white p-5 rounded-xl border">
+
+                                    <h3 className="font-bold mb-3 border-b pb-2">
+                                        {t("vendors")}
+                                    </h3>
+
+                                    <div className="overflow-x-auto">
+
+                                        <table className="w-full text-sm">
+
+                                            <thead>
+                                                <tr className="bg-gray-50">
+                                                    <th className="p-2">{t("code")}</th>
+                                                    <th className="p-2">{t("name")}</th>
+                                                    <th className="p-2">{t("phone")}</th>
+                                                </tr>
+                                            </thead>
+
+                                            <tbody>
+
+                                                {vendors.map(item => (
+
+                                                    <tr key={item.code} className="border-t">
+                                                        <td className="p-2">{item.code}</td>
+                                                        <td className="p-2">{item.name}</td>
+                                                        <td className="p-2">{item.phone}</td>
+                                                    </tr>
+
+                                                ))}
+
+                                            </tbody>
+
+                                        </table>
+
+                                        {vendors.length === 0 && (
+                                            <p className="text-gray-500 text-sm py-4">
+                                                {t("noData")}
+                                            </p>
+                                        )}
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    )}
+
+
+
+                    {/* PROJECTS */}
+
+                    {activeTab === "projects" && (
+
+                        <div className="space-y-5">
+
+                            <h2 className="text-xl font-bold">
+                                {t("projects")}
+                            </h2>
+
+
+                            <div className="bg-white p-5 rounded-xl border shadow-sm">
+
+                                <h3 className="font-bold border-b pb-3 mb-4">
+                                    {t("add")} {t("projects")}
+                                </h3>
+
+                                <form
+                                    onSubmit={handleAddProject}
+                                    className="grid grid-cols-1 md:grid-cols-2 gap-4"
+                                >
+
+                                    <input
+                                        required
+                                        placeholder={t("projectCode")}
+                                        className="border p-3 rounded-lg"
+                                        value={projectForm.code}
+                                        onChange={e =>
+                                            setProjectForm({
+                                                ...projectForm,
+                                                code: e.target.value
+                                            })
+                                        }
+                                    />
+
+                                    <input
+                                        required
+                                        placeholder={t("projectName")}
+                                        className="border p-3 rounded-lg"
+                                        value={projectForm.name}
+                                        onChange={e =>
+                                            setProjectForm({
+                                                ...projectForm,
+                                                name: e.target.value
+                                            })
+                                        }
+                                    />
+
+                                    <select
+                                        className="border p-3 rounded-lg"
+                                        value={projectForm.clientCode}
+                                        onChange={e =>
+                                            setProjectForm({
+                                                ...projectForm,
+                                                clientCode: e.target.value
+                                            })
+                                        }
+                                    >
+
+                                        <option value="">
+                                            {t("selectClient")}
+                                        </option>
+
+                                        {clients.map(client => (
+                                            <option key={client.code} value={client.code}>
+                                                {client.name}
+                                            </option>
+                                        ))}
+
+                                    </select>
+
+
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        placeholder={t("projectAmount")}
+                                        className="border p-3 rounded-lg"
+                                        value={projectForm.amount}
+                                        onChange={e =>
+                                            setProjectForm({
+                                                ...projectForm,
+                                                amount: e.target.value
+                                            })
+                                        }
+                                    />
+
+
+                                    <div className="md:col-span-2">
+
+                                        <button
+                                            type="submit"
+                                            className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold"
+                                        >
+                                            <i className="fas fa-plus ml-2"></i>
+                                            {t("add")}
+                                        </button>
+
+                                    </div>
+
+                                </form>
+
+                            </div>
+
+
+                            <div className="bg-white p-5 rounded-xl border shadow-sm overflow-x-auto">
+
+                                <h3 className="font-bold border-b pb-3 mb-4">
+                                    {t("projects")}
+                                </h3>
+
+                                <table className="w-full text-sm">
+
+                                    <thead>
+                                        <tr className="bg-gray-50">
+                                            <th className="p-3">{t("projectCode")}</th>
+                                            <th className="p-3">{t("projectName")}</th>
+                                            <th className="p-3">{t("projectClient")}</th>
+                                            <th className="p-3">{t("amount")}</th>
+                                            <th className="p-3">{t("status")}</th>
+                                        </tr>
+                                    </thead>
+
+                                    <tbody>
+
+                                        {projects.map(project => (
+
+                                            <tr key={project.id} className="border-t">
+
+                                                <td className="p-3">{project.code}</td>
+
+                                                <td className="p-3">{project.name}</td>
+
+                                                <td className="p-3">
+                                                    {clients.find(c => c.code === project.clientCode)?.name || project.clientCode}
+                                                </td>
+
+                                                <td className="p-3">
+                                                    {formatMoney(project.amount)}
+                                                </td>
+
+                                                <td className="p-3">
+                                                    {project.status}
+                                                </td>
+
+                                            </tr>
+
+                                        ))}
+
+                                    </tbody>
+
+                                </table>
+
+                                {projects.length === 0 && (
+                                    <p className="text-gray-500 text-sm py-4">
+                                        {t("noProjects")}
+                                    </p>
+                                )}
+
+                            </div>
+
+                        </div>
+
+                    )}
+
+
+
+                    {/* MESSAGES */}
+
+                    {activeTab === "messages" && (
+
+                        <div className="space-y-5">
+
+                            <h2 className="text-xl font-bold">
+                                {t("messages")}
+                            </h2>
+
+
+                            {currentUser.role === "admin" && (
+
+                                <div className="bg-white p-5 rounded-xl border shadow-sm">
+
+                                    <h3 className="font-bold border-b pb-3 mb-4">
+                                        {t("newMessage")}
+                                    </h3>
+
+                                    <form
+                                        onSubmit={handleSendMessage}
+                                        className="space-y-3"
+                                    >
+
+                                        <input
+                                            required
+                                            placeholder={t("recipients")}
+                                            className="w-full border p-3 rounded-lg"
+                                            value={msgForm.recipients}
+                                            onChange={e =>
+                                                setMsgForm({
+                                                    ...msgForm,
+                                                    recipients: e.target.value
+                                                })
+                                            }
+                                        />
+
+                                        <input
+                                            required
+                                            placeholder={t("subject")}
+                                            className="w-full border p-3 rounded-lg"
+                                            value={msgForm.subject}
+                                            onChange={e =>
+                                                setMsgForm({
+                                                    ...msgForm,
+                                                    subject: e.target.value
+                                                })
+                                            }
+                                        />
+
+                                        <textarea
+                                            required
+                                            rows="4"
+                                            placeholder={t("messageBody")}
+                                            className="w-full border p-3 rounded-lg"
+                                            value={msgForm.body}
+                                            onChange={e =>
+                                                setMsgForm({
+                                                    ...msgForm,
+                                                    body: e.target.value
+                                                })
+                                            }
+                                        ></textarea>
+
+                                        <button
+                                            type="submit"
+                                            className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold"
+                                        >
+                                            <i className="fas fa-paper-plane ml-2"></i>
+                                            {t("send")}
+                                        </button>
+
+                                    </form>
+
+                                </div>
+
+                            )}
+
+
+                            <div className="bg-white p-5 rounded-xl border shadow-sm">
+
+                                <h3 className="font-bold border-b pb-3 mb-4">
+                                    {t("inbox")}
+                                </h3>
+
+                                <div className="space-y-3">
+
+                                    {myMessages.length === 0 && (
+
+                                        <p className="text-gray-500">
+                                            {t("noMessages")}
+                                        </p>
+
+                                    )}
+
+                                    {[...myMessages].reverse().map(msg => (
+
+                                        <div
+                                            key={msg.id}
+                                            className="border rounded-lg p-4"
+                                        >
+
+                                            <div className="flex justify-between flex-wrap gap-2">
+
+                                                <h4 className="font-bold text-blue-700">
+                                                    {msg.subject}
+                                                </h4>
+
+                                                <span className="text-xs text-gray-500">
+                                                    {msg.date}
+                                                </span>
+
+                                            </div>
+
+                                            <p className="text-xs text-gray-500 mt-2">
+                                                {msg.senderName || msg.sender}
+                                            </p>
+
+                                            <p className="mt-3 text-sm whitespace-pre-wrap">
+                                                {msg.body}
+                                            </p>
+
+                                        </div>
+
+                                    ))}
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    )}
+
+
+
+                    {/* PROFILE */}
+
+                    {activeTab === "profile" && (
+
+                        <div className="bg-white p-5 md:p-6 rounded-xl border shadow-sm max-w-xl space-y-6">
+
+                            <h3 className="font-bold text-lg border-b pb-3">
+                                {t("profile")}
+                            </h3>
+
+
+                            <div className="flex items-center gap-4">
+
+                                {currentUser.avatar ? (
+
+                                    <img
+                                        src={currentUser.avatar}
+                                        alt="Avatar"
+                                        className="w-20 h-20 rounded-full object-cover border-2 border-blue-600"
+                                    />
+
+                                ) : (
+
+                                    <div className="w-20 h-20 rounded-full bg-slate-800 text-white flex items-center justify-center text-2xl font-bold">
+                                        {currentUser.fullName?.charAt(0)}
+                                    </div>
+
+                                )}
+
+                                <div>
+
+                                    <p className="font-bold">
+                                        {currentUser.fullName}
+                                    </p>
+
+                                    <p className="text-sm text-gray-500">
+                                        {currentUser.jobTitle}
+                                    </p>
+
+                                    <label className="inline-block mt-3 bg-blue-600 text-white text-sm px-4 py-2 rounded-lg font-bold cursor-pointer">
+
+                                        {t("changePhoto")}
+
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            onChange={handleAvatarUpload}
+                                        />
+
+                                    </label>
+
+                                </div>
+
+                            </div>
+
+
+                            <div className="border-t pt-4">
+
+                                <h4 className="font-bold mb-3">
+                                    {t("userInfo")}
+                                </h4>
+
+                                <p className="text-sm text-gray-600">
+                                    {t("username")}: {currentUser.username}
+                                </p>
+
+                                <p className="text-sm text-gray-600 mt-2">
+                                    {t("jobTitle")}: {currentUser.jobTitle}
+                                </p>
+
+                            </div>
+
+
+                            <form
+                                onSubmit={updatePassword}
+                                className="space-y-3 border-t pt-4"
+                            >
+
+                                <h4 className="font-bold">
+                                    {t("changePassword")}
+                                </h4>
+
+                                <input
+                                    type="password"
+                                    minLength="4"
+                                    required
+                                    placeholder={t("newPassword")}
+                                    className="w-full border p-3 rounded-lg"
+                                    value={profilePass}
+                                    onChange={e =>
+                                        setProfilePass(e.target.value)
+                                    }
+                                />
+
+                                <button
+                                    type="submit"
+                                    className="bg-green-600 text-white px-5 py-3 rounded-lg font-bold"
+                                >
+                                    {t("save")}
+                                </button>
+
+                            </form>
+
+                        </div>
+
+                    )}
+
+
+                </main>
+
+            </div>
+
+        </div>
+
+    );
+
+}
+
+
+
+/* =====================================================
+   20. START APPLICATION
+===================================================== */
+
+const rootElement = document.getElementById("root");
+
+const root = ReactDOM.createRoot(rootElement);
+
+root.render(<App />);
+
+</script>
+
 </body>
 </html>
