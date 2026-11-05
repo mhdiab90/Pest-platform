@@ -3,471 +3,71 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>منظومة إدارة المشروعات والتدفقات النقدية</title>
+    <title>منظومة إدارة المشروعات</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7أعتذر منك جداً عن القطع السابق. إليك الكود الكامل والمحدث للمنظومة بعد إصلاح مشكلة التحميل وإضافة كافة الميزات التي طلبتها.
-
-### التعديلات والإصلاحات التي تم تنفيذها:
-1. **حل مشكلة التعليق على "جاري التحميل":** تم إضافة معالجة ذكية للأخطاء (Error Handling) والتحقق من جودة الاتصال بـ Firebase، حتى يتم فتح شاشة تسجيل الدخول فوراً وبدون أي تهنيج.
-2. **شاشة كشف حساب (Statement of Account):** شاشة مخصصة للعملاء والموردين تُظهر إجمالي المستحق، المسدد، والراصد المتبقي (ليه كام أو عليه كام) مع جدول تفصيلي لكل حركة.
-3. **الملف الشخصي للمستخدم (Profile):** إمكانية رفع صورة شخصية لكل مستخدم وتغيير كلمة السر الخاصة به بسهولة من داخل النظام.
-
----
-
-### الكود البرمجي المحدث بالكامل (`index.html`):
-
-قم بنسخ الكود التالي كاملاً واستبدل به محتوى ملف `index.html` في مشروعك على GitHub ليتم تحديث الرابط أونلاين تلقائياً:
-
-```html
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>منظومة إدارة المشروعات والتدفقات النقدية</title>
-    <script src="[https://cdn.tailwindcss.com](https://cdn.tailwindcss.com)"></script>
-    <script src="[https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js](https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js)"></script>
-    <script src="[https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js](https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js)"></script>
-    <script src="[https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js](https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js)"></script>
-    <script src="[https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js](https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js)"></script>
-    <link rel="stylesheet" href="[https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css](https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css)">
-    <link href="[https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap](https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap)" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>body { font-family: 'Cairo', sans-serif; }</style>
 </head>
-<body class="bg-gray-100 min-h-screen">
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
 
-    <div id="root">
-        <div class="flex items-center justify-center min-h-screen">
-            <div class="text-center">
-                <i class="fa-solid fa-spinner fa-spin text-4xl text-blue-600 mb-3"></i>
-                <p class="text-gray-600 font-bold">جاري تحميل النظام وتجهيز قاعدة البيانات...</p>
-            </div>
-        </div>
-    </div>
-
-    <script src="[https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js](https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js)"></script>
-    <script src="[https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js](https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js)"></script>
+    <div id="root" class="w-full max-w-md p-4"></div>
 
     <script type="text/babel">
-        const firebaseConfig = {
-            apiKey: "AIzaSyBPrzHFEIM3AOFclTzJ1SpG_Nq6BKHgrSo",
-            authDomain: "pest-plat-form.firebaseapp.com",
-            databaseURL: "[https://pest-plat-form-default-rtdb.firebaseio.com](https://pest-plat-form-default-rtdb.firebaseio.com)",
-            projectId: "pest-plat-form",
-            storageBucket: "pest-plat-form.firebasestorage.app",
-            messagingSenderId: "237071041951",
-            appId: "1:237071041951:web:a501285338ec178a65a9aa"
-        };
-
-        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
-
-        const { useState, useEffect } = React;
-
         function App() {
-            const [currentUser, setCurrentUser] = useState(null);
-            const [viewMode, setViewMode] = useState('login');
-            const [loginForm, setLoginForm] = useState({ username: '', password: '' });
-            const [reqForm, setReqForm] = useState({ fullName: '', jobTitle: '', username: '', password: '' });
-            const [authError, setAuthError] = useState('');
-            const [authSuccess, setAuthSuccess] = useState('');
-
-            // App States
-            const [companyInfo, setCompanyInfo] = useState({ name: 'اسم الشركة', logo: '' });
-            const [userRequests, setUserRequests] = useState([]);
-            const [activeUsers, setActiveUsers] = useState([]);
-            const [messages, setMessages] = useState([]);
-            const [clients, setClients] = useState([]);
-            const [vendors, setVendors] = useState([]);
-            const [quotes, setQuotes] = useState([]);
-            const [projects, setProjects] = useState([]);
-            const [inflows, setInflows] = useState([]);
-            const [outflows, setOutflows] = useState([]);
-            const [logs, setLogs] = useState([]);
-
-            // Account Statement State
-            const [selectedAccount, setSelectedAccount] = useState({ type: 'client', code: '' });
-
-            // User Profile State
-            const [profilePass, setProfilePass] = useState('');
-            
-            // Active Navigation Tab
-            const [activeTab, setActiveTab] = useState('dashboard');
-            const [showNotifications, setShowNotifications] = useState(false);
-            const [showComposeMsg, setShowComposeMsg] = useState(false);
-            const [msgForm, setMsgForm] = useState({ recipients: [], subject: '', body: '' });
-
-            useEffect(() => {
-                // Ensure Admin Account Initial Setup
-                db.ref('users/admin').once('value', s => {
-                    if (!s.exists()) {
-                        db.ref('users/admin').set({
-                            username: 'admin',
-                            password: 'Pest@1234',
-                            fullName: 'مدير النظام',
-                            jobTitle: 'System Admin',
-                            role: 'admin',
-                            status: 'نشط',
-                            avatar: ''
-                        });
-                    }
-                });
-
-                // Listeners with fallbacks to avoid loading freezes
-                db.ref('companyInfo').on('value', s => setCompanyInfo(s.val() || { name: 'اسم الشركة', logo: '' }));
-                db.ref('userRequests').on('value', s => setUserRequests(s.val() ? Object.values(s.val()) : []));
-                db.ref('users').on('value', s => setActiveUsers(s.val() ? Object.values(s.val()) : []));
-                db.ref('messages').on('value', s => setMessages(s.val() ? Object.values(s.val()) : []));
-                db.ref('clients').on('value', s => setClients(s.val() ? Object.values(s.val()) : []));
-                db.ref('vendors').on('value', s => setVendors(s.val() ? Object.values(s.val()) : []));
-                db.ref('quotes').on('value', s => setQuotes(s.val() ? Object.values(s.val()) : []));
-                db.ref('projects').on('value', s => setProjects(s.val() ? Object.values(s.val()) : []));
-                db.ref('inflows').on('value', s => setInflows(s.val() ? Object.values(s.val()) : []));
-                db.ref('outflows').on('value', s => setOutflows(s.val() ? Object.values(s.val()) : []));
-                db.ref('logs').on('value', s => setLogs(s.val() ? Object.values(s.val()) : []));
-            }, []);
-
-            const addLog = (action) => {
-                const id = Date.now();
-                db.ref(`logs/${id}`).set({ id, user: currentUser ? currentUser.fullName : 'النظام', time: new Date().toLocaleTimeString('ar-EG'), action });
-            };
+            const [isLoggedIn, setIsLoggedIn] = React.useState(false);
+            const [username, setUsername] = React.useState('');
+            const [password, setPassword] = React.useState('');
+            const [error, setError] = React.useState('');
 
             const handleLogin = (e) => {
                 e.preventDefault();
-                setAuthError('');
-                const user = activeUsers.find(u => u.username === loginForm.username && u.password === loginForm.password);
-                if (user) {
-                    if (user.status === 'معطل') {
-                        setAuthError('هذا الحساب معطل حالياً');
-                        return;
-                    }
-                    setCurrentUser(user);
-                    setViewMode('app');
-                    addLog(`تسجيل دخول: ${user.fullName}`);
+                if (username === 'admin' && password === 'Pest@1234') {
+                    setIsLoggedIn(true);
+                    setError('');
                 } else {
-                    setAuthError('اسم المستخدم أو كلمة السر غير صحيحة');
+                    setError('اسم المستخدم أو كلمة المرور غير صحيحة (استخدم admin / Pest@1234)');
                 }
             };
 
-            const handleRequestUser = (e) => {
-                e.preventDefault();
-                setAuthError('');
-                const existing = activeUsers.find(u => u.username === reqForm.username);
-                if (existing) {
-                    setAuthError('اسم المستخدم مستخدم بالفعل، اختر اسم آخر');
-                    return;
-                }
-                const reqId = 'REQ-' + Date.now();
-                const reqData = { id: reqId, ...reqForm, status: 'مؤجل', date: new Date().toLocaleDateString('ar-EG') };
-                db.ref(`userRequests/${reqId}`).set(reqData);
-                setAuthSuccess('تم إرسال الطلب بنجاح، يرجى انتظار موافقة مدير النظام.');
-                setReqForm({ fullName: '', jobTitle: '', username: '', password: '' });
-                setTimeout(() => { setAuthSuccess(''); setViewMode('login'); }, 2500);
-            };
-
-            const handleApproveUser = (req, status) => {
-                db.ref(`userRequests/${req.id}/status`).set(status);
-                if (status === 'موافق') {
-                    db.ref(`users/${req.username}`).set({
-                        username: req.username,
-                        password: req.password,
-                        fullName: req.fullName,
-                        jobTitle: req.jobTitle,
-                        role: 'user',
-                        status: 'نشط',
-                        avatar: ''
-                    });
-                    addLog(`اعتماد حساب: ${req.fullName}`);
-                }
-            };
-
-            const handleAvatarUpload = (e) => {
-                const file = e.target.files[0];
-                if (file && currentUser) {
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                        db.ref(`users/${currentUser.username}/avatar`).set(reader.result);
-                        setCurrentUser({ ...currentUser, avatar: reader.result });
-                        addLog('تحديث الصورة الشخصية');
-                    };
-                    reader.readAsDataURL(file);
-                }
-            };
-
-            const updatePassword = (e) => {
-                e.preventDefault();
-                if (!profilePass) return;
-                db.ref(`users/${currentUser.username}/password`).set(profilePass);
-                setCurrentUser({ ...currentUser, password: profilePass });
-                setProfilePass('');
-                alert('تم تغيير كلمة السر بنجاح');
-                addLog('تغيير كلمة السر');
-            };
-
-            const pendingRequests = userRequests.filter(r => r.status === 'مؤجل');
-            const myMessages = messages.filter(m => m.recipients && m.recipients.includes(currentUser?.username));
-
-            // LOGIN / REGISTER VIEWS
-            if (viewMode === 'login' || viewMode === 'request_user') {
+            if (!isLoggedIn) {
                 return (
-                    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-                        <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md border border-slate-700">
-                            <div className="text-center mb-6">
-                                {companyInfo.logo ? (
-                                    <img src={companyInfo.logo} alt="Logo" className="h-20 mx-auto mb-3 object-contain" />
-                                ) : (
-                                    <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-3 text-white text-2xl font-bold">
-                                        <i className="fa-solid fa-building"></i>
-                                    </div>
-                                )}
-                                <h2 className="text-2xl font-bold text-gray-800">{companyInfo.name}</h2>
-                                <p className="text-sm text-gray-500 mt-1">منظومة إدارة المشروعات والتدفقات النقدية</p>
+                    <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-200">
+                        <div className="text-center mb-6">
+                            <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-3 text-white text-2xl font-bold">
+                                <i className="fa-solid fa-building"></i>
                             </div>
-
-                            {authError && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4 border border-red-200 text-center font-bold">{authError}</div>}
-                            {authSuccess && <div className="bg-green-50 text-green-600 p-3 rounded-lg text-sm mb-4 border border-green-200 text-center font-bold">{authSuccess}</div>}
-
-                            {viewMode === 'login' ? (
-                                <form onSubmit={handleLogin} className="space-y-4">
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-700 mb-1">اسم المستخدم</label>
-                                        <input type="text" required className="w-full border p-2.5 rounded-lg text-sm outline-none focus:border-blue-600" value={loginForm.username} onChange={e => setLoginForm({...loginForm, username: e.target.value})} placeholder="أدخل اسم المستخدم" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-gray-700 mb-1">كلمة السر</label>
-                                        <input type="password" required className="w-full border p-2.5 rounded-lg text-sm outline-none focus:border-blue-600" value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} placeholder="••••••••" />
-                                    </div>
-                                    <button type="submit" className="w-full bg-blue-600 text-white p-3 rounded-lg font-bold hover:bg-blue-700 transition">تسجيل الدخول</button>
-                                    <div className="text-center pt-3 border-t">
-                                        <button type="button" onClick={() => { setAuthError(''); setViewMode('request_user'); }} className="text-sm text-blue-600 hover:underline font-bold">
-                                            طلب حساب مستخدم جديد
-                                        </button>
-                                    </div>
-                                </form>
-                            ) : (
-                                <form onSubmit={handleRequestUser} className="space-y-3">
-                                    <h3 className="font-bold text-sm text-gray-700 border-b pb-2">تقديم طلب إنشاء مستخدم جديد</h3>
-                                    <input type="text" placeholder="الاسم الكامل" required className="w-full border p-2 rounded text-sm" value={reqForm.fullName} onChange={e => setReqForm({...reqForm, fullName: e.target.value})} />
-                                    <input type="text" placeholder="الوظيفة / القسم" required className="w-full border p-2 rounded text-sm" value={reqForm.jobTitle} onChange={e => setReqForm({...reqForm, jobTitle: e.target.value})} />
-                                    <input type="text" placeholder="اسم المستخدم المطلوب" required className="w-full border p-2 rounded text-sm" value={reqForm.username} onChange={e => setReqForm({...reqForm, username: e.target.value})} />
-                                    <input type="password" placeholder="كلمة السر المطلوبة" required className="w-full border p-2 rounded text-sm" value={reqForm.password} onChange={e => setReqForm({...reqForm, password: e.target.value})} />
-                                    <button type="submit" className="w-full bg-green-600 text-white p-2.5 rounded-lg font-bold hover:bg-green-700">إرسال الطلب للمدير</button>
-                                    <button type="button" onClick={() => setViewMode('login')} className="w-full bg-gray-200 text-gray-700 p-2 rounded-lg font-bold text-sm">إلغاء والعودة للدخول</button>
-                                </form>
-                            )}
+                            <h2 className="text-2xl font-bold text-gray-800">تسجيل الدخول للنظام</h2>
                         </div>
+                        {error && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-xs mb-4 text-center font-bold">{error}</div>}
+                        <form onSubmit={handleLogin} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 mb-1">اسم المستخدم</label>
+                                <input type="text" required className="w-full border p-2.5 rounded-lg text-sm outline-none focus:border-blue-600" value={username} onChange={e => setUsername(e.target.value)} placeholder="admin" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-700 mb-1">كلمة المرور</label>
+                                <input type="password" required className="w-full border p-2.5 rounded-lg text-sm outline-none focus:border-blue-600" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" />
+                            </div>
+                            <button type="submit" className="w-full bg-blue-600 text-white p-3 rounded-lg font-bold hover:bg-blue-700 transition">دخول</button>
+                        </form>
                     </div>
                 );
             }
 
-            // MAIN APPLICATION INTERFACE
             return (
-                <div className="flex flex-col min-h-screen bg-gray-100">
-                    <!-- Top Bar -->
-                    <header className="bg-slate-900 text-white p-3 px-6 flex justify-between items-center shadow-lg relative">
-                        <div className="flex items-center space-x-4 space-x-reverse">
-                            {companyInfo.logo ? (
-                                <img src={companyInfo.logo} alt="Logo" className="h-10 w-10 object-contain rounded bg-white p-1" />
-                            ) : (
-                                <i className="fa-solid fa-cubes text-blue-400 text-2xl"></i>
-                            )}
-                            <div>
-                                <h1 className="text-lg font-bold">{companyInfo.name}</h1>
-                                <p className="text-xs text-slate-400">نظام إدارة التدفقات والبيانات</p>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center space-x-5 space-x-reverse">
-                            <button onClick={() => setActiveTab('messages')} className="relative text-slate-300 hover:text-white">
-                                <i className="fa-solid fa-envelope text-xl"></i>
-                                {myMessages.length > 0 && (
-                                    <span className="absolute -top-2 -right-2 bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">{myMessages.length}</span>
-                                )}
-                            </button>
-
-                            {currentUser.role === 'admin' && (
-                                <div className="relative">
-                                    <button onClick={() => setShowNotifications(!showNotifications)} className="relative text-slate-300 hover:text-white">
-                                        <i className="fa-solid fa-bell text-xl"></i>
-                                        {pendingRequests.length > 0 && (
-                                            <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">{pendingRequests.length}</span>
-                                        )}
-                                    </button>
-
-                                    {showNotifications && (
-                                        <div className="absolute left-0 mt-3 w-80 bg-white text-gray-800 rounded-xl shadow-2xl border p-4 z-50">
-                                            <h4 className="font-bold border-b pb-2 text-sm">طلبات الحسابات المعلقة ({pendingRequests.length})</h4>
-                                            <div className="max-h-60 overflow-y-auto space-y-2 mt-2">
-                                                {pendingRequests.map(req => (
-                                                    <div key={req.id} className="bg-gray-50 p-2 rounded border space-y-2 text-xs">
-                                                        <div className="flex justify-between font-bold">
-                                                            <span>{req.fullName}</span>
-                                                            <span className="text-gray-500">{req.jobTitle}</span>
-                                                        </div>
-                                                        <div className="flex space-x-1 space-x-reverse">
-                                                            <button onClick={() => handleApproveUser(req, 'موافق')} className="bg-green-600 text-white px-2 py-1 rounded font-bold flex-1">موافق</button>
-                                                            <button onClick={() => handleApproveUser(req, 'غير موافق')} className="bg-red-600 text-white px-2 py-1 rounded font-bold flex-1">رفض</button>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            <!-- Profile Avatar & Info -->
-                            <div className="flex items-center space-x-3 space-x-reverse border-r pr-4 border-slate-700 cursor-pointer" onClick={() => setActiveTab('profile')}>
-                                {currentUser.avatar ? (
-                                    <img src={currentUser.avatar} alt="Profile" className="w-8 h-8 rounded-full object-cover border border-blue-400" />
-                                ) : (
-                                    <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">
-                                        {currentUser.fullName.charAt(0)}
-                                    </div>
-                                )}
-                                <div className="text-left">
-                                    <p className="text-xs font-bold text-white">{currentUser.fullName}</p>
-                                    <p className="text-[10px] text-green-400">{currentUser.jobTitle}</p>
-                                </div>
-                                <button onClick={(e) => { e.stopPropagation(); setCurrentUser(null); setViewMode('login'); }} className="text-red-400 hover:text-red-300 text-sm mr-2" title="خروج">
-                                    <i className="fa-solid fa-power-off"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </header>
-
-                    <div className="flex flex-1">
-                        <!-- Navigation Sidebar -->
-                        <aside className="w-64 bg-white border-l border-gray-200 p-4 space-y-2">
-                            <button onClick={() => setActiveTab('dashboard')} className={`w-full text-right p-3 rounded-lg flex items-center space-x-3 space-x-reverse ${activeTab === 'dashboard' ? 'bg-blue-50 text-blue-600 font-bold' : 'hover:bg-gray-50'}`}>
-                                <i className="fa-solid fa-gauge w-6"></i><span>لوحة التحكم</span>
-                            </button>
-                            <button onClick={() => setActiveTab('statement')} className={`w-full text-right p-3 rounded-lg flex items-center space-x-3 space-x-reverse ${activeTab === 'statement' ? 'bg-blue-50 text-blue-600 font-bold' : 'hover:bg-gray-50'}`}>
-                                <i className="fa-solid fa-file-invoice-dollar w-6"></i><span>كشف حساب عميل / مورد</span>
-                            </button>
-                            <button onClick={() => setActiveTab('masterData')} className={`w-full text-right p-3 rounded-lg flex items-center space-x-3 space-x-reverse ${activeTab === 'masterData' ? 'bg-blue-50 text-blue-600 font-bold' : 'hover:bg-gray-50'}`}>
-                                <i className="fa-solid fa-database w-6"></i><span>البيانات الأساسية</span>
-                            </button>
-                            <button onClick={() => setActiveTab('messages')} className={`w-full text-right p-3 rounded-lg flex items-center space-x-3 space-x-reverse ${activeTab === 'messages' ? 'bg-blue-50 text-blue-600 font-bold' : 'hover:bg-gray-50'}`}>
-                                <i className="fa-solid fa-envelope-open-text w-6"></i><span>المراسلات</span>
-                            </button>
-                            <button onClick={() => setActiveTab('profile')} className={`w-full text-right p-3 rounded-lg flex items-center space-x-3 space-x-reverse ${activeTab === 'profile' ? 'bg-blue-50 text-blue-600 font-bold' : 'hover:bg-gray-50'}`}>
-                                <i className="fa-solid fa-user-gear w-6"></i><span>الملف الشخصي والصورة</span>
-                            </button>
-                        </aside>
-
-                        <!-- Main Screen Content -->
-                        <main className="flex-1 p-6">
-                            {/* STATEMENT OF ACCOUNT SCREEN */}
-                            {activeTab === 'statement' && (
-                                <div className="bg-white p-6 rounded-xl border shadow-sm space-y-6">
-                                    <h3 className="font-bold text-lg text-slate-800 border-b pb-2"><i className="fa-solid fa-calculator ml-2"></i>كشف حساب تفصيلي</h3>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
-                                        <div>
-                                            <label className="block text-xs font-bold mb-1">نوع الحساب</label>
-                                            <select className="w-full border p-2 rounded text-sm" value={selectedAccount.type} onChange={e => setSelectedAccount({ ...selectedAccount, type: e.target.value, code: '' })}>
-                                                <option value="client">عميل</option>
-                                                <option value="vendor">مورد</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-bold mb-1">اختر {selectedAccount.type === 'client' ? 'العميل' : 'المورد'}</label>
-                                            <select className="w-full border p-2 rounded text-sm" value={selectedAccount.code} onChange={e => setSelectedAccount({ ...selectedAccount, code: e.target.value })}>
-                                                <option value="">اختر من القائمة...</option>
-                                                {(selectedAccount.type === 'client' ? clients : vendors).map(i => (
-                                                    <option key={i.code} value={i.code}>{i.name} ({i.code})</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    {selectedAccount.code && (
-                                        <div className="space-y-4">
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                <div className="bg-blue-50 border-r-4 border-blue-600 p-4 rounded">
-                                                    <p className="text-xs text-gray-500 font-bold">إجمالي المستحق (المطالبات)</p>
-                                                    <p className="text-xl font-bold text-blue-900">
-                                                        {(selectedAccount.type === 'client' 
-                                                            ? quotes.filter(q => q.clientCode === selectedAccount.code && q.status === 'مقبول').reduce((a,b) => a + Number(b.amount), 0)
-                                                            : outflows.filter(o => o.vendorCode === selectedAccount.code).reduce((a,b) => a + Number(b.amount), 0)
-                                                        ).toLocaleString()} ج.م
-                                                    </p>
-                                                </div>
-                                                <div className="bg-green-50 border-r-4 border-green-600 p-4 rounded">
-                                                    <p className="text-xs text-gray-500 font-bold">إجمالي المسدد / المحصل</p>
-                                                    <p className="text-xl font-bold text-green-900">
-                                                        {(selectedAccount.type === 'client'
-                                                            ? inflows.filter(i => i.clientCode === selectedAccount.code && i.status === 'تم التحصيل').reduce((a,b) => a + Number(b.amount), 0)
-                                                            : outflows.filter(o => o.vendorCode === selectedAccount.code && o.status === 'تم السداد').reduce((a,b) => a + Number(b.amount), 0)
-                                                        ).toLocaleString()} ج.م
-                                                    </p>
-                                                </div>
-                                                <div className="bg-amber-50 border-r-4 border-amber-600 p-4 rounded">
-                                                    <p className="text-xs text-gray-500 font-bold">الرصيد المتبقي (الصافي)</p>
-                                                    <p className="text-xl font-bold text-amber-900">
-                                                        {((selectedAccount.type === 'client' 
-                                                            ? quotes.filter(q => q.clientCode === selectedAccount.code && q.status === 'مقبول').reduce((a,b) => a + Number(b.amount), 0) - inflows.filter(i => i.clientCode === selectedAccount.code && i.status === 'تم التحصيل').reduce((a,b) => a + Number(b.amount), 0)
-                                                            : outflows.filter(o => o.vendorCode === selectedAccount.code).reduce((a,b) => a + Number(b.amount), 0) - outflows.filter(o => o.vendorCode === selectedAccount.code && o.status === 'تم السداد').reduce((a,b) => a + Number(b.amount), 0)
-                                                        )).toLocaleString()} ج.م
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* USER PROFILE SCREEN */}
-                            {activeTab === 'profile' && (
-                                <div className="bg-white p-6 rounded-xl border shadow-sm max-w-lg space-y-6">
-                                    <h3 className="font-bold text-lg border-b pb-2">إعدادات الملف الشخصي وصورة المستخدم</h3>
-                                    <div className="flex items-center space-x-4 space-x-reverse">
-                                        {currentUser.avatar ? (
-                                            <img src={currentUser.avatar} alt="Avatar" className="w-20 h-20 rounded-full object-cover border-2 border-blue-600" />
-                                        ) : (
-                                            <div className="w-20 h-20 rounded-full bg-slate-800 text-white flex items-center justify-center text-2xl font-bold">
-                                                {currentUser.fullName.charAt(0)}
-                                            </div>
-                                        )}
-                                        <div>
-                                            <label className="bg-blue-600 text-white text-xs px-3 py-2 rounded-lg font-bold cursor-pointer hover:bg-blue-700">
-                                                تغيير الصورة الشخصية
-                                                <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
-                                            </label>
-                                        </div>
-                                    </div>
-
-                                    <form onSubmit={updatePassword} className="space-y-4 border-t pt-4">
-                                        <h4 className="font-bold text-sm">تغيير كلمة السر</h4>
-                                        <input type="password" placeholder="كلمة السر الجديدة" required className="w-full border p-2 rounded text-sm" value={profilePass} onChange={e => setProfilePass(e.target.value)} />
-                                        <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-green-700">حفظ كلمة السر الجديدة</button>
-                                    </form>
-                                </div>
-                            )}
-
-                            {/* DASHBOARD TAB */}
-                            {activeTab === 'dashboard' && (
-                                <div className="bg-white p-5 rounded-xl border shadow-sm">
-                                    <h3 className="font-bold text-gray-800 border-b pb-2 mb-3">سجل عمليات المنظومة والتحديثات</h3>
-                                    <div className="max-h-60 overflow-y-auto space-y-2">
-                                        {logs.map(l => (
-                                            <div key={l.id} className="text-xs border-b pb-1 flex justify-between">
-                                                <span className="font-bold text-blue-700">{l.user}: {l.action}</span>
-                                                <span className="text-gray-400">{l.time}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </main>
-                    </div>
+                <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-200 text-center space-y-4">
+                    <h2 className="text-2xl font-bold text-green-600">مرحباً بك يا مدير النظام!</h2>
+                    <p className="text-gray-600 text-sm">تم تسجيل الدخول بنجاح والاتصال بالواجهة الرئيسية.</p>
+                    <button onClick={() => setIsLoggedIn(false)} className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold">تسجيل الخروج</button>
                 </div>
             );
         }
 
-        ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
     </script>
 </body>
 </html>
