@@ -97,6 +97,72 @@
       .app-layout-toggle{width:34px;height:34px}
     }
 
+
+    /* Balanced two-tone theme: slightly deeper navigation and softly tinted content */
+    :root{
+      --brand-tint-1:color-mix(in srgb,var(--brand) 5%,white);
+      --brand-tint-2:color-mix(in srgb,var(--brand) 10%,white);
+      --brand-tint-3:color-mix(in srgb,var(--brand) 16%,white);
+      --brand-tint-4:color-mix(in srgb,var(--brand) 22%,white);
+      --brand-tint-border:color-mix(in srgb,var(--brand) 24%,#dbe2ea);
+    }
+    .app-shell-header{
+      background:linear-gradient(112deg,var(--brand-tint-3) 0%,var(--brand-tint-2) 54%,var(--brand-tint-4) 100%)!important;
+    }
+    .app-sidebar{
+      background:linear-gradient(165deg,var(--brand-tint-3) 0%,var(--brand-tint-2) 56%,var(--brand-tint-3) 100%)!important;
+      border-color:var(--brand-tint-border)!important;
+    }
+    .app-sidebar .app-nav-parent{
+      background:color-mix(in srgb,var(--brand) 8%,white);
+      border-color:color-mix(in srgb,var(--brand) 19%,white);
+    }
+    .app-sidebar .app-nav-parent:hover{
+      background:var(--brand-tint-3);
+      border-color:color-mix(in srgb,var(--brand) 29%,white);
+    }
+    .app-sidebar .app-nav-parent[aria-expanded="true"]{
+      background:var(--brand-tint-4);
+      border-color:color-mix(in srgb,var(--brand) 34%,white);
+    }
+    .app-sidebar .app-nav-child.active,.app-sidebar .nav-btn.active{
+      background:var(--brand-tint-2);
+      border-color:color-mix(in srgb,var(--brand) 27%,white);
+    }
+    .app-top-navigation{
+      background:linear-gradient(105deg,var(--brand-tint-2) 0%,var(--brand-tint-1) 52%,var(--brand-tint-3) 100%);
+      border-bottom-color:var(--brand-tint-border);
+    }
+    .app-nav-grid-top .app-nav-parent{
+      background:color-mix(in srgb,var(--brand) 7%,white);
+      border:1px solid color-mix(in srgb,var(--brand) 16%,white);
+    }
+    .app-nav-grid-top .app-nav-parent:hover,
+    .app-nav-grid-top .nav-btn:hover{
+      background:var(--brand-tint-3);
+    }
+    .app-nav-grid-top .app-nav-group.has-active>.app-nav-parent{
+      background:var(--brand-tint-4);
+      border-color:color-mix(in srgb,var(--brand) 32%,white);
+    }
+    .app-collapsible>summary{
+      background:linear-gradient(105deg,var(--brand-tint-3) 0%,var(--brand-tint-2) 58%,#fff 100%);
+      border-inline-start-width:4px;
+    }
+    .app-collapsible{
+      background:#fff;
+      border-color:var(--brand-tint-border);
+    }
+    .app-workspace .bg-white.rounded-xl,
+    .app-workspace section.bg-white{
+      background:linear-gradient(145deg,#fff 0%,var(--brand-tint-1) 100%);
+      border-color:color-mix(in srgb,var(--brand) 9%,#e5e7eb);
+    }
+    .app-recent-item.active,
+    .app-recent-screens.is-top .app-recent-item.active{
+      background:var(--brand-tint-3);
+      border-color:color-mix(in srgb,var(--brand) 27%,white);
+    }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
