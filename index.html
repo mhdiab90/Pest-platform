@@ -493,7 +493,9 @@ function App(){
   const nameOfParty=(type,code)=>{const arr=type==='vendor'?vendors:clients;return arr.find(x=>x.code===code)?.name||code||'—';};
   const eventDateLabel=value=>value?new Date(String(value).length===10?value+'T00:00:00':value).toLocaleDateString(rtl?'ar-EG':'en-US'):'—';
   const includesText=(values,q)=>!q || String(values||'').toLowerCase().includes(q.toLowerCase());
-  const cashEventSettled=e=>['full','completed','paid','collected','تم السداد','تم التحصيل','تم الدفع','تم القبض','تم التنفيذ','منفذ'].includes(String(e.status||'').toLowerCase());
+  const cashEventSettled=e=>['full','completed','paid','collected','تم السداد','تم التحصيل','تم الدفع','تم القبض','تم التنفيذ','منفذ'].includes(String(e.status||'').toLowerCase()) || (String(e.status||'').toLowerCase()==='partial'&&Number(e.settledAmount||0)>0);
+  const cashEventAmount=e=>String(e.status||'').toLowerCase()==='partial'&&Number(e.settledAmount||0)>0?Number(e.settledAmount||0):Number(e.amount||0);
+  const cashAmountRows=rows=>rows.map(e=>({...e,amount:cashEventAmount(e)}));
   const allTimeline=projects.flatMap(p=>projectEvents(p).map(e=>({...e,projectCode:p.code,projectName:p.name})));
   const paymentsTimeline=allTimeline.filter(e=>['supplier_payment','customer_collection'].includes(e.type));
   const legacyCashTimeline=[
@@ -551,8 +553,8 @@ function App(){
   const mapCombine=(a,b,sign=1)=>{
     const out={...a};Object.entries(b).forEach(([k,v])=>{out[k]=(out[k]||0)+sign*Number(v||0);});return out;
   };
-  const actualInMap=currencyMap([...cashEventsPeriod.filter(e=>e.type==='customer_collection'),...legacyReceiptsPeriod]);
-  const actualOutMap=currencyMap([...cashEventsPeriod.filter(e=>e.type==='supplier_payment'),...legacyPaymentsPeriod]);
+  const actualInMap=currencyMap([...cashAmountRows(cashEventsPeriod.filter(e=>e.type==='customer_collection')),...legacyReceiptsPeriod]);
+  const actualOutMap=currencyMap([...cashAmountRows(cashEventsPeriod.filter(e=>e.type==='supplier_payment')),...legacyPaymentsPeriod]);
   const netCashMap=mapCombine(actualInMap,actualOutMap,-1);
   const selectedProjectsForCash=projects.filter(p=>cashProjectFilter==='all'||p.code===cashProjectFilter);
   const quoteRowsForCash=quotes.filter(q=>accepted(q.status) && (cashProjectFilter==='all'||String(q.projectCode||'')===cashProjectFilter));
@@ -560,10 +562,10 @@ function App(){
   if(quoteRowsForCash.length===0&&projectReceivableEvents.length===0){
     receivableGrossMap=currencyMap(selectedProjectsForCash.filter(p=>Number(p.amount||0)>0).map(p=>({amount:p.amount,currency:p.currency||'EGP'})));
   }
-  const receiptsAllMap=currencyMap([...cashEventsAll.filter(e=>e.type==='customer_collection'),...legacyReceiptsAll]);
+  const receiptsAllMap=currencyMap([...cashAmountRows(cashEventsAll.filter(e=>e.type==='customer_collection')),...legacyReceiptsAll]);
   const receivablesMap=mapCombine(receivableGrossMap,receiptsAllMap,-1);
   const supplierObligationMap=currencyMap([...outflows.filter(x=>inCashProjectScope(x)),...projectPayableEvents]);
-  const supplierPaidLegacyMap=currencyMap([...legacyPaymentsAll,...cashEventsAll.filter(e=>e.type==='supplier_payment')]);
+  const supplierPaidLegacyMap=currencyMap([...legacyPaymentsAll,...cashAmountRows(cashEventsAll.filter(e=>e.type==='supplier_payment'))]);
   // Payables are based on registered supplier obligations only. Project cost budgets
   // remain forecasts and are displayed separately, not treated as legally due balances.
   const payablesMap=mapCombine(supplierObligationMap,supplierPaidLegacyMap,-1);
@@ -1094,7 +1096,6 @@ function App(){
     e.preventDefault();
     const code=selectedProjectCode;const target=projects.find(p=>p.code===code);
     if(!target) return alert(tr('selectProject'));
-    const id=db.ref('projects/'+code+'/events').push().key;
     const action=projectActionOptions.find(x=>x.id===projectEvent.actionCode)||projectActionOptions[0];
     const effect=action.effect||'none';
     const normalizedType=effect==='cash_in'?'customer_collection':effect==='cash_out'?'supplier_payment':effect==='receivable'?'customer_receivable':effect==='payable'?'supplier_commitment':projectEvent.actionCode;
