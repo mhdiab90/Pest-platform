@@ -1386,7 +1386,7 @@ function App(){
   function assistantPickRows(rows,query,keys,limit=8){
     const list=Array.isArray(rows)?rows:[];
     const scored=list.map(row=>({row,score:assistantSearchScore(row,query)})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score);
-    const queryWords=String(query||'').toLowerCase().split(/\\s+/).filter(w=>w.length>1 && !['عن','من','الى','إلى','في','على','ما','هو','هي','هل','كم','مع','the','and','for','with','what','how','show','tell'].includes(w));
+    const queryWords=String(query||'').toLowerCase().split(/\s+/).filter(w=>w.length>1 && !['عن','من','الى','إلى','في','على','ما','هو','هي','هل','كم','مع','the','and','for','with','what','how','show','tell'].includes(w));
     const picked=scored.length?scored.slice(0,limit).map(x=>x.row):(queryWords.length===0?list.slice().sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0)).slice(0,Math.min(4,limit)):[]);
     return picked.map(row=>Object.fromEntries(keys.filter(k=>row&&row[k]!==undefined&&row[k]!==null&&row[k]!=='').map(k=>[k,row[k]])));
   }
