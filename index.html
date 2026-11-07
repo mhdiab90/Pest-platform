@@ -310,6 +310,11 @@ function App(){
   const [inflows,setInflows] = useState([]);
   const [outflows,setOutflows] = useState([]);
   const [logs,setLogs] = useState([]);
+  const [auditSearch,setAuditSearch] = useState('');
+  const [auditUserFilter,setAuditUserFilter] = useState('all');
+  const [auditActionFilter,setAuditActionFilter] = useState('all');
+  const [auditFrom,setAuditFrom] = useState('');
+  const [auditTo,setAuditTo] = useState('');
   const [messages,setMessages] = useState([]);
   const [tasks,setTasks] = useState([]);
   const [whatsappTarget,setWhatsappTarget] = useState('');
@@ -476,7 +481,9 @@ function App(){
           db.ref('users/'+fbUser.uid+'/email').set(fbUser.email).catch(err=>console.warn('Email profile sync:',err));
           profile.email=fbUser.email;
         }
-        setCurrentUser({...profile,uid:fbUser.uid,email:fbUser.email || profile.email || ''});
+        const signedInProfile={...profile,uid:fbUser.uid,email:fbUser.email || profile.email || ''};
+        setCurrentUser(signedInProfile);
+        void addLog('تسجيل دخول',signedInProfile);
         setAuthError('');
       }catch(err){
         console.error('Load user profile:',err);
@@ -505,7 +512,8 @@ function App(){
     watch('projects',s=>setProjects(toArray(s.val())));
     watch('inflows',s=>setInflows(toArray(s.val())));
     watch('outflows',s=>setOutflows(toArray(s.val())));
-    watch('logs',s=>setLogs(toArray(s.val())));
+    if(isAdmin) watch('logs',s=>setLogs(toArray(s.val())));
+    else setLogs([]);
     watch('tasks/'+currentUser.uid,s=>setTasks(toArray(s.val())));
     messageIdsRef.current=null;
     watch('messages/'+currentUser.uid,s=>{
@@ -712,6 +720,16 @@ function App(){
   const filteredClients=clients.filter(x=>includesText([x.code,x.name,x.englishName,x.taxNumber,x.phone,x.mobile,x.email,x.contactPerson].join(' '),masterFilter||globalSearch));
   const filteredVendors=vendors.filter(x=>includesText([x.code,x.name,x.englishName,x.taxNumber,x.phone,x.mobile,x.email,x.contactPerson].join(' '),masterFilter||globalSearch));
   const filteredProjects=projects.filter(x=>includesText([x.code,x.name,x.contractNo,x.purchaseOrderNo,x.status,x.projectManager,x.location].join(' '),projectFilter||globalSearch));
+  const filteredAuditLogs=logs.filter(log=>{
+    const searchText=[log.user,log.email,log.uid,log.action,log.screen,log.actionType].join(' ');
+    if(auditSearch.trim()&&!includesText(searchText,auditSearch.trim())) return false;
+    if(auditUserFilter!=='all'&&String(log.uid||'')!==auditUserFilter) return false;
+    if(auditActionFilter!=='all'&&String(log.actionType||'other')!==auditActionFilter) return false;
+    const stamp=Number(log.createdAt||0);
+    if(auditFrom&&(!stamp||new Date(stamp).toISOString().slice(0,10)<auditFrom)) return false;
+    if(auditTo&&(!stamp||new Date(stamp).toISOString().slice(0,10)>auditTo)) return false;
+    return true;
+  }).sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0));
   const partySearchText=x=>Object.entries(x||{}).filter(([,v])=>v!==null&&v!==undefined&&typeof v!=='object').map(([k,v])=>`${k} ${v}`).join(' ');
   const projectPartyMatches=(type)=>{const query=projectPartyDraft[type+'Search'];const list=type==='client'?clients:vendors;return list.filter(x=>includesText(partySearchText(x),query)).slice(0,40);};
   function addProjectParty(type){const code=projectPartyDraft[type+'Code'];const list=type==='client'?clients:vendors;const item=list.find(x=>x.code===code);if(!item)return alert(rtl?'اختر طرفاً صحيحاً أولاً':'Select a valid party first');setProject(old=>{const key=type==='client'?'clientCodes':'vendorCodes';const values=old[key]|| (type==='client'&&old.clientCode?[old.clientCode]:[]);if(values.includes(code))return old;const next=[...values,code];return {...old,[key]:next,...(type==='client'?{clientCode:next[0]||''}:{})};});setProjectPartyDraft(old=>({...old,[type+'Code']:'',[type+'Search']:''}));}
@@ -733,10 +751,18 @@ function App(){
   }
 
   async function addLog(action,userOverride=currentUser){
-    if(!userOverride) return false;
+    if(!userOverride || !userOverride.uid) return false;
     try{
       const id=db.ref('logs').push().key;
-      await db.ref('logs/'+id).set({id,uid:userOverride.uid||'',user:userOverride.fullName || userOverride.email,time:new Date().toLocaleString(rtl?'ar-EG':'en-US'),action});
+      const text=String(action||'نشاط غير محدد');
+      const lower=text.toLowerCase();
+      const actionType=/تسجيل دخول|login/.test(lower)?'login':/تسجيل خروج|logout/.test(lower)?'logout':/حذف|delete/.test(lower)?'delete':/إضافة|اضافة|إنشاء|انشاء|add|create/.test(lower)?'add':/تعديل|تحديث|edit|update/.test(lower)?'edit':/اعتماد|موافقة|approve/.test(lower)?'approve':/تصدير|تنزيل|export|download/.test(lower)?'export':/رسالة|إرسال|ارسال|message|send/.test(lower)?'communication':/صلاحيات|permission/.test(lower)?'permissions':/فتح الشاشة|فتح شاشة|navigation/.test(lower)?'navigation':'other';
+      await db.ref('logs/'+id).set({
+        id,uid:userOverride.uid,user:userOverride.fullName || userOverride.username || userOverride.email || userOverride.uid,
+        email:userOverride.email||'',jobTitle:userOverride.jobTitle||'',time:new Date().toLocaleString(rtl?'ar-EG':'en-US'),
+        createdAt:firebase.database.ServerValue.TIMESTAMP,action:text,actionType,screen:tab||'login',
+        device:(typeof navigator!=='undefined'?String(navigator.userAgent||'').slice(0,220):'unknown'),source:'web-app'
+      });
       return true;
     }catch(err){
       console.warn('Audit log could not be saved; the main operation is not cancelled:',err);
@@ -1303,6 +1329,7 @@ function App(){
   async function updateTaskStatus(task,status){if(!requirePermission('tasks','edit'))return;
     try{
       await db.ref('tasks/'+currentUser.uid+'/'+task.id).update({status,updatedAt:firebase.database.ServerValue.TIMESTAMP});
+      await addLog('تحديث حالة المهمة: '+(task.title||task.id)+' إلى '+status);
     }catch(err){alert(firebaseErrorMessage(err,tr));}
   }
 
@@ -1329,6 +1356,7 @@ function App(){
     if(!textBody) return alert(tr('noData'));
     const url='https://wa.me/'+digits+'?text='+encodeURIComponent(textBody);
     window.open(url,'_blank','noopener,noreferrer');
+    void addLog('فتح رسالة WhatsApp'+(targetLabel?' إلى '+targetLabel:''));
     if(targetLabel) console.info('WhatsApp draft prepared for '+targetLabel);
   }
 
@@ -1484,9 +1512,10 @@ function App(){
     {id:'financeGroup',label:rtl?'المالية':'Finance',icon:'fa-coins',children:[{id:'statement',label:tr('statement'),icon:'fa-file-invoice-dollar'},{id:'reports',label:tr('reportCenter'),icon:'fa-chart-pie'}]},
     {id:'communicationGroup',label:rtl?'التواصل والمهام':'Communication & Tasks',icon:'fa-comments',children:[{id:'messages',label:tr('messages'),icon:'fa-envelope'},{id:'tasks',label:rtl?'المهام':'Tasks',icon:'fa-list-check'}]},
     {id:'settingsGroup',label:tr('settings'),icon:'fa-sliders',children:[{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data',icon:'fa-database'},{id:'profile',label:tr('profile'),icon:'fa-user-gear'},...(isAdmin?[{id:'companySettings',label:tr('companySettings'),icon:'fa-building'}]:[])]},
-    ...(isAdmin?[{id:'adminGroup',label:rtl?'إدارة النظام':'Administration',icon:'fa-user-shield',children:[{id:'userRequests',label:tr('requestsReport'),icon:'fa-user-clock'},{id:'userPermissions',label:rtl?'صلاحيات المستخدمين':'User Permissions',icon:'fa-user-lock'}]}]:[])
+    ...(isAdmin?[{id:'adminGroup',label:rtl?'إدارة النظام':'Administration',icon:'fa-user-shield',children:[{id:'userRequests',label:tr('requestsReport'),icon:'fa-user-clock'},{id:'userPermissions',label:rtl?'صلاحيات المستخدمين':'User Permissions',icon:'fa-user-lock'},{id:'auditLogs',label:rtl?'سجل نشاط المستخدمين':'User Activity Log',icon:'fa-clipboard-list'}]}]:[])
   ];
-  const navGroupByTab={master:'masterGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',userRequests:'adminGroup',userPermissions:'adminGroup'};
+  useEffect(()=>{if(currentUser) void addLog('فتح الشاشة: '+String(tab||'dashboard'));},[tab,currentUser?.uid]);
+  const navGroupByTab={master:'masterGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',userRequests:'adminGroup',userPermissions:'adminGroup',auditLogs:'adminGroup'};
   const visibleNavGroups=navGroups.map(group=>group.tab?group:({...group,children:(group.children||[]).filter(item=>canAccessTab(item.id))})).filter(group=>group.tab?canAccessTab(group.tab):(group.children||[]).length>0);
   const navCatalog=visibleNavGroups.flatMap(group=>group.tab?[{id:group.tab,label:group.label,icon:group.icon}]:((group.children||[]).map(item=>({...item}))));
   const navMode=navPreferences.uid===(currentUser&&currentUser.uid)?navPreferences.mode:'side';
@@ -1779,6 +1808,22 @@ function App(){
               <div className="flex flex-wrap items-center gap-3"><button type="button" disabled={permissionBusy} onClick={saveUserPermissions} className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold disabled:opacity-50">{permissionBusy?(rtl?'جارٍ الحفظ...':'Saving...'):(rtl?'حفظ الصلاحيات':'Save permissions')}</button>{permissionNotice&&<span className={'text-sm '+(permissionNotice.includes('نجاح')||permissionNotice.includes('successfully')?'text-green-700':'text-red-600')}>{permissionNotice}</span>}</div>
             </>}
           </section>
+        </div>}
+
+        {tab==='auditLogs'&&isAdmin&&<div className="space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-xl">{rtl?'سجل نشاط المستخدمين':'User Activity Log'}</h2><p className="text-sm text-gray-500 mt-1">{rtl?'سجل زمني لتسجيلات الدخول والعمليات التي تم تسجيلها داخل البرنامج.':'Chronological record of sign-ins and actions recorded by the application.'}</p></div><span className="text-sm rounded-full bg-slate-100 px-3 py-2">{rtl?'عدد السجلات: ':'Records: '}{filteredAuditLogs.length}</span></div>
+          <section className="bg-white border rounded-xl p-4 space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+              <input className="border rounded-lg p-3" value={auditSearch} onChange={e=>setAuditSearch(e.target.value)} placeholder={rtl?'بحث بالاسم أو العملية أو الشاشة':'Search user, action or screen'}/>
+              <select className="border rounded-lg p-3" value={auditUserFilter} onChange={e=>setAuditUserFilter(e.target.value)}><option value="all">{rtl?'كل المستخدمين':'All users'}</option>{activeUsers.map(u=><option key={u.uid} value={u.uid}>{u.fullName||u.username||u.email||u.uid}</option>)}</select>
+              <select className="border rounded-lg p-3" value={auditActionFilter} onChange={e=>setAuditActionFilter(e.target.value)}><option value="all">{rtl?'كل العمليات':'All actions'}</option>{[['login',rtl?'تسجيل دخول':'Login'],['logout',rtl?'تسجيل خروج':'Logout'],['add',rtl?'إضافة':'Add'],['edit',rtl?'تعديل':'Edit'],['delete',rtl?'حذف':'Delete'],['approve',rtl?'اعتماد':'Approve'],['export',rtl?'تصدير / تنزيل':'Export / Download'],['communication',rtl?'تواصل ورسائل':'Communication'],['permissions',rtl?'تعديل صلاحيات':'Permissions'],['navigation',rtl?'فتح شاشة':'Screen view'],['other',rtl?'أخرى':'Other']].map(([v,label])=><option key={v} value={v}>{label}</option>)}</select>
+              <button type="button" onClick={()=>{setAuditSearch('');setAuditUserFilter('all');setAuditActionFilter('all');setAuditFrom('');setAuditTo('');}} className="rounded-lg bg-gray-100 px-3 py-2 font-bold">{rtl?'مسح التصفية':'Clear filters'}</button>
+              <label className="text-sm">{rtl?'من تاريخ':'From date'}<input type="date" className="block w-full border rounded-lg p-2 mt-1" value={auditFrom} onChange={e=>setAuditFrom(e.target.value)}/></label>
+              <label className="text-sm">{rtl?'إلى تاريخ':'To date'}<input type="date" className="block w-full border rounded-lg p-2 mt-1" value={auditTo} onChange={e=>setAuditTo(e.target.value)}/></label>
+            </div>
+          </section>
+          <section className="bg-white border rounded-xl overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm min-w-[950px]"><thead className="bg-slate-50"><tr><th className="p-3 text-start">{rtl?'التاريخ والوقت':'Date & time'}</th><th className="p-3 text-start">{rtl?'المستخدم':'User'}</th><th className="p-3 text-start">{rtl?'نوع العملية':'Action type'}</th><th className="p-3 text-start">{rtl?'تفاصيل العملية':'Action details'}</th><th className="p-3 text-start">{rtl?'الشاشة':'Screen'}</th><th className="p-3 text-start">{rtl?'الجهاز / المتصفح':'Device / browser'}</th></tr></thead><tbody>{filteredAuditLogs.slice(0,1000).map((log,index)=><tr key={log.id||index} className="border-t align-top"><td className="p-3 whitespace-nowrap">{log.createdAt?new Date(Number(log.createdAt)).toLocaleString(rtl?'ar-EG':'en-US'):(log.time||'—')}</td><td className="p-3"><b>{log.user||'—'}</b><div className="text-xs text-gray-500">{log.email||log.uid||''}</div></td><td className="p-3 whitespace-nowrap">{({login:rtl?'دخول':'Login',logout:rtl?'خروج':'Logout',add:rtl?'إضافة':'Add',edit:rtl?'تعديل':'Edit',delete:rtl?'حذف':'Delete',approve:rtl?'اعتماد':'Approve',export:rtl?'تصدير':'Export',communication:rtl?'تواصل':'Communication',permissions:rtl?'صلاحيات':'Permissions',navigation:rtl?'فتح شاشة':'Screen view',other:rtl?'أخرى':'Other'})[log.actionType||'other']}</td><td className="p-3 min-w-64">{log.action||'—'}</td><td className="p-3">{log.screen||'—'}</td><td className="p-3 text-xs text-gray-500 max-w-xs break-words">{log.device||'—'}</td></tr>)}</tbody></table></div>{filteredAuditLogs.length===0&&<p className="p-6 text-center text-gray-500">{rtl?'لا توجد سجلات مطابقة للتصفية.':'No matching activity records.'}</p>}{filteredAuditLogs.length>1000&&<p className="p-3 text-xs text-gray-500">{rtl?'يتم عرض أول 1000 سجل من النتائج.':'Showing the first 1,000 matching records.'}</p>}</section>
+          <p className="text-xs text-amber-700">{rtl?'ملاحظة: يسجل هذا الإصدار العمليات التي تمر عبر وظائف التسجيل داخل التطبيق. لا يسجل عنوان IP، ولا يمكن اعتباره سجل تدقيق غير قابل للتلاعب قبل تأمين مسار logs من خلال Firebase Security Rules أو خدمة خادمية.':'Note: this version records actions routed through the app audit logger. It does not capture IP addresses and is not tamper-proof until the logs path is protected by Firebase Security Rules or a server-side service.'}</p>
         </div>}
 
         {tab==='companySettings'&&isAdmin&&<div className="max-w-3xl space-y-5"><h2 className="font-bold text-xl">{tr('companySettings')}</h2><details open className="app-collapsible"><summary><span>{tr('companySettings')}</span></summary><div className="app-collapsible-body"><form onSubmit={saveCompany} className="grid grid-cols-1 md:grid-cols-2 gap-4"><label className="block text-sm font-bold md:col-span-2">{tr('companyName')}<input required className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.name} onChange={e=>setCompanyForm({...companyForm,name:e.target.value})}/></label><label className="block text-sm font-bold">{tr('companyPhone')}<input className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.phone} onChange={e=>setCompanyForm({...companyForm,phone:e.target.value})}/></label><label className="block text-sm font-bold">{tr('companyEmail')}<input type="email" className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.email} onChange={e=>setCompanyForm({...companyForm,email:e.target.value})}/></label><label className="block text-sm font-bold">{tr('taxNumber')}<input className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.taxNumber} onChange={e=>setCompanyForm({...companyForm,taxNumber:e.target.value})}/></label><label className="block text-sm font-bold">{tr('commercialRegister')}<input className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.commercialRegister} onChange={e=>setCompanyForm({...companyForm,commercialRegister:e.target.value})}/></label><label className="block text-sm font-bold">{tr('website')}<input className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.website} onChange={e=>setCompanyForm({...companyForm,website:e.target.value})}/></label><label className="block text-sm font-bold md:col-span-2">{tr('companyAddress')}<textarea rows="2" className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.address} onChange={e=>setCompanyForm({...companyForm,address:e.target.value})}></textarea></label><div className="md:col-span-2"><p className="text-sm font-bold mb-2">{tr('companyLogo')}</p>{companyForm.logo&&<img src={companyForm.logo} alt="Company logo" className="h-24 max-w-56 object-contain border rounded-lg p-2 mb-3"/>}<label className="inline-block bg-gray-100 border rounded-lg px-4 py-2 cursor-pointer">{tr('uploadLogo')}<input type="file" accept="image/*" className="hidden" onChange={uploadCompanyLogo}/></label><button type="button" onClick={()=>setCompanyForm({...companyForm,logo:''})} className="text-red-600 text-sm ms-3">{rtl?'إزالة الشعار':'Remove logo'}</button></div><div className="md:col-span-2"><button className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold">{tr('save')}</button></div></form></div></details></div>}
