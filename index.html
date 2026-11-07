@@ -1406,7 +1406,7 @@ function App(){
   async function openNotification(item){
     setNotificationOpen(false);
     if(item.type==='message'){
-      try{await db.ref('messages/'+currentUser.uid+'/'+item.message.id).update({read:true});setMessages(old=>old.map(m=>m.id===item.message.id?{...m,read:true}:m));navigateToTab('messages');}
+      try{await db.ref('messages/'+currentUser.uid+'/'+item.message.id).update({read:true});await addLog('قراءة رسالة: '+(item.message.subject||item.message.id));setMessages(old=>old.map(m=>m.id===item.message.id?{...m,read:true}:m));navigateToTab('messages');}
       catch(err){alert(firebaseErrorMessage(err,tr));}
       return;
     }
