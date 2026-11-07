@@ -908,10 +908,12 @@ function App(){
     try{
       const clean={};
       permissionModules.forEach(module=>{const row=permissionDraft[module.id]||{};clean[module.id]={};permissionActions.forEach(action=>{clean[module.id][action.id]=row[action.id]===true;});});
+      const beforeSnap=await db.ref('users/'+permissionUserUid+'/permissions').once('value');
+      const before=beforeSnap.val()||{};
       await db.ref('users/'+permissionUserUid+'/permissions').set(clean);
       setActiveUsers(old=>old.map(user=>user.uid===permissionUserUid?{...user,permissions:clean}:user));
       setPermissionNotice(rtl?'تم حفظ صلاحيات المستخدم بنجاح.':'User permissions saved successfully.');
-      await addLog('تحديث صلاحيات المستخدم: '+(activeUsers.find(u=>u.uid===permissionUserUid)?.fullName||permissionUserUid));
+      await addLog('تحديث صلاحيات المستخدم: '+(activeUsers.find(u=>u.uid===permissionUserUid)?.fullName||permissionUserUid),currentUser,{entityType:'user-permissions',entityId:permissionUserUid,changes:auditChanges(before,clean)});
     }catch(err){setPermissionNotice(firebaseErrorMessage(err,tr));}
     finally{setPermissionBusy(false);}
   }
