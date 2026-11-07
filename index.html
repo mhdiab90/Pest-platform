@@ -194,6 +194,7 @@ const firebaseConfig = {
   appId: "1:237071041951:web:a501285338ec178a65a9aa"
 };
 window.PEST_FIREBASE_CONFIG = firebaseConfig;
+window.PEST_RECAPTCHA_ENTERPRISE_SITE_KEY = ''; // Public reCAPTCHA Enterprise site key; configure after registering App Check.
 
 if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
@@ -405,7 +406,7 @@ function App(){
   useEffect(()=>{
     const syncAiState=()=>{
       setAssistantReady(typeof window.pestAIAsk==='function');
-      setAssistantUnavailable(window.pestAIStatus==='unavailable');
+      setAssistantUnavailable(window.pestAIStatus!=='ready');
     };
     syncAiState();
     window.addEventListener('pest-ai-ready',syncAiState);
@@ -1769,7 +1770,7 @@ function App(){
             {assistantBusy&&<div className="app-ai-bubble assistant text-gray-500"><i className="fas fa-circle-notch fa-spin me-2"></i>{rtl?'جاري التفكير والبحث في البيانات المتاحة...':'Thinking and checking available records...'}</div>}
           </div>
           <form className="app-ai-composer" onSubmit={e=>{e.preventDefault();sendAssistantQuestion();}}>
-            {!assistantReady&&<p className="text-xs text-amber-700 mb-2">{assistantUnavailable?(rtl?'لم يتم تحميل مكتبة الذكاء الاصطناعي. أعد تحميل الصفحة.':'AI library did not load. Reload the page.'):(rtl?'جاري تجهيز المساعد...':'Preparing the assistant...')}</p>}
+            {!assistantReady&&<p className="text-xs text-amber-700 mb-2">{assistantUnavailable?(rtl?'المساعد يحتاج إعداد App Check ومفتاح reCAPTCHA العام من Firebase Console قبل أول استخدام.':'Assistant requires App Check setup and the public reCAPTCHA site key from Firebase Console before first use.'):(rtl?'جاري تجهيز المساعد...':'Preparing the assistant...')}</p>}
             <div className="flex items-end gap-2"><textarea value={assistantInput} onChange={e=>setAssistantInput(e.target.value)} placeholder={rtl?'اكتب سؤالك عن البرنامج أو بياناته...':'Ask about the app or its data...'} disabled={assistantBusy}/><button type="submit" disabled={assistantBusy||!assistantInput.trim()} className="shrink-0 w-11 h-11 rounded-xl text-white bg-blue-600 disabled:bg-gray-300"><i className={'fas '+(assistantBusy?'fa-spinner fa-spin':'fa-paper-plane')}></i></button></div>
             <p className="text-[10px] text-gray-400 mt-2">{rtl?'المساعد للقراءة والاستفسار فقط. راجع الأرقام المهمة مع الشاشة أو التقرير الأصلي.':'Read-only assistant. Verify important figures against the original screen or report.'}</p>
           </form>
@@ -1798,13 +1799,17 @@ ReactDOM.createRoot(document.getElementById('root')).render(<AppErrorBoundary><A
 <script type="module">
 (async()=>{
   try{
-    const [{initializeApp},{getAI,getGenerativeModel,GoogleAIBackend}]=await Promise.all([
+    const [{initializeApp},{getAI,getGenerativeModel,GoogleAIBackend},{initializeAppCheck,ReCaptchaEnterpriseProvider}]=await Promise.all([
       import('https://www.gstatic.com/firebasejs/13.2.0/firebase-app.js'),
-      import('https://www.gstatic.com/firebasejs/13.2.0/firebase-ai.js')
+      import('https://www.gstatic.com/firebasejs/13.2.0/firebase-ai.js'),
+      import('https://www.gstatic.com/firebasejs/13.2.0/firebase-app-check.js')
     ]);
     const config=window.PEST_FIREBASE_CONFIG;
     if(!config) throw new Error('Firebase configuration is unavailable.');
+    const siteKey=String(window.PEST_RECAPTCHA_ENTERPRISE_SITE_KEY||'').trim();
+    if(!siteKey) throw new Error('App Check setup required: register reCAPTCHA Enterprise for the web app and set its public site key in PEST_RECAPTCHA_ENTERPRISE_SITE_KEY.');
     const app=initializeApp(config,'pest-ai-logic');
+    initializeAppCheck(app,{provider:new ReCaptchaEnterpriseProvider(siteKey),isTokenAutoRefreshEnabled:true});
     const ai=getAI(app,{backend:new GoogleAIBackend()});
     const model=getGenerativeModel(ai,{model:'gemini-3.8-flash',generationConfig:{temperature:0.2,maxOutputTokens:1400}});
     window.pestAIAsk=async prompt=>{
