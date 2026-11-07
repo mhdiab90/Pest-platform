@@ -1386,7 +1386,8 @@ function App(){
   function assistantPickRows(rows,query,keys,limit=8){
     const list=Array.isArray(rows)?rows:[];
     const scored=list.map(row=>({row,score:assistantSearchScore(row,query)})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score);
-    const picked=scored.length?scored.slice(0,limit).map(x=>x.row):list.slice().sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0)).slice(0,Math.min(4,limit));
+    const queryWords=String(query||'').toLowerCase().split(/\\s+/).filter(w=>w.length>1 && !['عن','من','الى','إلى','في','على','ما','هو','هي','هل','كم','مع','the','and','for','with','what','how','show','tell'].includes(w));
+    const picked=scored.length?scored.slice(0,limit).map(x=>x.row):(queryWords.length===0?list.slice().sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0)).slice(0,Math.min(4,limit)):[]);
     return picked.map(row=>Object.fromEntries(keys.filter(k=>row&&row[k]!==undefined&&row[k]!==null&&row[k]!=='').map(k=>[k,row[k]])));
   }
   function buildAssistantContext(question){
@@ -1752,7 +1753,7 @@ function App(){
             <div className="flex items-center gap-3 min-w-0"><span className="w-10 h-10 rounded-full bg-white/20 grid place-items-center"><i className="fas fa-wand-magic-sparkles text-xl"></i></span><div className="min-w-0"><b className="block">{rtl?'مساعد البرنامج الذكي':'Program AI assistant'}</b><small className="text-white/80">Gemini 3.8 Flash · {rtl?'استفسار وقراءة فقط':'Read-only assistant'}</small></div></div>
             <div className="flex items-center gap-1"><button type="button" title={rtl?'مسح المحادثة':'Clear chat'} onClick={()=>setAssistantMessages([])} className="rounded-lg p-2 hover:bg-white/15"><i className="fas fa-trash-can"></i></button><button type="button" title={rtl?'إغلاق':'Close'} onClick={()=>setAssistantOpen(false)} className="rounded-lg p-2 hover:bg-white/15"><i className="fas fa-xmark text-lg"></i></button></div>
           </div>
-          <div className="px-3 py-2 bg-amber-50 text-amber-900 text-xs leading-5 border-b border-amber-100">{rtl?'يرسل المساعد السؤال والسجلات المرتبطة به فقط إلى Gemini عبر Firebase AI Logic. لا يتم إرسال قاعدة البيانات كاملة، ولا ينفذ المساعد أي تعديل.':'The question and related records only are sent to Gemini via Firebase AI Logic. The full database is not sent, and the assistant cannot change records.'}</div>
+          <div className="px-3 py-2 bg-amber-50 text-amber-900 text-xs leading-5 border-b border-amber-100">{rtl?'يرسل المساعد سؤالك والسجلات المطابقة له فقط إلى Gemini، ولا يرسل قاعدة البيانات كاملة. لأول تشغيل: فعّل AI Logic من Firebase Console ثم سجّل نطاق الموقع في App Check. المساعد لا ينفذ أي تعديل.':'Only your question and matching records are sent to Gemini, not the whole database. First use: enable AI Logic in Firebase Console and register this site in App Check. The assistant cannot edit records.'}</div>
           <div className="app-ai-messages">
             {assistantMessages.length===0?<div className="space-y-3">
               <div className="app-ai-bubble assistant">{rtl?'أهلاً! اسألني عن المشروعات والعملاء والموردين والمستحقات والتحصيلات والمدفوعات أو طريقة استخدام البرنامج. سأجيب من البيانات المتاحة لي داخل النظام.':'Hello! Ask me about projects, customers, suppliers, receivables, collections, payments or how to use the app. I will answer using the available application data.'}</div>
