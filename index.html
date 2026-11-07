@@ -299,6 +299,10 @@ function App(){
   const [companyInfo,setCompanyInfo] = useState({name:rtl?'اسم الشركة':'Company name',logo:''});
   const [userRequests,setUserRequests] = useState([]);
   const [activeUsers,setActiveUsers] = useState([]);
+  const [permissionUserUid,setPermissionUserUid] = useState('');
+  const [permissionDraft,setPermissionDraft] = useState({});
+  const [permissionBusy,setPermissionBusy] = useState(false);
+  const [permissionNotice,setPermissionNotice] = useState('');
   const [clients,setClients] = useState([]);
   const [vendors,setVendors] = useState([]);
   const [quotes,setQuotes] = useState([]);
@@ -554,6 +558,11 @@ function App(){
   }
   function toArray(obj){return obj ? Object.entries(obj).map(([key,val])=>({...val,id:val && val.id ? val.id : key,uid:val && val.uid ? val.uid : key,_hasAuthUid:Boolean(val && val.uid)})) : [];}
   const isAdmin=currentUser && currentUser.role==='admin';
+  const permissionModules=[{id:'dashboard',label:rtl?'لوحة التحكم':'Dashboard'},{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors'},{id:'projects',label:rtl?'المشروعات وملفاتها':'Projects & Project files'},{id:'statement',label:rtl?'التدفقات النقدية':'Cash flow'},{id:'reports',label:rtl?'التقارير':'Reports'},{id:'messages',label:rtl?'الرسائل وWhatsApp':'Messages & WhatsApp'},{id:'tasks',label:rtl?'المهام':'Tasks'},{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data'}];
+  const permissionActions=[{id:'view',label:rtl?'عرض':'View'},{id:'add',label:rtl?'إضافة':'Add'},{id:'edit',label:rtl?'تعديل':'Edit'},{id:'delete',label:rtl?'حذف':'Delete'},{id:'approve',label:rtl?'اعتماد':'Approve'},{id:'export',label:rtl?'تصدير':'Export'},{id:'manage',label:rtl?'إدارة':'Manage'}];
+  const hasPermission=(moduleId,action='view')=>isAdmin||moduleId==='profile'&&action==='view'||currentUser?.permissions?.[moduleId]?.[action]===true;
+  const canAccessTab=tabId=>['companySettings','userRequests','userPermissions'].includes(tabId)?Boolean(isAdmin):hasPermission(tabId==='projectDetail'?'projects':tabId,'view');
+  const requirePermission=(moduleId,action)=>{if(hasPermission(moduleId,action))return true;alert(rtl?'ليس لديك صلاحية لتنفيذ هذه العملية. يرجى مراجعة مدير النظام.':'You do not have permission to perform this action. Contact your administrator.');return false;};
   const money=n=>new Intl.NumberFormat(rtl?'ar-EG':'en-US',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n||0));
   const accepted=s=>['مقبول','approved','Approved'].includes(s);
   const collected=s=>['تم التحصيل','collected','Collected'].includes(s);
@@ -853,13 +862,28 @@ function App(){
       setAuthError(firebaseErrorMessage(err,tr));
     }finally{setBusy(false);}
   }
+  async function saveUserPermissions(){
+    if(!isAdmin||!permissionUserUid)return;
+    if(permissionUserUid===currentUser.uid)return alert(rtl?'لا يمكن تعديل صلاحيات حساب المدير الحالي من هذه الشاشة.':'The current administrator permissions cannot be changed here.');
+    setPermissionBusy(true);setPermissionNotice('');
+    try{
+      const clean={};
+      permissionModules.forEach(module=>{const row=permissionDraft[module.id]||{};clean[module.id]={};permissionActions.forEach(action=>{clean[module.id][action.id]=row[action.id]===true;});});
+      await db.ref('users/'+permissionUserUid+'/permissions').set(clean);
+      setActiveUsers(old=>old.map(user=>user.uid===permissionUserUid?{...user,permissions:clean}:user));
+      setPermissionNotice(rtl?'تم حفظ صلاحيات المستخدم بنجاح.':'User permissions saved successfully.');
+      await addLog('تحديث صلاحيات المستخدم: '+(activeUsers.find(u=>u.uid===permissionUserUid)?.fullName||permissionUserUid));
+    }catch(err){setPermissionNotice(firebaseErrorMessage(err,tr));}
+    finally{setPermissionBusy(false);}
+  }
+
   async function approveRequest(req,approve){
     if(!isAdmin || !req.uid) return;
     try{
       if(approve){
         await db.ref('users/'+req.uid).set({
           uid:req.uid,email:req.email,username:req.username,fullName:req.fullName,jobTitle:req.jobTitle,whatsapp:req.whatsapp||'',
-          role:'user',status:'active',avatar:req.avatar||'',createdAt:firebase.database.ServerValue.TIMESTAMP
+          role:'user',status:'active',permissions:{},avatar:req.avatar||'',createdAt:firebase.database.ServerValue.TIMESTAMP
         });
         await db.ref('userRequests/'+req.uid+'/status').set('approved');
         await addLog('اعتماد حساب: '+req.fullName);
@@ -883,7 +907,7 @@ function App(){
       const updates={};
       updates['userRequests/'+req.uid+'/status']=status;
       if(status==='approved'){
-        updates['users/'+req.uid]={uid:req.uid,email:req.email,username:req.username,fullName:req.fullName,jobTitle:req.jobTitle,whatsapp:req.whatsapp||'',role:'user',status:'active',avatar:req.avatar||'',createdAt:firebase.database.ServerValue.TIMESTAMP};
+        updates['users/'+req.uid]={uid:req.uid,email:req.email,username:req.username,fullName:req.fullName,jobTitle:req.jobTitle,whatsapp:req.whatsapp||'',role:'user',status:'active',permissions:{},avatar:req.avatar||'',createdAt:firebase.database.ServerValue.TIMESTAMP};
         updates['userDirectory/'+req.uid]={uid:req.uid,username:req.username,fullName:req.fullName,jobTitle:req.jobTitle,whatsapp:req.whatsapp||'',avatar:req.avatar||'',status:'active'};
       }else{
         // Update profile/directory only when they already exist. A pending request
@@ -1118,8 +1142,7 @@ function App(){
     return safe;
   }
 
-  async function downloadDatabaseBackup(){
-    if(!isAdmin) return alert(tr('adminOnly'));
+  async function downloadDatabaseBackup(){if(!requirePermission('settings','manage'))return;
     setBackupBusy('database');setBackupMessage('');
     try{
       const snapshot=await db.ref('/').once('value');
@@ -1141,8 +1164,7 @@ function App(){
     }finally{setBackupBusy('');}
   }
 
-  function exportWorkbook(){
-    if(!isAdmin) return alert(tr('adminOnly'));
+  function exportWorkbook(){if(!requirePermission('settings','export'))return;
     try{
       const workbook=XLSX.utils.book_new();
       const addSheet=(name,rows)=>XLSX.utils.book_append_sheet(workbook,XLSX.utils.json_to_sheet(rows.length?rows:[{Info:'No data'}]),name);
@@ -1163,7 +1185,7 @@ function App(){
   }
 
   async function addMaster(e){
-    e.preventDefault();
+    e.preventDefault();if(!requirePermission('master',editingMasterCode?'edit':'add'))return;
     const type=master.type;const path=type==='client'?'clients':'vendors';
     const code=String(master.code||'').trim();const name=String(master.name||'').trim();
     if(!code||!name) return alert(tr('noData'));
@@ -1180,13 +1202,13 @@ function App(){
     }catch(err){alert(firebaseErrorMessage(err,tr));}
   }
 
-  function editMasterRecord(type,item){
+  function editMasterRecord(type,item){if(!requirePermission('master','edit'))return;
     setMaster({...blankMaster(type),...item,type});setEditingMasterCode(item.code||'');setMasterFormOpen(true);
     setTab('master');window.scrollTo({top:0,behavior:'smooth'});
   }
 
   async function addProject(e){
-    e.preventDefault();
+    e.preventDefault();if(!requirePermission('projects',editingProjectCode?'edit':'add'))return;
     const code=String(project.code||'').trim();const name=String(project.name||'').trim();
     if(!code||!name) return alert(tr('noData'));
     if(/[.#$\[\]/]/.test(code)) return alert('Invalid project code');
@@ -1207,7 +1229,7 @@ function App(){
   }
 
   async function addProjectEvent(e){
-    e.preventDefault();
+    e.preventDefault();if(!requirePermission('projects',editingProjectEventId?'edit':'add'))return;
     const code=selectedProjectCode;const target=projects.find(p=>p.code===code);
     if(!target) return alert(tr('selectProject'));
     const action=projectActionOptions.find(x=>x.id===projectEvent.actionCode)||projectActionOptions[0];
@@ -1227,15 +1249,15 @@ function App(){
     }catch(err){alert(firebaseErrorMessage(err,tr));}
   }
 
-  function editProjectEventRecord(ev){setProjectEvent({...blankProjectEvent(),...ev,actionCode:ev.actionCode||ev.type||'general_note',actionName:ev.actionName||eventLabel(ev.type),settledAmount:ev.settledAmount??'',dueDate:ev.dueDate||''});setEditingProjectEventId(ev.id);window.scrollTo({top:0,behavior:'smooth'});}
-  async function deleteProjectEventRecord(ev){if(!window.confirm(rtl?'هل تريد حذف هذا الحدث؟ سيتم تحديث ملخصات المشروع والتقارير.':'Delete this event? Project summaries and reports will be recalculated.'))return;try{await db.ref('projects/'+selectedProjectCode+'/events/'+ev.id).remove();await addLog('حذف حدث '+(ev.actionName||eventLabel(ev.type))+' من المشروع '+selectedProjectCode);if(editingProjectEventId===ev.id){setEditingProjectEventId('');setProjectEvent(blankProjectEvent());}}catch(err){alert(firebaseErrorMessage(err,tr));}}
+  function editProjectEventRecord(ev){if(!requirePermission('projects','edit'))return;setProjectEvent({...blankProjectEvent(),...ev,actionCode:ev.actionCode||ev.type||'general_note',actionName:ev.actionName||eventLabel(ev.type),settledAmount:ev.settledAmount??'',dueDate:ev.dueDate||''});setEditingProjectEventId(ev.id);window.scrollTo({top:0,behavior:'smooth'});}
+  async function deleteProjectEventRecord(ev){if(!requirePermission('projects','delete'))return;if(!window.confirm(rtl?'هل تريد حذف هذا الحدث؟ سيتم تحديث ملخصات المشروع والتقارير.':'Delete this event? Project summaries and reports will be recalculated.'))return;try{await db.ref('projects/'+selectedProjectCode+'/events/'+ev.id).remove();await addLog('حذف حدث '+(ev.actionName||eventLabel(ev.type))+' من المشروع '+selectedProjectCode);if(editingProjectEventId===ev.id){setEditingProjectEventId('');setProjectEvent(blankProjectEvent());}}catch(err){alert(firebaseErrorMessage(err,tr));}}
 
   function reportAsMessage(){
     setMessage({recipients:'',subject:currentReportTitle+' - '+(reportEntity||''),body:currentReportText});setTab('messages');
   }
 
   async function sendMessage(e){
-    e.preventDefault();
+    e.preventDefault();if(!requirePermission('messages','add'))return;
     const names=message.recipients.split(',').map(x=>x.trim()).filter(Boolean);
     if(!names.length || !message.subject.trim() || !message.body.trim()) return alert(tr('noData'));
     const missing=[];const writes=[];
@@ -1278,7 +1300,7 @@ function App(){
     }catch(err){alert(firebaseErrorMessage(err,tr));}
   }
 
-  async function updateTaskStatus(task,status){
+  async function updateTaskStatus(task,status){if(!requirePermission('tasks','edit'))return;
     try{
       await db.ref('tasks/'+currentUser.uid+'/'+task.id).update({status,updatedAt:firebase.database.ServerValue.TIMESTAMP});
     }catch(err){alert(firebaseErrorMessage(err,tr));}
@@ -1462,10 +1484,11 @@ function App(){
     {id:'financeGroup',label:rtl?'المالية':'Finance',icon:'fa-coins',children:[{id:'statement',label:tr('statement'),icon:'fa-file-invoice-dollar'},{id:'reports',label:tr('reportCenter'),icon:'fa-chart-pie'}]},
     {id:'communicationGroup',label:rtl?'التواصل والمهام':'Communication & Tasks',icon:'fa-comments',children:[{id:'messages',label:tr('messages'),icon:'fa-envelope'},{id:'tasks',label:rtl?'المهام':'Tasks',icon:'fa-list-check'}]},
     {id:'settingsGroup',label:tr('settings'),icon:'fa-sliders',children:[{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data',icon:'fa-database'},{id:'profile',label:tr('profile'),icon:'fa-user-gear'},...(isAdmin?[{id:'companySettings',label:tr('companySettings'),icon:'fa-building'}]:[])]},
-    ...(isAdmin?[{id:'adminGroup',label:rtl?'إدارة النظام':'Administration',icon:'fa-user-shield',children:[{id:'userRequests',label:tr('requestsReport'),icon:'fa-user-clock'}]}]:[])
+    ...(isAdmin?[{id:'adminGroup',label:rtl?'إدارة النظام':'Administration',icon:'fa-user-shield',children:[{id:'userRequests',label:tr('requestsReport'),icon:'fa-user-clock'},{id:'userPermissions',label:rtl?'صلاحيات المستخدمين':'User Permissions',icon:'fa-user-lock'}]}]:[])
   ];
-  const navGroupByTab={master:'masterGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',userRequests:'adminGroup'};
-  const navCatalog=navGroups.flatMap(group=>group.tab?[{id:group.tab,label:group.label,icon:group.icon}]:((group.children||[]).map(item=>({...item}))));
+  const navGroupByTab={master:'masterGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',userRequests:'adminGroup',userPermissions:'adminGroup'};
+  const visibleNavGroups=navGroups.map(group=>group.tab?group:({...group,children:(group.children||[]).filter(item=>canAccessTab(item.id))})).filter(group=>group.tab?canAccessTab(group.tab):(group.children||[]).length>0);
+  const navCatalog=visibleNavGroups.flatMap(group=>group.tab?[{id:group.tab,label:group.label,icon:group.icon}]:((group.children||[]).map(item=>({...item}))));
   const navMode=navPreferences.uid===(currentUser&&currentUser.uid)?navPreferences.mode:'side';
   const recentNavItems=(navPreferences.uid===(currentUser&&currentUser.uid)?navPreferences.recent:[]).map(id=>navCatalog.find(item=>item.id===id)).filter(Boolean).slice(0,5);
   const activeNavItem=navCatalog.find(item=>item.id===tab);
@@ -1492,14 +1515,15 @@ function App(){
     });
   },[tab,currentUser&&currentUser.uid,navPreferences.uid]);
   useEffect(()=>{if(navMode==='top')setExpandedNavGroup('');else if(navGroupByTab[tab])setExpandedNavGroup(navGroupByTab[tab]);},[tab,navMode]);
-  function navigateToTab(nextTab){setTab(nextTab);setExpandedNavGroup(navMode==='top'?'':(navGroupByTab[nextTab]||''));setNotificationOpen(false);}
+  function navigateToTab(nextTab){if(!canAccessTab(nextTab)){alert(rtl?'ليس لديك صلاحية لفتح هذه الشاشة.':'You do not have permission to open this screen.');return;}setTab(nextTab);setExpandedNavGroup(navMode==='top'?'':(navGroupByTab[nextTab]||''));setNotificationOpen(false);}
+  useEffect(()=>{if(currentUser&&!canAccessTab(tab))setTab('profile');},[currentUser,tab]);
   function toggleNavigationMode(){
     const uid=currentUser&&currentUser.uid;if(!uid)return;
     setNavPreferences(old=>({uid,mode:(old.uid===uid?old.mode:'side')==='side'?'top':'side',recent:old.uid===uid?old.recent:[]}));
     setExpandedNavGroup('');setShowUserMenu(false);
   }
   const renderNavigation=()=> <div className={'app-nav-grid '+(navMode==='top'?'app-nav-grid-top':'')} aria-label={rtl?'قائمة التنقل':'Main navigation'}>
-    {navGroups.map(group=><div className={'app-nav-group'+(group.children&&group.children.some(item=>item.id===tab)?' has-active':'')} key={group.id}>
+    {visibleNavGroups.map(group=><div className={'app-nav-group'+(group.children&&group.children.some(item=>item.id===tab)?' has-active':'')} key={group.id}>
       {group.tab?<button type="button" onClick={()=>navigateToTab(group.tab)} className={'nav-btn '+(tab===group.tab?'active':'')+' w-full text-start p-3 rounded-lg flex items-center gap-3'}><i className={'fas '+group.icon+' w-5'}></i><span className="truncate">{group.label}</span></button>:
         <><button type="button" aria-expanded={expandedNavGroup===group.id} onClick={()=>setExpandedNavGroup(expandedNavGroup===group.id?'':group.id)} className="app-nav-parent"><span className="flex items-center gap-2 min-w-0"><i className={'fas '+group.icon+' w-5'}></i><span className="truncate">{group.label}</span></span><i className={'fas '+(expandedNavGroup===group.id?'fa-chevron-up':'fa-chevron-down')+' text-xs text-gray-400'}></i></button>
         {expandedNavGroup===group.id&&<div className="app-nav-children">{group.children.map(item=><button type="button" key={item.id} onClick={()=>navigateToTab(item.id)} className={'app-nav-child '+(tab===item.id?'active':'')}><i className={'fas '+item.icon+' w-4'}></i><span>{item.label}</span></button>)}</div>}</>}
@@ -1739,6 +1763,23 @@ function App(){
         </div>}
 
         {tab==='userRequests'&&isAdmin&&<div className="space-y-5"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-bold text-xl">{tr('requestsReport')}</h2><select className="border rounded-lg p-2" value={requestFilter} onChange={e=>setRequestFilter(e.target.value)}><option value="all">{tr('allRequests')}</option><option value="pending">{tr('pendingLabel')}</option><option value="approved">{tr('approvedLabel')}</option><option value="rejected">{tr('rejectedLabel')}</option></select></div><details open className="app-collapsible"><summary><span>{rtl?'قائمة طلبات المستخدمين':'User requests list'}</span></summary><div className="app-collapsible-body"><div className="overflow-x-auto"><div className="app-table-scroll"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="p-3 text-start">{tr('requestedUser')}</th><th className="p-3 text-start">{tr('requestDate')}</th><th className="p-3 text-start">{tr('requestStatus')}</th><th className="p-3 text-start">{tr('updateStatus')}</th></tr></thead><tbody>{filteredRequests.slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).map(req=><tr key={req.uid} className="border-t align-top"><td className="p-3"><div className="flex items-center gap-3">{req.avatar?<img src={req.avatar} alt="" className="w-11 h-11 rounded-full object-cover border"/>:<div className="w-11 h-11 rounded-full bg-slate-100 text-slate-500 grid place-items-center"><i className="fas fa-user"></i></div>}<div className="min-w-0"><b>{req.fullName}</b><div className="text-gray-500">{req.email}</div><div className="text-gray-500">{req.username} · {req.jobTitle}</div>{!req._hasAuthUid&&<div className="text-amber-700 text-xs mt-1">{tr('legacyRequest')}</div>}</div></div></td><td className="p-3 whitespace-nowrap">{req.createdAt?new Date(req.createdAt).toLocaleString(rtl?'ar-EG':'en-US'):'—'}</td><td className="p-3"><span className="rounded-full bg-gray-100 px-2 py-1">{requestStatusLabel(req.status)}</span></td><td className="p-3 min-w-44"><div className="flex flex-col sm:flex-row gap-2"><select className="border rounded-lg p-2 min-w-0 flex-1" value={requestStatusDrafts[req.uid]||requestStatusValue(req.status)} onChange={e=>setRequestStatusDrafts(old=>({...old,[req.uid]:e.target.value}))}><option value="pending">{tr('pendingLabel')}</option><option value="approved">{tr('approvedLabel')}</option><option value="rejected">{tr('rejectedLabel')}</option></select><button type="button" disabled={!requestStatusDrafts[req.uid]||requestStatusDrafts[req.uid]===requestStatusValue(req.status)} onClick={()=>updateRequestStatus(req,requestStatusDrafts[req.uid])} className="rounded-lg px-3 py-2 text-sm font-bold text-white bg-blue-600 disabled:bg-gray-300">{rtl?'تطبيق':'Apply'}</button></div></td></tr>)}</tbody></table></div>{filteredRequests.length===0&&<p className="p-5 text-gray-500">{tr('noData')}</p>}</div></div></details></div>}
+
+        {tab==='userPermissions'&&isAdmin&&<div className="space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-bold text-xl">{rtl?'إدارة صلاحيات المستخدمين':'User Permissions Management'}</h2><span className="text-xs text-gray-500">{rtl?'صلاحيات مستقلة لكل مستخدم':'Independent permissions for each user'}</span></div>
+          <section className="bg-white border rounded-xl p-4 space-y-4">
+            <label className="block text-sm font-bold">{rtl?'اختيار المستخدم':'Select user'}
+              <select className="mt-1 w-full border rounded-lg p-3 font-normal" value={permissionUserUid} onChange={e=>{const uid=e.target.value;setPermissionUserUid(uid);const user=activeUsers.find(x=>x.uid===uid);setPermissionDraft(user?.permissions||{});setPermissionNotice('');}}>
+                <option value="">{rtl?'اختر مستخدماً':'Choose a user'}</option>
+                {activeUsers.filter(user=>user.uid&&user.uid!==currentUser.uid&&user.status!=='disabled').map(user=><option key={user.uid} value={user.uid}>{user.fullName||user.username||user.email||user.uid} — {user.jobTitle||user.email||''}</option>)}
+              </select>
+            </label>
+            {permissionUserUid&&<><div className="flex flex-wrap gap-2"><button type="button" onClick={()=>setPermissionDraft(Object.fromEntries(permissionModules.map(m=>[m.id,Object.fromEntries(permissionActions.map(a=>[a.id,true]))])))} className="px-3 py-2 rounded-lg bg-blue-50 text-blue-700 text-sm font-bold">{rtl?'منح جميع الصلاحيات':'Grant all'}</button><button type="button" onClick={()=>setPermissionDraft(Object.fromEntries(permissionModules.map(m=>[m.id,Object.fromEntries(permissionActions.map(a=>[a.id,false]))])))} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-bold">{rtl?'إلغاء جميع الصلاحيات':'Clear all'}</button></div>
+              <div className="overflow-x-auto border rounded-lg"><table className="w-full text-sm min-w-[760px]"><thead className="bg-slate-50"><tr><th className="p-3 text-start">{rtl?'الشاشة':'Module'}</th>{permissionActions.map(action=><th key={action.id} className="p-3 text-center">{action.label}</th>)}</tr></thead><tbody>{permissionModules.map(module=><tr key={module.id} className="border-t"><td className="p-3 font-bold">{module.label}</td>{permissionActions.map(action=><td key={action.id} className="p-3 text-center"><input type="checkbox" aria-label={module.label+' '+action.label} checked={Boolean(permissionDraft[module.id]?.[action.id])} onChange={e=>setPermissionDraft(old=>({...old,[module.id]:{...(old[module.id]||{}),[action.id]:e.target.checked}}))}/></td>)}</tr>)}</tbody></table></div>
+              <p className="text-xs text-gray-500">{rtl?'صلاحية العرض مطلوبة لظهور الشاشة. الصلاحيات الأخرى تحدد العمليات المتاحة داخلها.':'View permission is required to show a screen. Other permissions govern actions inside it.'}</p>
+              <div className="flex flex-wrap items-center gap-3"><button type="button" disabled={permissionBusy} onClick={saveUserPermissions} className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold disabled:opacity-50">{permissionBusy?(rtl?'جارٍ الحفظ...':'Saving...'):(rtl?'حفظ الصلاحيات':'Save permissions')}</button>{permissionNotice&&<span className={'text-sm '+(permissionNotice.includes('نجاح')||permissionNotice.includes('successfully')?'text-green-700':'text-red-600')}>{permissionNotice}</span>}</div>
+            </>}
+          </section>
+        </div>}
 
         {tab==='companySettings'&&isAdmin&&<div className="max-w-3xl space-y-5"><h2 className="font-bold text-xl">{tr('companySettings')}</h2><details open className="app-collapsible"><summary><span>{tr('companySettings')}</span></summary><div className="app-collapsible-body"><form onSubmit={saveCompany} className="grid grid-cols-1 md:grid-cols-2 gap-4"><label className="block text-sm font-bold md:col-span-2">{tr('companyName')}<input required className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.name} onChange={e=>setCompanyForm({...companyForm,name:e.target.value})}/></label><label className="block text-sm font-bold">{tr('companyPhone')}<input className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.phone} onChange={e=>setCompanyForm({...companyForm,phone:e.target.value})}/></label><label className="block text-sm font-bold">{tr('companyEmail')}<input type="email" className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.email} onChange={e=>setCompanyForm({...companyForm,email:e.target.value})}/></label><label className="block text-sm font-bold">{tr('taxNumber')}<input className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.taxNumber} onChange={e=>setCompanyForm({...companyForm,taxNumber:e.target.value})}/></label><label className="block text-sm font-bold">{tr('commercialRegister')}<input className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.commercialRegister} onChange={e=>setCompanyForm({...companyForm,commercialRegister:e.target.value})}/></label><label className="block text-sm font-bold">{tr('website')}<input className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.website} onChange={e=>setCompanyForm({...companyForm,website:e.target.value})}/></label><label className="block text-sm font-bold md:col-span-2">{tr('companyAddress')}<textarea rows="2" className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.address} onChange={e=>setCompanyForm({...companyForm,address:e.target.value})}></textarea></label><div className="md:col-span-2"><p className="text-sm font-bold mb-2">{tr('companyLogo')}</p>{companyForm.logo&&<img src={companyForm.logo} alt="Company logo" className="h-24 max-w-56 object-contain border rounded-lg p-2 mb-3"/>}<label className="inline-block bg-gray-100 border rounded-lg px-4 py-2 cursor-pointer">{tr('uploadLogo')}<input type="file" accept="image/*" className="hidden" onChange={uploadCompanyLogo}/></label><button type="button" onClick={()=>setCompanyForm({...companyForm,logo:''})} className="text-red-600 text-sm ms-3">{rtl?'إزالة الشعار':'Remove logo'}</button></div><div className="md:col-span-2"><button className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold">{tr('save')}</button></div></form></div></details></div>}
 
