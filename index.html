@@ -750,7 +750,19 @@ function App(){
     return <span className={'app-user-identity '+(small?'is-small':'')} title={label}>{avatar?<img src={avatar} alt="" loading="lazy"/>:<span className="app-user-fallback">{initial}</span>}<span className="app-user-label">{label}</span></span>;
   }
 
-  async function addLog(action,userOverride=currentUser){
+  function auditSafeValue(value){
+    if(value===undefined)return null;
+    if(value===null||typeof value==='string'||typeof value==='number'||typeof value==='boolean')return value;
+    if(Array.isArray(value))return value.slice(0,50).map(auditSafeValue);
+    if(typeof value==='object'){const out={};Object.entries(value).forEach(([key,val])=>{if(/password|token|secret|avatar|photo|image|base64/i.test(key))return;out[key]=auditSafeValue(val);});return out;}
+    return String(value);
+  }
+  function auditChanges(before,after){
+    const oldData=before&&typeof before==='object'?before:{};const newData=after&&typeof after==='object'?after:{};const keys=new Set([...Object.keys(oldData),...Object.keys(newData)]);const changes={};
+    keys.forEach(key=>{if(/password|token|secret|avatar|photo|image|base64/i.test(key))return;const oldValue=auditSafeValue(oldData[key]);const newValue=auditSafeValue(newData[key]);if(JSON.stringify(oldValue)!==JSON.stringify(newValue))changes[key]={before:oldValue,after:newValue};});
+    return changes;
+  }
+  async function addLog(action,userOverride=currentUser,details={}){
     if(!userOverride || !userOverride.uid) return false;
     try{
       const id=db.ref('logs').push().key;
@@ -761,7 +773,8 @@ function App(){
         id,uid:userOverride.uid,user:userOverride.fullName || userOverride.username || userOverride.email || userOverride.uid,
         email:userOverride.email||'',jobTitle:userOverride.jobTitle||'',time:new Date().toLocaleString(rtl?'ar-EG':'en-US'),
         createdAt:firebase.database.ServerValue.TIMESTAMP,action:text,actionType,screen:tab||'login',
-        device:(typeof navigator!=='undefined'?String(navigator.userAgent||'').slice(0,220):'unknown'),source:'web-app'
+        device:(typeof navigator!=='undefined'?String(navigator.userAgent||'').slice(0,220):'unknown'),source:'web-app',
+        entityType:details.entityType||'',entityId:details.entityId||'',changes:auditSafeValue(details.changes||{}),metadata:auditSafeValue(details.metadata||{})
       });
       return true;
     }catch(err){
@@ -954,7 +967,7 @@ function App(){
   async function saveCompany(e){
     e.preventDefault();if(!isAdmin) return;
     const name=companyForm.name.trim();if(!name) return alert(tr('companyName'));
-    try{await db.ref('companyInfo').update({name,logo:companyForm.logo || '',phone:companyForm.phone.trim(),email:companyForm.email.trim(),address:companyForm.address.trim(),taxNumber:companyForm.taxNumber.trim(),commercialRegister:companyForm.commercialRegister.trim(),website:companyForm.website.trim(),updatedAt:firebase.database.ServerValue.TIMESTAMP});await addLog('تحديث بيانات الشركة');alert(tr('saved'));}
+    try{const beforeSnap=await db.ref('companyInfo').once('value');const before=beforeSnap.val()||{};const after={name,logo:companyForm.logo || '',phone:companyForm.phone.trim(),email:companyForm.email.trim(),address:companyForm.address.trim(),taxNumber:companyForm.taxNumber.trim(),commercialRegister:companyForm.commercialRegister.trim(),website:companyForm.website.trim()};await db.ref('companyInfo').update({...after,updatedAt:firebase.database.ServerValue.TIMESTAMP});await addLog('تحديث بيانات الشركة',currentUser,{entityType:'company-settings',entityId:'companyInfo',changes:auditChanges(before,after)});alert(tr('saved'));}
     catch(err){alert(firebaseErrorMessage(err,tr));}
   }
 
@@ -990,9 +1003,11 @@ function App(){
         await auth.currentUser.verifyBeforeUpdateEmail(email);
       }
       const savedEmail=currentUser.email;
+      const profileBefore={fullName:currentUser.fullName,username:currentUser.username,jobTitle:currentUser.jobTitle,email:currentUser.email,whatsapp:currentUser.whatsapp};
+      const profileAfter={fullName,username,jobTitle,email:savedEmail,whatsapp};
       await db.ref('users/'+currentUser.uid).update({uid:currentUser.uid,email:savedEmail,fullName,username,jobTitle,whatsapp});
       await db.ref('userDirectory/'+currentUser.uid).set({uid:currentUser.uid,fullName,username,jobTitle,whatsapp,avatar:currentUser.avatar||'',status:'active'});
-      const updatedUser={...currentUser,uid:currentUser.uid,email:savedEmail,fullName,username,jobTitle,whatsapp};setCurrentUser(updatedUser);setProfileForm(old=>({...old,email:savedEmail}));setProfileEmailPassword('');await addLog('تعديل البيانات الشخصية',updatedUser);alert(emailChanged?tr('emailVerifySent'):tr('personalSaved'));
+      const updatedUser={...currentUser,uid:currentUser.uid,email:savedEmail,fullName,username,jobTitle,whatsapp};setCurrentUser(updatedUser);setProfileForm(old=>({...old,email:savedEmail}));setProfileEmailPassword('');await addLog('تعديل البيانات الشخصية',updatedUser,{entityType:'user-profile',entityId:currentUser.uid,changes:auditChanges(profileBefore,profileAfter)});alert(emailChanged?tr('emailVerifySent'):tr('personalSaved'));
     }catch(err){alert(firebaseErrorMessage(err,tr));}
   }
 
@@ -1219,11 +1234,13 @@ function App(){
     const record={...master,code,name,createdAt:master.createdAt||firebase.database.ServerValue.TIMESTAMP,updatedAt:firebase.database.ServerValue.TIMESTAMP};
     delete record.type;
     try{
+      const previousSnap=editingMasterCode?await db.ref(path+'/'+editingMasterCode).once('value'):null;
+      const previousRecord=previousSnap?previousSnap.val():null;
       if(editingMasterCode && editingMasterCode!==code){
         await db.ref(path+'/'+editingMasterCode).remove();
       }
       await db.ref(path+'/'+code).set(record);
-      await addLog((editingMasterCode?'تعديل ':'إضافة ')+(type==='client'?'عميل: ':'مورد: ')+name);
+      await addLog((editingMasterCode?'تعديل ':'إضافة ')+(type==='client'?'عميل: ':'مورد: ')+name,currentUser,{entityType:type,entityId:code,changes:auditChanges(previousRecord,record),metadata:{oldCode:editingMasterCode||''}});
       setMaster(blankMaster(type));setEditingMasterCode('');setMasterFormOpen(false);alert(tr('saved'));
     }catch(err){alert(firebaseErrorMessage(err,tr));}
   }
@@ -1241,9 +1258,11 @@ function App(){
     const record={...project,code,name,clientCodes:Array.isArray(project.clientCodes)?project.clientCodes:[],vendorCodes:Array.isArray(project.vendorCodes)?project.vendorCodes:[],amount:Number(project.amount||0),costBudget:Number(project.costBudget||0),updatedAt:firebase.database.ServerValue.TIMESTAMP};
     if(!record.clientCodes.length && record.clientCode) record.clientCodes=[record.clientCode];
     try{
+      const previousSnap=editingProjectCode?await db.ref('projects/'+editingProjectCode).once('value'):null;
+      const previousRecord=previousSnap?previousSnap.val():null;
       if(!editingProjectCode){const exists=await db.ref('projects/'+code).once('value');if(exists.exists()) return alert(rtl?'كود المشروع موجود بالفعل.':'Project code already exists.');record.createdAt=firebase.database.ServerValue.TIMESTAMP;}
       await db.ref('projects/'+code).update(record);
-      await addLog((editingProjectCode?'تعديل ':'إضافة مشروع: ')+name);
+      await addLog((editingProjectCode?'تعديل ':'إضافة مشروع: ')+name,currentUser,{entityType:'project',entityId:code,changes:auditChanges(previousRecord,{...(previousRecord||{}),...record})});
       setSelectedProjectCode(code);setProject(blankProject());setEditingProjectCode('');setProjectFormOpen(false);setTab('projectDetail');
       alert(tr('projectAdded'));
     }catch(err){alert(firebaseErrorMessage(err,tr));}
@@ -1266,17 +1285,19 @@ function App(){
     const event={...projectEvent,id,projectCode:code,type:normalizedType,actionCode:projectEvent.actionCode,actionName:String(projectEvent.actionName||action.label).trim(),financialEffect:effect,date:projectEvent.date||new Date().toISOString().slice(0,10),dueDate:projectEvent.dueDate||'',partyCode:projectEvent.partyCode||'',partyType:projectEvent.partyType||action.party||'',referenceNo:String(projectEvent.referenceNo||'').trim(),quantity:Number(projectEvent.quantity||0),unit:String(projectEvent.unit||''),amount:Number(projectEvent.amount||0),settledAmount:Number(projectEvent.settledAmount||0),currency:projectEvent.currency||target.currency||'EGP',status:projectEvent.status||'open',paymentMethod:projectEvent.paymentMethod||'',responsible:String(projectEvent.responsible||'').trim(),priority:projectEvent.priority||'normal',note:String(projectEvent.note||'').trim(),createdBy:existingEvent?.createdBy||currentUser.uid,createdByName:existingEvent?.createdByName||currentUser.fullName,createdByAvatar:existingEvent?.createdByAvatar||currentUser.avatar||'',createdAt:existingEvent?.createdAt||firebase.database.ServerValue.TIMESTAMP,...(editingProjectEventId?{updatedAt:firebase.database.ServerValue.TIMESTAMP,updatedBy:currentUser.uid,updatedByName:currentUser.fullName}:{})};
     if(['cash_in','cash_out'].includes(effect)&&!['full','completed','paid','collected','تم السداد','تم التحصيل','تم الدفع','تم القبض','تم التنفيذ','منفذ'].includes(String(event.status).toLowerCase())&&event.settledAmount<=0){event.settledAmount=0;}
     try{
+      const previousEventSnap=editingProjectEventId?await db.ref('projects/'+code+'/events/'+id).once('value'):null;
+      const previousEvent=previousEventSnap?previousEventSnap.val():null;
       await db.ref('projects/'+code+'/events/'+id).set(event);
       const lifecycleStatus={purchase_request:rtl?'طلب شراء':'Purchase request',supplier_confirmation:rtl?'تأكيد المورد':'Supplier confirmed',goods_received:rtl?'استلام بضاعة':'Goods received',customer_delivery:rtl?'توريد للعميل':'Delivered to customer',project_completed:rtl?'مكتمل':'Completed',project_closed:rtl?'مغلق':'Closed'};
       await db.ref('projects/'+code).update({lastActivityAt:firebase.database.ServerValue.TIMESTAMP,lastActivityType:event.actionCode,...(lifecycleStatus[event.actionCode]?{status:lifecycleStatus[event.actionCode]}:{})});
-      await addLog((editingProjectEventId?'تعديل ':'إضافة ')+ 'حدث '+event.actionName+' للمشروع '+code);
+      await addLog((editingProjectEventId?'تعديل ':'إضافة ')+ 'حدث '+event.actionName+' للمشروع '+code,currentUser,{entityType:'project-event',entityId:code+'/'+id,changes:auditChanges(previousEvent,event)});
       setProjectEvent(blankProjectEvent());setEditingProjectEventId('');
       alert(tr('eventSaved'));
     }catch(err){alert(firebaseErrorMessage(err,tr));}
   }
 
   function editProjectEventRecord(ev){if(!requirePermission('projects','edit'))return;setProjectEvent({...blankProjectEvent(),...ev,actionCode:ev.actionCode||ev.type||'general_note',actionName:ev.actionName||eventLabel(ev.type),settledAmount:ev.settledAmount??'',dueDate:ev.dueDate||''});setEditingProjectEventId(ev.id);window.scrollTo({top:0,behavior:'smooth'});}
-  async function deleteProjectEventRecord(ev){if(!requirePermission('projects','delete'))return;if(!window.confirm(rtl?'هل تريد حذف هذا الحدث؟ سيتم تحديث ملخصات المشروع والتقارير.':'Delete this event? Project summaries and reports will be recalculated.'))return;try{await db.ref('projects/'+selectedProjectCode+'/events/'+ev.id).remove();await addLog('حذف حدث '+(ev.actionName||eventLabel(ev.type))+' من المشروع '+selectedProjectCode);if(editingProjectEventId===ev.id){setEditingProjectEventId('');setProjectEvent(blankProjectEvent());}}catch(err){alert(firebaseErrorMessage(err,tr));}}
+  async function deleteProjectEventRecord(ev){if(!requirePermission('projects','delete'))return;if(!window.confirm(rtl?'هل تريد حذف هذا الحدث؟ سيتم تحديث ملخصات المشروع والتقارير.':'Delete this event? Project summaries and reports will be recalculated.'))return;try{await db.ref('projects/'+selectedProjectCode+'/events/'+ev.id).remove();await addLog('حذف حدث '+(ev.actionName||eventLabel(ev.type)),currentUser,{entityType:'project-event',entityId:selectedProjectCode+'/'+ev.id,changes:auditChanges(ev,null)});if(editingProjectEventId===ev.id){setEditingProjectEventId('');setProjectEvent(blankProjectEvent());}}catch(err){alert(firebaseErrorMessage(err,tr));}}
 
   function reportAsMessage(){
     setMessage({recipients:'',subject:currentReportTitle+' - '+(reportEntity||''),body:currentReportText});setTab('messages');
@@ -1822,7 +1843,7 @@ function App(){
               <label className="text-sm">{rtl?'إلى تاريخ':'To date'}<input type="date" className="block w-full border rounded-lg p-2 mt-1" value={auditTo} onChange={e=>setAuditTo(e.target.value)}/></label>
             </div>
           </section>
-          <section className="bg-white border rounded-xl overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm min-w-[950px]"><thead className="bg-slate-50"><tr><th className="p-3 text-start">{rtl?'التاريخ والوقت':'Date & time'}</th><th className="p-3 text-start">{rtl?'المستخدم':'User'}</th><th className="p-3 text-start">{rtl?'نوع العملية':'Action type'}</th><th className="p-3 text-start">{rtl?'تفاصيل العملية':'Action details'}</th><th className="p-3 text-start">{rtl?'الشاشة':'Screen'}</th><th className="p-3 text-start">{rtl?'الجهاز / المتصفح':'Device / browser'}</th></tr></thead><tbody>{filteredAuditLogs.slice(0,1000).map((log,index)=><tr key={log.id||index} className="border-t align-top"><td className="p-3 whitespace-nowrap">{log.createdAt?new Date(Number(log.createdAt)).toLocaleString(rtl?'ar-EG':'en-US'):(log.time||'—')}</td><td className="p-3"><b>{log.user||'—'}</b><div className="text-xs text-gray-500">{log.email||log.uid||''}</div></td><td className="p-3 whitespace-nowrap">{({login:rtl?'دخول':'Login',logout:rtl?'خروج':'Logout',add:rtl?'إضافة':'Add',edit:rtl?'تعديل':'Edit',delete:rtl?'حذف':'Delete',approve:rtl?'اعتماد':'Approve',export:rtl?'تصدير':'Export',communication:rtl?'تواصل':'Communication',permissions:rtl?'صلاحيات':'Permissions',navigation:rtl?'فتح شاشة':'Screen view',other:rtl?'أخرى':'Other'})[log.actionType||'other']}</td><td className="p-3 min-w-64">{log.action||'—'}</td><td className="p-3">{log.screen||'—'}</td><td className="p-3 text-xs text-gray-500 max-w-xs break-words">{log.device||'—'}</td></tr>)}</tbody></table></div>{filteredAuditLogs.length===0&&<p className="p-6 text-center text-gray-500">{rtl?'لا توجد سجلات مطابقة للتصفية.':'No matching activity records.'}</p>}{filteredAuditLogs.length>1000&&<p className="p-3 text-xs text-gray-500">{rtl?'يتم عرض أول 1000 سجل من النتائج.':'Showing the first 1,000 matching records.'}</p>}</section>
+          <section className="bg-white border rounded-xl overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm min-w-[1100px]"><thead className="bg-slate-50"><tr><th className="p-3 text-start">{rtl?'التاريخ والوقت':'Date & time'}</th><th className="p-3 text-start">{rtl?'المستخدم':'User'}</th><th className="p-3 text-start">{rtl?'نوع العملية':'Action type'}</th><th className="p-3 text-start">{rtl?'تفاصيل العملية':'Action details'}</th><th className="p-3 text-start">{rtl?'السجل المتأثر':'Affected record'}</th><th className="p-3 text-start">{rtl?'التغييرات':'Before / after'}</th><th className="p-3 text-start">{rtl?'الشاشة':'Screen'}</th><th className="p-3 text-start">{rtl?'الجهاز / المتصفح':'Device / browser'}</th></tr></thead><tbody>{filteredAuditLogs.slice(0,1000).map((log,index)=><tr key={log.id||index} className="border-t align-top"><td className="p-3 whitespace-nowrap">{log.createdAt?new Date(Number(log.createdAt)).toLocaleString(rtl?'ar-EG':'en-US'):(log.time||'—')}</td><td className="p-3"><b>{log.user||'—'}</b><div className="text-xs text-gray-500">{log.email||log.uid||''}</div></td><td className="p-3 whitespace-nowrap">{({login:rtl?'دخول':'Login',logout:rtl?'خروج':'Logout',add:rtl?'إضافة':'Add',edit:rtl?'تعديل':'Edit',delete:rtl?'حذف':'Delete',approve:rtl?'اعتماد':'Approve',export:rtl?'تصدير':'Export',communication:rtl?'تواصل':'Communication',permissions:rtl?'صلاحيات':'Permissions',navigation:rtl?'فتح شاشة':'Screen view',other:rtl?'أخرى':'Other'})[log.actionType||'other']}</td><td className="p-3 min-w-64">{log.action||'—'}</td><td className="p-3"><span>{log.entityType||'—'}</span><div className="text-xs text-gray-500">{log.entityId||''}</div></td><td className="p-3 min-w-72">{log.changes&&Object.keys(log.changes).length?<details><summary className="cursor-pointer text-blue-700 font-bold">{rtl?'عرض التفاصيل':'View details'} ({Object.keys(log.changes).length})</summary><div className="mt-2 space-y-2">{Object.entries(log.changes).map(([field,change])=><div key={field} className="border rounded p-2"><b>{field}</b><div className="text-xs text-red-700 break-words">{rtl?'قبل: ':'Before: '}{JSON.stringify(change.before)}</div><div className="text-xs text-green-700 break-words">{rtl?'بعد: ':'After: '}{JSON.stringify(change.after)}</div></div>)}</div></details>:<span className="text-gray-400">—</span>}</td><td className="p-3">{log.screen||'—'}</td><td className="p-3 text-xs text-gray-500 max-w-xs break-words">{log.device||'—'}</td></tr>)}</tbody></table></div>{filteredAuditLogs.length===0&&<p className="p-6 text-center text-gray-500">{rtl?'لا توجد سجلات مطابقة للتصفية.':'No matching activity records.'}</p>}{filteredAuditLogs.length>1000&&<p className="p-3 text-xs text-gray-500">{rtl?'يتم عرض أول 1000 سجل من النتائج.':'Showing the first 1,000 matching records.'}</p>}</section>
           <p className="text-xs text-amber-700">{rtl?'ملاحظة: يسجل هذا الإصدار العمليات التي تمر عبر وظائف التسجيل داخل التطبيق. لا يسجل عنوان IP، ولا يمكن اعتباره سجل تدقيق غير قابل للتلاعب قبل تأمين مسار logs من خلال Firebase Security Rules أو خدمة خادمية.':'Note: this version records actions routed through the app audit logger. It does not capture IP addresses and is not tamper-proof until the logs path is protected by Firebase Security Rules or a server-side service.'}</p>
         </div>}
 
