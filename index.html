@@ -1196,7 +1196,7 @@ function App(){
       summaryRows[3]=[rtl?'اسم المستخدم':'Employee',ownerName,rtl?'اسم الدخول':'Username',ownerUsername,rtl?'الوظيفة / القسم':'Job / Department',ownerJob,rtl?'العملة':'Currency',currency];
       summaryRows[4]=[rtl?'معرف المستخدم':'User ID',cashCustodyTarget,rtl?'تاريخ التقرير':'Report date',generatedLabel,rtl?'عدد الحركات':'Transactions',reportRows.length,rtl?'حالة التقرير':'Report scope',rtl?'كافة حركات العملة المحددة':'All movements in selected currency'];
       const cards=[
-        {label:rtl?'إجمالي النقدية المستلمة':'TOTAL CASH RECEIVED',value:totalReceived,format:true},
+        {label:rtl?'إجمالي الوارد المعتمد':'TOTAL APPROVED INFLOWS',value:totalReceived,format:true},
         {label:rtl?'إجمالي المصروفات والمرتجعات':'TOTAL CASH OUT',value:totalSpent,format:true},
         {label:rtl?'الرصيد النقدي الحالي':'CURRENT CASH BALANCE',value:currentBalance,format:true},
         {label:rtl?'حركات في انتظار الاعتماد':'PENDING MOVEMENTS',value:pending.length,format:false},
@@ -1300,7 +1300,7 @@ function App(){
       details.push([rtl?'ملاحظة: الحركات المعلقة والمرفوضة لا تؤثر على الرصيد.':'Note: pending and rejected movements do not affect the cash balance.']);
       const ledger=Excel.utils.aoa_to_sheet(details);
       merge(ledger,'A1:M1');merge(ledger,'A2:M2');merge(ledger,'A3:M3');
-      merge(ledger,'A'+(details.length-1)+':M'+(details.length-1));
+      merge(ledger,'A'+details.length+':M'+details.length);
       ledger['!cols']=[{wch:14},{wch:24},{wch:24},{wch:40},{wch:28},{wch:18},{wch:20},{wch:17},{wch:17},{wch:19},{wch:16},{wch:24},{wch:24}];
       ledger['!rows']=[{hpt:34},{hpt:24},{hpt:30},{hpt:8},{hpt:38},...reportRows.map(()=>({hpt:30})),{hpt:8},{hpt:25}];
       ledger['!autofilter']={ref:'A5:M'+(5+reportRows.length)};
@@ -1329,7 +1329,7 @@ function App(){
       ledger['!ref']='A1:M'+footerRow;
       Excel.utils.book_append_sheet(workbook,ledger,rtl?'كشف الحساب':'Ledger');
 
-      const safePart=value=>String(value||'').replace(/[\\\\/:*?"<>|]/g,'-').replace(/\\s+/g,'_').slice(0,42)||'User';
+      const safePart=value=>{const forbidden='/'+String.fromCharCode(92)+':*?"<>|';return String(value||'').split('').map(ch=>forbidden.includes(ch)?'-':ch===' '?'_':ch).join('').slice(0,42)||'User';};
       const fileName='Cash_Custody_'+safePart(ownerName)+'_'+currency+'_'+generatedAt.toISOString().slice(0,10)+'.xlsx';
       Excel.writeFile(workbook,fileName,{compression:true});
       void addLog('تصدير كشف العهدة إلى Excel',currentUser,{entityType:'cash-custody-export',entityId:cashCustodyTarget,metadata:{currency,transactionCount:reportRows.length,fileName}});
