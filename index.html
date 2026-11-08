@@ -2066,7 +2066,7 @@ function App(){
           <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-bold text-xl">{rtl?'إدارة صلاحيات المستخدمين':'User Permissions Management'}</h2><span className="text-xs text-gray-500">{rtl?'صلاحيات مستقلة لكل مستخدم':'Independent permissions for each user'}</span></div>
           <section className="bg-white border rounded-xl p-4 space-y-4">
             <label className="block text-sm font-bold">{rtl?'اختيار المستخدم':'Select user'}
-              <select className="mt-1 w-full border rounded-lg p-3 font-normal" value={permissionUserUid} onChange={e=>{const uid=e.target.value;setPermissionUserUid(uid);const user=activeUsers.find(x=>x.uid===uid);setPermissionDraft(user?.permissions||{});setPermissionNotice('');}}>
+              <select className="mt-1 w-full border rounded-lg p-3 font-normal" value={permissionUserUid} onChange={e=>{const uid=e.target.value;setPermissionUserUid(uid);const user=activeUsers.find(x=>x.uid===uid);const draft={...(user?.permissions||{})};draft.cashCustody={view:draft.cashCustody?.view!==false,add:draft.cashCustody?.add!==false,edit:draft.cashCustody?.edit!==false,...(draft.cashCustody||{})};setPermissionDraft(draft);setPermissionNotice('');}}>
                 <option value="">{rtl?'اختر مستخدماً':'Choose a user'}</option>
                 {activeUsers.filter(user=>user.uid&&user.uid!==currentUser.uid&&user.status!=='disabled').map(user=><option key={user.uid} value={user.uid}>{user.fullName||user.username||user.email||user.uid} — {user.jobTitle||user.email||''}</option>)}
               </select>
