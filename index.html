@@ -20,7 +20,7 @@
     .nav-btn{transition:.15s}.nav-btn:hover{background:#f1f5f9}.nav-btn.active{background:var(--brand-soft);color:var(--brand);font-weight:700}
     .bg-blue-600{background-color:var(--brand)!important}.text-blue-600,.text-blue-700{color:var(--brand)!important}.border-blue-600{border-color:var(--brand)!important}.bg-blue-50{background-color:var(--brand-soft)!important}.hover\:bg-blue-700:hover{background-color:var(--brand-hover)!important}
     .menu-item{display:block;width:100%;text-align:start;padding:.6rem .75rem;border-radius:.5rem}.menu-item:hover{background:#f1f5f9}
-    *{box-sizing:border-box}body{overflow-x:hidden}.app-workspace{width:100%;max-width:1600px;min-width:0;margin-inline:auto;padding:clamp(10px,1.25vw,20px)}.app-sidebar{flex:0 0 232px;max-height:calc(100vh - 76px);overflow-y:auto}.app-nav-grid{display:block}.app-nav-group{min-width:0;margin-bottom:4px}.app-nav-parent{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:10px 11px;border-radius:9px;text-align:start;font-weight:700;color:#334155}.app-nav-parent:hover{background:#f1f5f9}.app-nav-children{margin:3px 0 7px 12px;padding-inline-start:9px;border-inline-start:2px solid #e2e8f0}.app-nav-child{display:flex;align-items:center;gap:9px;width:100%;padding:9px 10px;border-radius:8px;text-align:start;font-size:.92rem;color:#475569}.app-nav-child:hover,.app-nav-child.active{background:var(--brand-soft);color:var(--brand);font-weight:700}.app-collapsible{border:1px solid #e5e7eb;border-radius:12px;background:#fff;overflow:hidden}.app-collapsible>summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 16px;font-weight:700}.app-collapsible>summary::-webkit-details-marker{display:none}.app-collapsible>summary:after{content:'⌄';font-size:1.15rem;color:#64748b;transition:transform .15s}.app-collapsible[open]>summary:after{transform:rotate(180deg)}.app-collapsible-body{padding:0 16px 16px}.app-table-scroll{width:100%;max-height:min(360px,46vh);min-height:90px;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;border:1px solid #e5e7eb;border-radius:9px;background:#fff}.app-table-scroll table{width:100%;min-width:680px;border-collapse:separate;border-spacing:0}.app-table-scroll thead th{position:sticky;top:0;z-index:3;background:#f8fafc;box-shadow:0 1px 0 #e5e7eb}.app-table-scroll th,.app-table-scroll td{white-space:nowrap}.app-list-scroll{max-height:min(360px,46vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding-inline-end:4px}.app-list-scroll>*{min-width:0}@media(max-width:767px){.app-table-scroll{max-height:min(300px,42vh);min-height:80px}.app-table-scroll table{min-width:640px}.app-list-scroll{max-height:min(300px,42vh)}}.app-workspace input,.app-workspace select,.app-workspace textarea{min-width:0;max-width:100%;font-size:.94rem}.app-workspace .rounded-xl{border-radius:11px}@media(max-width:767px){.app-workspace{padding:10px}.app-sidebar{flex:0 0 auto;max-height:none;overflow:visible;padding:8px!important}.app-nav-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.app-nav-group{margin:0;min-width:0}.app-nav-parent{height:100%;min-height:42px;padding:8px;font-size:.86rem}.app-nav-children{margin:3px 0 5px 4px;padding-inline-start:6px}.app-nav-child{padding:8px;font-size:.82rem}.app-workspace .p-5{padding:13px}.app-workspace .p-4{padding:11px}.app-workspace .gap-5{gap:12px}.app-workspace .gap-4{gap:10px}.app-workspace input,.app-workspace select,.app-workspace textarea{font-size:16px}header{flex-wrap:wrap;min-height:58px}header>div{min-width:0}}
+    *{box-sizing:border-box}body{overflow-x:hidden}.app-workspace{width:100%;max-width:1600px;min-width:0;margin-inline:auto;padding:clamp(10px,1.25vw,20px)}.app-sidebar{flex:0 0 var(--sidebar-width,232px);width:var(--sidebar-width,232px);max-height:calc(100vh - 76px);overflow-y:auto}.app-sidebar-resizer{position:absolute;inset-inline-end:-7px;top:0;bottom:0;width:14px;z-index:30;display:flex;align-items:center;justify-content:center;cursor:col-resize;touch-action:none;background:transparent;border:0;padding:0}.app-sidebar-resizer span{width:4px;height:64px;border-radius:8px;background:rgba(100,116,139,.36);transition:background .15s,width .15s}.app-sidebar-resizer:hover span,.app-sidebar-resizer:focus span{width:6px;background:var(--brand)}.app-sidebar-resizer:focus{outline:2px solid var(--brand);outline-offset:-2px}.app-nav-grid{display:block}.app-nav-group{min-width:0;margin-bottom:4px}.app-nav-parent{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:10px 11px;border-radius:9px;text-align:start;font-weight:700;color:#334155}.app-nav-parent:hover{background:#f1f5f9}.app-nav-children{margin:3px 0 7px 12px;padding-inline-start:9px;border-inline-start:2px solid #e2e8f0}.app-nav-child{display:flex;align-items:center;gap:9px;width:100%;padding:9px 10px;border-radius:8px;text-align:start;font-size:.92rem;color:#475569}.app-nav-child:hover,.app-nav-child.active{background:var(--brand-soft);color:var(--brand);font-weight:700}.app-collapsible{border:1px solid #e5e7eb;border-radius:12px;background:#fff;overflow:hidden}.app-collapsible>summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 16px;font-weight:700}.app-collapsible>summary::-webkit-details-marker{display:none}.app-collapsible>summary:after{content:'⌄';font-size:1.15rem;color:#64748b;transition:transform .15s}.app-collapsible[open]>summary:after{transform:rotate(180deg)}.app-collapsible-body{padding:0 16px 16px}.app-table-scroll{width:100%;max-height:min(360px,46vh);min-height:90px;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;border:1px solid #e5e7eb;border-radius:9px;background:#fff}.app-table-scroll table{width:100%;min-width:680px;border-collapse:separate;border-spacing:0}.app-table-scroll thead th{position:sticky;top:0;z-index:3;background:#f8fafc;box-shadow:0 1px 0 #e5e7eb}.app-table-scroll th,.app-table-scroll td{white-space:nowrap}.app-list-scroll{max-height:min(360px,46vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding-inline-end:4px}.app-list-scroll>*{min-width:0}@media(max-width:767px){.app-table-scroll{max-height:min(300px,42vh);min-height:80px}.app-table-scroll table{min-width:640px}.app-list-scroll{max-height:min(300px,42vh)}}.app-workspace input,.app-workspace select,.app-workspace textarea{min-width:0;max-width:100%;font-size:.94rem}.app-workspace .rounded-xl{border-radius:11px}@media(max-width:767px){.app-workspace{padding:10px}.app-sidebar{flex:0 0 auto;width:100%;max-height:none;overflow:visible;padding:8px!important}.app-sidebar-resizer{display:none}.app-nav-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.app-nav-group{margin:0;min-width:0}.app-nav-parent{height:100%;min-height:42px;padding:8px;font-size:.86rem}.app-nav-children{margin:3px 0 5px 4px;padding-inline-start:6px}.app-nav-child{padding:8px;font-size:.82rem}.app-workspace .p-5{padding:13px}.app-workspace .p-4{padding:11px}.app-workspace .gap-5{gap:12px}.app-workspace .gap-4{gap:10px}.app-workspace input,.app-workspace select,.app-workspace textarea{font-size:16px}header{flex-wrap:wrap;min-height:58px}header>div{min-width:0}}
     @media print{body *{visibility:hidden!important}.print-area,.print-area *{visibility:visible!important}.print-area{position:absolute!important;inset:0!important;width:100%!important;background:#fff!important;padding:12mm!important}.no-print{display:none!important}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:start;font-size:10pt}.print-area h1,.print-area h2{color:#111!important}}
   
     .app-shell-header{background:var(--brand-gradient)!important;color:#334155!important;box-shadow:0 8px 24px color-mix(in srgb,var(--brand) 13%,transparent);border-bottom:1px solid rgba(100,116,139,.12)}
@@ -304,6 +304,7 @@ function App(){
   const [adminUserSelectedUid,setAdminUserSelectedUid] = useState('');
   const [adminUserForm,setAdminUserForm] = useState({fullName:'',username:'',jobTitle:'',department:'',phone:'',whatsapp:'',email:'',status:'active'});
   const [adminUserBusy,setAdminUserBusy] = useState(false);
+  const [adminPasswordResetBusy,setAdminPasswordResetBusy] = useState(false);
   const [adminUserNotice,setAdminUserNotice] = useState('');
   const [cashCustodyByUid,setCashCustodyByUid] = useState({});
   const [cashCustodyTargetUid,setCashCustodyTargetUid] = useState('');
@@ -335,6 +336,7 @@ function App(){
   const [whatsappManualNumber,setWhatsappManualNumber] = useState('');
   const [tab,setTab] = useState('dashboard');
   const [navPreferences,setNavPreferences] = useState({uid:'',mode:'side',recent:[]});
+  const [sidebarWidth,setSidebarWidth] = useState(()=>{const saved=Number(localStorage.getItem('pestSidebarWidth'));return Number.isFinite(saved)&&saved>=210&&saved<=440?saved:260;});
   const [expandedNavGroup,setExpandedNavGroup] = useState('');
   const [notificationOpen,setNotificationOpen] = useState(false);
   const [seenRequestIds,setSeenRequestIds] = useState([]);
@@ -398,6 +400,8 @@ function App(){
     try{setSeenRequestIds(JSON.parse(localStorage.getItem('pestSeenAdminRequests:'+currentUser.uid)||'[]'));}
     catch(_){setSeenRequestIds([]);}
   },[currentUser && currentUser.uid]);
+
+  useEffect(()=>{try{localStorage.setItem('pestSidebarWidth',String(sidebarWidth));}catch(_){}},[sidebarWidth]);
 
   useEffect(()=>{
     document.documentElement.lang = lang;
@@ -1004,6 +1008,43 @@ function App(){
       if(adminUserSelectedUid===currentUser.uid){const updatedCurrent={...currentUser,...after};setCurrentUser(updatedCurrent);setProfileForm(old=>({...old,fullName,username,jobTitle,whatsapp,email:updatedCurrent.email||old.email}));}
       await addLog('تعديل بيانات المستخدم: '+fullName,currentUser,{entityType:'user-profile',entityId:adminUserSelectedUid,changes:auditChanges(before,after)});
       setAdminUserNotice(rtl?'تم حفظ بيانات المستخدم.':'User details saved.');
+    }catch(err){setAdminUserNotice(firebaseErrorMessage(err,tr));}
+    finally{setAdminUserBusy(false);}
+  }
+
+  async function sendAdminUserPasswordReset(){
+    if(!isAdmin||!adminUserSelectedUid)return;
+    const selected=activeUsers.find(user=>user.uid===adminUserSelectedUid)||{};
+    const email=String(selected.email||adminUserForm.email||'').trim().toLowerCase();
+    if(!email||!email.includes('@'))return setAdminUserNotice(rtl?'لا يوجد بريد إلكتروني صحيح لهذا المستخدم.':'This user has no valid email address.');
+    if(!window.confirm((rtl?'سيتم إرسال رابط إعادة تعيين كلمة المرور إلى: ':'A password reset link will be sent to: ')+email+(rtl?'\nلن يتم عرض أو معرفة كلمة المرور الحالية.':'\nThe current password will not be shown or disclosed.')))return;
+    setAdminPasswordResetBusy(true);setAdminUserNotice('');
+    try{
+      await auth.sendPasswordResetEmail(email);
+      await addLog('إرسال رابط إعادة تعيين كلمة المرور للمستخدم: '+(selected.fullName||selected.username||email),currentUser,{entityType:'user-password-reset',entityId:adminUserSelectedUid,metadata:{email}});
+      setAdminUserNotice(rtl?'تم إرسال رسالة إعادة تعيين كلمة المرور. على المستخدم فتح بريده وإنشاء كلمة مرور جديدة، ثم استخدامها عند تسجيل الدخول.':'Password reset email sent. The user must open the email, set a new password, then use it to sign in.');
+    }catch(err){setAdminUserNotice(firebaseErrorMessage(err,tr));}
+    finally{setAdminPasswordResetBusy(false);}
+  }
+
+  async function deactivateAdminUser(){
+    if(!isAdmin||!adminUserSelectedUid)return;
+    if(adminUserSelectedUid===currentUser.uid)return setAdminUserNotice(rtl?'لا يمكن تعطيل حساب المدير المستخدم حالياً.':'You cannot deactivate the administrator account currently in use.');
+    const selected=activeUsers.find(user=>user.uid===adminUserSelectedUid)||{};
+    if(!window.confirm((rtl?'سيتم إيقاف دخول هذا المستخدم إلى البرنامج مع الاحتفاظ بسجلاته المالية وسجل النشاط. هذا لا يحذف حسابه نهائياً من Firebase Authentication.\n\nهل تريد المتابعة؟':'This will block the user from signing in while preserving financial and audit records. It does not permanently delete the Firebase Authentication account.\n\nContinue?')))return;
+    setAdminUserBusy(true);setAdminUserNotice('');
+    try{
+      const updates={};
+      updates['users/'+adminUserSelectedUid+'/status']='disabled';
+      updates['users/'+adminUserSelectedUid+'/deactivatedAt']=firebase.database.ServerValue.TIMESTAMP;
+      updates['users/'+adminUserSelectedUid+'/deactivatedBy']=currentUser.uid;
+      updates['userDirectory/'+adminUserSelectedUid+'/status']='disabled';
+      await db.ref().update(updates);
+      setActiveUsers(old=>old.map(user=>user.uid===adminUserSelectedUid?({...user,status:'disabled'}):user));
+      setUserDirectory(old=>old.map(user=>user.uid===adminUserSelectedUid?({...user,status:'disabled'}):user));
+      setAdminUserForm(old=>({...old,status:'disabled'}));
+      await addLog('تعطيل حساب المستخدم: '+(selected.fullName||selected.username||selected.email||adminUserSelectedUid),currentUser,{entityType:'user-account',entityId:adminUserSelectedUid,changes:{status:{before:selected.status||'active',after:'disabled'}}});
+      setAdminUserNotice(rtl?'تم تعطيل الحساب والاحتفاظ ببياناته وسجلاته.':'Account access disabled. User data and records were retained.');
     }catch(err){setAdminUserNotice(firebaseErrorMessage(err,tr));}
     finally{setAdminUserBusy(false);}
   }
@@ -1999,6 +2040,34 @@ function App(){
   useEffect(()=>{if(navMode==='top')setExpandedNavGroup('');else if(navGroupByTab[tab])setExpandedNavGroup(navGroupByTab[tab]);},[tab,navMode]);
   function navigateToTab(nextTab){if(!canAccessTab(nextTab)){alert(rtl?'ليس لديك صلاحية لفتح هذه الشاشة.':'You do not have permission to open this screen.');return;}setTab(nextTab);setExpandedNavGroup(navMode==='top'?'':(navGroupByTab[nextTab]||''));setNotificationOpen(false);}
   useEffect(()=>{if(currentUser&&!canAccessTab(tab))setTab('profile');},[currentUser,tab]);
+  function beginSidebarResize(event){
+    if(window.innerWidth<768 || (event.pointerType==='mouse'&&event.button!==0))return;
+    event.preventDefault();
+    const direction=document.documentElement.dir==='rtl'?'rtl':'ltr';
+    const onMove=moveEvent=>{
+      const next=direction==='rtl'?window.innerWidth-moveEvent.clientX:moveEvent.clientX;
+      setSidebarWidth(Math.max(210,Math.min(440,Math.round(next))));
+    };
+    const onStop=()=>{
+      window.removeEventListener('pointermove',onMove);
+      window.removeEventListener('pointerup',onStop);
+      window.removeEventListener('pointercancel',onStop);
+    };
+    window.addEventListener('pointermove',onMove);
+    window.addEventListener('pointerup',onStop);
+    window.addEventListener('pointercancel',onStop);
+  }
+  function resizeSidebarByKeyboard(event){
+    if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+    event.preventDefault();
+    if(event.key==='Home')setSidebarWidth(210);
+    else if(event.key==='End')setSidebarWidth(440);
+    else{
+      const direction=document.documentElement.dir==='rtl'?'rtl':'ltr';
+      const increase=direction==='rtl'?event.key==='ArrowLeft':event.key==='ArrowRight';
+      setSidebarWidth(old=>Math.max(210,Math.min(440,old+(increase?12:-12))));
+    }
+  }
   function toggleNavigationMode(){
     const uid=currentUser&&currentUser.uid;if(!uid)return;
     setNavPreferences(old=>({uid,mode:(old.uid===uid?old.mode:'side')==='side'?'top':'side',recent:old.uid===uid?old.recent:[]}));
@@ -2030,6 +2099,7 @@ function App(){
           <form onSubmit={handleLogin} className="space-y-3">
             <label className="block text-sm font-bold">{tr('email')}<input type="email" autoComplete="username" required className="mt-1 w-full border rounded-lg p-3 font-normal" value={login.email} onChange={e=>setLogin({...login,email:e.target.value})}/></label>
             <label className="block text-sm font-bold">{tr('password')}<input type="password" autoComplete="current-password" required className="mt-1 w-full border rounded-lg p-3 font-normal" value={login.password} onChange={e=>setLogin({...login,password:e.target.value})}/></label>
+            {login.email.trim()&&<p className="rounded-lg bg-blue-50 border border-blue-100 text-blue-800 p-3 text-xs leading-6">{rtl?'إذا أرسل المدير رابط إعادة تعيين كلمة المرور إلى بريدك، افتح الرابط وأنشئ كلمة مرور جديدة أولاً، ثم اكتب كلمة المرور الجديدة هنا لتسجيل الدخول.':'If your administrator sent a password reset link, open it and create a new password first, then enter that new password here to sign in.'}</p>}
             <button disabled={busy || !authReady} className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg p-3 font-bold">{busy?tr('loading'):tr('loginBtn')}</button>
           </form>
           <button onClick={sendPasswordReset} className="text-sm text-blue-600 hover:underline mt-3">{tr('forgot')}</button>
@@ -2082,9 +2152,10 @@ function App(){
       </div>
     </header>
     <div className={'flex flex-1 min-h-0 '+(navMode==='top'?'flex-col':'flex-col md:flex-row')}>
-      {navMode==='side'?<aside className="app-sidebar w-full md:w-60 border-gray-200 p-2 md:p-3 space-y-1">
+      {navMode==='side'?<aside className="app-sidebar w-full md:w-60 border-gray-200 p-2 md:p-3 space-y-1" style={{'--sidebar-width':sidebarWidth+'px'}}>
         <div className="app-sidebar-nav-scroll">{renderNavigation()}</div>
         {renderRecentScreens()}
+        <div className="app-sidebar-resizer no-print" role="separator" aria-label={rtl?'تغيير عرض القائمة الجانبية':'Resize sidebar'} aria-orientation="vertical" aria-valuemin={210} aria-valuemax={440} aria-valuenow={sidebarWidth} tabIndex={0} onPointerDown={beginSidebarResize} onKeyDown={resizeSidebarByKeyboard} onDoubleClick={()=>setSidebarWidth(260)} title={rtl?'اسحب لزيادة أو تقليل عرض القائمة – انقر مرتين لإعادة الحجم الافتراضي':'Drag to resize the sidebar – double-click to reset'}><span></span></div>
       </aside>:<div className="app-top-navigation">
         <div className="app-top-navigation-main">{renderNavigation()}</div>
         {renderRecentScreens()}
@@ -2292,7 +2363,7 @@ function App(){
                 {activeUsers.filter(u=>includesText([u.fullName,u.username,u.email,u.jobTitle,u.department,u.status].join(' '),userAdminSearch)).sort((a,b)=>String(a.fullName||'').localeCompare(String(b.fullName||''))).map(user=><button type="button" key={user.uid} onClick={()=>openAdminUser(user.uid)} className={'w-full text-start border rounded-lg p-3 flex items-center gap-3 '+(adminUserSelectedUid===user.uid?'border-blue-500 bg-blue-50':'hover:bg-slate-50')}>
                   {user.avatar?<img src={user.avatar} alt="" className="w-10 h-10 rounded-full object-cover border"/>:<span className="w-10 h-10 rounded-full bg-slate-100 grid place-items-center"><i className="fas fa-user text-slate-500"></i></span>}
                   <span className="min-w-0 flex-1"><b className="block truncate">{user.fullName||user.username||user.email||user.uid}</b><small className="block text-gray-500 truncate">{user.username||''} · {user.jobTitle||''}</small><small className="block text-gray-400 truncate">{user.email||user.uid}</small></span>
-                  <span className={'text-xs rounded-full px-2 py-1 '+(['active','نشط','مفعل','enabled'].includes(String(user.status||'').toLowerCase())?'bg-green-50 text-green-700':'bg-gray-100 text-gray-600')}>{['active','نشط','مفعل','enabled'].includes(String(user.status||'').toLowerCase())?(rtl?'نشط':'Active'):(rtl?'غير نشط':'Inactive')}</span>
+                  <span className={'text-xs rounded-full px-2 py-1 '+(['active','نشط','مفعل','enabled'].includes(String(user.status||'').toLowerCase())?'bg-green-50 text-green-700':'bg-gray-100 text-gray-600')}>{['active','نشط','مفعل','enabled'].includes(String(user.status||'').toLowerCase())?(rtl?'نشط':'Active'):(String(user.status||'').toLowerCase()==='deleted'?(rtl?'محذوف':'Deleted'):(rtl?'غير نشط':'Inactive'))}</span>
                 </button>)}
                 {activeUsers.length===0&&<p className="text-sm text-gray-500 p-3">{tr('noData')}</p>}
               </div>
@@ -2308,7 +2379,13 @@ function App(){
                 <label className="text-sm font-bold">WhatsApp<input type="tel" className="block w-full border rounded-lg p-3 mt-1 font-normal" value={adminUserForm.whatsapp} onChange={e=>setAdminUserForm({...adminUserForm,whatsapp:e.target.value})}/></label>
                 <label className="text-sm font-bold md:col-span-2">{tr('email')}<input type="email" readOnly className="block w-full border rounded-lg p-3 mt-1 font-normal bg-slate-50 text-gray-500" value={adminUserForm.email}/><small className="font-normal text-gray-500">{rtl?'البريد مرتبط بـ Firebase Authentication ولا يتغير من تعديل ملف البيانات.':'Email belongs to Firebase Authentication and cannot be changed by editing the profile record.'}</small></label>
                 <label className="text-sm font-bold">{rtl?'حالة الحساب':'Account status'}<select className="block w-full border rounded-lg p-3 mt-1 font-normal" value={adminUserForm.status} onChange={e=>setAdminUserForm({...adminUserForm,status:e.target.value})}><option value="active">{rtl?'نشط':'Active'}</option><option value="disabled">{rtl?'غير نشط':'Inactive'}</option></select></label>
-                <div className="md:col-span-2 flex flex-wrap items-center gap-3"><button disabled={adminUserBusy} className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold disabled:opacity-50">{adminUserBusy?(rtl?'جارٍ الحفظ...':'Saving...'):(rtl?'حفظ بيانات المستخدم':'Save user details')}</button>{adminUserNotice&&<span className="text-sm text-green-700">{adminUserNotice}</span>}</div>
+                <div className="md:col-span-2 flex flex-wrap items-center gap-3">
+                  <button disabled={adminUserBusy} className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold disabled:opacity-50">{adminUserBusy?(rtl?'جارٍ الحفظ...':'Saving...'):(rtl?'حفظ بيانات المستخدم':'Save user details')}</button>
+                  <button type="button" disabled={adminPasswordResetBusy||adminUserBusy||!adminUserForm.email} onClick={sendAdminUserPasswordReset} className="rounded-lg bg-amber-500 hover:bg-amber-600 text-white px-5 py-3 font-bold disabled:opacity-50"><i className="fas fa-key me-2"></i>{adminPasswordResetBusy?(rtl?'جارٍ إرسال الرابط...':'Sending link...'):(rtl?'إرسال رابط إعادة تعيين كلمة المرور':'Send password reset link')}</button>
+                  <button type="button" disabled={adminUserBusy||adminUserSelectedUid===currentUser.uid||adminUserForm.status!=='active'} onClick={deactivateAdminUser} className="rounded-lg bg-rose-600 hover:bg-rose-700 text-white px-5 py-3 font-bold disabled:opacity-50"><i className="fas fa-user-slash me-2"></i>{rtl?'تعطيل الحساب':'Disable account'}</button>
+                </div>
+                <p className="md:col-span-2 text-xs leading-6 text-gray-500">{rtl?'إعادة التعيين ترسل رابطاً آمناً إلى بريد المستخدم ولا تكشف كلمة مروره. تعطيل الحساب يوقف الدخول ويحافظ على العهدة وسجل النشاط؛ الحذف النهائي من Firebase Authentication يحتاج خدمة خادمية بصلاحيات Admin SDK.':'Password reset sends a secure link to the user and never reveals their password. Disabling blocks sign-in while retaining custody and audit records. Permanent Firebase Authentication deletion requires a backend using the Admin SDK.'}</p>
+                {adminUserNotice&&<div className="md:col-span-2 rounded-lg border bg-slate-50 p-3 text-sm text-slate-700">{adminUserNotice}</div>}
               </form>}
             </section>
           </div>
