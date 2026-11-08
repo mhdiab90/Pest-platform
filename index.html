@@ -566,7 +566,7 @@ function App(){
           if(uid===currentUser.uid && !u.uid) updates['users/'+uid+'/uid']=uid;
           // Never expose legacy username-keyed accounts in the recipient directory.
           if(linkedToAuth && Object.prototype.hasOwnProperty.call(u,'password')) updates['users/'+uid+'/password']=null;
-          if(linkedToAuth && ['active','نشط','مفعل','enabled'].includes(String(u.status||'').toLowerCase())) updates['userDirectory/'+uid]={uid,username:u.username||'',fullName:u.fullName||'',jobTitle:u.jobTitle||'',whatsapp:u.whatsapp||'',avatar:u.avatar||'',status:'active'};
+          if(linkedToAuth && ['active','نشط','مفعل','enabled'].includes(String(u.status||'').toLowerCase())) updates['userDirectory/'+uid]={uid,username:u.username||'',fullName:u.fullName||'',jobTitle:u.jobTitle||'',department:u.department||'',phone:u.phone||'',email:u.email||'',whatsapp:u.whatsapp||'',avatar:u.avatar||'',status:'active'};
         });
         if(Object.keys(updates).length) db.ref().update(updates).catch(err=>console.warn('Directory sync / password cleanup:',err));
       });
