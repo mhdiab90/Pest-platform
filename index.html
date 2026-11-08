@@ -198,6 +198,7 @@ window.PEST_RECAPTCHA_ENTERPRISE_SITE_KEY = '6LdTuBQuAAAAAOKGvI0OdbXX80V9FnyYfCt
 
 if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
+window.PEST_FIREBASE_AUTH = auth;
 const db = firebase.database();
 const {useState,useEffect,useRef} = React;
 
@@ -1500,7 +1501,7 @@ function App(){
     const history=[...assistantMessages,{role:'user',content:question}];
     setAssistantMessages(history);setAssistantInput('');setAssistantBusy(true);
     try{
-      if(typeof window.pestAIAsk!=='function') throw new Error('AI Logic is not ready. Enable Firebase AI Logic and App Check for this Firebase project.');
+      if(typeof window.pestAIAsk!=='function') throw new Error('Cloudflare AI connection is not ready.');
       const context=buildAssistantContext(question);
       const historyText=history.slice(-8).map(m=>(m.role==='user'?'User':'Assistant')+': '+m.content).join('\n');
       const prompt=[
@@ -1521,9 +1522,9 @@ function App(){
     }catch(err){
       console.error('In-app AI assistant:',err);
       const raw=String(err&&err.message||err||'').slice(0,260);
-      const hint=/app.?check|403|permission|unauthenticated/i.test(raw)
-        ? (rtl?'يلزم تفعيل Firebase AI Logic وApp Check للتطبيق من لوحة Firebase، ثم تسجيل نطاق الموقع ضمن App Check.':'Enable Firebase AI Logic and App Check in Firebase Console, then register this website domain in App Check.')
-        : (rtl?'تعذر الاتصال بالمساعد الذكي. تحقق من تفعيل Firebase AI Logic في مشروع Firebase واتصال الإنترنت.':'The assistant could not connect. Check Firebase AI Logic setup in your Firebase project and your internet connection.');
+      const hint=/401|token|session|sign.?in|expired/i.test(raw)
+        ? (rtl?'انتهت جلسة تسجيل الدخول أو لم تعد صالحة. سجل الخروج ثم الدخول مرة أخرى.':'Your sign-in session is invalid or expired. Sign out and sign in again.')
+        : (rtl?'تعذر الاتصال بخدمة الذكاء الاصطناعي. حاول مرة أخرى، وإذا استمرت المشكلة راجع حالة Cloudflare Worker.':'Could not reach the AI service. Try again, and check the Cloudflare Worker if the issue continues.');
       setAssistantMessages(old=>[...old,{role:'assistant',content:hint+'\n'+raw}]);
     }finally{setAssistantBusy(false);}
   }
@@ -1863,10 +1864,10 @@ function App(){
       {currentUser&&<>
         {assistantOpen&&<section className="app-ai-panel" role="dialog" aria-label={rtl?'المساعد الذكي':'AI assistant'}>
           <div className="app-ai-header">
-            <div className="flex items-center gap-3 min-w-0"><span className="w-10 h-10 rounded-full bg-white/20 grid place-items-center"><i className="fas fa-wand-magic-sparkles text-xl"></i></span><div className="min-w-0"><b className="block">{rtl?'مساعد البرنامج الذكي':'Program AI assistant'}</b><small className="text-white/80">Gemini 3.8 Flash · {rtl?'استفسار وقراءة فقط':'Read-only assistant'}</small></div></div>
+            <div className="flex items-center gap-3 min-w-0"><span className="w-10 h-10 rounded-full bg-white/20 grid place-items-center"><i className="fas fa-wand-magic-sparkles text-xl"></i></span><div className="min-w-0"><b className="block">{rtl?'مساعد البرنامج الذكي':'Program AI assistant'}</b><small className="text-white/80">Cloudflare Workers AI · GLM 4.7 Flash · {rtl?'استفسار وقراءة فقط':'Read-only assistant'}</small></div></div>
             <div className="flex items-center gap-1"><button type="button" title={rtl?'مسح المحادثة':'Clear chat'} onClick={()=>setAssistantMessages([])} className="rounded-lg p-2 hover:bg-white/15"><i className="fas fa-trash-can"></i></button><button type="button" title={rtl?'إغلاق':'Close'} onClick={()=>setAssistantOpen(false)} className="rounded-lg p-2 hover:bg-white/15"><i className="fas fa-xmark text-lg"></i></button></div>
           </div>
-          <div className={'px-3 py-2 text-xs leading-5 border-b '+(assistantReady?'bg-blue-50 text-blue-900 border-blue-100':'bg-amber-50 text-amber-900 border-amber-100')}>{assistantReady?(rtl?'المساعد جاهز. يرسل إلى Gemini سؤالك ومعلومات محدودة مختارة من البرنامج ومرتبطة به، وقد تشمل ملخصًا ماليًا؛ لا يرسل قاعدة البيانات كاملة ولا ينفّذ أي تعديل.':'Assistant ready. Your question and a limited selection of related app data (which may include financial summaries) are sent to Gemini, not the full database. The assistant cannot change records.'):(assistantUnavailable?(rtl?'المساعد غير جاهز بعد. لتشغيله: فعّل Firebase AI Logic، وأنشئ مفتاح reCAPTCHA Enterprise لنطاق mhdiab90.github.io، وسجّل تطبيق الويب في Firebase App Check، ثم أضف المفتاح العام إلى إعدادات البرنامج. لا تستخدم المفتاح السري.':'Assistant is not ready. To enable it: turn on Firebase AI Logic, create a reCAPTCHA Enterprise key for mhdiab90.github.io, register the web app in Firebase App Check, then add the public site key to the app configuration. Never use the secret key.'):(rtl?'جاري تجهيز اتصال المساعد الذكي...':'Preparing the AI assistant connection...'))}</div>
+          <div className={'px-3 py-2 text-xs leading-5 border-b '+(assistantReady?'bg-blue-50 text-blue-900 border-blue-100':'bg-amber-50 text-amber-900 border-amber-100')}>{assistantReady?(rtl?'المساعد جاهز. يرسل إلى Gemini سؤالك ومعلومات محدودة مختارة من البرنامج ومرتبطة به، وقد تشمل ملخصًا ماليًا؛ لا يرسل قاعدة البيانات كاملة ولا ينفّذ أي تعديل.':'Assistant ready. Your question and a limited selection of related app data (which may include financial summaries) are sent to Gemini, not the full database. The assistant cannot change records.'):(assistantUnavailable?(rtl?'المساعد غير جاهز بعد. تحقق من نشر Cloudflare Worker وإعداد Workers AI binding باسم AI.':'Assistant is not ready. Check that the Cloudflare Worker is deployed and has a Workers AI binding named AI.'):(rtl?'جاري تجهيز اتصال المساعد الذكي...':'Preparing the AI assistant connection...'))}</div>
           <div className="app-ai-messages">
             {assistantMessages.length===0?<div className="space-y-3">
               <div className="app-ai-bubble assistant">{rtl?'أهلاً! اسألني عن المشروعات والعملاء والموردين والمستحقات والتحصيلات والمدفوعات أو طريقة استخدام البرنامج. سأجيب من البيانات المتاحة لي داخل النظام.':'Hello! Ask me about projects, customers, suppliers, receivables, collections, payments or how to use the app. I will answer using the available application data.'}</div>
@@ -1904,31 +1905,26 @@ class AppErrorBoundary extends React.Component {
 ReactDOM.createRoot(document.getElementById('root')).render(<AppErrorBoundary><App/></AppErrorBoundary>);
 
 </script>
-<script type="module">
-(async()=>{
-  try{
-    const [{initializeApp},{getAI,getGenerativeModel,GoogleAIBackend},{initializeAppCheck,ReCaptchaEnterpriseProvider}]=await Promise.all([
-      import('https://www.gstatic.com/firebasejs/13.2.0/firebase-app.js'),
-      import('https://www.gstatic.com/firebasejs/13.2.0/firebase-ai.js'),
-      import('https://www.gstatic.com/firebasejs/13.2.0/firebase-app-check.js')
-    ]);
-    const config=window.PEST_FIREBASE_CONFIG;
-    if(!config) throw new Error('Firebase configuration is unavailable.');
-    const siteKey=String(window.PEST_RECAPTCHA_ENTERPRISE_SITE_KEY||'').trim();
-    if(!siteKey) throw new Error('App Check setup required: register reCAPTCHA Enterprise for the web app and set its public site key in PEST_RECAPTCHA_ENTERPRISE_SITE_KEY.');
-    const app=initializeApp(config,'pest-ai-logic');
-    initializeAppCheck(app,{provider:new ReCaptchaEnterpriseProvider(siteKey),isTokenAutoRefreshEnabled:true});
-    const ai=getAI(app,{backend:new GoogleAIBackend()});
-    const model=getGenerativeModel(ai,{model:'gemini-3.8-flash',generationConfig:{temperature:0.2,maxOutputTokens:1400}});
-    window.pestAIAsk=async prompt=>{
-      const result=await model.generateContent(prompt);
-      return result.response.text();
-    };
-    window.pestAIStatus='ready';
-  }catch(error){
-    console.error('Firebase AI Logic initialization failed:',error);
-    window.pestAIStatus='unavailable';
-  }
+<script>
+(()=>{
+  const WORKER_URL='https://pest-platform.ai-mhdiab90.workers.dev';
+  window.pestAIAsk=async prompt=>{
+    const firebaseAuth=window.PEST_FIREBASE_AUTH;
+    const user=firebaseAuth && firebaseAuth.currentUser;
+    if(!user) throw new Error('Sign-in is required. Please sign in again.');
+    const idToken=await user.getIdToken();
+    const response=await fetch(WORKER_URL+'/ask',{
+      method:'POST',
+      headers:{'Authorization':'Bearer '+idToken,'Content-Type':'application/json'},
+      body:JSON.stringify({prompt:String(prompt||'')})
+    });
+    let payload={};
+    try{payload=await response.json();}catch(_){}
+    if(!response.ok) throw new Error(payload.error||('AI service returned HTTP '+response.status+'.'));
+    if(typeof payload.answer!=='string'||!payload.answer.trim()) throw new Error('The AI service returned an empty answer.');
+    return payload.answer;
+  };
+  window.pestAIStatus='ready';
   window.dispatchEvent(new Event('pest-ai-ready'));
 })();
 </script>
