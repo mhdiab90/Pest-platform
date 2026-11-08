@@ -2220,7 +2220,7 @@ function App(){
     const searchText=[m.subject,m.body,m.senderName,m.senderUid,relatedNames,...relatedUids.map(uid=>{const u=userDirectory.find(x=>x.uid===uid);return u?(u.fullName+' '+u.username):uid;})].join(' ').toLowerCase();
     return contactMatch&&directionMatch&&(!query||searchText.includes(query));
   });
-  const shortcutMessages=messages.filter(m=>includesText([m.subject,m.body,m.senderName,m.senderUid,(m.recipientNames||[]).join(' '),(m.linkedProjects||[]).map(x=>x.name||x.code).join(' '),(m.linkedTasks||[]).map(x=>x.title).join(' ')].join(' '),messageShortcutSearch)).slice().sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0)).slice(0,80);
+  const shortcutMessages=messages.filter(m=>includesText([m.subject,m.body,m.senderName,m.senderUid,(Array.isArray(m.recipientNames)?m.recipientNames.join(' '):String(m.recipientNames||'')),(Array.isArray(m.linkedProjects)?m.linkedProjects.map(x=>x.name||x.code).join(' '):''),(Array.isArray(m.linkedTasks)?m.linkedTasks.map(x=>x.title).join(' '):'')].join(' '),messageShortcutSearch)).slice().sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0)).slice(0,80);
   const shortcutUnreadCount=messages.filter(m=>m.senderUid!==currentUser.uid&&m.read!==true).length;
   const whatsappContacts=[
     ...userDirectory.filter(u=>u.uid&&u.uid!==currentUser.uid&&u.status==='active').map(u=>({key:'user:'+u.uid,kind:'user',label:u.fullName||u.username||u.uid,phone:u.whatsapp||u.mobile||u.phone||''})),
@@ -2862,7 +2862,7 @@ function App(){
               const recipientLabel=m.visibility==='public'?(rtl?'كل المستخدمين':'All users'):(Array.isArray(m.recipientNames)&&m.recipientNames.length?m.recipientNames.join('، '):(userDirectory.find(u=>u.uid===m.recipientUid)?.fullName||m.recipientUid||''));
               const palette=messagePaletteFor(m);
               return <article key={m.id} className="app-message-shortcut-item" style={{backgroundColor:palette.background,borderColor:palette.border,borderInlineStart:'4px solid '+palette.accent}}>
-                <div className="flex justify-between items-start gap-2"><b className="text-xs" style={{color:palette.text}}>{outgoing?(rtl?'أنت إلى: ':'You to: ')+recipientLabel:(m.senderName||rtl?'رسالة واردة':'Incoming message')}</b><time className="text-[10px] text-gray-400">{latinDigits(m.date||'')}</time></div>
+                <div className="flex justify-between items-start gap-2"><b className="text-xs" style={{color:palette.text}}>{outgoing?(rtl?'أنت إلى: ':'You to: ')+recipientLabel:(m.senderName||(rtl?'رسالة واردة':'Incoming message'))}</b><time className="text-[10px] text-gray-400">{latinDigits(m.date||'')}</time></div>
                 {m.replyTo&&<div className="mt-2 rounded-lg bg-white/70 border-s-4 border-indigo-300 p-2"><small className="font-bold text-indigo-700">{rtl?'رد على: ':'Reply to: '}{m.replyTo.senderName||''}</small><p className="text-xs text-gray-600 line-clamp-2">{m.replyTo.body||''}</p></div>}
                 <b className="block text-sm mt-1">{m.subject|| (rtl?'محادثة سريعة':'Quick chat')}</b>
                 <p className="text-sm whitespace-pre-wrap break-words mt-1">{renderMessageBody(m.body)}</p>
