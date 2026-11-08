@@ -1214,7 +1214,14 @@ function App(){
       const savedEmail=currentUser.email;
       const profileBefore={fullName:currentUser.fullName,username:currentUser.username,jobTitle:currentUser.jobTitle,email:currentUser.email,whatsapp:currentUser.whatsapp};
       const profileAfter={fullName,username,jobTitle,email:savedEmail,whatsapp};
-      await db.ref('users/'+currentUser.uid).update({uid:currentUser.uid,email:savedEmail,fullName,username,jobTitle,whatsapp});
+      const profileUpdates={};
+      profileUpdates['users/'+currentUser.uid+'/uid']=currentUser.uid;
+      profileUpdates['users/'+currentUser.uid+'/email']=savedEmail;
+      profileUpdates['users/'+currentUser.uid+'/fullName']=fullName;
+      profileUpdates['users/'+currentUser.uid+'/username']=username;
+      profileUpdates['users/'+currentUser.uid+'/jobTitle']=jobTitle;
+      profileUpdates['users/'+currentUser.uid+'/whatsapp']=whatsapp;
+      await db.ref().update(profileUpdates);
       await db.ref('userDirectory/'+currentUser.uid).set({uid:currentUser.uid,fullName,username,jobTitle,whatsapp,avatar:currentUser.avatar||'',status:'active'});
       const updatedUser={...currentUser,uid:currentUser.uid,email:savedEmail,fullName,username,jobTitle,whatsapp};setCurrentUser(updatedUser);setProfileForm(old=>({...old,email:savedEmail}));setProfileEmailPassword('');await addLog('تعديل البيانات الشخصية',updatedUser,{entityType:'user-profile',entityId:currentUser.uid,changes:auditChanges(profileBefore,profileAfter)});alert(emailChanged?tr('emailVerifySent'):tr('personalSaved'));
     }catch(err){alert(firebaseErrorMessage(err,tr));}
