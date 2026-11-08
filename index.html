@@ -1780,6 +1780,7 @@ function App(){
   async function deleteProjectEventRecord(ev){if(!requirePermission('projects','delete'))return;if(!window.confirm(rtl?'هل تريد حذف هذا الحدث؟ سيتم تحديث ملخصات المشروع والتقارير.':'Delete this event? Project summaries and reports will be recalculated.'))return;try{await db.ref('projects/'+selectedProjectCode+'/events/'+ev.id).remove();await addLog('حذف حدث '+(ev.actionName||eventLabel(ev.type)),currentUser,{entityType:'project-event',entityId:selectedProjectCode+'/'+ev.id,changes:auditChanges(ev,null)});if(editingProjectEventId===ev.id){setEditingProjectEventId('');setProjectEvent(blankProjectEvent());}}catch(err){alert(firebaseErrorMessage(err,tr));}}
 
   function reportAsMessage(){
+    setMessageMode('direct');setSelectedMessageRecipients([]);
     setMessage({recipients:'',subject:currentReportTitle+' - '+(reportEntity||''),body:currentReportText});setTab('messages');
   }
 
