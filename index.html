@@ -1037,7 +1037,7 @@ function App(){
     transfer_in:rtl?'عهدة محولة واردة':'Custody transfer in',
     transfer_out:rtl?'عهدة محولة صادرة':'Custody transfer out'
   };
-  const cashCustodySign=type=>cashCustodyIncomingTypes.includes(type)?1:-1;
+  function cashCustodySign(type){return ['receipt','topup','refund','opening_balance','adjustment_in','transfer_in'].includes(type)?1:-1;}
 
   function editCashCustodyDraft(transaction){
     if(!requirePermission('cashCustody','edit'))return;
