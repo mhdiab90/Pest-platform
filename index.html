@@ -415,8 +415,9 @@ function App(){
   };
   useEffect(()=>{
     const syncAiState=()=>{
-      setAssistantReady(typeof window.pestAIAsk==='function');
-      setAssistantUnavailable(window.pestAIStatus!=='ready');
+      const status=window.pestAIStatus;
+      setAssistantReady(status==='ready' && typeof window.pestAIAsk==='function');
+      setAssistantUnavailable(status==='unavailable');
     };
     syncAiState();
     window.addEventListener('pest-ai-ready',syncAiState);
@@ -1924,8 +1925,19 @@ ReactDOM.createRoot(document.getElementById('root')).render(<AppErrorBoundary><A
     if(typeof payload.answer!=='string'||!payload.answer.trim()) throw new Error('The AI service returned an empty answer.');
     return payload.answer;
   };
-  window.pestAIStatus='ready';
-  window.dispatchEvent(new Event('pest-ai-ready'));
+  window.pestAIStatus='checking';
+  (async()=>{
+    try{
+      const response=await fetch(WORKER_URL+'/health',{method:'GET',cache:'no-store'});
+      const health=await response.json();
+      if(!response.ok||health.ok!==true) throw new Error('Cloudflare Worker health check failed.');
+      window.pestAIStatus='ready';
+    }catch(error){
+      console.error('Cloudflare AI Worker health check:',error);
+      window.pestAIStatus='unavailable';
+    }
+    window.dispatchEvent(new Event('pest-ai-ready'));
+  })();
 })();
 </script>
 </body>
