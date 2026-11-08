@@ -1823,10 +1823,10 @@ function App(){
     const updates={};
     recipients.forEach(user=>{
       const inboxId=db.ref('messages/'+user.uid).push().key;
-      updates['messages/'+user.uid+'/'+inboxId]={...base,id:inboxId,recipientUid:user.uid,mailboxUid:user.uid,read:false,copyType:'inbox'};
+      updates['messages/'+user.uid+'/'+inboxId]={...base,id:inboxId,recipientUid:user.uid,mailboxUid:user.uid,read:false};
     });
     const sentId=db.ref('messages/'+currentUser.uid).push().key;
-    updates['messages/'+currentUser.uid+'/'+sentId]={...base,id:sentId,recipientUid:visibility==='public'?'*':(recipientUids[0]||''),mailboxUid:currentUser.uid,read:true,copyType:'sent'};
+    updates['messages/'+currentUser.uid+'/'+sentId]={...base,id:sentId,recipientUid:recipientUids[0]||'',mailboxUid:currentUser.uid,read:true,copyType:'sent'};
     try{
       // Atomic write keeps all recipient inbox copies and the sender's sent copy together.
       await db.ref().update(updates);
@@ -1842,6 +1842,11 @@ function App(){
   }
 
   function forwardMessage(m){
+    const outgoing=m.copyType==='sent'||m.senderUid===currentUser.uid;
+    const candidates=outgoing?(Array.isArray(m.recipientUids)?m.recipientUids:(m.recipientUid&&m.recipientUid!=='*'?[m.recipientUid]:[])):[m.senderUid];
+    const activeIds=userDirectory.filter(u=>u.uid&&u.status==='active').map(u=>u.uid);
+    setSelectedMessageRecipients(candidates.filter(uid=>uid&&uid!==currentUser.uid&&activeIds.includes(uid)));
+    setMessageMode('direct');
     const quoted=(rtl?'رسالة معاد توجيهها':'Forwarded message')+'\n'+(m.senderName||'')+'\n'+(m.subject||'')+'\n\n'+(m.body||'');
     setMessage({recipients:'',subject:(rtl?'إعادة توجيه: ':'Fwd: ')+(m.subject||''),body:quoted});
     setTab('messages');
