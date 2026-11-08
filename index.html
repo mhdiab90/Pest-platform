@@ -531,6 +531,13 @@ function App(){
     watch('outflows',s=>setOutflows(toArray(s.val())));
     if(isAdmin) watch('logs',s=>setLogs(toArray(s.val())));
     else setLogs([]);
+    watch('users/'+currentUser.uid,s=>{
+      const profile=s.val();
+      const active=profile&&['active','نشط','مفعل','enabled'].includes(String(profile.status||'').toLowerCase());
+      if(!active&&auth.currentUser&&auth.currentUser.uid===currentUser.uid){
+        auth.signOut().catch(err=>console.warn('Unable to sign out a deactivated account:',err));
+      }
+    });
     watch('tasks/'+currentUser.uid,s=>setTasks(toArray(s.val())));
     messageIdsRef.current=null;
     watch('messages/'+currentUser.uid,s=>{
@@ -1042,7 +1049,7 @@ function App(){
 
   async function addCashCustodyTransaction(e){
     e.preventDefault();
-    if(!requirePermission(cashCustodyEditingId?'cashCustody':'cashCustody',cashCustodyEditingId?'edit':'add'))return;
+    if(!requirePermission('cashCustody',cashCustodyEditingId?'edit':'add'))return;
     const amount=Number(cashCustodyForm.amount);
     const description=String(cashCustodyForm.description||'').trim();
     if(!Number.isFinite(amount)||amount<=0||!description)return alert(rtl?'أدخل مبلغاً صحيحاً وبياناً للحركة.':'Enter a valid positive amount and transaction description.');
@@ -1082,6 +1089,7 @@ function App(){
 
   async function reviewCashCustodyTransaction(ownerUid,transaction,status){
     if(!requirePermission('cashCustody','approve'))return;
+    if(ownerUid!==currentUser.uid&&!hasPermission('cashCustody','viewOthers'))return alert(rtl?'لا تملك صلاحية عرض عهدة هذا المستخدم.':'You do not have permission to view this user\'s custody.');
     if(ownerUid===currentUser.uid&&!isAdmin)return alert(rtl?'لا يمكنك اعتماد حركتك الشخصية.':'You cannot approve your own transaction.');
     if(!transaction||transaction.status!=='pending'||!['approved','rejected'].includes(status))return;
     try{
@@ -1993,7 +2001,6 @@ function App(){
         {tab==='cashCustody'&&hasPermission('cashCustody','view')&&<div className="print-area space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-xl">{rtl?'إدارة النقدية الشخصية – العهدة':'Personal Cash Custody'}</h2><p className="text-sm text-gray-500">{rtl?'كشف حساب لكل مستخدم، والرصيد يحتسب من الحركات المعتمدة فقط.':'A separate ledger for each user. The cash balance includes approved movements only.'}</p></div><div className="flex flex-wrap gap-2 no-print"><button type="button" onClick={exportCashCustody} className="rounded-lg bg-emerald-600 text-white px-4 py-2 font-bold"><i className="fas fa-file-excel me-2"></i>{rtl?'تصدير Excel':'Export Excel'}</button><button type="button" onClick={()=>window.print()} className="rounded-lg bg-slate-700 text-white px-4 py-2 font-bold"><i className="fas fa-print me-2"></i>{rtl?'طباعة':'Print'}</button></div></div>
           {hasPermission('cashCustody','viewOthers')&&<section className="bg-white border rounded-xl p-4 no-print"><label className="block text-sm font-bold">{rtl?'عرض كشف عهدة المستخدم':'View user custody ledger'}<select className="block w-full md:max-w-xl border rounded-lg p-3 mt-1 font-normal" value={cashCustodyTarget} onChange={e=>loadCashCustodyTarget(e.target.value)}><option value={currentUser.uid}>{rtl?'عهدي الشخصية':'My personal custody'}</option>{userDirectory.filter(u=>u.uid&&u.uid!==currentUser.uid&&u.status==='active').map(u=><option key={u.uid} value={u.uid}>{u.fullName||u.username||u.email||u.uid}</option>)}</select></label></section>}
-          {cashCustodyNotice&&<p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">{cashCustodyNotice}</p>}
           <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
             <div className="bg-white border rounded-xl p-4"><p className="text-xs text-gray-500">{rtl?'إجمالي النقدية المستلمة':'Total received'}</p><b className="block text-xl text-emerald-700 mt-1">{money(cashCustodyInTotal)} {cashCustodyCurrencyFilter}</b></div>
             <div className="bg-white border rounded-xl p-4"><p className="text-xs text-gray-500">{rtl?'إجمالي المصروفات والمرتجعات':'Expenses and returns'}</p><b className="block text-xl text-rose-700 mt-1">{money(cashCustodyOutTotal)} {cashCustodyCurrencyFilter}</b></div>
