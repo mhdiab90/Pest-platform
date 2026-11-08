@@ -11,7 +11,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet" />
   <style>
@@ -1114,15 +1114,229 @@ function App(){
 
   function exportCashCustody(){
     if(!requirePermission('cashCustody','export'))return;
-    if(!window.XLSX)return alert(rtl?'تعذر تحميل مكتبة Excel.':'Excel library is unavailable.');
-    const rows=cashCustodyFiltered.map(t=>({
-      Date:t.date||'',Type:cashCustodyTypeLabels[t.type]||t.type,Description:t.description||'',
-      Counterparty:t.counterparty||'',Project:t.projectCode||'',Currency:t.currency||'EGP',
-      Amount:Number(t.amount||0),Direction:cashCustodySign(t.type)>0?'In':'Out',Status:t.status||'pending',
-      Reference:t.reference||'',CreatedBy:t.createdByName||''
-    }));
-    const book=XLSX.utils.book_new();const sheet=XLSX.utils.json_to_sheet(rows);
-    XLSX.utils.book_append_sheet(book,sheet,'Cash Custody');XLSX.writeFile(book,'Cash_Custody_'+new Date().toISOString().slice(0,10)+'.xlsx');
+    const Excel=window.XLSX;
+    if(!Excel || !Excel.utils || !Excel.writeFile)return alert(rtl?'تعذر تحميل مكتبة Excel. حدّث الصفحة وحاول مرة أخرى.':'Excel library is unavailable. Refresh the page and try again.');
+    try{
+      const currency=String(cashCustodyCurrencyFilter||'EGP').toUpperCase();
+      const reportRows=cashCustodyRows.filter(t=>String(t.currency||'EGP').toUpperCase()===currency)
+        .slice().sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))||Number(a.createdAt||0)-Number(b.createdAt||0));
+      const approved=reportRows.filter(t=>t.status==='approved');
+      const pending=reportRows.filter(t=>t.status==='pending');
+      const rejected=reportRows.filter(t=>t.status==='rejected');
+      const sumRows=(list,filter)=>list.filter(filter).reduce((total,t)=>total+Number(t.amount||0),0);
+      const incoming= t=>cashCustodySign(t.type)>0;
+      const outgoing= t=>cashCustodySign(t.type)<0;
+      const totalReceived=sumRows(approved,incoming);
+      const totalSpent=sumRows(approved,outgoing);
+      const currentBalance=totalReceived-totalSpent;
+      const openingBalance=sumRows(approved,t=>t.type==='opening_balance');
+      const pendingValue=sumRows(pending,()=>true);
+      const owner=(cashCustodyTarget===currentUser.uid?currentUser:null)
+        ||activeUsers.find(u=>u.uid===cashCustodyTarget)
+        ||userDirectory.find(u=>u.uid===cashCustodyTarget)||{};
+      const ownerName=owner.fullName||owner.username||owner.email||cashCustodyTarget;
+      const ownerUsername=owner.username||'—';
+      const ownerJob=[owner.jobTitle,owner.department].filter(Boolean).join(' / ')||'—';
+      const generatedAt=new Date();
+      const generatedLabel=generatedAt.toLocaleString(rtl?'ar-EG':'en-US');
+      const statusLabel=status=>status==='approved'?(rtl?'معتمدة':'Approved'):status==='rejected'?(rtl?'مرفوضة':'Rejected'):(rtl?'معلقة':'Pending');
+      const typeRows=[
+        'opening_balance','receipt','topup','refund','adjustment_in','expense','return','adjustment_out','transfer_in','transfer_out'
+      ].map(type=>{
+        const entries=reportRows.filter(t=>t.type===type);
+        return {
+          type,label:cashCustodyTypeLabels[type]||type,
+          count:entries.length,
+          amount:sumRows(entries,()=>true),
+          approved:sumRows(entries,t=>t.status==='approved'),
+          pending:sumRows(entries,t=>t.status==='pending'),
+          rejected:sumRows(entries,t=>t.status==='rejected'),
+          direction:cashCustodySign(type)>0?(rtl?'وارد':'In'):(rtl?'منصرف':'Out')
+        };
+      }).filter(x=>x.count>0 || ['receipt','expense','return','topup'].includes(x.type));
+
+      const workbook=Excel.utils.book_new();
+      workbook.Props={
+        Title:rtl?'كشف حساب العهدة الشخصية':'Personal Cash Custody Statement',
+        Subject:rtl?'ملخص وكشف تفصيلي لحركات العهدة':'Cash custody summary and detailed ledger',
+        Author:ownerName,
+        CreatedDate:generatedAt
+      };
+
+      const navy='17365D',blue='1F4E78',teal='0F766E',lightBlue='EAF2F8',
+        pale='F4F7FB',green='E2F0D9',red='FCE4D6',amber='FFF2CC',
+        white='FFFFFF',ink='243447',muted='64748B',line='D7E0EA';
+      const edge={style:'thin',color:{rgb:line}};
+      const boxBorder={top:edge,bottom:edge,left:edge,right:edge};
+      const font=(color,bold,size)=>({name:'Arial',sz:size||10,bold:!!bold,color:{rgb:color||ink}});
+      const fill=color=>({patternType:'solid',fgColor:{rgb:color}});
+      const center={horizontal:'center',vertical:'center',wrapText:true};
+      const right={horizontal:'right',vertical:'center',wrapText:true};
+      const amountFormat='#,##0.00;[Red](#,##0.00);-';
+      const styleRange=(ws,range,style)=>{
+        const decoded=Excel.utils.decode_range(range);
+        for(let row=decoded.s.r;row<=decoded.e.r;row++){
+          for(let col=decoded.s.c;col<=decoded.e.c;col++){
+            const address=Excel.utils.encode_cell({r:row,c:col});
+            if(!ws[address])ws[address]={t:'s',v:''};
+            ws[address].s=JSON.parse(JSON.stringify(style));
+          }
+        }
+      };
+      const merge=(ws,range)=>{
+        ws['!merges']=ws['!merges']||[];
+        ws['!merges'].push(Excel.utils.decode_range(range));
+      };
+      const makeRows=count=>Array.from({length:count},()=>Array(8).fill(''));
+
+      // Sheet 1: management summary and movement analysis.
+      const summaryRows=makeRows(29);
+      summaryRows[0][0]=rtl?'كشف حساب العهدة الشخصية':'PERSONAL CASH CUSTODY STATEMENT';
+      summaryRows[1][0]=rtl?'ملخص مالي وحركة تفصيلية – Pest Platform':'Financial summary and movement analysis – Pest Platform';
+      summaryRows[3]=[rtl?'اسم المستخدم':'Employee',ownerName,rtl?'اسم الدخول':'Username',ownerUsername,rtl?'الوظيفة / القسم':'Job / Department',ownerJob,rtl?'العملة':'Currency',currency];
+      summaryRows[4]=[rtl?'معرف المستخدم':'User ID',cashCustodyTarget,rtl?'تاريخ التقرير':'Report date',generatedLabel,rtl?'عدد الحركات':'Transactions',reportRows.length,rtl?'حالة التقرير':'Report scope',rtl?'كافة حركات العملة المحددة':'All movements in selected currency'];
+      const cards=[
+        {label:rtl?'إجمالي النقدية المستلمة':'TOTAL CASH RECEIVED',value:totalReceived,format:true},
+        {label:rtl?'إجمالي المصروفات والمرتجعات':'TOTAL CASH OUT',value:totalSpent,format:true},
+        {label:rtl?'الرصيد النقدي الحالي':'CURRENT CASH BALANCE',value:currentBalance,format:true},
+        {label:rtl?'حركات في انتظار الاعتماد':'PENDING MOVEMENTS',value:pending.length,format:false},
+        {label:rtl?'الرصيد الافتتاحي المعتمد':'APPROVED OPENING BALANCE',value:openingBalance,format:true},
+        {label:rtl?'قيمة الحركات المعلقة':'PENDING VALUE',value:pendingValue,format:true},
+        {label:rtl?'عدد الحركات المعتمدة':'APPROVED MOVEMENTS',value:approved.length,format:false},
+        {label:rtl?'عدد الحركات المرفوضة':'REJECTED MOVEMENTS',value:rejected.length,format:false}
+      ];
+      cards.forEach((card,index)=>{
+        const top=index<4,slot=index%4,startCol=slot*2,labelRow=top?6:9,valueRow=labelRow+1;
+        summaryRows[labelRow][startCol]=card.label;
+        summaryRows[valueRow][startCol]=card.value;
+      });
+      summaryRows[12][0]=rtl?'تحليل الحركات حسب النوع':'MOVEMENT ANALYSIS BY TYPE';
+      summaryRows[13]=[
+        rtl?'نوع الحركة':'Movement type',rtl?'الاتجاه':'Direction',
+        rtl?'عدد الحركات':'Count',rtl?'إجمالي القيمة':'Total amount',
+        rtl?'المعتمد':'Approved',rtl?'المعلق':'Pending',
+        rtl?'المرفوض':'Rejected',rtl?'تأثيرها على الرصيد':'Balance impact'
+      ];
+      typeRows.forEach((item,index)=>{
+        summaryRows[14+index]=[
+          item.label,item.direction,item.count,item.amount,item.approved,item.pending,item.rejected,
+          item.direction
+        ];
+      });
+      summaryRows[25][0]=rtl?'ملاحظات التقرير':'REPORT NOTES';
+      summaryRows[26][0]=rtl?'الرصيد الحالي = إجمالي الحركات الواردة المعتمدة − إجمالي الحركات المنصرفة المعتمدة.':'Current balance = approved incoming movements less approved outgoing movements.';
+      summaryRows[27][0]=rtl?'الحركات المعلقة والمرفوضة تظهر في الكشف ولا تدخل في الرصيد النقدي الحالي.':'Pending and rejected movements are shown in the ledger but excluded from the current cash balance.';
+      summaryRows[28][0]=rtl?'تم تصدير كل حركات العملة المحددة، حتى لو كان هناك نص بحث مفعل في الشاشة.':'All movements for the selected currency are exported, regardless of the screen search text.';
+      const summary=Excel.utils.aoa_to_sheet(summaryRows);
+      merge(summary,'A1:H1');merge(summary,'A2:H2');
+      for(let index=0;index<cards.length;index++){
+        const top=index<4,slot=index%4,startCol=slot*2,labelRow=top?6:9,valueRow=labelRow+1;
+        const first=Excel.utils.encode_cell({r:labelRow,c:startCol});
+        const second=Excel.utils.encode_cell({r:labelRow,c:startCol+1});
+        summary[first]={t:'s',v:cards[index].label};
+        summary[second]=summary[second]||{t:'s',v:''};
+        summary[Excel.utils.encode_cell({r:valueRow,c:startCol})]={t:cards[index].format?'n':'n',v:cards[index].value};
+        summary[Excel.utils.encode_cell({r:valueRow,c:startCol+1})]=summary[Excel.utils.encode_cell({r:valueRow,c:startCol+1})]||{t:'s',v:''};
+        merge(summary,Excel.utils.encode_range({s:{r:labelRow,c:startCol},e:{r:labelRow,c:startCol+1}}));
+        merge(summary,Excel.utils.encode_range({s:{r:valueRow,c:startCol},e:{r:valueRow,c:startCol+1}}));
+      }
+      merge(summary,'A13:H13');merge(summary,'A26:H26');merge(summary,'A27:H27');merge(summary,'A28:H28');merge(summary,'A29:H29');
+      summary['!cols']=[{wch:25},{wch:20},{wch:18},{wch:20},{wch:18},{wch:20},{wch:18},{wch:24}];
+      summary['!rows']=[{hpt:34},{hpt:24},{hpt:8},{hpt:28},{hpt:28},{hpt:10},{hpt:24},{hpt:32},{hpt:10},{hpt:24},{hpt:32},{hpt:10},{hpt:25},{hpt:34},...typeRows.map(()=>({hpt:25})),{hpt:8},{hpt:24},{hpt:30},{hpt:30},{hpt:30}];
+      summary['!pageSetup']={orientation:'landscape',fitToWidth:1,fitToHeight:1};
+      styleRange(summary,'A1:H1',{font:font(white,true,17),fill:fill(navy),alignment:center,border:boxBorder});
+      styleRange(summary,'A2:H2',{font:font(muted,false,10),fill:fill(pale),alignment:center,border:boxBorder});
+      styleRange(summary,'A4:H5',{font:font(ink,false,10),fill:fill('F8FAFC'),alignment:right,border:boxBorder});
+      [6,9].forEach(labelRow=>{
+        for(let slot=0;slot<4;slot++){
+          const col=slot*2;
+          const range=Excel.utils.encode_range({s:{r:labelRow,c:col},e:{r:labelRow,c:col+1}});
+          const valueRange=Excel.utils.encode_range({s:{r:labelRow+1,c:col},e:{r:labelRow+1,c:col+1}});
+          styleRange(summary,range,{font:font(white,true,9),fill:fill(blue),alignment:center,border:boxBorder});
+          const cardIndex=(labelRow===6?0:4)+slot;
+          const color=cardIndex===2?'E2F0D9':cardIndex===3||cardIndex===5?'FFF2CC':lightBlue;
+          styleRange(summary,valueRange,{font:font(cardIndex===2?'166534':ink,true,16),fill:fill(color),alignment:center,border:boxBorder,numFmt:cards[cardIndex].format?amountFormat:'0'});
+        }
+      });
+      styleRange(summary,'A13:H13',{font:font(white,true,11),fill:fill(teal),alignment:right,border:boxBorder});
+      styleRange(summary,'A14:H14',{font:font(white,true,9),fill:fill(blue),alignment:center,border:boxBorder});
+      if(typeRows.length)styleRange(summary,'A15:H'+(14+typeRows.length),{font:font(ink,false,10),fill:fill('FFFFFF'),alignment:center,border:boxBorder});
+      for(let row=14;row<14+typeRows.length;row++){
+        const excelRow=row+1;
+        if(row%2===1)styleRange(summary,'A'+excelRow+':H'+excelRow,{font:font(ink,false,10),fill:fill(pale),alignment:center,border:boxBorder});
+        ['D','E','F','G'].forEach(col=>{const cell=summary[col+excelRow];if(cell)cell.z=amountFormat;});
+      }
+      styleRange(summary,'A26:H26',{font:font(white,true,10),fill:fill(teal),alignment:right,border:boxBorder});
+      styleRange(summary,'A27:H29',{font:font(muted,false,9),fill:fill(pale),alignment:right,border:boxBorder});
+      summary['!ref']='A1:H29';
+      Excel.utils.book_append_sheet(workbook,summary,rtl?'ملخص العهدة':'Summary');
+
+      // Sheet 2: transaction ledger, chronologically ascending with a running balance.
+      const detailHeaders=[
+        rtl?'التاريخ':'Date',rtl?'رقم الحركة':'Transaction ID',rtl?'نوع الحركة':'Movement type',
+        rtl?'البيان':'Description',rtl?'استلمت من / صُرف إلى':'Received from / Paid to',
+        rtl?'المشروع':'Project',rtl?'رقم المستند':'Document ref.',
+        rtl?'وارد':'Cash in',rtl?'منصرف':'Cash out',rtl?'الرصيد بعد الحركة':'Running balance',
+        rtl?'الحالة':'Status',rtl?'سجل بواسطة':'Created by',rtl?'اعتمد بواسطة':'Reviewed by'
+      ];
+      const details=[
+        [rtl?'كشف الحركات التفصيلي':'DETAILED CASH MOVEMENT LEDGER'],
+        [ownerName+' | '+currency+' | '+generatedLabel],
+        [rtl?'يشمل جميع حركات العملة المحددة؛ الرصيد التراكمي يحتسب من الحركات المعتمدة فقط.':'All movements for the selected currency; running balance includes approved movements only.'],
+        [],
+        detailHeaders
+      ];
+      reportRows.forEach(t=>{
+        const sign=cashCustodySign(t.type),isApproved=t.status==='approved';
+        details.push([
+          t.date||'',t.id||'',cashCustodyTypeLabels[t.type]||t.type,t.description||'',
+          t.counterparty||'',t.projectCode||'',t.reference||'',
+          sign>0?Number(t.amount||0):'',sign<0?Number(t.amount||0):'',
+          isApproved?Number(cashCustodyRunningBalanceById[t.id]||0):'',
+          statusLabel(t.status),t.createdByName||'',t.reviewedByName||''
+        ]);
+      });
+      details.push([]);
+      details.push([rtl?'ملاحظة: الحركات المعلقة والمرفوضة لا تؤثر على الرصيد.':'Note: pending and rejected movements do not affect the cash balance.']);
+      const ledger=Excel.utils.aoa_to_sheet(details);
+      merge(ledger,'A1:M1');merge(ledger,'A2:M2');merge(ledger,'A3:M3');
+      merge(ledger,'A'+(details.length-1)+':M'+(details.length-1));
+      ledger['!cols']=[{wch:14},{wch:24},{wch:24},{wch:40},{wch:28},{wch:18},{wch:20},{wch:17},{wch:17},{wch:19},{wch:16},{wch:24},{wch:24}];
+      ledger['!rows']=[{hpt:34},{hpt:24},{hpt:30},{hpt:8},{hpt:38},...reportRows.map(()=>({hpt:30})),{hpt:8},{hpt:25}];
+      ledger['!autofilter']={ref:'A5:M'+(5+reportRows.length)};
+      ledger['!pageSetup']={orientation:'landscape',fitToWidth:1,fitToHeight:0};
+      styleRange(ledger,'A1:M1',{font:font(white,true,16),fill:fill(navy),alignment:center,border:boxBorder});
+      styleRange(ledger,'A2:M2',{font:font(muted,true,10),fill:fill(pale),alignment:center,border:boxBorder});
+      styleRange(ledger,'A3:M3',{font:font(muted,false,9),fill:fill('F8FAFC'),alignment:right,border:boxBorder});
+      styleRange(ledger,'A5:M5',{font:font(white,true,9),fill:fill(blue),alignment:center,border:boxBorder});
+      for(let index=0;index<reportRows.length;index++){
+        const excelRow=6+index;
+        const rowFill=index%2===0?'FFFFFF':pale;
+        styleRange(ledger,'A'+excelRow+':M'+excelRow,{font:font(ink,false,9),fill:fill(rowFill),alignment:{vertical:'center',wrapText:true},border:boxBorder});
+        ['H','I','J'].forEach(col=>{const cell=ledger[col+excelRow];if(cell)cell.z=amountFormat;});
+        const t=reportRows[index];
+        if(cashCustodySign(t.type)>0){if(ledger['H'+excelRow])ledger['H'+excelRow].s={font:font('166534',true,9),fill:fill(green),alignment:center,border:boxBorder};}
+        else if(ledger['I'+excelRow])ledger['I'+excelRow].s={font:font('9C0006',true,9),fill:fill(red),alignment:center,border:boxBorder};
+        const statusCell=ledger['K'+excelRow];
+        if(statusCell){
+          const statusColor=t.status==='approved'?green:t.status==='rejected'?red:amber;
+          const statusFont=t.status==='approved'?'166534':t.status==='rejected'?'9C0006':'7F6000';
+          statusCell.s={font:font(statusFont,true,9),fill:fill(statusColor),alignment:center,border:boxBorder};
+        }
+      }
+      const footerRow=6+reportRows.length+1;
+      styleRange(ledger,'A'+footerRow+':M'+footerRow,{font:font(muted,false,9),fill:fill(pale),alignment:right,border:boxBorder});
+      ledger['!ref']='A1:M'+footerRow;
+      Excel.utils.book_append_sheet(workbook,ledger,rtl?'كشف الحساب':'Ledger');
+
+      const safePart=value=>String(value||'').replace(/[\\\\/:*?"<>|]/g,'-').replace(/\\s+/g,'_').slice(0,42)||'User';
+      const fileName='Cash_Custody_'+safePart(ownerName)+'_'+currency+'_'+generatedAt.toISOString().slice(0,10)+'.xlsx';
+      Excel.writeFile(workbook,fileName,{compression:true});
+      void addLog('تصدير كشف العهدة إلى Excel',currentUser,{entityType:'cash-custody-export',entityId:cashCustodyTarget,metadata:{currency,transactionCount:reportRows.length,fileName}});
+    }catch(err){
+      console.error('Cash custody Excel export:',err);
+      alert((rtl?'تعذر إنشاء ملف Excel: ':'Could not create Excel file: ')+(err&&err.message?err.message:'Unknown error'));
+    }
   }
 
   async function approveRequest(req,approve){
