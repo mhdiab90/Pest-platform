@@ -300,6 +300,18 @@ function App(){
   const [companyInfo,setCompanyInfo] = useState({name:rtl?'اسم الشركة':'Company name',logo:''});
   const [userRequests,setUserRequests] = useState([]);
   const [activeUsers,setActiveUsers] = useState([]);
+  const [userAdminSearch,setUserAdminSearch] = useState('');
+  const [adminUserSelectedUid,setAdminUserSelectedUid] = useState('');
+  const [adminUserForm,setAdminUserForm] = useState({fullName:'',username:'',jobTitle:'',department:'',phone:'',whatsapp:'',email:'',status:'active'});
+  const [adminUserBusy,setAdminUserBusy] = useState(false);
+  const [adminUserNotice,setAdminUserNotice] = useState('');
+  const [cashCustodyByUid,setCashCustodyByUid] = useState({});
+  const [cashCustodyTargetUid,setCashCustodyTargetUid] = useState('');
+  const [cashCustodyCurrencyFilter,setCashCustodyCurrencyFilter] = useState('EGP');
+  const [cashCustodySearch,setCashCustodySearch] = useState('');
+  const [cashCustodyForm,setCashCustodyForm] = useState({type:'receipt',date:new Date().toISOString().slice(0,10),amount:'',currency:'EGP',counterparty:'',projectCode:'',reference:'',description:''});
+  const [cashCustodyBusy,setCashCustodyBusy] = useState(false);
+  const [cashCustodyNotice,setCashCustodyNotice] = useState('');
   const [permissionUserUid,setPermissionUserUid] = useState('');
   const [permissionDraft,setPermissionDraft] = useState({});
   const [permissionBusy,setPermissionBusy] = useState(false);
@@ -377,6 +389,8 @@ function App(){
   const [assistantBusy,setAssistantBusy] = useState(false);
   const [assistantReady,setAssistantReady] = useState(false);
   const [assistantUnavailable,setAssistantUnavailable] = useState(false);
+
+  useEffect(()=>{if(currentUser&&currentUser.uid){setCashCustodyTargetUid(currentUser.uid);setCashCustodySearch('');setCashCustodyNotice('');}else{setCashCustodyTargetUid('');setCashCustodyByUid({});}},[currentUser&&currentUser.uid]);
 
   useEffect(()=>{
     if(!currentUser || !currentUser.uid){setSeenRequestIds([]);return;}
@@ -530,6 +544,10 @@ function App(){
       }
       setMessages(next);
     });
+    watch('cashCustodies/'+currentUser.uid+'/transactions',s=>{
+      const rows=Object.entries(s.val()||{}).map(([id,value])=>({...value,id:value&&value.id?value.id:id}));
+      setCashCustodyByUid(old=>({...old,[currentUser.uid]:rows}));
+    });
     if(currentUser.role==='admin'){
       watch('users',s=>{
         const rawUsers=s.val()||{};const users=toArray(rawUsers);setActiveUsers(users);
@@ -568,10 +586,10 @@ function App(){
   }
   function toArray(obj){return obj ? Object.entries(obj).map(([key,val])=>({...val,id:val && val.id ? val.id : key,uid:val && val.uid ? val.uid : key,_hasAuthUid:Boolean(val && val.uid)})) : [];}
   const isAdmin=currentUser && currentUser.role==='admin';
-  const permissionModules=[{id:'dashboard',label:rtl?'لوحة التحكم':'Dashboard'},{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors'},{id:'projects',label:rtl?'المشروعات وملفاتها':'Projects & Project files'},{id:'statement',label:rtl?'التدفقات النقدية':'Cash flow'},{id:'reports',label:rtl?'التقارير':'Reports'},{id:'messages',label:rtl?'الرسائل وWhatsApp':'Messages & WhatsApp'},{id:'tasks',label:rtl?'المهام':'Tasks'},{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data'}];
-  const permissionActions=[{id:'view',label:rtl?'عرض':'View'},{id:'add',label:rtl?'إضافة':'Add'},{id:'edit',label:rtl?'تعديل':'Edit'},{id:'delete',label:rtl?'حذف':'Delete'},{id:'approve',label:rtl?'اعتماد':'Approve'},{id:'export',label:rtl?'تصدير':'Export'},{id:'manage',label:rtl?'إدارة':'Manage'}];
-  const hasPermission=(moduleId,action='view')=>isAdmin||moduleId==='profile'&&action==='view'||currentUser?.permissions?.[moduleId]?.[action]===true;
-  const canAccessTab=tabId=>['companySettings','userRequests','userPermissions'].includes(tabId)?Boolean(isAdmin):hasPermission(tabId==='projectDetail'?'projects':tabId,'view');
+  const permissionModules=[{id:'dashboard',label:rtl?'لوحة التحكم':'Dashboard'},{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors'},{id:'projects',label:rtl?'المشروعات وملفاتها':'Projects & Project files'},{id:'statement',label:rtl?'التدفقات النقدية':'Cash flow'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody'},{id:'reports',label:rtl?'التقارير':'Reports'},{id:'messages',label:rtl?'الرسائل وWhatsApp':'Messages & WhatsApp'},{id:'tasks',label:rtl?'المهام':'Tasks'},{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data'}];
+  const permissionActions=[{id:'view',label:rtl?'عرض':'View'},{id:'add',label:rtl?'إضافة':'Add'},{id:'edit',label:rtl?'تعديل':'Edit'},{id:'delete',label:rtl?'حذف':'Delete'},{id:'approve',label:rtl?'اعتماد':'Approve'},{id:'export',label:rtl?'تصدير':'Export'},{id:'manage',label:rtl?'إدارة':'Manage'},{id:'viewOthers',label:rtl?'عرض عهد الآخرين':'View others'}];
+  const hasPermission=(moduleId,action='view')=>isAdmin||moduleId==='profile'&&action==='view'||moduleId==='cashCustody'&&['view','add','edit'].includes(action)&&currentUser?.permissions?.cashCustody?.[action]!==false||currentUser?.permissions?.[moduleId]?.[action]===true;
+  const canAccessTab=tabId=>['companySettings','userRequests','userPermissions','userManagement'].includes(tabId)?Boolean(isAdmin):hasPermission(tabId==='projectDetail'?'projects':tabId,'view');
   const requirePermission=(moduleId,action)=>{if(hasPermission(moduleId,action))return true;alert(rtl?'ليس لديك صلاحية لتنفيذ هذه العملية. يرجى مراجعة مدير النظام.':'You do not have permission to perform this action. Contact your administrator.');return false;};
   const money=n=>new Intl.NumberFormat(rtl?'ar-EG':'en-US',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n||0));
   const accepted=s=>['مقبول','approved','Approved'].includes(s);
@@ -732,6 +750,18 @@ function App(){
     if(auditTo&&(!stamp||new Date(stamp).toISOString().slice(0,10)>auditTo)) return false;
     return true;
   }).sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0));
+  const cashCustodyTarget=cashCustodyTargetUid||(currentUser&&currentUser.uid)||'';
+  const cashCustodyRows=(cashCustodyByUid[cashCustodyTarget]||[]).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||Number(b.createdAt||0)-Number(a.createdAt||0));
+  const cashCustodyFiltered=cashCustodyRows.filter(t=>{
+    const text=[t.type,t.description,t.counterparty,t.projectCode,t.reference,t.createdByName,t.status,t.date].join(' ');
+    return (!cashCustodySearch.trim()||includesText(text,cashCustodySearch.trim()))&&String(t.currency||'EGP').toUpperCase()===String(cashCustodyCurrencyFilter||'EGP').toUpperCase();
+  });
+  const cashCustodyCurrencies=['EGP',...new Set(cashCustodyRows.map(t=>String(t.currency||'EGP').toUpperCase()))].filter((v,i,a)=>a.indexOf(v)===i);
+  const cashCustodyApproved=cashCustodyRows.filter(t=>t.status==='approved'&&String(t.currency||'EGP').toUpperCase()===String(cashCustodyCurrencyFilter||'EGP').toUpperCase());
+  const cashCustodyInTotal=cashCustodyApproved.filter(t=>cashCustodySign(t.type)>0).reduce((sum,t)=>sum+Number(t.amount||0),0);
+  const cashCustodyOutTotal=cashCustodyApproved.filter(t=>cashCustodySign(t.type)<0).reduce((sum,t)=>sum+Number(t.amount||0),0);
+  const cashCustodyBalance=cashCustodyInTotal-cashCustodyOutTotal;
+  const cashCustodyPendingCount=cashCustodyRows.filter(t=>t.status==='pending').length;
   const partySearchText=x=>Object.entries(x||{}).filter(([,v])=>v!==null&&v!==undefined&&typeof v!=='object').map(([k,v])=>`${k} ${v}`).join(' ');
   const projectPartyMatches=(type)=>{const query=projectPartyDraft[type+'Search'];const list=type==='client'?clients:vendors;return list.filter(x=>includesText(partySearchText(x),query)).slice(0,40);};
   function addProjectParty(type){const code=projectPartyDraft[type+'Code'];const list=type==='client'?clients:vendors;const item=list.find(x=>x.code===code);if(!item)return alert(rtl?'اختر طرفاً صحيحاً أولاً':'Select a valid party first');setProject(old=>{const key=type==='client'?'clientCodes':'vendorCodes';const values=old[key]|| (type==='client'&&old.clientCode?[old.clientCode]:[]);if(values.includes(code))return old;const next=[...values,code];return {...old,[key]:next,...(type==='client'?{clientCode:next[0]||''}:{})};});setProjectPartyDraft(old=>({...old,[type+'Code']:'',[type+'Search']:''}));}
@@ -918,6 +948,149 @@ function App(){
       await addLog('تحديث صلاحيات المستخدم: '+(activeUsers.find(u=>u.uid===permissionUserUid)?.fullName||permissionUserUid),currentUser,{entityType:'user-permissions',entityId:permissionUserUid,changes:auditChanges(before,clean)});
     }catch(err){setPermissionNotice(firebaseErrorMessage(err,tr));}
     finally{setPermissionBusy(false);}
+  }
+
+  function openAdminUser(uid){
+    if(!isAdmin)return;
+    const user=activeUsers.find(item=>item.uid===uid);
+    if(!user)return;
+    setAdminUserSelectedUid(uid);
+    setAdminUserForm({
+      fullName:user.fullName||'',username:user.username||'',jobTitle:user.jobTitle||'',
+      department:user.department||'',phone:user.phone||'',whatsapp:user.whatsapp||'',
+      email:user.email||'',status:['active','نشط','مفعل','enabled'].includes(String(user.status||'').toLowerCase())?'active':'disabled'
+    });
+    setAdminUserNotice('');
+  }
+
+  async function saveAdminUser(e){
+    e.preventDefault();
+    if(!isAdmin||!adminUserSelectedUid)return;
+    const fullName=String(adminUserForm.fullName||'').trim();
+    const username=String(adminUserForm.username||'').trim();
+    const jobTitle=String(adminUserForm.jobTitle||'').trim();
+    const department=String(adminUserForm.department||'').trim();
+    const phone=String(adminUserForm.phone||'').trim();
+    const whatsapp=String(adminUserForm.whatsapp||'').trim();
+    if(!fullName||!username||!jobTitle)return alert(tr('noData'));
+    if(/[.#$\[\]/]/.test(username))return alert('Username contains invalid Firebase characters.');
+    const duplicate=[...activeUsers,...userDirectory].some(u=>String(u.uid||'')!==adminUserSelectedUid&&String(u.username||'').toLowerCase()===username.toLowerCase());
+    if(duplicate)return alert(rtl?'اسم المستخدم مستخدم بالفعل.':'Username is already in use.');
+    const oldUser=activeUsers.find(u=>u.uid===adminUserSelectedUid)||{};
+    const before={fullName:oldUser.fullName||'',username:oldUser.username||'',jobTitle:oldUser.jobTitle||'',department:oldUser.department||'',phone:oldUser.phone||'',whatsapp:oldUser.whatsapp||'',status:oldUser.status||'active'};
+    const status=adminUserForm.status==='active'?'active':'disabled';
+    const after={fullName,username,jobTitle,department,phone,whatsapp,status};
+    setAdminUserBusy(true);setAdminUserNotice('');
+    try{
+      const updates={};
+      Object.entries(after).forEach(([key,value])=>{updates['users/'+adminUserSelectedUid+'/'+key]=value;});
+      updates['users/'+adminUserSelectedUid+'/updatedAt']=firebase.database.ServerValue.TIMESTAMP;
+      updates['userDirectory/'+adminUserSelectedUid]={uid:adminUserSelectedUid,fullName,username,jobTitle,department,phone,whatsapp,avatar:oldUser.avatar||'',email:oldUser.email||adminUserForm.email||'',status};
+      await db.ref().update(updates);
+      setActiveUsers(old=>old.map(u=>u.uid===adminUserSelectedUid?{...u,...after}:u));
+      setUserDirectory(old=>{const exists=old.some(u=>u.uid===adminUserSelectedUid);const item={uid:adminUserSelectedUid,...after,avatar:oldUser.avatar||'',email:oldUser.email||adminUserForm.email||''};return exists?old.map(u=>u.uid===adminUserSelectedUid?{...u,...item}:u):[...old,item];});
+      await addLog('تعديل بيانات المستخدم: '+fullName,currentUser,{entityType:'user-profile',entityId:adminUserSelectedUid,changes:auditChanges(before,after)});
+      setAdminUserNotice(rtl?'تم حفظ بيانات المستخدم.':'User details saved.');
+    }catch(err){setAdminUserNotice(firebaseErrorMessage(err,tr));}
+    finally{setAdminUserBusy(false);}
+  }
+
+  async function loadCashCustodyTarget(uid){
+    if(!currentUser||!currentUser.uid)return;
+    const target=uid===currentUser.uid||hasPermission('cashCustody','viewOthers')?uid:currentUser.uid;
+    setCashCustodyTargetUid(target);
+    setCashCustodyNotice('');
+    if(target===currentUser.uid)return;
+    try{
+      const snap=await db.ref('cashCustodies/'+target+'/transactions').once('value');
+      const rows=Object.entries(snap.val()||{}).map(([id,value])=>({...value,id:value&&value.id?value.id:id}));
+      setCashCustodyByUid(old=>({...old,[target]:rows}));
+    }catch(err){
+      setCashCustodyTargetUid(currentUser.uid);
+      setCashCustodyNotice(firebaseErrorMessage(err,tr));
+    }
+  }
+
+  const cashCustodyIncomingTypes=['receipt','topup','refund','opening_balance','adjustment_in','transfer_in'];
+  const cashCustodyTypeLabels={
+    receipt:rtl?'استلام عهدة':'Cash received',
+    topup:rtl?'تعزيز عهدة':'Cash top-up',
+    expense:rtl?'مصروف':'Expense',
+    return:rtl?'رد نقدية للخزينة':'Cash returned',
+    refund:rtl?'استرداد مبلغ':'Refund received',
+    opening_balance:rtl?'رصيد افتتاحي':'Opening balance',
+    adjustment_in:rtl?'تسوية بالزيادة':'Positive adjustment',
+    adjustment_out:rtl?'تسوية بالنقص':'Negative adjustment',
+    transfer_in:rtl?'عهدة محولة واردة':'Custody transfer in',
+    transfer_out:rtl?'عهدة محولة صادرة':'Custody transfer out'
+  };
+  const cashCustodySign=type=>cashCustodyIncomingTypes.includes(type)?1:-1;
+
+  async function addCashCustodyTransaction(e){
+    e.preventDefault();
+    if(!requirePermission('cashCustody','add'))return;
+    const amount=Number(cashCustodyForm.amount);
+    const description=String(cashCustodyForm.description||'').trim();
+    if(!Number.isFinite(amount)||amount<=0||!description)return alert(rtl?'أدخل مبلغاً صحيحاً وبياناً للحركة.':'Enter a valid positive amount and transaction description.');
+    const validTypes=['receipt','topup','expense','return','refund','opening_balance','adjustment_in','adjustment_out'];
+    if(!validTypes.includes(cashCustodyForm.type))return alert(tr('noData'));
+    setCashCustodyBusy(true);setCashCustodyNotice('');
+    try{
+      const ref=db.ref('cashCustodies/'+currentUser.uid+'/transactions').push();
+      const transaction={
+        id:ref.key,ownerUid:currentUser.uid,type:cashCustodyForm.type,amount,
+        currency:String(cashCustodyForm.currency||'EGP').toUpperCase(),
+        date:cashCustodyForm.date||new Date().toISOString().slice(0,10),
+        counterparty:String(cashCustodyForm.counterparty||'').trim(),
+        projectCode:String(cashCustodyForm.projectCode||'').trim(),
+        reference:String(cashCustodyForm.reference||'').trim(),
+        description, status:isAdmin?'approved':'pending',
+        createdBy:currentUser.uid,createdByName:currentUser.fullName||currentUser.username||'',
+        createdAt:firebase.database.ServerValue.TIMESTAMP
+      };
+      await ref.set(transaction);
+      await addLog('تسجيل حركة عهدة: '+(cashCustodyTypeLabels[transaction.type]||transaction.type),currentUser,{entityType:'cash-custody',entityId:currentUser.uid+'/'+ref.key,metadata:{amount,currency:transaction.currency,status:transaction.status}});
+      setCashCustodyForm({type:'expense',date:new Date().toISOString().slice(0,10),amount:'',currency:'EGP',counterparty:'',projectCode:'',reference:'',description:''});
+      setCashCustodyNotice(rtl?(transaction.status==='approved'?'تم تسجيل الحركة واعتمادها.':'تم تسجيل الحركة وهي في انتظار الاعتماد.'):(transaction.status==='approved'?'Transaction saved and approved.':'Transaction submitted for approval.'));
+    }catch(err){setCashCustodyNotice(firebaseErrorMessage(err,tr));}
+    finally{setCashCustodyBusy(false);}
+  }
+
+  async function reviewCashCustodyTransaction(ownerUid,transaction,status){
+    if(!requirePermission('cashCustody','approve'))return;
+    if(ownerUid===currentUser.uid&&!isAdmin)return alert(rtl?'لا يمكنك اعتماد حركتك الشخصية.':'You cannot approve your own transaction.');
+    if(!transaction||transaction.status!=='pending'||!['approved','rejected'].includes(status))return;
+    try{
+      await db.ref('cashCustodies/'+ownerUid+'/transactions/'+transaction.id).update({
+        status,reviewedBy:currentUser.uid,reviewedByName:currentUser.fullName||currentUser.username||'',
+        reviewedAt:firebase.database.ServerValue.TIMESTAMP
+      });
+      await addLog((status==='approved'?'اعتماد':'رفض')+' حركة عهدة '+transaction.id,currentUser,{entityType:'cash-custody',entityId:ownerUid+'/'+transaction.id,metadata:{status}});
+      if(ownerUid!==currentUser.uid)await loadCashCustodyTarget(ownerUid);
+    }catch(err){alert(firebaseErrorMessage(err,tr));}
+  }
+
+  async function deleteCashCustodyDraft(transaction){
+    if(!requirePermission('cashCustody','delete'))return;
+    if(cashCustodyTargetUid!==currentUser.uid||!transaction||transaction.status!=='pending')return alert(rtl?'يمكن حذف المسودات المعلقة الخاصة بك فقط.':'Only your own pending transactions can be deleted.');
+    if(!window.confirm(rtl?'حذف الحركة المعلقة؟':'Delete this pending transaction?'))return;
+    try{
+      await db.ref('cashCustodies/'+currentUser.uid+'/transactions/'+transaction.id).remove();
+      await addLog('حذف حركة عهدة معلقة '+transaction.id,currentUser,{entityType:'cash-custody',entityId:currentUser.uid+'/'+transaction.id});
+    }catch(err){alert(firebaseErrorMessage(err,tr));}
+  }
+
+  function exportCashCustody(){
+    if(!requirePermission('cashCustody','export'))return;
+    if(!window.XLSX)return alert(rtl?'تعذر تحميل مكتبة Excel.':'Excel library is unavailable.');
+    const rows=cashCustodyFiltered.map(t=>({
+      Date:t.date||'',Type:cashCustodyTypeLabels[t.type]||t.type,Description:t.description||'',
+      Counterparty:t.counterparty||'',Project:t.projectCode||'',Currency:t.currency||'EGP',
+      Amount:Number(t.amount||0),Direction:cashCustodySign(t.type)>0?'In':'Out',Status:t.status||'pending',
+      Reference:t.reference||'',CreatedBy:t.createdByName||''
+    }));
+    const book=XLSX.utils.book_new();const sheet=XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(book,sheet,'Cash Custody');XLSX.writeFile(book,'Cash_Custody_'+new Date().toISOString().slice(0,10)+'.xlsx');
   }
 
   async function approveRequest(req,approve){
@@ -1311,7 +1484,7 @@ function App(){
     e.preventDefault();if(!requirePermission('messages','add'))return;
     const names=message.recipients.split(',').map(x=>x.trim()).filter(Boolean);
     if(!names.length || !message.subject.trim() || !message.body.trim()) return alert(tr('noData'));
-    const missing=[];const writes=[];
+    const missing=[];const updates={};
     names.forEach(name=>{
       const found=userDirectory.find(u=>u.status==='active' && String(u.username||'').toLowerCase()===name.toLowerCase());
       if(!found || !found.uid) missing.push(name);
@@ -1319,16 +1492,18 @@ function App(){
         const receiverId=db.ref('messages/'+found.uid).push().key;
         const senderId=db.ref('messages/'+currentUser.uid).push().key;
         const base={recipientUid:found.uid,senderUid:currentUser.uid,senderName:currentUser.fullName,senderAvatar:currentUser.avatar||'',subject:message.subject.trim(),body:message.body.trim(),date:new Date().toLocaleString(rtl?'ar-EG':'en-US'),createdAt:firebase.database.ServerValue.TIMESTAMP};
-        writes.push(db.ref('messages/'+found.uid+'/'+receiverId).set({...base,id:receiverId,mailboxUid:found.uid,read:false}));
-        writes.push(db.ref('messages/'+currentUser.uid+'/'+senderId).set({...base,id:senderId,mailboxUid:currentUser.uid,read:true,copyType:'sent'}));
+        updates['messages/'+found.uid+'/'+receiverId]={...base,id:receiverId,mailboxUid:found.uid,read:false};
+        updates['messages/'+currentUser.uid+'/'+senderId]={...base,id:senderId,mailboxUid:currentUser.uid,read:true,copyType:'sent'};
       }
     });
-    if(!writes.length) return alert(tr('recipientsNotFound')+missing.join(', '));
+    if(!Object.keys(updates).length) return alert(tr('recipientsNotFound')+missing.join(', '));
     try{
-      await Promise.all(writes);
+      // One atomic multi-location update prevents a sent copy without its recipient copy.
+      // Firebase Rules must still explicitly authorize the sender to create the recipient mailbox item.
+      await db.ref().update(updates);
       if(missing.length) alert(tr('recipientsNotFound')+missing.join(', '));
       else alert(tr('saved'));
-      setMessage({recipients:'',subject:'',body:''});await addLog('إرسال رسالة داخلية');
+      setMessage({recipients:'',subject:'',body:''});await addLog('إرسال رسالة داخلية',currentUser,{entityType:'message',metadata:{recipientCount:Object.keys(updates).length/2}});
     }catch(err){alert(firebaseErrorMessage(err,tr));}
   }
 
@@ -1534,13 +1709,13 @@ function App(){
     {id:'dashboard',label:tr('dashboard'),icon:'fa-gauge',tab:'dashboard'},
     {id:'masterGroup',label:tr('master'),icon:'fa-database',children:[{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors',icon:'fa-address-book'}]},
     {id:'projectsGroup',label:tr('projects'),icon:'fa-diagram-project',children:[{id:'projects',label:rtl?'قائمة المشروعات':'Project list',icon:'fa-list'},...(selectedProjectCode?[{id:'projectDetail',label:rtl?'ملف المشروع الحالي':'Current project file',icon:'fa-folder-open'}]:[])]},
-    {id:'financeGroup',label:rtl?'المالية':'Finance',icon:'fa-coins',children:[{id:'statement',label:tr('statement'),icon:'fa-file-invoice-dollar'},{id:'reports',label:tr('reportCenter'),icon:'fa-chart-pie'}]},
+    {id:'financeGroup',label:rtl?'المالية':'Finance',icon:'fa-coins',children:[{id:'statement',label:tr('statement'),icon:'fa-file-invoice-dollar'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody',icon:'fa-wallet'},{id:'reports',label:tr('reportCenter'),icon:'fa-chart-pie'}]},
     {id:'communicationGroup',label:rtl?'التواصل والمهام':'Communication & Tasks',icon:'fa-comments',children:[{id:'messages',label:tr('messages'),icon:'fa-envelope'},{id:'tasks',label:rtl?'المهام':'Tasks',icon:'fa-list-check'}]},
     {id:'settingsGroup',label:tr('settings'),icon:'fa-sliders',children:[{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data',icon:'fa-database'},{id:'profile',label:tr('profile'),icon:'fa-user-gear'},...(isAdmin?[{id:'companySettings',label:tr('companySettings'),icon:'fa-building'}]:[])]},
-    ...(isAdmin?[{id:'adminGroup',label:rtl?'إدارة النظام':'Administration',icon:'fa-user-shield',children:[{id:'userRequests',label:tr('requestsReport'),icon:'fa-user-clock'},{id:'userPermissions',label:rtl?'صلاحيات المستخدمين':'User Permissions',icon:'fa-user-lock'},{id:'auditLogs',label:rtl?'سجل نشاط المستخدمين':'User Activity Log',icon:'fa-clipboard-list'}]}]:[])
+    ...(isAdmin?[{id:'adminGroup',label:rtl?'إدارة النظام':'Administration',icon:'fa-user-shield',children:[{id:'userRequests',label:tr('requestsReport'),icon:'fa-user-clock'},{id:'userManagement',label:rtl?'إدارة بيانات المستخدمين':'User Management',icon:'fa-users-gear'},{id:'userPermissions',label:rtl?'صلاحيات المستخدمين':'User Permissions',icon:'fa-user-lock'},{id:'auditLogs',label:rtl?'سجل نشاط المستخدمين':'User Activity Log',icon:'fa-clipboard-list'}]}]:[])
   ];
   useEffect(()=>{if(currentUser) void addLog('فتح الشاشة: '+String(tab||'dashboard'));},[tab,currentUser?.uid]);
-  const navGroupByTab={master:'masterGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',userRequests:'adminGroup',userPermissions:'adminGroup',auditLogs:'adminGroup'};
+  const navGroupByTab={master:'masterGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',cashCustody:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',userRequests:'adminGroup',userManagement:'adminGroup',userPermissions:'adminGroup',auditLogs:'adminGroup'};
   const visibleNavGroups=navGroups.map(group=>group.tab?group:({...group,children:(group.children||[]).filter(item=>canAccessTab(item.id))})).filter(group=>group.tab?canAccessTab(group.tab):(group.children||[]).length>0);
   const navCatalog=visibleNavGroups.flatMap(group=>group.tab?[{id:group.tab,label:group.label,icon:group.icon}]:((group.children||[]).map(item=>({...item}))));
   const navMode=navPreferences.uid===(currentUser&&currentUser.uid)?navPreferences.mode:'side';
@@ -1791,6 +1966,44 @@ function App(){
 
         {tab==='tasks'&&<div className="space-y-5"><div className="flex items-center justify-between gap-3"><h2 className="font-bold text-xl">{rtl?'المهام من الرسائل':'Tasks from messages'}</h2><span className="text-sm text-gray-500">{tasks.filter(t=>t.status!=='completed').length} {rtl?'مفتوحة':'open'}</span></div><details open className="app-collapsible"><summary><span>{rtl?'قائمة المهام':'Task list'}</span></summary><div className="app-collapsible-body"><div className="app-list-scroll">{tasks.length===0?<p className="text-sm text-gray-500">{rtl?'لا توجد مهام بعد. حوّل أي رسالة إلى مهمة من شاشة المراسلات.':'No tasks yet. Convert a message into a task from Messages.'}</p>:tasks.slice().sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0)).map(task=><article key={task.id} className="border rounded-xl p-4 flex flex-col md:flex-row md:items-start gap-3"><div className="flex-1"><div className="font-bold">{task.title}</div><p className="text-sm whitespace-pre-wrap text-gray-600 mt-2">{task.description}</p><div className="mt-2">{task.sourceSenderName?userIdentity(task.sourceSenderUid,task.sourceSenderName,true):null}</div></div><button onClick={()=>updateTaskStatus(task,task.status==='completed'?'open':'completed')} className={'rounded-lg px-4 py-2 text-sm font-bold '+(task.status==='completed'?'bg-gray-100 text-gray-600':'bg-green-600 text-white')}>{task.status==='completed'?(rtl?'إعادة فتح':'Reopen'):(rtl?'إنهاء المهمة':'Complete')}</button></article>)}</div></div></details></div>}
 
+        {tab==='cashCustody'&&hasPermission('cashCustody','view')&&<div className="space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-xl">{rtl?'إدارة النقدية الشخصية – العهدة':'Personal Cash Custody'}</h2><p className="text-sm text-gray-500">{rtl?'كشف حساب لكل مستخدم، والرصيد يحتسب من الحركات المعتمدة فقط.':'A separate ledger for each user. The cash balance includes approved movements only.'}</p></div><div className="flex flex-wrap gap-2"><button type="button" onClick={exportCashCustody} className="rounded-lg bg-emerald-600 text-white px-4 py-2 font-bold"><i className="fas fa-file-excel me-2"></i>{rtl?'تصدير Excel':'Export Excel'}</button><button type="button" onClick={()=>window.print()} className="rounded-lg bg-slate-700 text-white px-4 py-2 font-bold"><i className="fas fa-print me-2"></i>{rtl?'طباعة':'Print'}</button></div></div>
+          {hasPermission('cashCustody','viewOthers')&&<section className="bg-white border rounded-xl p-4"><label className="block text-sm font-bold">{rtl?'عرض كشف عهدة المستخدم':'View user custody ledger'}<select className="block w-full md:max-w-xl border rounded-lg p-3 mt-1 font-normal" value={cashCustodyTarget} onChange={e=>loadCashCustodyTarget(e.target.value)}><option value={currentUser.uid}>{rtl?'عهدي الشخصية':'My personal custody'}</option>{userDirectory.filter(u=>u.uid&&u.uid!==currentUser.uid&&u.status==='active').map(u=><option key={u.uid} value={u.uid}>{u.fullName||u.username||u.email||u.uid}</option>)}</select></label></section>}
+          {cashCustodyNotice&&<p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">{cashCustodyNotice}</p>}
+          <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+            <div className="bg-white border rounded-xl p-4"><p className="text-xs text-gray-500">{rtl?'إجمالي النقدية المستلمة':'Total received'}</p><b className="block text-xl text-emerald-700 mt-1">{money(cashCustodyInTotal)} {cashCustodyCurrencyFilter}</b></div>
+            <div className="bg-white border rounded-xl p-4"><p className="text-xs text-gray-500">{rtl?'إجمالي المصروفات والمرتجعات':'Expenses and returns'}</p><b className="block text-xl text-rose-700 mt-1">{money(cashCustodyOutTotal)} {cashCustodyCurrencyFilter}</b></div>
+            <div className="bg-white border rounded-xl p-4"><p className="text-xs text-gray-500">{rtl?'الرصيد النقدي الحالي':'Current cash balance'}</p><b className="block text-2xl text-blue-700 mt-1">{money(cashCustodyBalance)} {cashCustodyCurrencyFilter}</b></div>
+            <div className="bg-white border rounded-xl p-4"><p className="text-xs text-gray-500">{rtl?'حركات في انتظار الاعتماد':'Pending movements'}</p><b className="block text-xl text-amber-700 mt-1">{cashCustodyPendingCount}</b></div>
+            <div className="bg-white border rounded-xl p-4"><p className="text-xs text-gray-500">{rtl?'عدد الحركات المسجلة':'Recorded movements'}</p><b className="block text-xl mt-1">{cashCustodyRows.length}</b></div>
+          </section>
+          <section className="bg-white border rounded-xl p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-bold">{rtl?'تسجيل حركة جديدة':'Record a new movement'}</h3><span className="text-xs text-gray-500">{isAdmin?(rtl?'حركات المدير تعتمد مباشرةً':'Administrator entries are approved immediately'):(rtl?'حركاتك الجديدة تنتظر الاعتماد':'Your new movements require approval')}</span></div>
+            <form onSubmit={addCashCustodyTransaction} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+              <label className="text-sm font-bold">{rtl?'نوع الحركة':'Movement type'}<select className="block w-full border rounded-lg p-3 mt-1 font-normal" value={cashCustodyForm.type} onChange={e=>setCashCustodyForm({...cashCustodyForm,type:e.target.value})}>{[['receipt','استلام عهدة','Cash received'],['topup','تعزيز عهدة','Cash top-up'],['expense','مصروف','Expense'],['return','رد نقدية للخزينة','Cash returned'],['refund','استرداد مبلغ','Refund received'],['opening_balance','رصيد افتتاحي','Opening balance'],['adjustment_in','تسوية بالزيادة','Positive adjustment'],['adjustment_out','تسوية بالنقص','Negative adjustment']].map(([v,ar,en])=><option key={v} value={v}>{rtl?ar:en}</option>)}</select></label>
+              <label className="text-sm font-bold">{rtl?'التاريخ':'Date'}<input required type="date" className="block w-full border rounded-lg p-3 mt-1 font-normal" value={cashCustodyForm.date} onChange={e=>setCashCustodyForm({...cashCustodyForm,date:e.target.value})}/></label>
+              <label className="text-sm font-bold">{rtl?'المبلغ':'Amount'}<input required type="number" min="0.01" step="0.01" className="block w-full border rounded-lg p-3 mt-1 font-normal" value={cashCustodyForm.amount} onChange={e=>setCashCustodyForm({...cashCustodyForm,amount:e.target.value})}/></label>
+              <label className="text-sm font-bold">{rtl?'العملة':'Currency'}<select className="block w-full border rounded-lg p-3 mt-1 font-normal" value={cashCustodyForm.currency} onChange={e=>setCashCustodyForm({...cashCustodyForm,currency:e.target.value})}>{['EGP','USD','EUR','SAR','AED','GBP'].map(c=><option key={c}>{c}</option>)}</select></label>
+              <label className="text-sm font-bold">{rtl?'استلمت من / صُرف إلى':'Received from / Paid to'}<input className="block w-full border rounded-lg p-3 mt-1 font-normal" value={cashCustodyForm.counterparty} onChange={e=>setCashCustodyForm({...cashCustodyForm,counterparty:e.target.value})}/></label>
+              <label className="text-sm font-bold">{rtl?'المشروع':'Project'}<select className="block w-full border rounded-lg p-3 mt-1 font-normal" value={cashCustodyForm.projectCode} onChange={e=>setCashCustodyForm({...cashCustodyForm,projectCode:e.target.value})}><option value="">{rtl?'بدون مشروع':'No project'}</option>{projects.map(p=><option key={p.code} value={p.code}>{p.name} ({p.code})</option>)}</select></label>
+              <label className="text-sm font-bold">{rtl?'رقم المستند':'Document reference'}<input className="block w-full border rounded-lg p-3 mt-1 font-normal" value={cashCustodyForm.reference} onChange={e=>setCashCustodyForm({...cashCustodyForm,reference:e.target.value})}/></label>
+              <label className="text-sm font-bold md:col-span-2 xl:col-span-4">{rtl?'بيان الحركة / الغرض من الصرف':'Description / Purpose'}<textarea required rows="2" className="block w-full border rounded-lg p-3 mt-1 font-normal" value={cashCustodyForm.description} onChange={e=>setCashCustodyForm({...cashCustodyForm,description:e.target.value})}/></label>
+              <div className="md:col-span-2 xl:col-span-4"><button disabled={cashCustodyBusy} className="rounded-lg bg-blue-600 text-white px-6 py-3 font-bold disabled:opacity-50">{cashCustodyBusy?(rtl?'جارٍ الحفظ...':'Saving...'):(rtl?'تسجيل الحركة':'Save movement')}</button></div>
+            </form>
+            {cashCustodyNotice&&<p className="text-sm text-green-700">{cashCustodyNotice}</p>}
+          </section>
+          <section className="bg-white border rounded-xl p-4 space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <input className="border rounded-lg p-3" value={cashCustodySearch} onChange={e=>setCashCustodySearch(e.target.value)} placeholder={rtl?'بحث في البيان أو الطرف أو المشروع أو المستند':'Search description, party, project or reference'}/>
+              <select className="border rounded-lg p-3" value={cashCustodyCurrencyFilter} onChange={e=>setCashCustodyCurrencyFilter(e.target.value)}>{cashCustodyCurrencies.map(c=><option key={c} value={c}>{c}</option>)}</select>
+              <button type="button" onClick={()=>{setCashCustodySearch('');setCashCustodyCurrencyFilter('EGP');}} className="rounded-lg bg-gray-100 px-3 py-2 font-bold">{rtl?'مسح البحث':'Clear search'}</button>
+            </div>
+            <div className="app-table-scroll"><table className="w-full text-sm min-w-[1050px]"><thead className="bg-slate-50"><tr><th className="p-3 text-start">{rtl?'التاريخ':'Date'}</th><th className="p-3 text-start">{rtl?'نوع الحركة':'Type'}</th><th className="p-3 text-start">{rtl?'البيان':'Description'}</th><th className="p-3 text-start">{rtl?'من / إلى':'Counterparty'}</th><th className="p-3 text-start">{rtl?'المشروع / المستند':'Project / Ref.'}</th><th className="p-3 text-end">{rtl?'وارد':'In'}</th><th className="p-3 text-end">{rtl?'منصرف':'Out'}</th><th className="p-3 text-start">{rtl?'الحالة':'Status'}</th><th className="p-3 text-start">{rtl?'الإجراءات':'Actions'}</th></tr></thead><tbody>{cashCustodyFiltered.map(t=><tr key={t.id} className="border-t align-top"><td className="p-3 whitespace-nowrap">{t.date||'—'}</td><td className="p-3 whitespace-nowrap">{cashCustodyTypeLabels[t.type]||t.type}</td><td className="p-3 min-w-56">{t.description||'—'}<small className="block text-gray-400">{t.reference||''}</small></td><td className="p-3">{t.counterparty||'—'}</td><td className="p-3">{t.projectCode||'—'}</td><td className="p-3 text-end text-emerald-700">{cashCustodySign(t.type)>0?money(t.amount):'—'}</td><td className="p-3 text-end text-rose-700">{cashCustodySign(t.type)<0?money(t.amount):'—'}</td><td className="p-3"><span className={'rounded-full px-2 py-1 text-xs '+(t.status==='approved'?'bg-green-50 text-green-700':t.status==='rejected'?'bg-red-50 text-red-700':'bg-amber-50 text-amber-700')}>{t.status==='approved'?(rtl?'معتمدة':'Approved'):t.status==='rejected'?(rtl?'مرفوضة':'Rejected'):(rtl?'معلقة':'Pending')}</span></td><td className="p-3"><div className="flex gap-2">{t.status==='pending'&&hasPermission('cashCustody','approve')&&(cashCustodyTarget!==currentUser.uid||isAdmin)&&<><button type="button" onClick={()=>reviewCashCustodyTransaction(cashCustodyTarget,t,'approved')} className="text-xs rounded bg-green-600 text-white px-2 py-1">{rtl?'اعتماد':'Approve'}</button><button type="button" onClick={()=>reviewCashCustodyTransaction(cashCustodyTarget,t,'rejected')} className="text-xs rounded bg-red-600 text-white px-2 py-1">{rtl?'رفض':'Reject'}</button></>}{t.status==='pending'&&cashCustodyTarget===currentUser.uid&&hasPermission('cashCustody','delete')&&<button type="button" onClick={()=>deleteCashCustodyDraft(t)} className="text-xs rounded bg-gray-100 px-2 py-1">{rtl?'حذف':'Delete'}</button>}</div></td></tr>)}</tbody></table></div>
+            {cashCustodyFiltered.length===0&&<p className="p-6 text-center text-gray-500">{rtl?'لا توجد حركات بهذه التصفية.':'No movements match these filters.'}</p>}
+            <p className="text-xs text-gray-500">{rtl?'الرصيد المعروض مبني على الحركات المعتمدة فقط. العملات تُحسب كلٌ على حدة. الحركات المعلقة لا تغيّر الرصيد حتى اعتمادها.':'The displayed balance uses approved movements only. Currencies are calculated separately. Pending movements do not affect the balance until approved.'}</p>
+          </section>
+        </div>}
+
         {tab==='reports'&&<div className="space-y-5">
           <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="font-bold text-xl">{tr('reportCenter')}</h2><div className="flex gap-2 no-print"><button onClick={()=>window.print()} className="bg-gray-800 text-white px-4 py-2 rounded-lg"><i className="fas fa-file-pdf me-2"></i>{tr('printPdf')}</button><button onClick={reportAsMessage} className="bg-blue-600 text-white px-4 py-2 rounded-lg"><i className="fas fa-paper-plane me-2"></i>{tr('sendReport')}</button></div></div>
           <details open className="app-collapsible no-print"><summary><span>{rtl?'فلاتر التقرير':'Report filters'}</span></summary><div className="app-collapsible-body"><section className="bg-white p-4 rounded-xl border grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3 no-print"><select className="border rounded-lg p-3" value={reportType} onChange={e=>{setReportType(e.target.value);setReportEntity('');}}><option value="project">{tr('projectReport')}</option><option value="client">{tr('clientReport')}</option><option value="vendor">{tr('vendorReport')}</option><option value="cash">{tr('cashReport')}</option></select>{reportType==='project'?<select className="border rounded-lg p-3" value={reportEntity} onChange={e=>setReportEntity(e.target.value)}><option value="">{tr('allProjects')}</option>{projects.map(p=><option key={p.code} value={p.code}>{p.name} ({p.code})</option>)}</select>:reportType==='client'?<select className="border rounded-lg p-3" value={reportEntity} onChange={e=>setReportEntity(e.target.value)}><option value="">{tr('choose')}</option>{clients.map(c=><option key={c.code} value={c.code}>{c.name} ({c.code})</option>)}</select>:reportType==='vendor'?<select className="border rounded-lg p-3" value={reportEntity} onChange={e=>setReportEntity(e.target.value)}><option value="">{tr('choose')}</option>{vendors.map(v=><option key={v.code} value={v.code}>{v.name} ({v.code})</option>)}</select>:<span className="text-sm text-gray-500 self-center">{tr('supplierPayments')} / {tr('customerCollections')}</span>}<input className="border rounded-lg p-3" placeholder={tr('reportSearch')} value={reportSearch} onChange={e=>setReportSearch(e.target.value)}/><select className="border rounded-lg p-3" value={reportStatus} onChange={e=>setReportStatus(e.target.value)}><option value="all">{tr('allStatuses')}</option><option value="open">{tr('open')}</option><option value="partial">{tr('partial')}</option><option value="full">{tr('full')}</option><option value="completed">{tr('completed')}</option><option value="notPaid">{tr('notPaid')}</option></select><label className="text-sm">{tr('fromDate')}<input type="date" className="block border rounded-lg p-2 w-full" value={reportFrom} onChange={e=>setReportFrom(e.target.value)}/></label><label className="text-sm">{tr('toDate')}<input type="date" className="block border rounded-lg p-2 w-full" value={reportTo} onChange={e=>setReportTo(e.target.value)}/></label><button onClick={()=>{setReportSearch('');setReportFrom('');setReportTo('');setReportStatus('all');}} className="bg-gray-100 rounded-lg p-3">{tr('clear')}</button></section>
@@ -1818,6 +2031,37 @@ function App(){
 
         {tab==='userRequests'&&isAdmin&&<div className="space-y-5"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-bold text-xl">{tr('requestsReport')}</h2><select className="border rounded-lg p-2" value={requestFilter} onChange={e=>setRequestFilter(e.target.value)}><option value="all">{tr('allRequests')}</option><option value="pending">{tr('pendingLabel')}</option><option value="approved">{tr('approvedLabel')}</option><option value="rejected">{tr('rejectedLabel')}</option></select></div><details open className="app-collapsible"><summary><span>{rtl?'قائمة طلبات المستخدمين':'User requests list'}</span></summary><div className="app-collapsible-body"><div className="overflow-x-auto"><div className="app-table-scroll"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="p-3 text-start">{tr('requestedUser')}</th><th className="p-3 text-start">{tr('requestDate')}</th><th className="p-3 text-start">{tr('requestStatus')}</th><th className="p-3 text-start">{tr('updateStatus')}</th></tr></thead><tbody>{filteredRequests.slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).map(req=><tr key={req.uid} className="border-t align-top"><td className="p-3"><div className="flex items-center gap-3">{req.avatar?<img src={req.avatar} alt="" className="w-11 h-11 rounded-full object-cover border"/>:<div className="w-11 h-11 rounded-full bg-slate-100 text-slate-500 grid place-items-center"><i className="fas fa-user"></i></div>}<div className="min-w-0"><b>{req.fullName}</b><div className="text-gray-500">{req.email}</div><div className="text-gray-500">{req.username} · {req.jobTitle}</div>{!req._hasAuthUid&&<div className="text-amber-700 text-xs mt-1">{tr('legacyRequest')}</div>}</div></div></td><td className="p-3 whitespace-nowrap">{req.createdAt?new Date(req.createdAt).toLocaleString(rtl?'ar-EG':'en-US'):'—'}</td><td className="p-3"><span className="rounded-full bg-gray-100 px-2 py-1">{requestStatusLabel(req.status)}</span></td><td className="p-3 min-w-44"><div className="flex flex-col sm:flex-row gap-2"><select className="border rounded-lg p-2 min-w-0 flex-1" value={requestStatusDrafts[req.uid]||requestStatusValue(req.status)} onChange={e=>setRequestStatusDrafts(old=>({...old,[req.uid]:e.target.value}))}><option value="pending">{tr('pendingLabel')}</option><option value="approved">{tr('approvedLabel')}</option><option value="rejected">{tr('rejectedLabel')}</option></select><button type="button" disabled={!requestStatusDrafts[req.uid]||requestStatusDrafts[req.uid]===requestStatusValue(req.status)} onClick={()=>updateRequestStatus(req,requestStatusDrafts[req.uid])} className="rounded-lg px-3 py-2 text-sm font-bold text-white bg-blue-600 disabled:bg-gray-300">{rtl?'تطبيق':'Apply'}</button></div></td></tr>)}</tbody></table></div>{filteredRequests.length===0&&<p className="p-5 text-gray-500">{tr('noData')}</p>}</div></div></details></div>}
 
+        {tab==='userManagement'&&isAdmin&&<div className="space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-xl">{rtl?'إدارة بيانات المستخدمين':'User Management'}</h2><p className="text-sm text-gray-500">{rtl?'عرض وتعديل بيانات الملفات الشخصية وحالة الحساب. لا يتم تغيير بريد Firebase Authentication من هذه الشاشة.':'View and edit profile data and account status. Firebase Authentication email is not changed here.'}</p></div><span className="rounded-full bg-slate-100 px-3 py-2 text-sm">{activeUsers.length} {rtl?'مستخدم':'users'}</span></div>
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+            <section className="xl:col-span-2 bg-white border rounded-xl p-4 space-y-3">
+              <input className="w-full border rounded-lg p-3" value={userAdminSearch} onChange={e=>setUserAdminSearch(e.target.value)} placeholder={rtl?'بحث بالاسم أو اسم المستخدم أو البريد أو الوظيفة':'Search name, username, email or job title'}/>
+              <div className="app-list-scroll space-y-2">
+                {activeUsers.filter(u=>includesText([u.fullName,u.username,u.email,u.jobTitle,u.department,u.status].join(' '),userAdminSearch)).sort((a,b)=>String(a.fullName||'').localeCompare(String(b.fullName||''))).map(user=><button type="button" key={user.uid} onClick={()=>openAdminUser(user.uid)} className={'w-full text-start border rounded-lg p-3 flex items-center gap-3 '+(adminUserSelectedUid===user.uid?'border-blue-500 bg-blue-50':'hover:bg-slate-50')}>
+                  {user.avatar?<img src={user.avatar} alt="" className="w-10 h-10 rounded-full object-cover border"/>:<span className="w-10 h-10 rounded-full bg-slate-100 grid place-items-center"><i className="fas fa-user text-slate-500"></i></span>}
+                  <span className="min-w-0 flex-1"><b className="block truncate">{user.fullName||user.username||user.email||user.uid}</b><small className="block text-gray-500 truncate">{user.username||''} · {user.jobTitle||''}</small><small className="block text-gray-400 truncate">{user.email||user.uid}</small></span>
+                  <span className={'text-xs rounded-full px-2 py-1 '+(['active','نشط','مفعل','enabled'].includes(String(user.status||'').toLowerCase())?'bg-green-50 text-green-700':'bg-gray-100 text-gray-600')}>{['active','نشط','مفعل','enabled'].includes(String(user.status||'').toLowerCase())?(rtl?'نشط':'Active'):(rtl?'غير نشط':'Inactive')}</span>
+                </button>)}
+                {activeUsers.length===0&&<p className="text-sm text-gray-500 p-3">{tr('noData')}</p>}
+              </div>
+            </section>
+            <section className="xl:col-span-3 bg-white border rounded-xl p-4">
+              {!adminUserSelectedUid?<div className="min-h-64 grid place-items-center text-center text-gray-500"><div><i className="fas fa-user-pen text-3xl mb-3"></i><p>{rtl?'اختر مستخدماً من القائمة لعرض بياناته وتعديلها.':'Select a user to view and edit their details.'}</p></div></div>:<form onSubmit={saveAdminUser} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="md:col-span-2 flex items-center justify-between"><h3 className="font-bold text-lg">{rtl?'بيانات المستخدم':'User details'}</h3><small className="text-gray-400">UID: {adminUserSelectedUid}</small></div>
+                <label className="text-sm font-bold">{tr('fullName')}<input required className="block w-full border rounded-lg p-3 mt-1 font-normal" value={adminUserForm.fullName} onChange={e=>setAdminUserForm({...adminUserForm,fullName:e.target.value})}/></label>
+                <label className="text-sm font-bold">{tr('username')}<input required className="block w-full border rounded-lg p-3 mt-1 font-normal" value={adminUserForm.username} onChange={e=>setAdminUserForm({...adminUserForm,username:e.target.value})}/></label>
+                <label className="text-sm font-bold">{tr('jobTitle')}<input required className="block w-full border rounded-lg p-3 mt-1 font-normal" value={adminUserForm.jobTitle} onChange={e=>setAdminUserForm({...adminUserForm,jobTitle:e.target.value})}/></label>
+                <label className="text-sm font-bold">{rtl?'القسم':'Department'}<input className="block w-full border rounded-lg p-3 mt-1 font-normal" value={adminUserForm.department} onChange={e=>setAdminUserForm({...adminUserForm,department:e.target.value})}/></label>
+                <label className="text-sm font-bold">{rtl?'رقم الهاتف':'Phone'}<input type="tel" className="block w-full border rounded-lg p-3 mt-1 font-normal" value={adminUserForm.phone} onChange={e=>setAdminUserForm({...adminUserForm,phone:e.target.value})}/></label>
+                <label className="text-sm font-bold">WhatsApp<input type="tel" className="block w-full border rounded-lg p-3 mt-1 font-normal" value={adminUserForm.whatsapp} onChange={e=>setAdminUserForm({...adminUserForm,whatsapp:e.target.value})}/></label>
+                <label className="text-sm font-bold md:col-span-2">{tr('email')}<input type="email" readOnly className="block w-full border rounded-lg p-3 mt-1 font-normal bg-slate-50 text-gray-500" value={adminUserForm.email}/><small className="font-normal text-gray-500">{rtl?'البريد مرتبط بـ Firebase Authentication ولا يتغير من تعديل ملف البيانات.':'Email belongs to Firebase Authentication and cannot be changed by editing the profile record.'}</small></label>
+                <label className="text-sm font-bold">{rtl?'حالة الحساب':'Account status'}<select className="block w-full border rounded-lg p-3 mt-1 font-normal" value={adminUserForm.status} onChange={e=>setAdminUserForm({...adminUserForm,status:e.target.value})}><option value="active">{rtl?'نشط':'Active'}</option><option value="disabled">{rtl?'غير نشط':'Inactive'}</option></select></label>
+                <div className="md:col-span-2 flex flex-wrap items-center gap-3"><button disabled={adminUserBusy} className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold disabled:opacity-50">{adminUserBusy?(rtl?'جارٍ الحفظ...':'Saving...'):(rtl?'حفظ بيانات المستخدم':'Save user details')}</button>{adminUserNotice&&<span className="text-sm text-green-700">{adminUserNotice}</span>}</div>
+              </form>}
+            </section>
+          </div>
+        </div>}
+
         {tab==='userPermissions'&&isAdmin&&<div className="space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-bold text-xl">{rtl?'إدارة صلاحيات المستخدمين':'User Permissions Management'}</h2><span className="text-xs text-gray-500">{rtl?'صلاحيات مستقلة لكل مستخدم':'Independent permissions for each user'}</span></div>
           <section className="bg-white border rounded-xl p-4 space-y-4">
@@ -1828,15 +2072,14 @@ function App(){
               </select>
             </label>
             {permissionUserUid&&<><div className="flex flex-wrap gap-2"><button type="button" onClick={()=>setPermissionDraft(Object.fromEntries(permissionModules.map(m=>[m.id,Object.fromEntries(permissionActions.map(a=>[a.id,true]))])))} className="px-3 py-2 rounded-lg bg-blue-50 text-blue-700 text-sm font-bold">{rtl?'منح جميع الصلاحيات':'Grant all'}</button><button type="button" onClick={()=>setPermissionDraft(Object.fromEntries(permissionModules.map(m=>[m.id,Object.fromEntries(permissionActions.map(a=>[a.id,false]))])))} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-bold">{rtl?'إلغاء جميع الصلاحيات':'Clear all'}</button></div>
-              <div className="overflow-x-auto border rounded-lg"><table className="w-full text-sm min-w-[760px]"><thead className="bg-slate-50"><tr><th className="p-3 text-start">{rtl?'الشاشة':'Module'}</th>{permissionActions.map(action=><th key={action.id} className="p-3 text-center">{action.label}</th>)}</tr></thead><tbody>{permissionModules.map(module=><tr key={module.id} className="border-t"><td className="p-3 font-bold">{module.label}</td>{permissionActions.map(action=><td key={action.id} className="p-3 text-center"><input type="checkbox" aria-label={module.label+' '+action.label} checked={Boolean(permissionDraft[module.id]?.[action.id])} onChange={e=>setPermissionDraft(old=>({...old,[module.id]:{...(old[module.id]||{}),[action.id]:e.target.checked}}))}/></td>)}</tr>)}</tbody></table></div>
+              <div className="overflow-x-auto border rounded-lg"><table className="w-full text-sm min-w-[760px]"><thead className="bg-slate-50"><tr><th className="p-3 text-start">{rtl?'الشاشة':'Module'}</th>{permissionActions.map(action=><th key={action.id} className="p-3 text-center">{action.label}</th>)}</tr></thead><tbody>{permissionModules.map(module=><tr key={module.id} className="border-t"><td className="p-3 font-bold">{module.label}</td>{permissionActions.map(action=><td key={action.id} className="p-3 text-center">{action.id==='viewOthers'&&module.id!=='cashCustody'?<span className="text-gray-300">—</span>:<input type="checkbox" aria-label={module.label+' '+action.label} checked={Boolean(permissionDraft[module.id]?.[action.id])} onChange={e=>setPermissionDraft(old=>({...old,[module.id]:{...(old[module.id]||{}),[action.id]:e.target.checked}}))}/>}</td>)}</tr>)}</tbody></table></div>
               <p className="text-xs text-gray-500">{rtl?'صلاحية العرض مطلوبة لظهور الشاشة. الصلاحيات الأخرى تحدد العمليات المتاحة داخلها.':'View permission is required to show a screen. Other permissions govern actions inside it.'}</p>
               <div className="flex flex-wrap items-center gap-3"><button type="button" disabled={permissionBusy} onClick={saveUserPermissions} className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold disabled:opacity-50">{permissionBusy?(rtl?'جارٍ الحفظ...':'Saving...'):(rtl?'حفظ الصلاحيات':'Save permissions')}</button>{permissionNotice&&<span className={'text-sm '+(permissionNotice.includes('نجاح')||permissionNotice.includes('successfully')?'text-green-700':'text-red-600')}>{permissionNotice}</span>}</div>
             </>}
           </section>
         </div>}
 
-        {tab==='auditLogs'&&isAdmin&&<div className="space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-xl">{rtl?'سجل نشاط المستخدمين':'User Activity Log'}</h2><p className="text-sm text-gray-500 mt-1">{rtl?'سجل زمني لتسجيلات الدخول والعمليات التي تم تسجيلها داخل البرنامج.':'Chronological record of sign-ins and actions recorded by the application.'}</p></div><span className="text-sm rounded-full bg-slate-100 px-3 py-2">{rtl?'عدد السجلات: ':'Records: '}{filteredAuditLogs.length}</span></div>
+        {tab==='auditLogs'&&isAdmin&&<details open className="app-collapsible"><summary><span>{rtl?'سجل نشاط المستخدمين':'User Activity Log'}</span><span className="text-xs rounded-full bg-slate-100 px-3 py-1">{filteredAuditLogs.length} {rtl?'سجل':'records'}</span></summary><div className="app-collapsible-body space-y-5">
           <section className="bg-white border rounded-xl p-4 space-y-3">
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
               <input className="border rounded-lg p-3" value={auditSearch} onChange={e=>setAuditSearch(e.target.value)} placeholder={rtl?'بحث بالاسم أو العملية أو الشاشة':'Search user, action or screen'}/>
@@ -1847,9 +2090,9 @@ function App(){
               <label className="text-sm">{rtl?'إلى تاريخ':'To date'}<input type="date" className="block w-full border rounded-lg p-2 mt-1" value={auditTo} onChange={e=>setAuditTo(e.target.value)}/></label>
             </div>
           </section>
-          <section className="bg-white border rounded-xl overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm min-w-[1100px]"><thead className="bg-slate-50"><tr><th className="p-3 text-start">{rtl?'التاريخ والوقت':'Date & time'}</th><th className="p-3 text-start">{rtl?'المستخدم':'User'}</th><th className="p-3 text-start">{rtl?'نوع العملية':'Action type'}</th><th className="p-3 text-start">{rtl?'تفاصيل العملية':'Action details'}</th><th className="p-3 text-start">{rtl?'السجل المتأثر':'Affected record'}</th><th className="p-3 text-start">{rtl?'التغييرات':'Before / after'}</th><th className="p-3 text-start">{rtl?'الشاشة':'Screen'}</th><th className="p-3 text-start">{rtl?'الجهاز / المتصفح':'Device / browser'}</th></tr></thead><tbody>{filteredAuditLogs.slice(0,1000).map((log,index)=><tr key={log.id||index} className="border-t align-top"><td className="p-3 whitespace-nowrap">{log.createdAt?new Date(Number(log.createdAt)).toLocaleString(rtl?'ar-EG':'en-US'):(log.time||'—')}</td><td className="p-3"><b>{log.user||'—'}</b><div className="text-xs text-gray-500">{log.email||log.uid||''}</div></td><td className="p-3 whitespace-nowrap">{({login:rtl?'دخول':'Login',logout:rtl?'خروج':'Logout',add:rtl?'إضافة':'Add',edit:rtl?'تعديل':'Edit',delete:rtl?'حذف':'Delete',approve:rtl?'اعتماد':'Approve',export:rtl?'تصدير':'Export',communication:rtl?'تواصل':'Communication',permissions:rtl?'صلاحيات':'Permissions',navigation:rtl?'فتح شاشة':'Screen view',other:rtl?'أخرى':'Other'})[log.actionType||'other']}</td><td className="p-3 min-w-64">{log.action||'—'}</td><td className="p-3"><span>{log.entityType||'—'}</span><div className="text-xs text-gray-500">{log.entityId||''}</div></td><td className="p-3 min-w-72">{log.changes&&Object.keys(log.changes).length?<details><summary className="cursor-pointer text-blue-700 font-bold">{rtl?'عرض التفاصيل':'View details'} ({Object.keys(log.changes).length})</summary><div className="mt-2 space-y-2">{Object.entries(log.changes).map(([field,change])=><div key={field} className="border rounded p-2"><b>{field}</b><div className="text-xs text-red-700 break-words">{rtl?'قبل: ':'Before: '}{JSON.stringify(change.before)}</div><div className="text-xs text-green-700 break-words">{rtl?'بعد: ':'After: '}{JSON.stringify(change.after)}</div></div>)}</div></details>:<span className="text-gray-400">—</span>}</td><td className="p-3">{log.screen||'—'}</td><td className="p-3 text-xs text-gray-500 max-w-xs break-words">{log.device||'—'}</td></tr>)}</tbody></table></div>{filteredAuditLogs.length===0&&<p className="p-6 text-center text-gray-500">{rtl?'لا توجد سجلات مطابقة للتصفية.':'No matching activity records.'}</p>}{filteredAuditLogs.length>1000&&<p className="p-3 text-xs text-gray-500">{rtl?'يتم عرض أول 1000 سجل من النتائج.':'Showing the first 1,000 matching records.'}</p>}</section>
+          <section className="bg-white border rounded-xl overflow-hidden"><div className="app-table-scroll"><table className="w-full text-sm min-w-[1100px]"><thead className="bg-slate-50"><tr><th className="p-3 text-start">{rtl?'التاريخ والوقت':'Date & time'}</th><th className="p-3 text-start">{rtl?'المستخدم':'User'}</th><th className="p-3 text-start">{rtl?'نوع العملية':'Action type'}</th><th className="p-3 text-start">{rtl?'تفاصيل العملية':'Action details'}</th><th className="p-3 text-start">{rtl?'السجل المتأثر':'Affected record'}</th><th className="p-3 text-start">{rtl?'التغييرات':'Before / after'}</th><th className="p-3 text-start">{rtl?'الشاشة':'Screen'}</th><th className="p-3 text-start">{rtl?'الجهاز / المتصفح':'Device / browser'}</th></tr></thead><tbody>{filteredAuditLogs.slice(0,1000).map((log,index)=><tr key={log.id||index} className="border-t align-top"><td className="p-3 whitespace-nowrap">{log.createdAt?new Date(Number(log.createdAt)).toLocaleString(rtl?'ar-EG':'en-US'):(log.time||'—')}</td><td className="p-3"><b>{log.user||'—'}</b><div className="text-xs text-gray-500">{log.email||log.uid||''}</div></td><td className="p-3 whitespace-nowrap">{({login:rtl?'دخول':'Login',logout:rtl?'خروج':'Logout',add:rtl?'إضافة':'Add',edit:rtl?'تعديل':'Edit',delete:rtl?'حذف':'Delete',approve:rtl?'اعتماد':'Approve',export:rtl?'تصدير':'Export',communication:rtl?'تواصل':'Communication',permissions:rtl?'صلاحيات':'Permissions',navigation:rtl?'فتح شاشة':'Screen view',other:rtl?'أخرى':'Other'})[log.actionType||'other']}</td><td className="p-3 min-w-64">{log.action||'—'}</td><td className="p-3"><span>{log.entityType||'—'}</span><div className="text-xs text-gray-500">{log.entityId||''}</div></td><td className="p-3 min-w-72">{log.changes&&Object.keys(log.changes).length?<details><summary className="cursor-pointer text-blue-700 font-bold">{rtl?'عرض التفاصيل':'View details'} ({Object.keys(log.changes).length})</summary><div className="mt-2 space-y-2">{Object.entries(log.changes).map(([field,change])=><div key={field} className="border rounded p-2"><b>{field}</b><div className="text-xs text-red-700 break-words">{rtl?'قبل: ':'Before: '}{JSON.stringify(change.before)}</div><div className="text-xs text-green-700 break-words">{rtl?'بعد: ':'After: '}{JSON.stringify(change.after)}</div></div>)}</div></details>:<span className="text-gray-400">—</span>}</td><td className="p-3">{log.screen||'—'}</td><td className="p-3 text-xs text-gray-500 max-w-xs break-words">{log.device||'—'}</td></tr>)}</tbody></table></div>{filteredAuditLogs.length===0&&<p className="p-6 text-center text-gray-500">{rtl?'لا توجد سجلات مطابقة للتصفية.':'No matching activity records.'}</p>}{filteredAuditLogs.length>1000&&<p className="p-3 text-xs text-gray-500">{rtl?'يتم عرض أول 1000 سجل من النتائج.':'Showing the first 1,000 matching records.'}</p>}</section>
           <p className="text-xs text-amber-700">{rtl?'ملاحظة: يسجل هذا الإصدار العمليات التي تمر عبر وظائف التسجيل داخل التطبيق. لا يسجل عنوان IP، ولا يمكن اعتباره سجل تدقيق غير قابل للتلاعب قبل تأمين مسار logs من خلال Firebase Security Rules أو خدمة خادمية.':'Note: this version records actions routed through the app audit logger. It does not capture IP addresses and is not tamper-proof until the logs path is protected by Firebase Security Rules or a server-side service.'}</p>
-        </div>}
+        </div></details>}
 
         {tab==='companySettings'&&isAdmin&&<div className="max-w-3xl space-y-5"><h2 className="font-bold text-xl">{tr('companySettings')}</h2><details open className="app-collapsible"><summary><span>{tr('companySettings')}</span></summary><div className="app-collapsible-body"><form onSubmit={saveCompany} className="grid grid-cols-1 md:grid-cols-2 gap-4"><label className="block text-sm font-bold md:col-span-2">{tr('companyName')}<input required className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.name} onChange={e=>setCompanyForm({...companyForm,name:e.target.value})}/></label><label className="block text-sm font-bold">{tr('companyPhone')}<input className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.phone} onChange={e=>setCompanyForm({...companyForm,phone:e.target.value})}/></label><label className="block text-sm font-bold">{tr('companyEmail')}<input type="email" className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.email} onChange={e=>setCompanyForm({...companyForm,email:e.target.value})}/></label><label className="block text-sm font-bold">{tr('taxNumber')}<input className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.taxNumber} onChange={e=>setCompanyForm({...companyForm,taxNumber:e.target.value})}/></label><label className="block text-sm font-bold">{tr('commercialRegister')}<input className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.commercialRegister} onChange={e=>setCompanyForm({...companyForm,commercialRegister:e.target.value})}/></label><label className="block text-sm font-bold">{tr('website')}<input className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.website} onChange={e=>setCompanyForm({...companyForm,website:e.target.value})}/></label><label className="block text-sm font-bold md:col-span-2">{tr('companyAddress')}<textarea rows="2" className="mt-1 w-full border rounded-lg p-3 font-normal" value={companyForm.address} onChange={e=>setCompanyForm({...companyForm,address:e.target.value})}></textarea></label><div className="md:col-span-2"><p className="text-sm font-bold mb-2">{tr('companyLogo')}</p>{companyForm.logo&&<img src={companyForm.logo} alt="Company logo" className="h-24 max-w-56 object-contain border rounded-lg p-2 mb-3"/>}<label className="inline-block bg-gray-100 border rounded-lg px-4 py-2 cursor-pointer">{tr('uploadLogo')}<input type="file" accept="image/*" className="hidden" onChange={uploadCompanyLogo}/></label><button type="button" onClick={()=>setCompanyForm({...companyForm,logo:''})} className="text-red-600 text-sm ms-3">{rtl?'إزالة الشعار':'Remove logo'}</button></div><div className="md:col-span-2"><button className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold">{tr('save')}</button></div></form></div></details></div>}
 
