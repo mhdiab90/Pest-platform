@@ -1856,7 +1856,7 @@ function App(){
     return '';
   }
   function renderMessageBody(body){
-    return latinDigits(body).split(/(@[^\\s@#&]+|#[^\\s@#&]+|&\\[[^\\]]+\\])/g).map((part,index)=>{const tokenClass=contextTokenClass(part);return tokenClass?<span key={index} className={tokenClass}>{part}</span>:part;});
+    return latinDigits(body).split(/(@[^\s@#&]+|#[^\s@#&]+|&\[[^\]]+\])/g).map((part,index)=>{const tokenClass=contextTokenClass(part);return tokenClass?<span key={index} className={tokenClass}>{part}</span>:part;});
   }
 
   function startMessageReply(original){
@@ -1867,13 +1867,7 @@ function App(){
     setReplyingToMessage(null);
     setReplyDraft('');
   }
-  function insertReplyMention(user){
-    const body=String(replyDraft||'');
-    const match=body.match(/(^|\s)@([^\s@]*)$/);
-    if(!match)return;
-    const prefix=body.slice(0,body.length-match[0].length)+(match[1]||'');
-    setReplyDraft(prefix+'@'+(user.username||'')+' ');
-  }
+  function insertReplyMention(item){insertContextToken(replyDraft,setReplyDraft,item);}
   function handleMessageTouchStart(event,original){
     const touch=event.touches&&event.touches[0];
     if(touch)replyTouchStartRef.current={x:touch.clientX,y:touch.clientY,original};
@@ -1942,7 +1936,7 @@ function App(){
     const messageId=db.ref('messages').push().key;
     const date=new Date().toLocaleString(rtl?'ar-EG-u-nu-latn':'en-US');
     const subject=rtl?'محادثة سريعة':'Quick chat';
-    const base={messageId,senderUid:currentUser.uid,senderName:currentUser.fullName||currentUser.username||currentUser.email,senderAvatar:currentUser.avatar||'',subject,body,date,createdAt:firebase.database.ServerValue.TIMESTAMP,visibility:'private',recipientUids,recipientNames,mentions:recipientUids,linkedProjects:contextRefs.linkedProjects,linkedTasks:contextRefs.linkedTasks,messageFormat:'chat'};
+    const base={messageId,senderUid:currentUser.uid,senderName:currentUser.fullName||currentUser.username||currentUser.email,senderAvatar:currentUser.avatar||'',subject,body,date,createdAt:firebase.database.ServerValue.TIMESTAMP,visibility:'private',recipientUids,recipientNames,mentions:recipientUids,linkedProjects:contextRefs.linkedProjects,linkedTasks:contextRefs.linkedTasks,messageFormat:'chat',threadId:messageId};
     const updates={};
     recipients.forEach(user=>{
       const inboxId=db.ref('messages/'+user.uid).push().key;
@@ -2567,7 +2561,7 @@ function App(){
 <div className="app-message-reply-quote rounded-lg border-s-4 border-indigo-300 bg-indigo-50 p-3"><small className="font-bold text-indigo-700">{replyingToMessage.senderName||(rtl?'الرسالة الأصلية':'Original message')}</small><p className="mt-1 text-sm whitespace-pre-wrap break-words">{renderMessageBody(replyingToMessage.body)}</p></div>
 <div className="relative"><textarea required rows="3" className="w-full border rounded-lg p-3" placeholder={rtl?'اكتب ردك واستخدم @ لمنشن مستخدم...':'Write your reply and use @ to mention a user...'} value={replyDraft} onChange={e=>setReplyDraft(e.target.value)}></textarea>
 {replyMentionSuggestions.length>0&&<div className="absolute z-30 top-full inset-x-0 max-h-52 overflow-y-auto bg-white border rounded-lg shadow-xl">{replyMentionSuggestions.map(item=><button type="button" key={item.type+':'+item.id} onClick={()=>insertReplyMention(item)} className="w-full flex items-center justify-between gap-3 p-3 text-start hover:bg-blue-50"><span><b>{item.label}</b><small className="block text-gray-500">{item.detail}</small></span><i className={'fas '+(item.type==='user'?'fa-at':item.type==='project'?'fa-hashtag':'fa-list-check')+' text-blue-600'}></i></button>)}</div>}</div>
-<p className="text-xs text-gray-500">{rtl?'يمكنك استخدام @ لإضافة مستخدم إلى مستلمي الرد تلقائيًا.':'Use @ to mention a user and automatically include them as a reply recipient.'}</p>
+<p className="text-xs text-gray-500">{rtl?'@ للمستخدم، # للمشروع، و& للمهمة. المنشن يضيف المستخدم إلى مستلمي الرد.':'Use @ for people, # for projects, and & for your tasks; mentioned users are added as recipients.'}</p>
 <div className="flex flex-wrap gap-2"><button type="submit" className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-bold"><i className="fas fa-paper-plane me-1"></i>{rtl?'إرسال الرد':'Send reply'}</button><button type="button" onClick={cancelMessageReply} className="bg-gray-100 text-gray-700 rounded-lg px-4 py-2 text-sm">{rtl?'إغلاق':'Close'}</button></div></form>}
 </article>;})}</div>
           </div></section>
