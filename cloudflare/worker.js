@@ -819,6 +819,131 @@ function validateProposedAction(name, args) {
   throw new Error("Unsupported action.");
 }
 
+function whatsappNotificationsConfigured(env) {
+  return Boolean(
+    String(env.WHATSAPP_ACCESS_TOKEN || "").trim() &&
+    /^[0-9]{5,40}$/.test(String(env.WHATSAPP_PHONE_NUMBER_ID || "").trim()) &&
+    /^v\\d+\\.\\d+$/.test(String(env.WHATSAPP_GRAPH_API_VERSION || "").trim()) &&
+    /^[a-z0-9_]{1,512}$/i.test(String(env.WHATSAPP_NOTIFICATION_TEMPLATE_NAME || "").trim()) &&
+    /^[a-z]{2,3}(?:_[A-Z]{2})?$/.test(String(env.WHATSAPP_NOTIFICATION_TEMPLATE_LANGUAGE || "").trim())
+  );
+}
+
+function normalizeWhatsAppNumber(value) {
+  let digits = String(value || "").replace(/\\D/g, "");
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.length < 8 || digits.length > 15 || digits.startsWith("0")) return "";
+  return digits;
+}
+
+async function sendWhatsAppNotificationTemplate(env, recipient, messageText) {
+  const version = String(env.WHATSAPP_GRAPH_API_VERSION || "").trim();
+  const phoneNumberId = String(env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
+  const templateName = String(env.WHATSAPP_NOTIFICATION_TEMPLATE_NAME || "").trim();
+  const language = String(env.WHATSAPP_NOTIFICATION_TEMPLATE_LANGUAGE || "").trim();
+  const url = "https://graph.facebook.com/" + version + "/" + phoneNumberId + "/messages";
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer " + String(env.WHATSAPP_ACCESS_TOKEN || "").trim(),
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: recipient,
+      type: "template",
+      template: {
+        name: templateName,
+        language: { code: language },
+        components: [{
+          type: "body",
+          parameters: [{ type: "text", text: cleanText(messageText, 900) }]
+        }]
+      }
+    })
+  });
+  let payload = {};
+  try { payload = await response.json(); } catch (_) {}
+  if (!response.ok) {
+    const providerMessage = payload && payload.error && payload.error.message
+      ? String(payload.error.message).slice(0, 180) : "WhatsApp provider rejected the message.";
+    throw new Error(providerMessage);
+  }
+  const messageId = payload && payload.messages && payload.messages[0] && payload.messages[0].id
+    ? String(payload.messages[0].id) : "";
+  return { accepted: true, providerMessageId: messageId };
+}
+
+async function handleWhatsAppMessageNotification(body, claims, profile, token, env) {
+  requirePermission(profile, "messages", "add");
+  if (!whatsappNotificationsConfigured(env)) {
+    throw new Error("Company WhatsApp notifications are not configured. Add the required WhatsApp Cloud API Worker settings.");
+  }
+  if (!env.AI_AGENT_SCHEDULER) throw new Error("Notification deduplication storage is not configured.");
+  const messageId = safeSegment(body.messageId, "message id");
+  const message = await databaseRequest("messages/" + claims.sub + "/" + messageId, token, "GET");
+  if (!message || message.senderUid !== claims.sub || message.copyType !== "sent") {
+    throw new Error("Only a message already sent by your account can trigger WhatsApp notifications.");
+  }
+  const recipientUids = Array.isArray(message.recipientUids)
+    ? [...new Set(message.recipientUids.map(uid => safeSegment(uid, "recipient user id")).filter(uid => uid !== claims.sub))]
+    : [];
+  if (!recipientUids.length) return { sent: 0, skipped: [], failed: [], duplicate: false };
+  if (recipientUids.length > 100) throw new Error("This message has too many recipients for one WhatsApp notification batch.");
+
+  const claim = await schedulerBindingRequest(env, "/whatsapp-notification-claim", "POST", {
+    uid: claims.sub, messageId
+  });
+  if (!claim.claimed) {
+    return { sent: 0, skipped: [], failed: [], duplicate: true, previousStatus: claim.status || "already processed" };
+  }
+
+  const notificationText = cleanText([
+    "From: " + cleanText(message.senderName || profile.fullName || profile.username || "Pest Platform", 120),
+    cleanText(message.subject || "", 180),
+    cleanText(message.body || "", 900)
+  ].filter(Boolean).join("\\n"), 900);
+  const sent = [];
+  const skipped = [];
+  const failed = [];
+  for (const recipientUid of recipientUids.slice(0, 50)) {
+    try {
+      const recipient = await databaseRequest("userDirectory/" + recipientUid, token, "GET");
+      if (!recipient || recipient.status !== "active") {
+        skipped.push({ uid: recipientUid, reason: "inactive_or_missing" });
+        continue;
+      }
+      if (recipient.whatsappOptIn !== true) {
+        skipped.push({ uid: recipientUid, reason: "no_whatsapp_opt_in" });
+        continue;
+      }
+      const phone = normalizeWhatsAppNumber(recipient.whatsapp || recipient.mobile || recipient.phone || "");
+      if (!phone) {
+        skipped.push({ uid: recipientUid, reason: "missing_or_invalid_number" });
+        continue;
+      }
+      const result = await sendWhatsAppNotificationTemplate(env, phone, notificationText);
+      sent.push({ uid: recipientUid, providerMessageId: result.providerMessageId });
+    } catch (error) {
+      failed.push({ uid: recipientUid, reason: String(error && error.message || error).slice(0, 180) });
+    }
+  }
+  if (recipientUids.length > 50) {
+    skipped.push({ uid: "", reason: "batch_limit_50", count: recipientUids.length - 50 });
+  }
+  const status = failed.length ? (sent.length ? "partial" : "failed") : "complete";
+  await schedulerBindingRequest(env, "/whatsapp-notification-result", "POST", {
+    uid: claims.sub, messageId, status, sent: sent.length, skipped: skipped.length, failed: failed.length
+  });
+  await writeAuditLog(
+    claims, profile, token,
+    "WhatsApp message notifications: " + sent.length + " accepted, " + skipped.length + " skipped, " + failed.length + " failed",
+    "whatsapp-notification", messageId
+  ).catch(error => console.warn("WhatsApp notification audit log failed:", String(error && error.message || error).slice(0, 160)));
+  return { sent: sent.length, skipped, failed, duplicate: false };
+}
+
 async function writeAuditLog(claims, profile, token, action, entityType, entityId) {
   const id = randomId("ai_log");
   const record = {
@@ -1386,6 +1511,29 @@ export class AIAgentScheduler {
     const url=new URL(request.url);
     const method=request.method;
     try {
+      if (url.pathname==="/whatsapp-notification-claim" && method==="POST") {
+        const body=await request.json();
+        const uid=safeSegment(body.uid,"user id"),messageId=safeSegment(body.messageId,"message id");
+        const key="wa-notify:"+uid+":"+messageId;
+        const existing=await this.ctx.storage.get(key);
+        if(existing)return jsonResponse({claimed:false,status:existing.status||"already processed"},200,"");
+        await this.ctx.storage.put(key,{uid,messageId,status:"sending",createdAt:Date.now()});
+        const history=await this.ctx.storage.list({prefix:"wa-notify:"+uid+":"});
+        if(history.size>500){
+          const oldest=[...history.entries()].sort((a,b)=>Number(a[1].createdAt||0)-Number(b[1].createdAt||0));
+          for(const [oldKey] of oldest.slice(0,history.size-500))await this.ctx.storage.delete(oldKey);
+        }
+        return jsonResponse({claimed:true},200,"");
+      }
+      if (url.pathname==="/whatsapp-notification-result" && method==="POST") {
+        const body=await request.json();
+        const uid=safeSegment(body.uid,"user id"),messageId=safeSegment(body.messageId,"message id");
+        const key="wa-notify:"+uid+":"+messageId;
+        const existing=await this.ctx.storage.get(key);
+        if(!existing)throw new Error("WhatsApp notification claim was not found.");
+        await this.ctx.storage.put(key,{...existing,status:String(body.status||"complete"),sent:Number(body.sent||0),skipped:Number(body.skipped||0),failed:Number(body.failed||0),completedAt:Date.now()});
+        return jsonResponse({saved:true},200,"");
+      }
       if (url.pathname==="/dashboards" && method==="GET") {
         const uid=safeSegment(url.searchParams.get("uid"),"user id");
         const values=await this.ctx.storage.list({prefix:"dashboard:"+uid+":"});
@@ -1502,13 +1650,14 @@ export default {
         service: "pest-platform-ai",
         providers: availableProviders(env),
         models: { cloudflare: MODEL, openrouter: OPENROUTER_MODEL },
-        schedulingAvailable: Boolean(env.AI_AGENT_SCHEDULER && env.AI_SCHEDULER_ENCRYPTION_KEY)
+        schedulingAvailable: Boolean(env.AI_AGENT_SCHEDULER && env.AI_SCHEDULER_ENCRYPTION_KEY),
+        whatsappNotificationsAvailable: Boolean(whatsappNotificationsConfigured(env) && env.AI_AGENT_SCHEDULER)
       }, 200, origin);
     }
     if (origin !== ALLOWED_ORIGIN) return jsonResponse({ error: "Origin is not allowed." }, 403, origin);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
     if (!["GET","POST","DELETE"].includes(request.method)) return jsonResponse({ error: "Method not allowed." }, 405, origin);
-    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
+    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
 
     try {
       const authorization = request.headers.get("Authorization") || "";
@@ -1523,6 +1672,10 @@ export default {
         body = await request.json();
       }
       const profile = await loadProfile(claims, token);
+      if (url.pathname === "/whatsapp/notify-message") {
+        const output = await handleWhatsAppMessageNotification(body, claims, profile, token, env);
+        return jsonResponse(output, 200, origin);
+      }
       const config = await loadAgentConfig(token);
       if (!config.enabled) return jsonResponse({ error: "The administrator has disabled the AI Agent." }, 403, origin);
       requirePermission(profile,"aiAgent","view");
