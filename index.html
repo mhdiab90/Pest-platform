@@ -2625,6 +2625,23 @@ function App(){
     try{await window.pestAIAgentDeleteSchedule(id);await refreshAiWorkspace();}
     catch(err){setAiScheduleNotice(String(err?.message||err).slice(0,250));}
   }
+  async function refreshAiDashboard(dashboard){
+    if(!dashboard?.id||assistantBusy||assistantPendingActions.length)return;
+    const layout={
+      dashboardId:dashboard.id,
+      title:dashboard.title,
+      description:dashboard.description||'',
+      widgets:(dashboard.widgets||[]).map(widget=>({
+        type:widget.type,source:widget.source,title:widget.title,
+        ...(widget.unit?{unit:widget.unit}:{}),
+        ...(widget.type==='table'&&Array.isArray(widget.columns)?{columns:widget.columns}:{})
+      }))
+    };
+    const instruction=rtl
+      ? 'حدّث لوحة المتابعة المحفوظة التالية بأحدث البيانات الحالية. ابحث أولًا في كل مصدر بيانات باستخدام أدواتك المسموح بها، ولا تستخدم الأرقام القديمة الموجودة في اللوحة. حافظ على اسم اللوحة وأنواع العناصر وترتيبها وعناوينها ومصادرها، وأعد حساب المؤشرات والرسوم والجداول من نتائج البحث الجديدة فقط. أرسل اقتراح تحديث باستخدام dashboardId نفسه حتى يتم استبدال اللوحة الحالية بعد مراجعتي، ولا تنشئ لوحة ثانية. إذا تعذر الوصول إلى مصدر أو كانت البيانات غير كافية، وضح ذلك ولا تخمن أي رقم. هيكل اللوحة: '
+      : 'Refresh the saved dashboard below using current data. First search every required data source using your permitted tools; do not reuse old values. Preserve the dashboard title, widget types, order, titles and sources, and recompute metrics, charts and tables only from newly retrieved results. Propose an update using the exact same dashboardId so the existing dashboard is replaced only after my review; do not create a duplicate. If a source cannot be read or data is insufficient, explain this and do not guess. Dashboard layout: ';
+    await sendAssistantQuestion(instruction+JSON.stringify(layout));
+  }
   async function deleteAiDashboard(id){
     if(!window.confirm(rtl?'هل تريد حذف لوحة المتابعة هذه؟':'Delete this dashboard?'))return;
     try{await window.pestAIAgentDeleteDashboard(id);await refreshAiWorkspace();}
@@ -3240,7 +3257,7 @@ function App(){
             {aiDashboards.length>0&&<section className="mx-3 my-3 space-y-3">
               <div className="flex items-center justify-between gap-2"><b className="text-sm text-slate-800">{rtl?'لوحات المتابعة المحفوظة':'Saved AI dashboards'}</b><button type="button" onClick={refreshAiWorkspace} className="text-xs text-blue-700 underline">{rtl?'تحديث':'Refresh'}</button></div>
               {aiDashboards.map(dashboard=><article key={dashboard.id} className="rounded-xl border border-indigo-200 bg-white overflow-hidden shadow-sm">
-                <header className="flex items-start justify-between gap-2 p-3 bg-indigo-50/70 border-b border-indigo-100"><div><b className="text-sm text-indigo-950">{dashboard.title}</b>{dashboard.description&&<p className="text-xs text-gray-600 mt-1">{dashboard.description}</p>}</div><button type="button" onClick={()=>deleteAiDashboard(dashboard.id)} title={rtl?'حذف اللوحة':'Delete dashboard'} className="text-rose-600 hover:bg-rose-50 rounded-lg p-2"><i className="fas fa-trash-can"></i></button></header>
+                <header className="flex items-start justify-between gap-2 p-3 bg-indigo-50/70 border-b border-indigo-100"><div className="min-w-0"><b className="text-sm text-indigo-950">{dashboard.title}</b>{dashboard.description&&<p className="text-xs text-gray-600 mt-1">{dashboard.description}</p>}<p className="text-[10px] text-gray-500 mt-1">{rtl?'آخر تحديث: ':'Last updated: '}{aiScheduleDateText(dashboard.updatedAt||dashboard.createdAt)}</p></div><div className="flex items-center gap-1 shrink-0"><button type="button" disabled={!assistantReady||assistantBusy||assistantPendingActions.length>0} onClick={()=>refreshAiDashboard(dashboard)} title={rtl?'تحديث البيانات':'Refresh data'} className="text-blue-700 hover:bg-blue-50 rounded-lg p-2 disabled:opacity-40"><i className="fas fa-rotate"></i></button><button type="button" onClick={()=>deleteAiDashboard(dashboard.id)} title={rtl?'حذف اللوحة':'Delete dashboard'} className="text-rose-600 hover:bg-rose-50 rounded-lg p-2"><i className="fas fa-trash-can"></i></button></div></header>
                 <div className="p-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {(dashboard.widgets||[]).map((widget,index)=><section key={index} className="rounded-lg border border-slate-200 p-3 min-w-0">
                     <b className="block text-xs text-slate-700 mb-2">{widget.title}</b>
@@ -3249,7 +3266,7 @@ function App(){
                     {widget.type==='table'&&<div className="overflow-x-auto"><table className="w-full text-[11px] text-start"><thead><tr>{widget.columns.map((column,i)=><th key={i} className="p-2 border-b bg-slate-50 text-start">{column}</th>)}</tr></thead><tbody>{widget.rows.map((row,i)=><tr key={i}>{row.map((cell,j)=><td key={j} className="p-2 border-b align-top">{typeof cell==='number'?money(cell):cell}</td>)}</tr>)}</tbody></table></div>}
                   </section>)}
                 </div>
-                <p className="px-3 pb-3 text-[10px] text-gray-400">{rtl?'تم الحفظ في مخزن AI Agent الخاص بحسابك. الأرقام تعكس وقت إنشاء اللوحة ولا تتحدث تلقائيًا.':'Saved in your AI Agent workspace. Values reflect the dashboard creation time and do not auto-refresh.'}</p>
+                <p className="px-3 pb-3 text-[10px] text-gray-400">{rtl?'اللوحة تعرض Snapshot من آخر تحديث. اضغط رمز التحديث لإعادة قراءة البيانات، ثم راجع النتائج قبل استبدال النسخة الحالية.':'This is a snapshot from the last refresh. Use the refresh icon to retrieve current data, then review the proposal before replacing this version.'}</p>
               </article>)}
             </section>}
             <details className="mx-3 my-3 rounded-xl border border-sky-200 bg-sky-50/50">
