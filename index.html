@@ -339,6 +339,7 @@ function App(){
   const [whatsappTargetSearch,setWhatsappTargetSearch] = useState('');
   const [whatsappContactFilter,setWhatsappContactFilter] = useState('all');
   const [whatsappDrafts,setWhatsappDrafts] = useState([]);
+  const [whatsappApiReady,setWhatsappApiReady] = useState(false);
   const [tab,setTab] = useState('dashboard');
   const [navPreferences,setNavPreferences] = useState({uid:'',mode:'side',recent:[]});
   const [sidebarWidth,setSidebarWidth] = useState(()=>{const saved=Number(localStorage.getItem('pestSidebarWidth'));return Number.isFinite(saved)&&saved>=210&&saved<=440?saved:260;});
@@ -403,7 +404,7 @@ function App(){
   const [showUserMenu,setShowUserMenu] = useState(false);
   const [showThemeMenu,setShowThemeMenu] = useState(false);
   const [profileSection,setProfileSection] = useState('personal');
-  const [profileForm,setProfileForm] = useState({fullName:'',username:'',jobTitle:'',email:'',whatsapp:''});
+  const [profileForm,setProfileForm] = useState({fullName:'',username:'',jobTitle:'',email:'',whatsapp:'',whatsappOptIn:false});
   const [profileEmailPassword,setProfileEmailPassword] = useState('');
   const [companyForm,setCompanyForm] = useState({name:'',logo:'',phone:'',email:'',address:'',taxNumber:'',commercialRegister:'',website:''});
   const [excelSummary,setExcelSummary] = useState('');
@@ -547,6 +548,7 @@ function App(){
       const providers=window.pestAIProviders||{};
       setAssistantReady(status==='ready' && typeof window.pestAIAgentAsk==='function' && providers[provider]===true);
       setAssistantUnavailable(status==='unavailable'||(status==='ready'&&providers[provider]!==true));
+      setWhatsappApiReady(window.pestWhatsAppNotificationsAvailable===true);
     };
     syncAiState();
     window.addEventListener('pest-ai-ready',syncAiState);
@@ -576,7 +578,7 @@ function App(){
   },[]);
 
   useEffect(()=>{
-    if(currentUser) setProfileForm({fullName:currentUser.fullName || '',username:currentUser.username || '',jobTitle:currentUser.jobTitle || '',email:currentUser.email || '',whatsapp:currentUser.whatsapp || ''});
+    if(currentUser) setProfileForm({fullName:currentUser.fullName || '',username:currentUser.username || '',jobTitle:currentUser.jobTitle || '',email:currentUser.email || '',whatsapp:currentUser.whatsapp || '',whatsappOptIn:currentUser.whatsappOptIn===true});
   },[currentUser]);
 
   // Authentication is checked first. No database read is attempted before a user signs in.
@@ -682,7 +684,7 @@ function App(){
           if(uid===currentUser.uid && !u.uid) updates['users/'+uid+'/uid']=uid;
           // Never expose legacy username-keyed accounts in the recipient directory.
           if(linkedToAuth && Object.prototype.hasOwnProperty.call(u,'password')) updates['users/'+uid+'/password']=null;
-          if(linkedToAuth && ['active','نشط','مفعل','enabled'].includes(String(u.status||'').toLowerCase())) updates['userDirectory/'+uid]={uid,username:u.username||'',fullName:u.fullName||'',jobTitle:u.jobTitle||'',department:u.department||'',phone:u.phone||'',email:u.email||'',whatsapp:u.whatsapp||'',avatar:u.avatar||'',status:'active'};
+          if(linkedToAuth && ['active','نشط','مفعل','enabled'].includes(String(u.status||'').toLowerCase())) updates['userDirectory/'+uid]={uid,username:u.username||'',fullName:u.fullName||'',jobTitle:u.jobTitle||'',department:u.department||'',phone:u.phone||'',email:u.email||'',whatsapp:u.whatsapp||'',whatsappOptIn:u.whatsappOptIn===true,whatsappOptInAt:u.whatsappOptInAt||null,whatsappOptOutAt:u.whatsappOptOutAt||null,avatar:u.avatar||'',status:'active'};
         });
         if(Object.keys(updates).length) db.ref().update(updates).catch(err=>console.warn('Directory sync / password cleanup:',err));
       });
@@ -1285,7 +1287,7 @@ function App(){
       const updates={};
       Object.entries(after).forEach(([key,value])=>{updates['users/'+adminUserSelectedUid+'/'+key]=value;});
       updates['users/'+adminUserSelectedUid+'/updatedAt']=firebase.database.ServerValue.TIMESTAMP;
-      updates['userDirectory/'+adminUserSelectedUid]={uid:adminUserSelectedUid,fullName,username,jobTitle,department,phone,whatsapp,avatar:oldUser.avatar||'',email:oldUser.email||adminUserForm.email||'',status};
+      updates['userDirectory/'+adminUserSelectedUid]={uid:adminUserSelectedUid,fullName,username,jobTitle,department,phone,whatsapp,whatsappOptIn:oldUser.whatsappOptIn===true,whatsappOptInAt:oldUser.whatsappOptInAt||null,whatsappOptOutAt:oldUser.whatsappOptOutAt||null,avatar:oldUser.avatar||'',email:oldUser.email||adminUserForm.email||'',status};
       await db.ref().update(updates);
       setActiveUsers(old=>old.map(u=>u.uid===adminUserSelectedUid?{...u,...after}:u));
       setUserDirectory(old=>{const exists=old.some(u=>u.uid===adminUserSelectedUid);const item={uid:adminUserSelectedUid,...after,avatar:oldUser.avatar||'',email:oldUser.email||adminUserForm.email||''};return exists?old.map(u=>u.uid===adminUserSelectedUid?{...u,...item}:u):[...old,item];});
@@ -1749,8 +1751,9 @@ function App(){
 
   async function saveProfile(e){
     e.preventDefault();
-    const fullName=profileForm.fullName.trim(),username=profileForm.username.trim(),jobTitle=profileForm.jobTitle.trim(),email=profileForm.email.trim().toLowerCase(),whatsapp=String(profileForm.whatsapp||'').trim();
+    const fullName=profileForm.fullName.trim(),username=profileForm.username.trim(),jobTitle=profileForm.jobTitle.trim(),email=profileForm.email.trim().toLowerCase(),whatsapp=String(profileForm.whatsapp||'').trim(),whatsappOptIn=profileForm.whatsappOptIn===true;
     if(!fullName || !username || !jobTitle || !email) return alert(tr('noData'));
+    if(whatsappOptIn&&!whatsapp) return alert(rtl?'أدخل رقم WhatsApp قبل الموافقة على استقبال الإشعارات.':'Enter your WhatsApp number before opting in to notifications.');
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return alert(tr('invalidEmail'));
     if(/[.#$\[\]/]/.test(username)) return alert('Username contains invalid Firebase characters.');
     try{
@@ -1765,8 +1768,11 @@ function App(){
         await auth.currentUser.verifyBeforeUpdateEmail(email);
       }
       const savedEmail=currentUser.email;
-      const profileBefore={fullName:currentUser.fullName,username:currentUser.username,jobTitle:currentUser.jobTitle,email:currentUser.email,whatsapp:currentUser.whatsapp};
-      const profileAfter={fullName,username,jobTitle,email:savedEmail,whatsapp};
+      const wasOptedIn=currentUser.whatsappOptIn===true;
+      const whatsappOptInAt=whatsappOptIn?(wasOptedIn?(currentUser.whatsappOptInAt||firebase.database.ServerValue.TIMESTAMP):firebase.database.ServerValue.TIMESTAMP):null;
+      const whatsappOptOutAt=!whatsappOptIn&&wasOptedIn?firebase.database.ServerValue.TIMESTAMP:(currentUser.whatsappOptOutAt||null);
+      const profileBefore={fullName:currentUser.fullName,username:currentUser.username,jobTitle:currentUser.jobTitle,email:currentUser.email,whatsapp:currentUser.whatsapp,whatsappOptIn:wasOptedIn};
+      const profileAfter={fullName,username,jobTitle,email:savedEmail,whatsapp,whatsappOptIn};
       const profileUpdates={};
       profileUpdates['users/'+currentUser.uid+'/uid']=currentUser.uid;
       profileUpdates['users/'+currentUser.uid+'/email']=savedEmail;
@@ -1774,9 +1780,12 @@ function App(){
       profileUpdates['users/'+currentUser.uid+'/username']=username;
       profileUpdates['users/'+currentUser.uid+'/jobTitle']=jobTitle;
       profileUpdates['users/'+currentUser.uid+'/whatsapp']=whatsapp;
+      profileUpdates['users/'+currentUser.uid+'/whatsappOptIn']=whatsappOptIn;
+      profileUpdates['users/'+currentUser.uid+'/whatsappOptInAt']=whatsappOptInAt;
+      profileUpdates['users/'+currentUser.uid+'/whatsappOptOutAt']=whatsappOptOutAt;
       await db.ref().update(profileUpdates);
-      await db.ref('userDirectory/'+currentUser.uid).set({uid:currentUser.uid,fullName,username,jobTitle,whatsapp,avatar:currentUser.avatar||'',status:'active'});
-      const updatedUser={...currentUser,uid:currentUser.uid,email:savedEmail,fullName,username,jobTitle,whatsapp};setCurrentUser(updatedUser);setProfileForm(old=>({...old,email:savedEmail}));setProfileEmailPassword('');await addLog('تعديل البيانات الشخصية',updatedUser,{entityType:'user-profile',entityId:currentUser.uid,changes:auditChanges(profileBefore,profileAfter)});alert(emailChanged?tr('emailVerifySent'):tr('personalSaved'));
+      await db.ref('userDirectory/'+currentUser.uid).set({uid:currentUser.uid,fullName,username,jobTitle,whatsapp,whatsappOptIn,whatsappOptInAt,whatsappOptOutAt,avatar:currentUser.avatar||'',status:'active'});
+      const updatedUser={...currentUser,uid:currentUser.uid,email:savedEmail,fullName,username,jobTitle,whatsapp,whatsappOptIn,whatsappOptInAt,whatsappOptOutAt};setCurrentUser(updatedUser);setProfileForm(old=>({...old,email:savedEmail,whatsappOptIn}));setProfileEmailPassword('');await addLog('تعديل البيانات الشخصية',updatedUser,{entityType:'user-profile',entityId:currentUser.uid,changes:auditChanges(profileBefore,profileAfter)});alert(emailChanged?tr('emailVerifySent'):tr('personalSaved'));
     }catch(err){alert(firebaseErrorMessage(err,tr));}
   }
 
@@ -3167,7 +3176,7 @@ function App(){
 
                 {tab==='profile'&&<details open className="app-collapsible"><summary><span>{tr('profile')}</span></summary><div className="app-collapsible-body"><section className="bg-white p-5 rounded-xl border shadow-sm max-w-2xl space-y-5"><h2 className="font-bold text-lg">{tr('profile')}</h2>
           <div className="flex flex-wrap gap-2 border-b pb-3"><button onClick={()=>setProfileSection('personal')} className={`px-3 py-2 rounded-lg ${profileSection==='personal'?'bg-blue-50 text-blue-700 font-bold':'bg-gray-100'}`}>{tr('personalDetails')}</button><button onClick={()=>setProfileSection('photo')} className={`px-3 py-2 rounded-lg ${profileSection==='photo'?'bg-blue-50 text-blue-700 font-bold':'bg-gray-100'}`}>{tr('changePhoto')}</button><button onClick={()=>setProfileSection('security')} className={`px-3 py-2 rounded-lg ${profileSection==='security'?'bg-blue-50 text-blue-700 font-bold':'bg-gray-100'}`}>{tr('savePassword')}</button></div>
-          {profileSection==='personal'&&<form onSubmit={saveProfile} className="space-y-3"><label className="block text-sm font-bold">{tr('fullName')}<input required className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileForm.fullName} onChange={e=>setProfileForm({...profileForm,fullName:e.target.value})}/></label><label className="block text-sm font-bold">{tr('username')}<input required className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileForm.username} onChange={e=>setProfileForm({...profileForm,username:e.target.value})}/></label><label className="block text-sm font-bold">{tr('jobTitle')}<input required className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileForm.jobTitle} onChange={e=>setProfileForm({...profileForm,jobTitle:e.target.value})}/></label><label className="block text-sm font-bold">{tr('email')}<input required type="email" className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileForm.email} onChange={e=>setProfileForm({...profileForm,email:e.target.value})}/></label><label className="block text-sm font-bold">{rtl?'رقم WhatsApp / الهاتف':'WhatsApp / mobile number'}<input type="tel" placeholder="+20 10 0000 0000" className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileForm.whatsapp} onChange={e=>setProfileForm({...profileForm,whatsapp:e.target.value})}/></label>{profileForm.email.toLowerCase()!==String(currentUser.email||'').toLowerCase()&&<label className="block text-sm font-bold">{tr('currentPassword')}<input required type="password" className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileEmailPassword} onChange={e=>setProfileEmailPassword(e.target.value)}/></label>}<button className="bg-blue-600 text-white rounded-lg px-5 py-3 font-bold">{tr('saveProfile')}</button></form>}
+          {profileSection==='personal'&&<form onSubmit={saveProfile} className="space-y-3"><label className="block text-sm font-bold">{tr('fullName')}<input required className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileForm.fullName} onChange={e=>setProfileForm({...profileForm,fullName:e.target.value})}/></label><label className="block text-sm font-bold">{tr('username')}<input required className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileForm.username} onChange={e=>setProfileForm({...profileForm,username:e.target.value})}/></label><label className="block text-sm font-bold">{tr('jobTitle')}<input required className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileForm.jobTitle} onChange={e=>setProfileForm({...profileForm,jobTitle:e.target.value})}/></label><label className="block text-sm font-bold">{tr('email')}<input required type="email" className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileForm.email} onChange={e=>setProfileForm({...profileForm,email:e.target.value})}/></label><label className="block text-sm font-bold">{rtl?'رقم WhatsApp / الهاتف':'WhatsApp / mobile number'}<input type="tel" placeholder="+20 10 0000 0000" className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileForm.whatsapp} onChange={e=>setProfileForm({...profileForm,whatsapp:e.target.value})}/></label><label className="flex items-start gap-2 rounded-lg border p-3 text-sm font-medium"><input type="checkbox" className="mt-1" checked={profileForm.whatsappOptIn===true} onChange={e=>setProfileForm({...profileForm,whatsappOptIn:e.target.checked})}/><span>{rtl?'أوافق على استقبال إشعارات الرسائل الداخلية الموجهة إليّ من الشركة عبر WhatsApp على الرقم المسجل. يمكنني إلغاء الموافقة من هذه الصفحة.':'I agree to receive company WhatsApp notifications for internal messages addressed to me at the registered number. I can withdraw consent here.'}</span></label>{profileForm.email.toLowerCase()!==String(currentUser.email||'').toLowerCase()&&<label className="block text-sm font-bold">{tr('currentPassword')}<input required type="password" className="mt-1 w-full border rounded-lg p-3 font-normal" value={profileEmailPassword} onChange={e=>setProfileEmailPassword(e.target.value)}/></label>}<button className="bg-blue-600 text-white rounded-lg px-5 py-3 font-bold">{tr('saveProfile')}</button></form>}
           {profileSection==='photo'&&<div className="space-y-3"><div className="flex flex-wrap items-center gap-4">{currentUser.avatar?<img src={currentUser.avatar} alt="Profile" className="w-24 h-24 rounded-full object-cover border"/>:<div className="w-24 h-24 rounded-full bg-slate-800 text-white grid place-items-center text-2xl">{(currentUser.fullName||'?').charAt(0)}</div>}<div className="space-y-2"><label className={'inline-block rounded-lg px-4 py-2 text-sm font-bold text-white '+(avatarBusy?'bg-gray-400':'bg-blue-600 cursor-pointer')}>{avatarBusy?(rtl?'جاري حفظ الصورة...':'Saving photo...'):tr('changePhoto')}<input type="file" accept="image/*" className="hidden" disabled={avatarBusy} onChange={uploadAvatar}/></label><p className="text-xs text-gray-500">{rtl?'اختر صورة JPG أو PNG أو WebP. سيتم تصغيرها وضغطها تلقائياً قبل الحفظ.':'Choose a JPG, PNG or WebP image. It will be resized and compressed before saving.'}</p></div></div><p className="text-xs text-gray-500">{rtl?'يتم حفظ الصورة في ملف المستخدم وتظهر بجوار اسمه في البرنامج.':'The picture is saved in the user profile and appears with the user name in the app.'}</p></div>}
           {profileSection==='security'&&<form onSubmit={changePassword} className="space-y-3"><h3 className="font-bold">{tr('savePassword')}</h3><input type="password" required className="w-full border rounded-lg p-3" placeholder={tr('currentPassword')} value={currentPassword} onChange={e=>setCurrentPassword(e.target.value)}/><input type="password" minLength="6" required className="w-full border rounded-lg p-3" placeholder={tr('newPassword')} value={newPassword} onChange={e=>setNewPassword(e.target.value)}/><button className="bg-green-600 text-white rounded-lg px-5 py-3 font-bold">{tr('savePassword')}</button><button type="button" onClick={sendPasswordReset} className="block text-blue-600 text-sm">{tr('sendReset')}</button></form>}
         </section></div></details>}
