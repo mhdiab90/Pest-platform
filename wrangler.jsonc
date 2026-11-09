@@ -6,5 +6,26 @@
   "workers_dev": true,
   "ai": {
     "binding": "AI"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "AI_AGENT_SCHEDULER",
+        "class_name": "AIAgentScheduler"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "AIAgentScheduler"
+      ]
+    }
+  ],
+  "triggers": {
+    "crons": [
+      "* * * * *"
+    ]
   }
 }
