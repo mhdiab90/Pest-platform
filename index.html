@@ -2177,6 +2177,18 @@ function App(){
     if(form&&typeof form.requestSubmit==='function')form.requestSubmit();
   }
 
+  async function notifyWhatsAppAfterMessage(messageId){
+    if(window.pestWhatsAppNotificationsAvailable!==true||typeof window.pestWhatsAppNotifyMessage!=='function')return null;
+    try{return await window.pestWhatsAppNotifyMessage(messageId);}
+    catch(error){console.warn('Company WhatsApp notification failed:',error);return {error:String(error&&error.message||error)};}
+  }
+  function whatsappNotificationSummary(result){
+    if(!result)return '';
+    if(result.error)return '\\n'+(rtl?'تعذر إرسال إشعار WhatsApp للشركة: ':'Company WhatsApp notification failed: ')+result.error;
+    if(result.duplicate)return '\\n'+(rtl?'تم منع تكرار إشعار WhatsApp لهذه الرسالة.':'Duplicate WhatsApp notification prevented.');
+    return '\\n'+(rtl?'إشعارات WhatsApp: تم قبول ':'WhatsApp notifications: ')+Number(result.sent||0)+(rtl?'، تم تخطي ':' accepted, ')+Number((result.skipped||[]).length)+(rtl?'، وتعذر ':' skipped, ')+Number((result.failed||[]).length)+(rtl?' رسالة.':' failed.');
+  }
+
   async function sendMessageReply(e){
     e.preventDefault();
     if(!replyingToMessage||!requirePermission('messages','add'))return;
@@ -2212,8 +2224,9 @@ function App(){
     try{
       await db.ref().update(updates);
       await addLog('الرد على رسالة: '+(original.subject||originalMessageId),currentUser,{entityType:'message-reply',entityId:messageId,metadata:{replyToMessageId:originalMessageId,recipientCount:recipients.length,mentionCount:mentionedUsers.length}});
+      const whatsappResult=await notifyWhatsAppAfterMessage(messageId);
       cancelMessageReply();
-      alert(rtl?'تم إرسال الرد بنجاح إلى '+recipients.length+' مستخدم.':'Reply sent successfully to '+recipients.length+' user(s).');
+      alert((rtl?'تم إرسال الرد بنجاح إلى '+recipients.length+' مستخدم.':'Reply sent successfully to '+recipients.length+' user(s).')+whatsappNotificationSummary(whatsappResult));
     }catch(err){
       alert(firebaseErrorMessage(err,tr)+'\n\n'+(rtl?'تعذر حفظ الرد. تحقق من صلاحيات Firebase Rules للرسائل.':'The reply could not be saved. Check Firebase message rules.'));
     }
@@ -2245,6 +2258,8 @@ function App(){
       await db.ref().update(updates);
       setChatDraft('');
       await addLog('إرسال محادثة سريعة',currentUser,{entityType:'message',entityId:messageId,metadata:{recipientCount:recipients.length,mentionCount:recipients.length,linkedProjectCount:contextRefs.linkedProjects.length,linkedTaskCount:contextRefs.linkedTasks.length,visibility:'private'}});
+      const whatsappResult=await notifyWhatsAppAfterMessage(messageId);
+      if(whatsappResult&&whatsappResult.error)console.warn('Quick-chat WhatsApp notification:',whatsappResult.error);
     }catch(err){
       alert(firebaseErrorMessage(err,tr)+'\n\n'+(rtl?'تعذر إرسال المحادثة. تحقق من قواعد صلاحيات الرسائل في Firebase.':'Could not send chat message. Check Firebase message permissions.'));
     }finally{
@@ -2287,7 +2302,8 @@ function App(){
       setMessageRecipientSearch('');
       setMessageMode('direct');
       await addLog(visibility==='public'?'إرسال رسالة عامة لكل المستخدمين':'إرسال رسالة داخلية',currentUser,{entityType:'message',entityId:messageId,metadata:{recipientCount:recipients.length,mentionCount:mentionedUsers.length,visibility}});
-      alert(rtl?'تم إرسال الرسالة إلى '+recipients.length+' مستخدم.':'Message delivered to '+recipients.length+' user(s).');
+      const whatsappResult=await notifyWhatsAppAfterMessage(messageId);
+      alert((rtl?'تم إرسال الرسالة إلى '+recipients.length+' مستخدم.':'Message delivered to '+recipients.length+' user(s).')+whatsappNotificationSummary(whatsappResult));
     }catch(err){
       alert(firebaseErrorMessage(err,tr)+'\n\n'+(rtl?'قد تحتاج إلى تحديث Firebase Rules للسماح بحفظ نسخة الرسائل المرسلة في صندوق المرسل.':'Firebase Rules may need an update to allow the sender sent-copy record.'));
     }
@@ -2986,7 +3002,7 @@ function App(){
             </form>
           </div></details>
           <details className="app-collapsible"><summary><span>{rtl?'إرسال عبر WhatsApp':'Send through WhatsApp'}</span></summary><div className="app-collapsible-body space-y-3">
-            <p className="text-xs text-gray-500">{rtl?'هذا محرر مستقل عن الرسائل الداخلية. اختر موظفين أو مجموعة عملاء أو موردين، وسيتم تجهيز محادثة منفصلة لكل رقم. يجب الضغط على إرسال داخل WhatsApp لكل محادثة؛ رابط wa.me لا يرسل تلقائياً.':'This composer is separate from internal messages. Select employees, a customer group or vendors; a separate chat draft is prepared for each number. You must press Send in WhatsApp for each chat; wa.me cannot send automatically.'}</p>
+            <p className="text-xs text-gray-500">{rtl?'هذا محرر مستقل عن الرسائل الداخلية. اختر موظفين أو مجموعة عملاء أو موردين، وسيتم تجهيز محادثة منفصلة لكل رقم. يجب الضغط على إرسال داخل WhatsApp لكل محادثة؛ رابط wa.me لا يرسل تلقائياً.':'This composer is separate from internal messages. Select employees, a customer group or vendors; a separate chat draft is prepared for each number. You must press Send in WhatsApp for each chat; wa.me cannot send automatically.'}</p><p className={'text-xs rounded-lg border p-3 '+(whatsappApiReady?'border-emerald-200 bg-emerald-50 text-emerald-800':'border-amber-200 bg-amber-50 text-amber-800')}>{whatsappApiReady?(rtl?'تنبيهات الرسائل الداخلية عبر رقم WhatsApp الرسمي للشركة مفعلة للموظفين الذين وافقوا على استقبالها.':'Automatic internal-message alerts from the company WhatsApp number are enabled for employees who opted in.'):(rtl?'الإرسال الآلي من رقم الشركة غير مُعد بعد. يظل الإرسال اليدوي عبر wa.me متاحًا، ويمكن للموظف تفعيل موافقته من الملف الشخصي.':'Automatic sending from the company number is not configured yet. Manual wa.me drafts remain available; employees can manage consent in their profile.')}</p>
             <label className="block text-sm font-bold">{rtl?'عنوان الرسالة (اختياري)':'Message subject (optional)'}<input className="mt-1 w-full border rounded-lg p-3 font-normal" value={whatsappMessage.subject} onChange={e=>setWhatsappMessage(old=>({...old,subject:e.target.value}))}/></label>
             <label className="block text-sm font-bold">{rtl?'نص رسالة WhatsApp':'WhatsApp message'}<textarea rows="4" className="mt-1 w-full border rounded-lg p-3 font-normal" placeholder={rtl?'اكتب الرسالة التي تريد إرسالها...':'Write the message you want to send...'} value={whatsappMessage.body} onChange={e=>setWhatsappMessage(old=>({...old,body:e.target.value}))}></textarea></label>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3"><label className="text-sm font-bold">{rtl?'نوع جهة الاتصال':'Contact type'}<select className="block w-full border rounded-lg p-3 mt-1 font-normal" value={whatsappContactFilter} onChange={e=>setWhatsappContactFilter(e.target.value)}><option value="all">{rtl?'كل الجهات':'All contacts'}</option><option value="user">{rtl?'الموظفون':'Employees'}</option><option value="client">{rtl?'العملاء':'Customers'}</option><option value="vendor">{rtl?'الموردون':'Suppliers'}</option></select></label><label className="text-sm font-bold">{rtl?'بحث في جهات الاتصال':'Search contacts'}<input className="block w-full border rounded-lg p-3 mt-1 font-normal" value={whatsappTargetSearch} onChange={e=>setWhatsappTargetSearch(e.target.value)} placeholder={rtl?'الاسم أو الرقم':'Name or phone number'}/></label></div>
@@ -3350,6 +3366,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<AppErrorBoundary><A
   window.pestAIAgentListSchedules=()=>agentRequest('/schedules','GET');
   window.pestAIAgentCreateSchedule=schedule=>agentRequest('/schedules','POST',schedule||{});
   window.pestAIAgentDeleteSchedule=id=>agentRequest('/schedules','DELETE',{id:String(id||'')});
+  window.pestWhatsAppNotifyMessage=messageId=>agentRequest('/whatsapp/notify-message','POST',{messageId:String(messageId||'')});
   window.pestAIAsk=async prompt=>{
     const result=await window.pestAIAgentAsk(prompt,'');
     return result&&result.answer?result.answer:'';
@@ -3357,6 +3374,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<AppErrorBoundary><A
   window.pestAIStatus='checking';
   window.pestAIProviders={cloudflare:false,openrouter:false};
   window.pestAISchedulingAvailable=false;
+  window.pestWhatsAppNotificationsAvailable=false;
   (async()=>{
     try{
       const response=await fetch(WORKER_URL+'/health',{method:'GET',cache:'no-store'});
@@ -3365,6 +3383,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<AppErrorBoundary><A
       window.pestAIProviders=health.providers||{};
       window.pestAIModels=health.models||{};
       window.pestAISchedulingAvailable=health.schedulingAvailable===true;
+      window.pestWhatsAppNotificationsAvailable=health.whatsappNotificationsAvailable===true;
       window.pestAIStatus=(window.pestAIProviders.cloudflare||window.pestAIProviders.openrouter)?'ready':'unavailable';
     }catch(error){
       console.error('AI Agent Worker health check:',error);
