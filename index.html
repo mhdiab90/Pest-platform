@@ -426,6 +426,16 @@ function App(){
   const [aiSettingsNotice,setAiSettingsNotice] = useState('');
   notificationPreferencesRef.current={sound:soundNotificationsEnabled,desktop:desktopNotificationsEnabled};
   useEffect(()=>{setAiProviderDraft(companyInfo?.aiAgent?.provider==='openrouter'?'openrouter':'cloudflare');},[companyInfo?.aiAgent?.provider]);
+  useEffect(()=>{
+    setAssistantPendingActions([]);
+    setAssistantMessages([]);
+    setAssistantInput('');
+    setAssistantOpen(false);
+  },[currentUser?.uid]);
+  useEffect(()=>{
+    const permitted=currentUser?.role==='admin'||currentUser?.permissions?.aiAgent?.view===true;
+    if(!permitted){setAssistantOpen(false);setAssistantPendingActions([]);}
+  },[currentUser?.role,currentUser?.permissions?.aiAgent?.view]);
   const [fxRates,setFxRates] = useState(null);
   const [fxRateStatus,setFxRateStatus] = useState('loading');
   useEffect(()=>{
