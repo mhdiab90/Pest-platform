@@ -57,8 +57,33 @@ Users need the **AI Agent → Use** permission in User Permissions. The Worker i
 - Create, update and delete the signed-in user's own tasks.
 - Send an internal Pest Platform message to one active user.
 
-This is a permission-controlled toolset, not a promise that every existing screen/function is automated yet. External WhatsApp or email sending, user/role/permission administration, direct edits to imported quotation/legacy ledger collections and exports are not included in this build.
+This is a permission-controlled toolset, not a promise that every existing screen/function is automated yet. External email delivery, automated WhatsApp messages to customers/suppliers, user/role/permission administration, direct edits to imported quotation/legacy ledger collections and exports are not included in this build. The existing WhatsApp composer can still open manual `wa.me` drafts for employees, customers and suppliers; the sender must press Send inside WhatsApp.
 
+## WhatsApp notifications for internal messages
+
+The app can send a **notification only** from the company's registered WhatsApp Business Platform phone number after an internal Pest Platform message, reply or quick-chat is saved. This is separate from the existing manual `wa.me` composer.
+
+### Required Cloudflare configuration
+
+In Cloudflare Dashboard → Workers & Pages → `pest-platform` → Settings → Variables and Secrets, configure:
+
+| Name | Type | Purpose |
+|---|---|---|
+| `WHATSAPP_ACCESS_TOKEN` | Secret | Meta WhatsApp Cloud API access token |
+| `WHATSAPP_PHONE_NUMBER_ID` | Variable | Numeric ID of the company's registered WhatsApp sender number |
+| `WHATSAPP_GRAPH_API_VERSION` | Variable | Graph API version supported by the Meta app, e.g. the version enabled in your Meta developer dashboard |
+| `WHATSAPP_NOTIFICATION_TEMPLATE_NAME` | Variable | Exact name of an approved Utility message template |
+| `WHATSAPP_NOTIFICATION_TEMPLATE_LANGUAGE` | Variable | Exact language code approved for that template, e.g. `ar` or `en_US` |
+
+Create and obtain Meta approval for a Utility template with **one body parameter** (`{{1}}`). The Worker passes the employee's sender name and the internal message subject as that parameter; it does not forward the full private message body to WhatsApp. The endpoint sends approved templates only, never arbitrary free-form text.
+
+Employees must enter their WhatsApp number and explicitly enable **WhatsApp notifications** in Profile → Personal details. The Worker verifies the recipient's current active directory record and `whatsappOptIn === true` before contacting them. Employees can withdraw consent by unchecking the same box. Existing users are not opted in automatically.
+
+The endpoint also verifies the sender's `messages.add` permission and confirms that the referenced message is already saved in that sender's Sent folder. A Durable Object claim prevents duplicate notification sends for the same message. Recipients without opt-in or a valid number are skipped. A failed WhatsApp API request does not undo the internal Pest Platform message.
+
+**Scope in this release:** automatic WhatsApp notifications cover internal messages, replies and quick chats addressed to opted-in employees. The manual `wa.me` composer remains available for employee/customer/supplier conversations and still requires the sender to press Send. Automated vendor/customer messages, task due-date alerts and user-registration alerts are not part of this release.
+
+WhatsApp requires businesses to have the recipient's number and opt-in permission, and to initiate conversations using approved templates; free-form replies are limited to the 24-hour customer-service window. See the [WhatsApp Business Messaging Policy](https://whatsappbusiness.com/policy/).
 ## AI dashboards
 
 - Ask the AI Agent to create a dashboard or visual report.
@@ -118,6 +143,7 @@ The AI Worker verifies the signed-in user's permissions before offering a read o
 - `POST /agent` — ask the selected model to answer and/or prepare actions.
 - `POST /execute` — re-check permissions and execute confirmed actions.
 - `POST /ask` — compatibility alias for the agent route.
+- `POST /whatsapp/notify-message` — send an approved, consent-checked company WhatsApp notification for a saved internal message.
 
 ## Smoke tests
 
