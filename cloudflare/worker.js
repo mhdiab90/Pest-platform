@@ -1104,6 +1104,7 @@ async function handleAgentRequest(body, env, claims, profile, token, config) {
   ];
   const pendingActions = [];
   const readResults = [];
+  const retrievedDashboardSources = new Set();
   let answer = "";
   for (let round = 0; round < 5; round += 1) {
     const rawTools = available;
@@ -1123,12 +1124,22 @@ async function handleAgentRequest(body, env, claims, profile, token, config) {
         const args = toolArguments(call);
         if (isReadTool(name)) {
           output = await runReadTool(name, args, claims, profile, token);
+          const dashboardSourceByTool = {
+            search_clients:"master", search_vendors:"master",
+            search_projects:"projects", get_project_detail:"projects",
+            search_financial_records:"finance", search_cash_custody:"cashCustody",
+            search_tasks:"tasks", search_messages:"messages", search_users:"messages"
+          };
+          if (dashboardSourceByTool[name]) retrievedDashboardSources.add(dashboardSourceByTool[name]);
           readResults.push({ tool: name, count: Array.isArray(output) ? output.length : 1 });
         } else if (name === "propose_ai_dashboard") {
           if (!available.some(t => t.function.name === name)) throw new Error("Dashboard building is not available to your account.");
           requirePermission(profile,"aiAgent","view");
           if (pendingActions.length >= MAX_AGENT_ACTIONS) throw new Error("Maximum five pending actions per request.");
           const normalized = validateProposedAction("save_ai_dashboard", { ...args, __profile:profile });
+          const requiredSources = [...new Set(normalized.widgets.map(widget=>widget.source))];
+          const missingSources = requiredSources.filter(source=>!retrievedDashboardSources.has(source));
+          if (missingSources.length) throw new Error("Retrieve permitted source data before building this dashboard. Missing retrieved sources: " + missingSources.join(", "));
           const action = { id: randomId("pending"), name:"save_ai_dashboard", label:userFacingAction("save_ai_dashboard",normalized), args:normalized };
           pendingActions.push(action);
           output = { pendingConfirmation:true, action:action.label, message:"Dashboard prepared from retrieved records. Nothing is saved until the user confirms." };
