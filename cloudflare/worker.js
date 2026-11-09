@@ -402,7 +402,7 @@ async function callModel(env, provider, messages, uid, allowedTools) {
     tool_choice: "auto",
     parallel_tool_calls: false,
     temperature: 0.15,
-    max_completion_tokens: 1600,
+    max_tokens: 1600,
     user: uid
   });
   return getMessageResult(raw);
