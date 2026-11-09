@@ -3045,8 +3045,8 @@ function App(){
               </select>
             </label>
             {permissionUserUid&&<><div className="flex flex-wrap gap-2"><button type="button" onClick={()=>setPermissionDraft(Object.fromEntries(permissionModules.map(m=>[m.id,Object.fromEntries(permissionActions.map(a=>[a.id,true]))])))} className="px-3 py-2 rounded-lg bg-blue-50 text-blue-700 text-sm font-bold">{rtl?'منح جميع الصلاحيات':'Grant all'}</button><button type="button" onClick={()=>setPermissionDraft(Object.fromEntries(permissionModules.map(m=>[m.id,Object.fromEntries(permissionActions.map(a=>[a.id,false]))])))} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-bold">{rtl?'إلغاء جميع الصلاحيات':'Clear all'}</button></div>
-              <div className="overflow-x-auto border rounded-lg"><table className="w-full text-sm min-w-[760px]"><thead className="bg-slate-50"><tr><th className="p-3 text-start">{rtl?'الشاشة':'Module'}</th>{permissionActions.map(action=><th key={action.id} className="p-3 text-center">{module.id==='aiAgent'&&action.id==='view'?(rtl?'استخدام':'Use'):action.label}</th>)}</tr></thead><tbody>{permissionModules.map(module=><tr key={module.id} className="border-t"><td className="p-3 font-bold">{module.label}</td>{permissionActions.map(action=><td key={action.id} className="p-3 text-center">{(action.id==='viewOthers'&&module.id!=='cashCustody')||(module.id==='aiAgent'&&action.id!=='view')?<span className="text-gray-300">—</span>:<input type="checkbox" aria-label={module.label+' '+(module.id==='aiAgent'&&action.id==='view'?(rtl?'استخدام':'Use'):action.label)} checked={Boolean(permissionDraft[module.id]?.[action.id])} onChange={e=>setPermissionDraft(old=>({...old,[module.id]:{...(old[module.id]||{}),[action.id]:e.target.checked}}))}/>}</td>)}</tr>)}</tbody></table></div>
-              <p className="text-xs text-gray-500">{rtl?'صلاحية العرض مطلوبة لظهور الشاشة. الصلاحيات الأخرى تحدد العمليات المتاحة داخلها.':'View permission is required to show a screen. Other permissions govern actions inside it.'}</p>
+              <div className="overflow-x-auto border rounded-lg"><table className="w-full text-sm min-w-[760px]"><thead className="bg-slate-50"><tr><th className="p-3 text-start">{rtl?'الشاشة':'Module'}</th>{permissionActions.map(action=><th key={action.id} className="p-3 text-center">{action.label}</th>)}</tr></thead><tbody>{permissionModules.map(module=><tr key={module.id} className="border-t"><td className="p-3 font-bold">{module.label}</td>{permissionActions.map(action=><td key={action.id} className="p-3 text-center">{(action.id==='viewOthers'&&module.id!=='cashCustody')||(module.id==='aiAgent'&&action.id!=='view')?<span className="text-gray-300">—</span>:<input type="checkbox" aria-label={module.label+' '+(module.id==='aiAgent'&&action.id==='view'?(rtl?'استخدام':'Use'):action.label)} checked={Boolean(permissionDraft[module.id]?.[action.id])} onChange={e=>setPermissionDraft(old=>({...old,[module.id]:{...(old[module.id]||{}),[action.id]:e.target.checked}}))}/>}</td>)}</tr>)}</tbody></table></div>
+              <p className="text-xs text-gray-500">{rtl?'في صف المساعد الذكي، صلاحية «عرض» تعني السماح باستخدام AI Agent. لا تظهر أدوات أي عملية للوكيل إلا إذا كانت صلاحيتها ممنوحة للمستخدم نفسه.':'For the AI Agent row, the View checkbox grants permission to use the agent. The agent only receives tools for operations the user is separately permitted to perform.'}</p>
               <div className="flex flex-wrap items-center gap-3"><button type="button" disabled={permissionBusy} onClick={saveUserPermissions} className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold disabled:opacity-50">{permissionBusy?(rtl?'جارٍ الحفظ...':'Saving...'):(rtl?'حفظ الصلاحيات':'Save permissions')}</button>{permissionNotice&&<span className={'text-sm '+(permissionNotice.includes('نجاح')||permissionNotice.includes('successfully')?'text-green-700':'text-red-600')}>{permissionNotice}</span>}</div>
             </>}
           </section>
@@ -3178,31 +3178,39 @@ ReactDOM.createRoot(document.getElementById('root')).render(<AppErrorBoundary><A
 <script>
 (()=>{
   const WORKER_URL='https://pest-platform.ai-mhdiab90.workers.dev';
-  window.pestAIAsk=async prompt=>{
+  const postAgent=async(path,body)=>{
     const firebaseAuth=window.PEST_FIREBASE_AUTH;
-    const user=firebaseAuth && firebaseAuth.currentUser;
-    if(!user) throw new Error('Sign-in is required. Please sign in again.');
+    const user=firebaseAuth&&firebaseAuth.currentUser;
+    if(!user)throw new Error('Sign-in is required. Please sign in again.');
     const idToken=await user.getIdToken();
-    const response=await fetch(WORKER_URL+'/ask',{
+    const response=await fetch(WORKER_URL+path,{
       method:'POST',
       headers:{'Authorization':'Bearer '+idToken,'Content-Type':'application/json'},
-      body:JSON.stringify({prompt:String(prompt||'')})
+      body:JSON.stringify(body||{})
     });
     let payload={};
     try{payload=await response.json();}catch(_){}
-    if(!response.ok) throw new Error(payload.error||('AI service returned HTTP '+response.status+'.'));
-    if(typeof payload.answer!=='string'||!payload.answer.trim()) throw new Error('The AI service returned an empty answer.');
-    return payload.answer;
+    if(!response.ok)throw new Error(payload.error||('AI Agent returned HTTP '+response.status+'.'));
+    return payload;
+  };
+  window.pestAIAgentAsk=(prompt,context)=>postAgent('/agent',{prompt:String(prompt||''),context:String(context||'')});
+  window.pestAIAgentExecute=actions=>postAgent('/execute',{actions:Array.isArray(actions)?actions:[]});
+  window.pestAIAsk=async prompt=>{
+    const result=await window.pestAIAgentAsk(prompt,'');
+    return result&&result.answer?result.answer:'';
   };
   window.pestAIStatus='checking';
+  window.pestAIProviders={cloudflare:false,openrouter:false};
   (async()=>{
     try{
       const response=await fetch(WORKER_URL+'/health',{method:'GET',cache:'no-store'});
       const health=await response.json();
-      if(!response.ok||health.ok!==true) throw new Error('Cloudflare Worker health check failed.');
-      window.pestAIStatus='ready';
+      if(!response.ok||health.ok!==true)throw new Error('AI Agent Worker health check failed.');
+      window.pestAIProviders=health.providers||{};
+      window.pestAIModels=health.models||{};
+      window.pestAIStatus=(window.pestAIProviders.cloudflare||window.pestAIProviders.openrouter)?'ready':'unavailable';
     }catch(error){
-      console.error('Cloudflare AI Worker health check:',error);
+      console.error('AI Agent Worker health check:',error);
       window.pestAIStatus='unavailable';
     }
     window.dispatchEvent(new Event('pest-ai-ready'));
