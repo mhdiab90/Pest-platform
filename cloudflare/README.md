@@ -61,7 +61,34 @@ Users need the **AI Agent → Use** permission in User Permissions. The Worker i
 - Create, update and delete the signed-in user's own tasks.
 - Send an internal Pest Platform message to one active user.
 
-This is a permission-controlled first toolset, not a promise that every existing screen/function is automated yet. External WhatsApp or email sending, user/role/permission administration, direct edits to imported quotation/legacy ledger collections, exports, and scheduled/recurring AI jobs are not included in this build. Those require separate integrations and additional workflows.
+This is a permission-controlled toolset, not a promise that every existing screen/function is automated yet. External WhatsApp or email sending, user/role/permission administration, direct edits to imported quotation/legacy ledger collections and exports are not included in this build.
+
+## AI dashboards
+
+- Ask the AI Agent to create a dashboard or visual report.
+- The model must retrieve source data through the user's permitted search tools, then propose up to six widgets: metrics, bar charts and tables.
+- Saving a dashboard requires the user to review the proposal and explicitly confirm it.
+- Dashboards are stored in the user's private Durable Object workspace (up to 25 per user). They are snapshots: values reflect the time they were created. Ask the agent to rebuild a dashboard when updated figures are needed.
+
+## Scheduled AI reports
+
+- Users with **AI Agent → Use** permission can create up to 10 recurring read-only reports for themselves.
+- Supported schedules are daily, weekly or monthly, using **Africa/Cairo** local time.
+- Cloudflare Cron Triggers run every minute (UTC); the Worker calculates the next Cairo-local run time.
+- A schedule stores an encrypted Firebase refresh token in the Durable Object. It is encrypted with AES-GCM using the Worker Secret `AI_SCHEDULER_ENCRYPTION_KEY`; the raw token is never returned to the browser or dashboard.
+- On every run, the Worker refreshes that owner's Firebase session, reloads the active profile, and re-checks AI Agent Use and each selected data-scope permission. A disabled account, revoked AI permission or revoked selected scope causes the schedule to pause.
+- Scheduled tasks are **read-only**. They may search and summarize selected permitted scopes, but cannot create/edit/delete/approve records, build or save dashboards, create tasks or send messages.
+- Results and the last run status are kept in that user's private schedule list. They are visible the next time the user opens the AI Agent panel. Up to 10 run summaries are retained per schedule.
+
+### One-time scheduler secret
+
+Generate a random 32-byte key locally, for example:
+
+```bash
+openssl rand -base64 32
+```
+
+In Cloudflare Dashboard → Workers & Pages → `pest-platform` → Settings → Variables and Secrets, add a **Secret** named `AI_SCHEDULER_ENCRYPTION_KEY` and paste the generated value. Never put it in GitHub, Firebase, the application HTML or chat. Keep the same key: replacing or losing it makes previously stored encrypted schedule credentials unreadable; those schedules will need to be deleted and recreated. The Durable Object binding, SQLite migration and one-minute Cron Trigger are configured in `wrangler.jsonc` and are deployed with the Worker.
 
 ## Safeguards
 
