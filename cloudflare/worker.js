@@ -83,9 +83,14 @@ async function verifyFirebaseIdToken(token) {
   return claims;
 }
 
-async function databaseRequest(path, token, method, body) {
+async function databaseRequest(path, token, method, body, query) {
   const cleanPath = String(path || "").split("/").filter(Boolean).map(encodeURIComponent).join("/");
-  const url = DATABASE_URL + (cleanPath ? "/" + cleanPath : "") + ".json?auth=" + encodeURIComponent(token);
+  const params = new URLSearchParams();
+  params.set("auth", token);
+  if (query && typeof query === "object") Object.entries(query).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) params.set(key, String(value));
+  });
+  const url = DATABASE_URL + (cleanPath ? "/" + cleanPath : "") + ".json?" + params.toString();
   const response = await fetch(url, {
     method: method || "GET",
     headers: { "Accept": "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
@@ -415,10 +420,28 @@ function searchRows(data, query, limit) {
   return filtered.slice(0, max);
 }
 
+function firebasePrefixQuery(field, value, limit) {
+  const needle = cleanText(value || "", 120);
+  if (!needle) throw new Error("Enter a search term so the agent does not scan an entire database collection.");
+  return {
+    orderBy: JSON.stringify(field),
+    startAt: JSON.stringify(needle),
+    endAt: JSON.stringify(needle + "\\uf8ff"),
+    limitToFirst: Math.max(1, Math.min(Number(limit) || 12, 30))
+  };
+}
+
+async function readRecentCollection(path, token, limit) {
+  return databaseRequest(path, token, "GET", undefined, {
+    orderBy: JSON.stringify("date"),
+    limitToLast: Math.max(1, Math.min(Number(limit) || 50, 100))
+  });
+}
+
 async function runReadTool(name, args, claims, profile, token) {
   if (name === "search_clients") {
     requirePermission(profile, "master", "view");
-    const rows = await databaseRequest("clients", token, "GET");
+    const rows = await databaseRequest("clients", token, "GET", undefined, firebasePrefixQuery("name", args.query, args.limit));
     return searchRows(rows, args.query, args.limit).map(x => ({
       code: x.code, name: x.name, englishName: x.englishName || "", phone: x.phone || "",
       mobile: x.mobile || "", email: x.email || "", taxNumber: x.taxNumber || "",
@@ -427,7 +450,7 @@ async function runReadTool(name, args, claims, profile, token) {
   }
   if (name === "search_vendors") {
     requirePermission(profile, "master", "view");
-    const rows = await databaseRequest("vendors", token, "GET");
+    const rows = await databaseRequest("vendors", token, "GET", undefined, firebasePrefixQuery("name", args.query, args.limit));
     return searchRows(rows, args.query, args.limit).map(x => ({
       code: x.code, name: x.name, englishName: x.englishName || "", phone: x.phone || "",
       mobile: x.mobile || "", email: x.email || "", taxNumber: x.taxNumber || "",
@@ -436,7 +459,7 @@ async function runReadTool(name, args, claims, profile, token) {
   }
   if (name === "search_projects") {
     requirePermission(profile, "projects", "view");
-    const rows = await databaseRequest("projects", token, "GET");
+    const rows = await databaseRequest("projects", token, "GET", undefined, firebasePrefixQuery("name", args.query, args.limit));
     return searchRows(rows, args.query, args.limit).map(x => ({
       code: x.code, name: x.name, status: x.status || "", currency: x.currency || "EGP",
       amount: Number(x.amount || 0), costBudget: Number(x.costBudget || 0),
@@ -463,7 +486,7 @@ async function runReadTool(name, args, claims, profile, token) {
     const sources = { quotations: "quotes", collections: "inflows", payments: "outflows" };
     const output = [];
     for (const kind of kinds) {
-      const rows = await databaseRequest(sources[kind], token, "GET");
+      const rows = await readRecentCollection(sources[kind], token, 100);
       output.push(...searchRows(rows, args.query, args.limit).map(row => ({
         kind, id: row.id, code: row.code || "", name: row.name || "",
         projectCode: row.projectCode || "", clientCode: row.clientCode || "",
@@ -480,7 +503,7 @@ async function runReadTool(name, args, claims, profile, token) {
     if (ownerUid !== claims.sub && !(profile.role === "admin" || profile.permissions?.cashCustody?.viewOthers === true)) {
       throw new Error("Permission denied: cashCustody.viewOthers.");
     }
-    const data = await databaseRequest("cashCustodies/" + ownerUid + "/transactions", token, "GET");
+    const data = await readRecentCollection("cashCustodies/" + ownerUid + "/transactions", token, 100);
     const rows = Object.entries(data || {}).map(([id, row]) => ({ ...(row || {}), id }));
     const query = String(args.query || "").trim().toLowerCase();
     const filtered = query ? rows.filter(row =>
@@ -496,7 +519,7 @@ async function runReadTool(name, args, claims, profile, token) {
   }
   if (name === "search_tasks") {
     requirePermission(profile, "tasks", "view");
-    const data = await databaseRequest("tasks/" + claims.sub, token, "GET");
+    const data = await readRecentCollection("tasks/" + claims.sub, token, 100);
     return searchRows(data, args.query, args.limit).map(x => ({
       id: x.id, title: x.title || "", description: x.description || "", status: x.status || "",
       dueDate: x.dueDate || "", createdAt: x.createdAt || 0
@@ -504,7 +527,7 @@ async function runReadTool(name, args, claims, profile, token) {
   }
   if (name === "search_messages") {
     requirePermission(profile, "messages", "view");
-    const data = await databaseRequest("messages/" + claims.sub, token, "GET");
+    const data = await readRecentCollection("messages/" + claims.sub, token, 100);
     return searchRows(data, args.query, args.limit).map(x => ({
       id: x.id, subject: x.subject || "", body: String(x.body || "").slice(0, 1200),
       senderName: x.senderName || "", date: x.date || "", read: x.read === true,
@@ -513,7 +536,7 @@ async function runReadTool(name, args, claims, profile, token) {
   }
   if (name === "search_users") {
     requirePermission(profile, "messages", "view");
-    const data = await databaseRequest("userDirectory", token, "GET");
+    const data = await databaseRequest("userDirectory", token, "GET", undefined, firebasePrefixQuery("fullName", args.query, args.limit));
     return Object.entries(data || {}).map(([uid, u]) => ({ ...(u || {}), uid }))
       .filter(u => u.uid !== claims.sub && u.status === "active" &&
         [u.fullName, u.username, u.jobTitle, u.department].join(" ").toLowerCase().includes(String(args.query || "").toLowerCase()))
