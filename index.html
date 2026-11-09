@@ -424,6 +424,19 @@ function App(){
   const [aiProviderDraft,setAiProviderDraft] = useState('cloudflare');
   const [aiSettingsBusy,setAiSettingsBusy] = useState(false);
   const [aiSettingsNotice,setAiSettingsNotice] = useState('');
+  const [aiDashboards,setAiDashboards] = useState([]);
+  const [aiDashboardsBusy,setAiDashboardsBusy] = useState(false);
+  const [aiSchedules,setAiSchedules] = useState([]);
+  const [aiSchedulesBusy,setAiSchedulesBusy] = useState(false);
+  const [aiScheduleTitle,setAiScheduleTitle] = useState('');
+  const [aiSchedulePrompt,setAiSchedulePrompt] = useState('');
+  const [aiScheduleFrequency,setAiScheduleFrequency] = useState('daily');
+  const [aiScheduleTime,setAiScheduleTime] = useState('08:00');
+  const [aiScheduleDayOfWeek,setAiScheduleDayOfWeek] = useState('1');
+  const [aiScheduleDayOfMonth,setAiScheduleDayOfMonth] = useState('1');
+  const [aiScheduleScopes,setAiScheduleScopes] = useState([]);
+  const [aiScheduleBusy,setAiScheduleBusy] = useState(false);
+  const [aiScheduleNotice,setAiScheduleNotice] = useState('');
   notificationPreferencesRef.current={sound:soundNotificationsEnabled,desktop:desktopNotificationsEnabled};
   useEffect(()=>{setAiProviderDraft(companyInfo?.aiAgent?.provider==='openrouter'?'openrouter':'cloudflare');},[companyInfo?.aiAgent?.provider]);
   useEffect(()=>{
