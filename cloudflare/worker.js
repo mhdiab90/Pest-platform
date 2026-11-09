@@ -1112,23 +1112,23 @@ async function handleAgentRequest(body, env, claims, profile, token, config) {
         if (isReadTool(name)) {
           output = await runReadTool(name, args, claims, profile, token);
           readResults.push({ tool: name, count: Array.isArray(output) ? output.length : 1 });
+        } else if (name === "propose_ai_dashboard") {
+          if (!available.some(t => t.function.name === name)) throw new Error("Dashboard building is not available to your account.");
+          requirePermission(profile,"aiAgent","view");
+          if (pendingActions.length >= MAX_AGENT_ACTIONS) throw new Error("Maximum five pending actions per request.");
+          const normalized = validateProposedAction("save_ai_dashboard", { ...args, __profile:profile });
+          const action = { id: randomId("pending"), name:"save_ai_dashboard", label:userFacingAction("save_ai_dashboard",normalized), args:normalized };
+          pendingActions.push(action);
+          output = { pendingConfirmation:true, action:action.label, message:"Dashboard prepared from retrieved records. Nothing is saved until the user confirms." };
         } else {
           const permission = pendingPermission(name);
           if (!permission || !available.some(t => t.function.name === name)) throw new Error("This action is not available to your account.");
           requirePermission(profile, permission[0], permission[1]);
           if (pendingActions.length >= MAX_AGENT_ACTIONS) throw new Error("Maximum five pending actions per request.");
-          if (name === "propose_ai_dashboard") {
-            if (pendingActions.length >= MAX_AGENT_ACTIONS) throw new Error("Maximum five pending actions per request.");
-            const normalized = validateProposedAction("save_ai_dashboard", { ...args, __profile:profile });
-            const action = { id: randomId("pending"), name:"save_ai_dashboard", label:userFacingAction("save_ai_dashboard",normalized), args:normalized };
-            pendingActions.push(action);
-            output = { pendingConfirmation:true, action:action.label, message:"Dashboard prepared from retrieved records. Nothing is saved until the user confirms." };
-          } else {
-            const normalized = validateProposedAction(name, args);
-            const action = { id: randomId("pending"), name, label: userFacingAction(name, normalized), args: normalized };
-            pendingActions.push(action);
-            output = { pendingConfirmation: true, action: action.label, message: "NOT executed. Waiting for the user's explicit confirmation." };
-          }
+          const normalized = validateProposedAction(name, args);
+          const action = { id: randomId("pending"), name, label: userFacingAction(name, normalized), args: normalized };
+          pendingActions.push(action);
+          output = { pendingConfirmation: true, action: action.label, message: "NOT executed. Waiting for the user's explicit confirmation." };
         }
       } catch (error) {
         output = { error: String(error && error.message || error).slice(0, 300) };
@@ -1148,25 +1148,33 @@ async function handleAgentRequest(body, env, claims, profile, token, config) {
   };
 }
 
-function normalizeIncomingActions(actions) {
+function normalizeIncomingActions(actions, profile) {
   if (!Array.isArray(actions) || !actions.length || actions.length > MAX_AGENT_ACTIONS) {
     throw new Error("Select between one and five valid actions.");
   }
   return actions.map(item => {
     if (!item || typeof item !== "object" || !pendingPermission(item.name)) throw new Error("An unsupported action was supplied.");
-    return { id: safeSegment(item.id || "", "action id"), name: item.name, args: validateProposedAction(item.name, item.args || {}) };
+    return { id: safeSegment(item.id || "", "action id"), name: item.name, args: validateProposedAction(item.name, { ...(item.args || {}), __profile:profile }) };
   });
 }
 
-async function handleExecuteRequest(body, claims, profile, token) {
+async function handleExecuteRequest(body, claims, profile, token, env) {
   requirePermission(profile, "aiAgent", "view");
-  const actions = normalizeIncomingActions(body.actions);
+  const actions = normalizeIncomingActions(body.actions, profile);
   const results = [];
   for (const action of actions) {
     const permission = pendingPermission(action.name);
     requirePermission(profile, permission[0], permission[1]);
     try {
-      const result = await executeAction(action, claims, profile, token);
+      let result;
+      if (action.name === "save_ai_dashboard") {
+        if (!env.AI_AGENT_SCHEDULER) throw new Error("Dashboard storage is not configured on the Worker.");
+        const dashboard = { id:randomId("dash"), title:action.args.title, description:action.args.description, widgets:action.args.widgets, createdAt:Date.now(), createdBy:claims.sub };
+        const saved = await schedulerBindingRequest(env,"/dashboard","POST",{uid:claims.sub,dashboard});
+        result = { saved:true, dashboard:saved.dashboard || dashboard };
+      } else {
+        result = await executeAction(action, claims, profile, token);
+      }
       results.push({ id: action.id, name: action.name, success: true, result });
     } catch (error) {
       results.push({ id: action.id, name: action.name, success: false, error: String(error && error.message || error).slice(0, 300) });
@@ -1185,13 +1193,14 @@ export default {
         ok: true,
         service: "pest-platform-ai",
         providers: availableProviders(env),
-        models: { cloudflare: MODEL, openrouter: OPENROUTER_MODEL }
+        models: { cloudflare: MODEL, openrouter: OPENROUTER_MODEL },
+        schedulingAvailable: Boolean(env.AI_AGENT_SCHEDULER && env.AI_SCHEDULER_ENCRYPTION_KEY)
       }, 200, origin);
     }
     if (origin !== ALLOWED_ORIGIN) return jsonResponse({ error: "Origin is not allowed." }, 403, origin);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
-    if (!["POST"].includes(request.method)) return jsonResponse({ error: "Method not allowed." }, 405, origin);
-    if (!["/ask", "/agent", "/execute"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
+    if (!["GET","POST","DELETE"].includes(request.method)) return jsonResponse({ error: "Method not allowed." }, 405, origin);
+    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
 
     try {
       const authorization = request.headers.get("Authorization") || "";
@@ -1199,15 +1208,49 @@ export default {
       if (!match) return jsonResponse({ error: "Sign-in is required." }, 401, origin);
       const token = match[1];
       const claims = await verifyFirebaseIdToken(token);
-      const contentType = request.headers.get("Content-Type") || "";
-      if (!contentType.toLowerCase().includes("application/json")) return jsonResponse({ error: "Content-Type must be application/json." }, 415, origin);
-      const body = await request.json();
+      let body = {};
+      if (request.method !== "GET") {
+        const contentType = request.headers.get("Content-Type") || "";
+        if (!contentType.toLowerCase().includes("application/json")) return jsonResponse({ error: "Content-Type must be application/json." }, 415, origin);
+        body = await request.json();
+      }
       const profile = await loadProfile(claims, token);
       const config = await loadAgentConfig(token);
       if (!config.enabled) return jsonResponse({ error: "The administrator has disabled the AI Agent." }, 403, origin);
+      requirePermission(profile,"aiAgent","view");
+
+      if (url.pathname === "/dashboards") {
+        if (!env.AI_AGENT_SCHEDULER) throw new Error("Dashboard storage is not configured on the Worker.");
+        if (request.method === "GET") {
+          const output = await schedulerBindingRequest(env,"/dashboards","GET",null,claims.sub);
+          return jsonResponse(output,200,origin);
+        }
+        if (request.method === "DELETE") {
+          const id = safeSegment(body.id,"dashboard id");
+          const output = await schedulerBindingRequest(env,"/dashboard","DELETE",{uid:claims.sub,id});
+          return jsonResponse(output,200,origin);
+        }
+        return jsonResponse({error:"Unsupported dashboard operation."},405,origin);
+      }
+
+      if (url.pathname === "/schedules") {
+        if (!env.AI_AGENT_SCHEDULER || !env.AI_SCHEDULER_ENCRYPTION_KEY) throw new Error("Scheduling is not configured. Deploy the scheduler binding and set AI_SCHEDULER_ENCRYPTION_KEY in Cloudflare Worker Secrets.");
+        if (request.method === "GET") {
+          const output = await schedulerBindingRequest(env,"/schedules","GET",null,claims.sub);
+          return jsonResponse(output,200,origin);
+        }
+        if (request.method === "DELETE") {
+          const id = safeSegment(body.id,"schedule id");
+          const output = await schedulerBindingRequest(env,"/schedule","DELETE",{uid:claims.sub,id});
+          return jsonResponse(output,200,origin);
+        }
+        const schedule = validateScheduleRequest(body,claims,profile,env);
+        const output = await schedulerBindingRequest(env,"/schedule","POST",{schedule});
+        return jsonResponse(output,201,origin);
+      }
 
       if (url.pathname === "/execute") {
-        const output = await handleExecuteRequest(body, claims, profile, token);
+        const output = await handleExecuteRequest(body, claims, profile, token, env);
         return jsonResponse(output, 200, origin);
       }
 
