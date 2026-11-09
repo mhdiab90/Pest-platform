@@ -5,10 +5,14 @@ on:
     branches: [main]
     paths:
       - "cloudflare/worker.js"
+      - "index.html"
+      - ".github/scripts/check-app-babel.mjs"
       - ".github/workflows/worker-check.yml"
   pull_request:
     paths:
       - "cloudflare/worker.js"
+      - "index.html"
+      - ".github/scripts/check-app-babel.mjs"
       - ".github/workflows/worker-check.yml"
   workflow_dispatch:
 
@@ -22,5 +26,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "24"
+      - name: Install JSX parser
+        run: npm install --no-save @babel/parser
       - name: Validate Worker JavaScript syntax
         run: node --input-type=module --check < cloudflare/worker.js
+      - name: Validate React and JSX syntax
+        run: node .github/scripts/check-app-babel.mjs
