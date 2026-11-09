@@ -2542,11 +2542,12 @@ function App(){
     setAiDashboardsBusy(true);setAiSchedulesBusy(true);
     try{
       const [dashboardResult,scheduleResult]=await Promise.all([
-        window.pestAIAgentListDashboards?window.pestAIAgentListDashboards():Promise.resolve({dashboards:[]}),
-        window.pestAIAgentListSchedules?window.pestAIAgentListSchedules():Promise.resolve({schedules:[]})
+        (window.pestAIAgentListDashboards?window.pestAIAgentListDashboards():Promise.resolve({dashboards:[]})).catch(error=>({dashboards:[],error})),
+        (window.pestAIAgentListSchedules?window.pestAIAgentListSchedules():Promise.resolve({schedules:[]})).catch(error=>({schedules:[],error}))
       ]);
       setAiDashboards(Array.isArray(dashboardResult?.dashboards)?dashboardResult.dashboards:[]);
       setAiSchedules(Array.isArray(scheduleResult?.schedules)?scheduleResult.schedules:[]);
+      if(scheduleResult?.error)setAiScheduleNotice(String(scheduleResult.error.message||scheduleResult.error).slice(0,240));
     }catch(err){
       console.warn('AI workspace could not be refreshed:',err);
     }finally{setAiDashboardsBusy(false);setAiSchedulesBusy(false);}
@@ -3188,6 +3189,7 @@ function App(){
                 <button type="button" className="app-ai-suggestion" onClick={()=>sendAssistantQuestion(rtl?'لخص لي موقف التدفقات النقدية والمستحقات':'Summarize cash flow and outstanding balances')}>{rtl?'لخص موقف التدفقات النقدية والمستحقات':'Summarize cash flow and outstanding balances'}</button>
                 <button type="button" className="app-ai-suggestion" onClick={()=>sendAssistantQuestion(rtl?'ما هي المشروعات المتأخرة وما أسباب التأخير المسجلة؟':'Which projects are overdue and what delay reasons are recorded?')}>{rtl?'ما المشروعات المتأخرة؟':'Which projects are overdue?'}</button>
                 <button type="button" className="app-ai-suggestion" onClick={()=>sendAssistantQuestion(rtl?'اشرح لي كيفية تسجيل مستحق عميل وتحصيله':'Explain how to register a customer receivable and collection')}>{rtl?'كيفية تسجيل مستحق عميل وتحصيله':'How to register a receivable and collection'}</button>
+                <button type="button" className="app-ai-suggestion" onClick={()=>sendAssistantQuestion(rtl?'أنشئ لي لوحة متابعة للمشروعات والمستحقات والالتزامات مع مؤشرات ورسوم بيانية وجدول بأهم المشروعات':'Build an AI dashboard for projects, receivables and payables with metrics, charts and a key-projects table')}>{rtl?'أنشئ لوحة متابعة ذكية':'Build an AI dashboard'}</button>
               </div>
             </div>:assistantMessages.map((m,i)=><div key={i} className={'app-ai-bubble '+(m.role==='user'?'user':'assistant')}>{m.content}</div>)}
             {assistantPendingActions.length>0&&<div className="mx-3 my-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"><b className="block mb-2">{rtl?'إجراءات مقترحة — لم يتم تنفيذها بعد':'Proposed actions — not executed yet'}</b><ol className="list-decimal ps-5 space-y-1">{assistantPendingActions.map(action=><li key={action.id} className="py-1"><b>{action.label}</b><details className="mt-1"><summary className="cursor-pointer text-xs text-amber-800 underline">{rtl?'عرض تفاصيل البيانات والتغييرات':'Review data and proposed changes'}</summary><pre dir="auto" className="mt-2 max-h-48 overflow-auto rounded-lg bg-white/80 border border-amber-200 p-2 text-[11px] whitespace-pre-wrap break-words">{JSON.stringify(action.args,null,2)}</pre></details></li>)}</ol><div className="flex flex-wrap gap-2 mt-3"><button type="button" disabled={assistantExecuting} onClick={executeAssistantActions} className="rounded-lg bg-emerald-600 text-white px-4 py-2 font-bold disabled:opacity-50">{assistantExecuting?(rtl?'جارٍ التنفيذ...':'Executing...'):(rtl?'تأكيد وتنفيذ الإجراءات':'Confirm and execute actions')}</button><button type="button" disabled={assistantExecuting} onClick={()=>setAssistantPendingActions([])} className="rounded-lg bg-white border px-4 py-2">{rtl?'إلغاء':'Discard'}</button></div><p className="text-xs mt-2">{rtl?'سيتم إعادة فحص الصلاحيات قبل كل عملية.':'Permissions are checked again before each operation.'}</p></div>}
