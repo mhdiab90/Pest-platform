@@ -440,7 +440,9 @@ function App(){
     }
     const cacheAge=cached?Date.now()-Number(cached.fetchedAt||0):Infinity;
     const refreshMs=23*60*60*1000;
+    let lastAttemptAt=Number(cached?.fetchedAt||0);
     const loadRates=async()=>{
+      lastAttemptAt=Date.now();
       try{
         const response=await fetch('https://open.er-api.com/v6/latest/EGP',{cache:'no-store'});
         if(!response.ok)throw new Error('Exchange-rate service returned '+response.status);
@@ -448,6 +450,8 @@ function App(){
         if(data.result!=='success'||data.base_code!=='EGP'||!data.rates||Number(data.rates.EGP)!==1)throw new Error('Invalid exchange-rate response');
         const next={rates:data.rates,time_last_update_utc:data.time_last_update_utc||'',time_next_update_utc:data.time_next_update_utc||'',provider:data.provider||'https://www.exchangerate-api.com',fetchedAt:Date.now()};
         if(!active)return;
+        cached=next;
+        lastAttemptAt=next.fetchedAt;
         setFxRates(next);
         setFxRateStatus('ready');
         try{localStorage.setItem(cacheKey,JSON.stringify(next));}catch(_){}
@@ -461,7 +465,7 @@ function App(){
       void loadRates();
     }
     const timer=window.setInterval(()=>{
-      if(Date.now()-Number(cached?.fetchedAt||0)>=refreshMs)void loadRates();
+      if(Date.now()-lastAttemptAt>=refreshMs)void loadRates();
     },60*60*1000);
     return ()=>{active=false;window.clearInterval(timer);};
   },[currentUser?.uid]);
