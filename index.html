@@ -419,7 +419,13 @@ function App(){
   const [assistantBusy,setAssistantBusy] = useState(false);
   const [assistantReady,setAssistantReady] = useState(false);
   const [assistantUnavailable,setAssistantUnavailable] = useState(false);
+  const [assistantPendingActions,setAssistantPendingActions] = useState([]);
+  const [assistantExecuting,setAssistantExecuting] = useState(false);
+  const [aiProviderDraft,setAiProviderDraft] = useState('cloudflare');
+  const [aiSettingsBusy,setAiSettingsBusy] = useState(false);
+  const [aiSettingsNotice,setAiSettingsNotice] = useState('');
   notificationPreferencesRef.current={sound:soundNotificationsEnabled,desktop:desktopNotificationsEnabled};
+  useEffect(()=>{setAiProviderDraft(companyInfo?.aiAgent?.provider==='openrouter'?'openrouter':'cloudflare');},[companyInfo?.aiAgent?.provider]);
   const [fxRates,setFxRates] = useState(null);
   const [fxRateStatus,setFxRateStatus] = useState('loading');
   useEffect(()=>{
@@ -514,13 +520,15 @@ function App(){
   useEffect(()=>{
     const syncAiState=()=>{
       const status=window.pestAIStatus;
-      setAssistantReady(status==='ready' && typeof window.pestAIAsk==='function');
-      setAssistantUnavailable(status==='unavailable');
+      const provider=companyInfo?.aiAgent?.provider==='openrouter'?'openrouter':'cloudflare';
+      const providers=window.pestAIProviders||{};
+      setAssistantReady(status==='ready' && typeof window.pestAIAgentAsk==='function' && providers[provider]===true);
+      setAssistantUnavailable(status==='unavailable'||(status==='ready'&&providers[provider]!==true));
     };
     syncAiState();
     window.addEventListener('pest-ai-ready',syncAiState);
     return ()=>window.removeEventListener('pest-ai-ready',syncAiState);
-  },[]);
+  },[companyInfo?.aiAgent?.provider]);
 
   useEffect(()=>{
     const chosen=themeOptions[theme] || themeOptions.blue;
@@ -766,10 +774,10 @@ function App(){
   const omarUsername=String(currentUser?.username||'').trim().toLowerCase();
   const omarEmailLocal=String(currentUser?.email||'').split('@')[0].trim().toLowerCase();
   const isOmarProjectUser=omarUsername==='omar'||omarEmailLocal==='omar'||String(currentUser?.fullName||'').trim().toLowerCase()==='omar';
-  const permissionModules=[{id:'dashboard',label:rtl?'لوحة التحكم':'Dashboard'},{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors'},{id:'projects',label:rtl?'المشروعات وملفاتها':'Projects & Project files'},{id:'statement',label:rtl?'التدفقات النقدية':'Cash flow'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody'},{id:'reports',label:rtl?'التقارير':'Reports'},{id:'messages',label:rtl?'الرسائل وWhatsApp':'Messages & WhatsApp'},{id:'tasks',label:rtl?'المهام':'Tasks'},{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data'}];
+  const permissionModules=[{id:'dashboard',label:rtl?'لوحة التحكم':'Dashboard'},{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors'},{id:'projects',label:rtl?'المشروعات وملفاتها':'Projects & Project files'},{id:'statement',label:rtl?'التدفقات النقدية':'Cash flow'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody'},{id:'reports',label:rtl?'التقارير':'Reports'},{id:'messages',label:rtl?'الرسائل وWhatsApp':'Messages & WhatsApp'},{id:'tasks',label:rtl?'المهام':'Tasks'},{id:'aiAgent',label:rtl?'المساعد الذكي':'AI Agent'},{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data'}];
   const permissionActions=[{id:'view',label:rtl?'عرض':'View'},{id:'add',label:rtl?'إضافة':'Add'},{id:'edit',label:rtl?'تعديل':'Edit'},{id:'delete',label:rtl?'حذف':'Delete'},{id:'approve',label:rtl?'اعتماد':'Approve'},{id:'export',label:rtl?'تصدير':'Export'},{id:'manage',label:rtl?'إدارة':'Manage'},{id:'viewOthers',label:rtl?'عرض عهد الآخرين':'View others'}];
   const hasPermission=(moduleId,action='view')=>isAdmin||moduleId==='profile'&&action==='view'||(isOmarProjectUser&&moduleId==='projects'&&['view','add','edit'].includes(action))||moduleId==='cashCustody'&&['view','add','edit'].includes(action)&&currentUser?.permissions?.cashCustody?.[action]!==false||currentUser?.permissions?.[moduleId]?.[action]===true;
-  const canAccessTab=tabId=>['companySettings','userRequests','userPermissions','userManagement'].includes(tabId)?Boolean(isAdmin):hasPermission(tabId==='projectDetail'?'projects':tabId,'view');
+  const canAccessTab=tabId=>['companySettings','aiSettings','userRequests','userPermissions','userManagement'].includes(tabId)?Boolean(isAdmin):hasPermission(tabId==='projectDetail'?'projects':tabId,'view');
   const requirePermission=(moduleId,action)=>{if(hasPermission(moduleId,action))return true;alert(rtl?'ليس لديك صلاحية لتنفيذ هذه العملية. يرجى مراجعة مدير النظام.':'You do not have permission to perform this action. Contact your administrator.');return false;};
   const money=n=>new Intl.NumberFormat(rtl?'ar-EG-u-nu-latn':'en-US',{numberingSystem:'latn',minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n||0));
   function latinDigits(value){
@@ -1687,6 +1695,20 @@ function App(){
     try{const beforeSnap=await db.ref('companyInfo').once('value');const before=beforeSnap.val()||{};const after={name,logo:companyForm.logo || '',phone:companyForm.phone.trim(),email:companyForm.email.trim(),address:companyForm.address.trim(),taxNumber:companyForm.taxNumber.trim(),commercialRegister:companyForm.commercialRegister.trim(),website:companyForm.website.trim()};await db.ref('companyInfo').update({...after,updatedAt:firebase.database.ServerValue.TIMESTAMP});await addLog('تحديث بيانات الشركة',currentUser,{entityType:'company-settings',entityId:'companyInfo',changes:auditChanges(before,after)});alert(tr('saved'));}
     catch(err){alert(firebaseErrorMessage(err,tr));}
   }
+  async function saveAiAgentSettings(){
+    if(!isAdmin)return;
+    setAiSettingsBusy(true);setAiSettingsNotice('');
+    try{
+      const provider=aiProviderDraft==='openrouter'?'openrouter':'cloudflare';
+      const before=companyInfo?.aiAgent||{};
+      await db.ref('companyInfo/aiAgent').update({provider,enabled:true,updatedBy:currentUser.uid,updatedAt:firebase.database.ServerValue.TIMESTAMP});
+      setCompanyInfo(old=>({...old,aiAgent:{...(old.aiAgent||{}),provider,enabled:true}}));
+      await addLog('تغيير مزود AI Agent إلى '+provider,currentUser,{entityType:'ai-agent-settings',entityId:'companyInfo/aiAgent',changes:auditChanges(before,{provider,enabled:true})});
+      setAiSettingsNotice(rtl?'تم حفظ مزود المساعد الذكي.':'AI Agent provider saved.');
+      window.dispatchEvent(new Event('pest-ai-ready'));
+    }catch(err){setAiSettingsNotice(firebaseErrorMessage(err,tr));}
+    finally{setAiSettingsBusy(false);}
+  }
 
   function readImageFile(file,maxBytes=450000){
     return new Promise((resolve,reject)=>{
@@ -2472,36 +2494,44 @@ function App(){
   }
   async function sendAssistantQuestion(questionOverride){
     const question=String(questionOverride||assistantInput||'').trim();
-    if(!question||assistantBusy) return;
+    if(!question||assistantBusy||assistantPendingActions.length)return;
     const history=[...assistantMessages,{role:'user',content:question}];
     setAssistantMessages(history);setAssistantInput('');setAssistantBusy(true);
     try{
-      if(typeof window.pestAIAsk!=='function') throw new Error('Cloudflare AI connection is not ready.');
+      if(typeof window.pestAIAgentAsk!=='function') throw new Error('AI Agent Worker update is required.');
       const context=buildAssistantContext(question);
-      const historyText=history.slice(-8).map(m=>(m.role==='user'?'User':'Assistant')+': '+m.content).join('\n');
-      const prompt=[
-        'You are the read-only AI assistant embedded in a project, customer/supplier and cash-flow management application.',
-        'Answer in the same language as the user; when the user writes Arabic, use clear Egyptian Arabic.',
-        'Use only the application context below for facts about records, amounts, balances, dates and statuses. Never invent missing records, numbers, contacts or events.',
-        'Explain clearly the difference between contract value, estimated cost budget, registered receivables/payables, and actual settled collections/payments. Do not treat a forecast budget as a payable.',
-        'When data is missing or the matching records are incomplete, say what is missing and suggest the relevant screen or record to check.',
-        'You are read-only: never claim to have edited, deleted, approved, sent or created anything. You may explain how the user can do it in the app.',
-        'Format money with its currency and state when a value is an aggregate. Mention when the available context may not include every matching record.',
-        '\nAPPLICATION CONTEXT (only relevant loaded records):\n'+context,
-        '\nRECENT CONVERSATION:\n'+historyText,
-        '\nLATEST QUESTION:\n'+question
-      ].join('\n');
-      const answer=await window.pestAIAsk(prompt);
-      if(!answer) throw new Error('The AI model returned an empty answer.');
-      setAssistantMessages(old=>[...old,{role:'assistant',content:answer}]);
+      const historyText=history.slice(-10).map(m=>(m.role==='user'?'User':'AI Agent')+': '+m.content).join('\n');
+      const prompt='أجب عن الطلب الأحدث باستخدام أدوات البحث داخل البرنامج عند الحاجة. إذا طلبت إضافة أو تعديل أو حذف أو إرسال رسالة، جهّز الإجراء للمراجعة ولا تنفذه قبل تأكيد المستخدم.\n\nCONVERSATION:\n'+historyText+'\n\nLATEST REQUEST:\n'+question;
+      const result=await window.pestAIAgentAsk(prompt,context);
+      if(!result||typeof result.answer!=='string'||!result.answer.trim()) throw new Error('The AI Agent returned an empty answer.');
+      setAssistantPendingActions(Array.isArray(result.pendingActions)?result.pendingActions:[]);
+      setAssistantMessages(old=>[...old,{role:'assistant',content:result.answer}]);
     }catch(err){
-      console.error('In-app AI assistant:',err);
-      const raw=String(err&&err.message||err||'').slice(0,260);
+      console.error('In-app AI Agent:',err);
+      const raw=String(err&&err.message||err||'').slice(0,320);
       const hint=/401|token|session|sign.?in|expired/i.test(raw)
-        ? (rtl?'انتهت جلسة تسجيل الدخول أو لم تعد صالحة. سجل الخروج ثم الدخول مرة أخرى.':'Your sign-in session is invalid or expired. Sign out and sign in again.')
-        : (rtl?'تعذر الاتصال بخدمة الذكاء الاصطناعي. حاول مرة أخرى، وإذا استمرت المشكلة راجع حالة Cloudflare Worker.':'Could not reach the AI service. Try again, and check the Cloudflare Worker if the issue continues.');
+        ? (rtl?'انتهت جلسة تسجيل الدخول. سجل الخروج ثم الدخول مرة أخرى.':'Your session is invalid or expired. Sign in again.')
+        : (rtl?'تعذر تشغيل AI Agent. تحقق من نشر Worker وصلاحية المستخدم وإعداد مزود الذكاء الاصطناعي.':'AI Agent could not run. Check the deployed Worker, user permission and provider configuration.');
       setAssistantMessages(old=>[...old,{role:'assistant',content:hint+'\n'+raw}]);
     }finally{setAssistantBusy(false);}
+  }
+  async function executeAssistantActions(){
+    if(!assistantPendingActions.length||assistantExecuting)return;
+    setAssistantExecuting(true);
+    try{
+      if(typeof window.pestAIAgentExecute!=='function')throw new Error('AI Agent execution endpoint is unavailable.');
+      const response=await window.pestAIAgentExecute(assistantPendingActions);
+      const results=Array.isArray(response?.results)?response.results:[];
+      const lines=results.map(item=>{
+        const title=assistantPendingActions.find(action=>action.id===item.id)?.label||item.name||item.id;
+        return (item.success?'✓ ':'✕ ')+title+(item.success?' — '+(rtl?'تم التنفيذ':'Completed'):' — '+(item.error||(rtl?'فشل التنفيذ':'Failed')));
+      });
+      setAssistantMessages(old=>[...old,{role:'assistant',content:(rtl?'نتيجة تنفيذ الإجراءات بعد إعادة التحقق من الصلاحيات:\n':'Execution results after permission re-check:\n')+lines.join('\n')}]);
+      setAssistantPendingActions([]);
+    }catch(err){
+      console.error('AI Agent action execution:',err);
+      setAssistantMessages(old=>[...old,{role:'assistant',content:(rtl?'تعذر تنفيذ الإجراءات: ':'Could not execute the actions: ')+String(err?.message||err)}]);
+    }finally{setAssistantExecuting(false);}
   }
 
   const navGroups=[
@@ -2510,11 +2540,11 @@ function App(){
     {id:'projectsGroup',label:tr('projects'),icon:'fa-diagram-project',children:[{id:'projects',label:rtl?'قائمة المشروعات':'Project list',icon:'fa-list'},...(selectedProjectCode?[{id:'projectDetail',label:rtl?'ملف المشروع الحالي':'Current project file',icon:'fa-folder-open'}]:[])]},
     {id:'financeGroup',label:rtl?'المالية':'Finance',icon:'fa-coins',children:[{id:'statement',label:tr('statement'),icon:'fa-file-invoice-dollar'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody',icon:'fa-wallet'},{id:'reports',label:tr('reportCenter'),icon:'fa-chart-pie'}]},
     {id:'communicationGroup',label:rtl?'التواصل والمهام':'Communication & Tasks',icon:'fa-comments',children:[{id:'messages',label:tr('messages'),icon:'fa-envelope'},{id:'tasks',label:rtl?'المهام':'Tasks',icon:'fa-list-check'}]},
-    {id:'settingsGroup',label:tr('settings'),icon:'fa-sliders',children:[{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data',icon:'fa-database'},{id:'profile',label:tr('profile'),icon:'fa-user-gear'},...(isAdmin?[{id:'companySettings',label:tr('companySettings'),icon:'fa-building'}]:[])]},
+    {id:'settingsGroup',label:tr('settings'),icon:'fa-sliders',children:[{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data',icon:'fa-database'},{id:'profile',label:tr('profile'),icon:'fa-user-gear'},...(isAdmin?[{id:'companySettings',label:tr('companySettings'),icon:'fa-building'},{id:'aiSettings',label:rtl?'إعدادات AI Agent':'AI Agent Settings',icon:'fa-wand-magic-sparkles'}]:[])]},
     ...(isAdmin?[{id:'adminGroup',label:rtl?'إدارة النظام':'Administration',icon:'fa-user-shield',children:[{id:'userRequests',label:tr('requestsReport'),icon:'fa-user-clock'},{id:'userManagement',label:rtl?'إدارة بيانات المستخدمين':'User Management',icon:'fa-users-gear'},{id:'userPermissions',label:rtl?'صلاحيات المستخدمين':'User Permissions',icon:'fa-user-lock'},{id:'auditLogs',label:rtl?'سجل نشاط المستخدمين':'User Activity Log',icon:'fa-clipboard-list'}]}]:[])
   ];
   useEffect(()=>{if(currentUser) void addLog('فتح الشاشة: '+String(tab||'dashboard'));},[tab,currentUser?.uid]);
-  const navGroupByTab={master:'masterGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',cashCustody:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',userRequests:'adminGroup',userManagement:'adminGroup',userPermissions:'adminGroup',auditLogs:'adminGroup'};
+  const navGroupByTab={master:'masterGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',cashCustody:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',aiSettings:'settingsGroup',userRequests:'adminGroup',userManagement:'adminGroup',userPermissions:'adminGroup',auditLogs:'adminGroup'};
   const visibleNavGroups=navGroups.map(group=>group.tab?group:({...group,children:(group.children||[]).filter(item=>canAccessTab(item.id))})).filter(group=>group.tab?canAccessTab(group.tab):(group.children||[]).length>0);
   const navCatalog=visibleNavGroups.flatMap(group=>group.tab?[{id:group.tab,label:group.label,icon:group.icon}]:((group.children||[]).map(item=>({...item}))));
   const navMode=navPreferences.uid===(currentUser&&currentUser.uid)?navPreferences.mode:'side';
@@ -2944,8 +2974,19 @@ function App(){
           </section></div></details>
         </div>}
 
+        {tab==='aiSettings'&&isAdmin&&<div className="space-y-5 max-w-4xl">
+          <div><h2 className="font-bold text-xl">{rtl?'إعدادات AI Agent':'AI Agent Settings'}</h2><p className="text-sm text-gray-500 mt-1">{rtl?'اختيار مزود الذكاء الاصطناعي العام للنظام. صلاحية استخدامه تُمنح لكل مستخدم من شاشة صلاحيات المستخدمين.':'Choose the system-wide AI provider. Access is granted separately per user in User Permissions.'}</p></div>
+          <section className="bg-white border rounded-xl p-5 space-y-4">
+            <h3 className="font-bold">{rtl?'اختر مزود AI Agent':'Select AI Agent provider'}</h3>
+            <label className={'block border rounded-xl p-4 cursor-pointer '+(aiProviderDraft==='cloudflare'?'border-blue-500 bg-blue-50':'hover:bg-slate-50')}><span className="flex items-center gap-2"><input type="radio" name="aiProvider" value="cloudflare" checked={aiProviderDraft==='cloudflare'} onChange={()=>setAiProviderDraft('cloudflare')}/><b>Cloudflare Workers AI — GLM-4.7 Flash</b><span className="ms-auto text-xs text-emerald-700 font-bold">{rtl?'المزود الافتراضي':'Default provider'}</span></span><p className="text-sm text-gray-600 mt-2 ms-6">{rtl?'الخيار الأساسي، يعمل من خلال Workers AI Binding باسم AI. الحصة المجانية الحالية 10,000 Neurons يوميًا. يدعم Function Calling وZero Data Retention حسب توثيق Cloudflare.':'Primary provider using the existing Workers AI binding named AI. Current free allowance is 10,000 Neurons/day. Cloudflare documents function calling and zero data retention for this model.'}</p><p className="text-xs text-gray-500 ms-6">{rtl?'لا يحتاج إلى API Key إضافي إذا كان الربط الحالي يعمل.':'No additional API key is needed when the existing binding works.'}</p></label>
+            <label className={'block border rounded-xl p-4 cursor-pointer '+(aiProviderDraft==='openrouter'?'border-blue-500 bg-blue-50':'hover:bg-slate-50')}><span className="flex items-center gap-2"><input type="radio" name="aiProvider" value="openrouter" checked={aiProviderDraft==='openrouter'} onChange={()=>setAiProviderDraft('openrouter')}/><b>OpenRouter — Free Models Router</b><span className="ms-auto text-xs text-emerald-700 font-bold">{rtl?'بديل مجاني':'Free alternative'}</span></span><p className="text-sm text-gray-600 mt-2 ms-6">{rtl?'يوجه الطلب إلى نموذج مجاني يدعم الأدوات عند توفره. الحد المجاني الحالي للنماذج المجانية 50 طلبًا يوميًا و20 طلبًا في الدقيقة.':'Routes requests to an available free model with tool support. Current free-variant limit is 50 requests/day and 20 requests/minute.'}</p><p className="text-xs text-amber-800 mt-2 ms-6">{rtl?'يتطلب حفظ OPENROUTER_API_KEY كـ Secret داخل Cloudflare Worker. قد يتغير النموذج والمزود الذي يستقبل الطلب. لا تختَر هذا المسار لبيانات مالية أو سرية إلا بعد مراجعة سياسات الاحتفاظ بالبيانات لدى مزودي النماذج.':'Requires OPENROUTER_API_KEY stored as a Cloudflare Worker Secret. The selected model/provider can change. Do not route confidential financial data through it unless you have reviewed the model providers’ data-handling policies.'}</p></label>
+            <div className="rounded-lg bg-slate-50 border p-4 text-sm space-y-2"><b>{rtl?'حالة الربط الحالية':'Current provider connection status'}</b><p>Cloudflare: {window.pestAIProviders?.cloudflare===true?(rtl?'متاح':'Available'):(rtl?'غير متاح أو لم يتم نشر Worker المحدث':'Unavailable or updated Worker not deployed')}</p><p>OpenRouter: {window.pestAIProviders?.openrouter===true?(rtl?'مفتاح Secret مضبوط':'Secret configured'):(rtl?'لم يتم ضبط المفتاح السري':'Secret not configured')}</p><a className="text-blue-700 underline" href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer">OpenRouter API keys</a></div>
+            <div className="flex flex-wrap items-center gap-3"><button type="button" disabled={aiSettingsBusy} onClick={saveAiAgentSettings} className="rounded-lg bg-blue-600 text-white px-5 py-3 font-bold disabled:opacity-50">{aiSettingsBusy?(rtl?'جارٍ الحفظ...':'Saving...'):(rtl?'حفظ مزود AI Agent':'Save AI Agent provider')}</button>{aiSettingsNotice&&<span className="text-sm text-gray-600">{aiSettingsNotice}</span>}</div>
+          </section>
+          <section className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900 space-y-2"><b>{rtl?'خطوة تشغيل OpenRouter مرة واحدة':'One-time OpenRouter setup'}</b><p>{rtl?'من Cloudflare Dashboard افتح Worker pest-platform-ai ثم Settings → Variables and Secrets → Add Secret. الاسم OPENROUTER_API_KEY والقيمة هي المفتاح الذي تنشئه من OpenRouter. لا تضع المفتاح في هذه الشاشة أو Firebase. ثم انشر ملف cloudflare/worker.js المحدث.':'In Cloudflare Dashboard, open Worker pest-platform-ai → Settings → Variables and Secrets → Add Secret. Name it OPENROUTER_API_KEY and use the key generated by OpenRouter. Do not place the key in this screen or Firebase. Then deploy the updated cloudflare/worker.js.'}</p></section>
+        </div>}
         {tab==='settings'&&<div className="space-y-5 max-w-5xl">
-          <div><h2 className="font-bold text-xl">{tr('settings')} · {tr('backupSection')}</h2><p className="text-sm text-gray-500 mt-2">{tr('backupHelp')}</p></div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-xl">{tr('settings')} · {tr('backupSection')}</h2><p className="text-sm text-gray-500 mt-2">{tr('backupHelp')}</p></div>{isAdmin&&<button type="button" onClick={()=>setTab('aiSettings')} className="rounded-lg bg-indigo-600 text-white px-4 py-2 text-sm font-bold"><i className="fas fa-wand-magic-sparkles me-2"></i>{rtl?'إعدادات AI Agent':'AI Agent Settings'}</button>}</div>
           <details open className="app-collapsible"><summary><span>{tr('backupSection')}</span></summary><div className="app-collapsible-body"><section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             <article className="bg-white border rounded-xl shadow-sm p-5 flex flex-col gap-3"><div className="w-11 h-11 rounded-lg bg-blue-50 text-blue-700 grid place-items-center"><i className="fas fa-file-code text-xl"></i></div><h3 className="font-bold">{tr('programBackup')}</h3><p className="text-sm text-gray-500 flex-1">{rtl?'تنزيل ملف index.html المنشور حالياً على GitHub.':'Download the currently published index.html from GitHub.'}</p><button disabled={!!backupBusy} onClick={downloadProgramBackup} className="bg-blue-600 text-white rounded-lg px-4 py-3 font-bold">{backupBusy==='program'?tr('loading'):tr('programBackup')}</button></article>
             <article className="bg-white border rounded-xl shadow-sm p-5 flex flex-col gap-3"><div className="w-11 h-11 rounded-lg bg-emerald-50 text-emerald-700 grid place-items-center"><i className="fas fa-database text-xl"></i></div><h3 className="font-bold">{tr('databaseBackup')}</h3><p className="text-sm text-gray-500 flex-1">{rtl?'تنزيل بيانات Realtime Database كاملة بصيغة JSON، بعد حذف أي حقول كلمات مرور قديمة.':'Download the Realtime Database as JSON, excluding legacy password fields.'}</p><button disabled={!isAdmin||!!backupBusy} onClick={downloadDatabaseBackup} className="bg-emerald-600 text-white rounded-lg px-4 py-3 font-bold">{backupBusy==='database'?tr('loading'):tr('databaseBackup')}</button>{!isAdmin&&<small className="text-amber-700">{tr('adminOnly')}</small>}</article>
@@ -3004,7 +3045,7 @@ function App(){
               </select>
             </label>
             {permissionUserUid&&<><div className="flex flex-wrap gap-2"><button type="button" onClick={()=>setPermissionDraft(Object.fromEntries(permissionModules.map(m=>[m.id,Object.fromEntries(permissionActions.map(a=>[a.id,true]))])))} className="px-3 py-2 rounded-lg bg-blue-50 text-blue-700 text-sm font-bold">{rtl?'منح جميع الصلاحيات':'Grant all'}</button><button type="button" onClick={()=>setPermissionDraft(Object.fromEntries(permissionModules.map(m=>[m.id,Object.fromEntries(permissionActions.map(a=>[a.id,false]))])))} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-bold">{rtl?'إلغاء جميع الصلاحيات':'Clear all'}</button></div>
-              <div className="overflow-x-auto border rounded-lg"><table className="w-full text-sm min-w-[760px]"><thead className="bg-slate-50"><tr><th className="p-3 text-start">{rtl?'الشاشة':'Module'}</th>{permissionActions.map(action=><th key={action.id} className="p-3 text-center">{action.label}</th>)}</tr></thead><tbody>{permissionModules.map(module=><tr key={module.id} className="border-t"><td className="p-3 font-bold">{module.label}</td>{permissionActions.map(action=><td key={action.id} className="p-3 text-center">{action.id==='viewOthers'&&module.id!=='cashCustody'?<span className="text-gray-300">—</span>:<input type="checkbox" aria-label={module.label+' '+action.label} checked={Boolean(permissionDraft[module.id]?.[action.id])} onChange={e=>setPermissionDraft(old=>({...old,[module.id]:{...(old[module.id]||{}),[action.id]:e.target.checked}}))}/>}</td>)}</tr>)}</tbody></table></div>
+              <div className="overflow-x-auto border rounded-lg"><table className="w-full text-sm min-w-[760px]"><thead className="bg-slate-50"><tr><th className="p-3 text-start">{rtl?'الشاشة':'Module'}</th>{permissionActions.map(action=><th key={action.id} className="p-3 text-center">{module.id==='aiAgent'&&action.id==='view'?(rtl?'استخدام':'Use'):action.label}</th>)}</tr></thead><tbody>{permissionModules.map(module=><tr key={module.id} className="border-t"><td className="p-3 font-bold">{module.label}</td>{permissionActions.map(action=><td key={action.id} className="p-3 text-center">{(action.id==='viewOthers'&&module.id!=='cashCustody')||(module.id==='aiAgent'&&action.id!=='view')?<span className="text-gray-300">—</span>:<input type="checkbox" aria-label={module.label+' '+(module.id==='aiAgent'&&action.id==='view'?(rtl?'استخدام':'Use'):action.label)} checked={Boolean(permissionDraft[module.id]?.[action.id])} onChange={e=>setPermissionDraft(old=>({...old,[module.id]:{...(old[module.id]||{}),[action.id]:e.target.checked}}))}/>}</td>)}</tr>)}</tbody></table></div>
               <p className="text-xs text-gray-500">{rtl?'صلاحية العرض مطلوبة لظهور الشاشة. الصلاحيات الأخرى تحدد العمليات المتاحة داخلها.':'View permission is required to show a screen. Other permissions govern actions inside it.'}</p>
               <div className="flex flex-wrap items-center gap-3"><button type="button" disabled={permissionBusy} onClick={saveUserPermissions} className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold disabled:opacity-50">{permissionBusy?(rtl?'جارٍ الحفظ...':'Saving...'):(rtl?'حفظ الصلاحيات':'Save permissions')}</button>{permissionNotice&&<span className={'text-sm '+(permissionNotice.includes('نجاح')||permissionNotice.includes('successfully')?'text-green-700':'text-red-600')}>{permissionNotice}</span>}</div>
             </>}
@@ -3039,12 +3080,12 @@ function App(){
     </div>
 
       {currentUser&&<>
-        {assistantOpen&&<section className="app-ai-panel" role="dialog" aria-label={rtl?'المساعد الذكي':'AI assistant'}>
+        {assistantOpen&&hasPermission('aiAgent','view')&&<section className="app-ai-panel" role="dialog" aria-label={rtl?'المساعد الذكي':'AI assistant'}>
           <div className="app-ai-header">
-            <div className="flex items-center gap-3 min-w-0"><span className="w-10 h-10 rounded-full bg-white/20 grid place-items-center"><i className="fas fa-wand-magic-sparkles text-xl"></i></span><div className="min-w-0"><b className="block">{rtl?'مساعد البرنامج الذكي':'Program AI assistant'}</b><small className="text-white/80">Cloudflare Workers AI · GLM 4.7 Flash · {rtl?'استفسار وقراءة فقط':'Read-only assistant'}</small></div></div>
+            <div className="flex items-center gap-3 min-w-0"><span className="w-10 h-10 rounded-full bg-white/20 grid place-items-center"><i className="fas fa-wand-magic-sparkles text-xl"></i></span><div className="min-w-0"><b className="block">{rtl?'مساعد البرنامج الذكي':'Program AI assistant'}</b><small className="text-white/80">{companyInfo?.aiAgent?.provider==='openrouter'?'OpenRouter Free Models':'Cloudflare Workers AI · GLM-4.7 Flash'} · {rtl?'مساعد تنفيذ بصلاحيات المستخدم':'Agent tools use your permissions'}</small></div></div>
             <div className="flex items-center gap-1"><button type="button" title={rtl?'مسح المحادثة':'Clear chat'} onClick={()=>setAssistantMessages([])} className="rounded-lg p-2 hover:bg-white/15"><i className="fas fa-trash-can"></i></button><button type="button" title={rtl?'إغلاق':'Close'} onClick={()=>setAssistantOpen(false)} className="rounded-lg p-2 hover:bg-white/15"><i className="fas fa-xmark text-lg"></i></button></div>
           </div>
-          <div className={'px-3 py-2 text-xs leading-5 border-b '+(assistantReady?'bg-blue-50 text-blue-900 border-blue-100':'bg-amber-50 text-amber-900 border-amber-100')}>{assistantReady?(rtl?'المساعد جاهز. يرسل إلى Gemini سؤالك ومعلومات محدودة مختارة من البرنامج ومرتبطة به، وقد تشمل ملخصًا ماليًا؛ لا يرسل قاعدة البيانات كاملة ولا ينفّذ أي تعديل.':'Assistant ready. Your question and a limited selection of related app data (which may include financial summaries) are sent to Gemini, not the full database. The assistant cannot change records.'):(assistantUnavailable?(rtl?'المساعد غير جاهز بعد. تحقق من نشر Cloudflare Worker وإعداد Workers AI binding باسم AI.':'Assistant is not ready. Check that the Cloudflare Worker is deployed and has a Workers AI binding named AI.'):(rtl?'جاري تجهيز اتصال المساعد الذكي...':'Preparing the AI assistant connection...'))}</div>
+          <div className={'px-3 py-2 text-xs leading-5 border-b '+(assistantReady?'bg-blue-50 text-blue-900 border-blue-100':'bg-amber-50 text-amber-900 border-amber-100')}>{assistantReady?(rtl?'المساعد جاهز. يمكنه قراءة البيانات التي تسمح بها صلاحياتك وتجهيز إضافات أو تعديلات أو حذف أو رسائل للمراجعة. لن يتم حفظ أي تغيير قبل تأكيدك.':'Agent ready. It can read records allowed by your permissions and prepare additions, edits, deletions or internal messages for your review. No change is saved before your confirmation.'):(assistantUnavailable?(companyInfo?.aiAgent?.provider==='openrouter'&&!window.pestAIProviders?.openrouter?(rtl?'OpenRouter غير جاهز. يجب إضافة OPENROUTER_API_KEY في Cloudflare Worker Secrets ثم نشر Worker المحدث.':'OpenRouter is not configured. Add OPENROUTER_API_KEY to Cloudflare Worker Secrets and deploy the updated Worker.'):(rtl?'المساعد غير جاهز. تأكد من نشر Worker المحدث وإعداد AI Binding أو مفتاح المزود المختار.':'Agent unavailable. Deploy the updated Worker and configure the AI binding or selected provider secret.')):(rtl?'جاري تجهيز اتصال المساعد الذكي...':'Preparing the AI Agent connection...'))}</div>
           <div className="app-ai-messages">
             {assistantMessages.length===0?<div className="space-y-3">
               <div className="app-ai-bubble assistant">{rtl?'أهلاً! اسألني عن المشروعات والعملاء والموردين والمستحقات والتحصيلات والمدفوعات أو طريقة استخدام البرنامج. سأجيب من البيانات المتاحة لي داخل النظام.':'Hello! Ask me about projects, customers, suppliers, receivables, collections, payments or how to use the app. I will answer using the available application data.'}</div>
@@ -3054,11 +3095,12 @@ function App(){
                 <button type="button" className="app-ai-suggestion" onClick={()=>sendAssistantQuestion(rtl?'اشرح لي كيفية تسجيل مستحق عميل وتحصيله':'Explain how to register a customer receivable and collection')}>{rtl?'كيفية تسجيل مستحق عميل وتحصيله':'How to register a receivable and collection'}</button>
               </div>
             </div>:assistantMessages.map((m,i)=><div key={i} className={'app-ai-bubble '+(m.role==='user'?'user':'assistant')}>{m.content}</div>)}
+            {assistantPendingActions.length>0&&<div className="mx-3 my-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"><b className="block mb-2">{rtl?'إجراءات مقترحة — لم يتم تنفيذها بعد':'Proposed actions — not executed yet'}</b><ol className="list-decimal ps-5 space-y-1">{assistantPendingActions.map(action=><li key={action.id}>{action.label}</li>)}</ol><div className="flex flex-wrap gap-2 mt-3"><button type="button" disabled={assistantExecuting} onClick={executeAssistantActions} className="rounded-lg bg-emerald-600 text-white px-4 py-2 font-bold disabled:opacity-50">{assistantExecuting?(rtl?'جارٍ التنفيذ...':'Executing...'):(rtl?'تأكيد وتنفيذ الإجراءات':'Confirm and execute actions')}</button><button type="button" disabled={assistantExecuting} onClick={()=>setAssistantPendingActions([])} className="rounded-lg bg-white border px-4 py-2">{rtl?'إلغاء':'Discard'}</button></div><p className="text-xs mt-2">{rtl?'سيتم إعادة فحص الصلاحيات قبل كل عملية.':'Permissions are checked again before each operation.'}</p></div>}
             {assistantBusy&&<div className="app-ai-bubble assistant text-gray-500"><i className="fas fa-circle-notch fa-spin me-2"></i>{rtl?'جاري التفكير والبحث في البيانات المتاحة...':'Thinking and checking available records...'}</div>}
           </div>
           <form className="app-ai-composer" onSubmit={e=>{e.preventDefault();sendAssistantQuestion();}}>
-            <div className="flex items-end gap-2"><textarea value={assistantInput} onChange={e=>setAssistantInput(e.target.value)} placeholder={rtl?'اكتب سؤالك عن البرنامج أو بياناته...':'Ask about the app or its data...'} disabled={!assistantReady||assistantBusy}/><button type="submit" disabled={!assistantReady||assistantBusy||!assistantInput.trim()} className="shrink-0 w-11 h-11 rounded-xl text-white bg-blue-600 disabled:bg-gray-300"><i className={'fas '+(assistantBusy?'fa-spinner fa-spin':'fa-paper-plane')}></i></button></div>
-            <p className="text-[10px] text-gray-400 mt-2">{rtl?'المساعد للقراءة والاستفسار فقط. راجع الأرقام المهمة مع الشاشة أو التقرير الأصلي.':'Read-only assistant. Verify important figures against the original screen or report.'}</p>
+            <div className="flex items-end gap-2"><textarea value={assistantInput} onChange={e=>setAssistantInput(e.target.value)} placeholder={rtl?'اكتب سؤالك عن البرنامج أو بياناته...':'Ask about the app or its data...'} disabled={!assistantReady||assistantBusy||assistantPendingActions.length>0}/><button type="submit" disabled={!assistantReady||assistantBusy||assistantPendingActions.length>0||!assistantInput.trim()} className="shrink-0 w-11 h-11 rounded-xl text-white bg-blue-600 disabled:bg-gray-300"><i className={'fas '+(assistantBusy?'fa-spinner fa-spin':'fa-paper-plane')}></i></button></div>
+            <p className="text-[10px] text-gray-400 mt-2">{rtl?'المساعد لا يتجاوز صلاحياتك. راجع تفاصيل كل إجراء مقترح قبل تأكيد تنفيذه.':'The agent cannot exceed your permissions. Review every proposed action before confirming it.'}</p>
           </form>
         </section>}
         {messageShortcutOpen&&<section className="app-messages-shortcut-panel" role="dialog" aria-label={rtl?'الرسائل السريعة':'Quick messages'}>
@@ -3111,7 +3153,7 @@ function App(){
         </section>}
         <div className="app-floating-actions">
           <button type="button" className="app-messages-launcher" onClick={()=>{setAssistantOpen(false);setMessageShortcutOpen(old=>!old);}} aria-label={rtl?'فتح الرسائل':'Open messages'}><i className="fas fa-comments text-lg"></i><span>{rtl?'الرسائل':'Messages'}</span>{shortcutUnreadCount>0&&<b>{shortcutUnreadCount>99?'99+':shortcutUnreadCount}</b>}</button>
-          <button type="button" className="app-ai-launcher" onClick={()=>{setMessageShortcutOpen(false);setAssistantOpen(old=>!old);}} aria-label={rtl?'فتح المساعد الذكي':'Open AI assistant'}><i className="fas fa-wand-magic-sparkles text-lg"></i><span>{rtl?'اسأل المساعد':'Ask AI'}</span></button>
+          {hasPermission('aiAgent','view')&&<button type="button" className="app-ai-launcher" onClick={()=>{setMessageShortcutOpen(false);setAssistantOpen(old=>!old);}} aria-label={rtl?'فتح المساعد الذكي':'Open AI assistant'}><i className="fas fa-wand-magic-sparkles text-lg"></i><span>{rtl?'اسأل المساعد':'Ask AI'}</span></button>}
         </div>
       </>}
   </div>;
