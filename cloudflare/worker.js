@@ -415,7 +415,8 @@ function searchRows(data, query, limit) {
   const filtered = needle ? rows.filter(row =>
     [row.code, row.name, row.englishName, row.fullName, row.username, row.phone, row.mobile,
       row.taxNumber, row.commercialRegister, row.contractNo, row.purchaseOrderNo,
-      row.status, row.title, row.description, row.subject, row.body].join(" ").toLowerCase().includes(needle)
+      row.projectCode, row.clientCode, row.vendorCode, row.referenceNo, row.voucherNo, row.invoiceNo,
+      row.date, row.transactionDate, row.status, row.title, row.description, row.subject, row.body].join(" ").toLowerCase().includes(needle)
   ) : rows;
   return filtered.slice(0, max);
 }
