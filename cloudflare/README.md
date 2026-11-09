@@ -30,6 +30,18 @@ OpenRouter free models: https://openrouter.ai/collections/free-models/
 Cloudflare Workers AI pricing: https://developers.cloudflare.com/workers-ai/platform/pricing/
 Cloudflare function calling: https://developers.cloudflare.com/workers-ai/features/function-calling/
 
+## Automatic deployment from GitHub
+
+This repository now includes `wrangler.jsonc` and a GitHub Actions workflow that deploys the existing Worker named `pest-platform` whenever `cloudflare/worker.js` changes.
+
+Before the first automatic deployment, add these repository secrets in GitHub → Settings → Secrets and variables → Actions:
+
+- `CLOUDFLARE_API_TOKEN`: a Cloudflare API token scoped to the correct account, with **Workers Scripts:Edit** and **Account Settings:Read**.
+- `CLOUDFLARE_ACCOUNT_ID`: the Cloudflare account ID that owns `pest-platform.ai-mhdiab90.workers.dev`.
+- `OPENROUTER_API_KEY` (optional): the OpenRouter key for the second free provider. The workflow installs it into Cloudflare as a Worker Secret after deploying. If omitted, Cloudflare Workers AI remains usable and OpenRouter reports as unavailable.
+
+Do not commit any of these values to GitHub files or paste them into the application. After adding the required Cloudflare secrets, run the **Deploy AI Agent Worker** workflow once from the Actions tab. Later Worker changes deploy automatically. GitHub Pages and the Worker deploy as separate workflows.
+
 ## App configuration
 
 The administrator selects the active provider in Pest Platform → Settings → AI Agent. The selection is stored in `companyInfo/aiAgent/provider`; this value contains no secret. Cloudflare remains the default.
