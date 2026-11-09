@@ -1459,6 +1459,14 @@ export class AIAgentScheduler {
 }
 
 export default {
+  async scheduled(controller,env,ctx) {
+    if (!env.AI_AGENT_SCHEDULER) {
+      console.error("AI Agent scheduled trigger ran without AI_AGENT_SCHEDULER binding.");
+      return;
+    }
+    const output=await schedulerBindingRequest(env,"/tick","POST",{cron:controller.cron,scheduledTime:controller.scheduledTime});
+    console.log("AI Agent scheduled tick:",JSON.stringify(output));
+  },
   async fetch(request, env) {
     const origin = request.headers.get("Origin") || "";
     const url = new URL(request.url);
@@ -1519,7 +1527,7 @@ export default {
           const output = await schedulerBindingRequest(env,"/schedule","DELETE",{uid:claims.sub,id});
           return jsonResponse(output,200,origin);
         }
-        const schedule = validateScheduleRequest(body,claims,profile,env);
+        const schedule = await validateScheduleRequest(body,claims,profile,env);
         const output = await schedulerBindingRequest(env,"/schedule","POST",{schedule});
         return jsonResponse(output,201,origin);
       }
