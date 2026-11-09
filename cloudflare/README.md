@@ -30,17 +30,13 @@ OpenRouter free models: https://openrouter.ai/collections/free-models/
 Cloudflare Workers AI pricing: https://developers.cloudflare.com/workers-ai/platform/pricing/
 Cloudflare function calling: https://developers.cloudflare.com/workers-ai/features/function-calling/
 
-## Automatic deployment from GitHub
+## Deployment
 
-This repository now includes `wrangler.jsonc` and a GitHub Actions workflow that deploys the existing Worker named `pest-platform` whenever `cloudflare/worker.js` changes.
+The existing Cloudflare GitHub integration is connected to this repository and builds the Worker named `pest-platform` from pushes to `main`. The `wrangler.jsonc` file defines the Worker entry point and the Workers AI binding named `AI`.
 
-Before the first automatic deployment, add these repository secrets in GitHub → Settings → Secrets and variables → Actions:
+After changing `cloudflare/worker.js`, push to `main` and check the **Workers Builds: pest-platform** check run on that commit. A completed successful Cloudflare build confirms that Worker code was deployed. GitHub Pages deployment is a separate check.
 
-- `CLOUDFLARE_API_TOKEN`: a Cloudflare API token scoped to the correct account, with **Workers Scripts:Edit** and **Account Settings:Read**.
-- `CLOUDFLARE_ACCOUNT_ID`: the Cloudflare account ID that owns `pest-platform.ai-mhdiab90.workers.dev`.
-- `OPENROUTER_API_KEY` (optional): the OpenRouter key for the second free provider. The workflow installs it into Cloudflare as a Worker Secret after deploying. If omitted, Cloudflare Workers AI remains usable and OpenRouter reports as unavailable.
-
-Do not commit any of these values to GitHub files or paste them into the application. After adding the required Cloudflare secrets, run the **Deploy AI Agent Worker** workflow once from the Actions tab. Later Worker changes deploy automatically. GitHub Pages and the Worker deploy as separate workflows.
+To enable OpenRouter, add `OPENROUTER_API_KEY` as a **Secret** in the existing Worker in Cloudflare Dashboard → Workers & Pages → `pest-platform` → Settings → Variables and Secrets. Do not place this key in Firebase, browser code or committed files. The existing Cloudflare GitHub integration does not automatically create this provider secret.
 
 ## App configuration
 
