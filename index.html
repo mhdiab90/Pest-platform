@@ -2537,7 +2537,56 @@ function App(){
     if(selected&&!projectCodes.has(selected.code))context.openProject={code:selected.code,name:selected.name,status:selected.status,amount:selected.amount,currency:selected.currency,events:projectEvents(selected).slice(-10).map(e=>({actionName:e.actionName||e.type,date:e.date,dueDate:e.dueDate,amount:e.amount,currency:e.currency,status:e.status,note:e.note}))};
     return JSON.stringify(context).slice(0,18000);
   }
-    async function sendAssistantQuestion(questionOverride){
+    async function refreshAiWorkspace(){
+    if(!hasPermission('aiAgent','view'))return;
+    setAiDashboardsBusy(true);setAiSchedulesBusy(true);
+    try{
+      const [dashboardResult,scheduleResult]=await Promise.all([
+        window.pestAIAgentListDashboards?window.pestAIAgentListDashboards():Promise.resolve({dashboards:[]}),
+        window.pestAIAgentListSchedules?window.pestAIAgentListSchedules():Promise.resolve({schedules:[]})
+      ]);
+      setAiDashboards(Array.isArray(dashboardResult?.dashboards)?dashboardResult.dashboards:[]);
+      setAiSchedules(Array.isArray(scheduleResult?.schedules)?scheduleResult.schedules:[]);
+    }catch(err){
+      console.warn('AI workspace could not be refreshed:',err);
+    }finally{setAiDashboardsBusy(false);setAiSchedulesBusy(false);}
+  }
+  useEffect(()=>{
+    if(assistantOpen&&hasPermission('aiAgent','view'))void refreshAiWorkspace();
+  },[assistantOpen,currentUser?.uid]);
+  async function createAiSchedule(){
+    if(aiScheduleBusy)return;
+    const prompt=String(aiSchedulePrompt||assistantMessages.filter(m=>m.role==='user').slice(-1)[0]?.content||'').trim();
+    if(!aiScheduleTitle.trim()||!prompt)return setAiScheduleNotice(rtl?'أدخل اسم المهمة وتعليمات التقرير.':'Enter a schedule title and report instructions.');
+    if(!aiScheduleScopes.length)return setAiScheduleNotice(rtl?'اختر نطاق بيانات واحدًا على الأقل.':'Select at least one data scope.');
+    setAiScheduleBusy(true);setAiScheduleNotice('');
+    try{
+      const authUser=window.PEST_FIREBASE_AUTH?.currentUser;
+      if(!authUser?.refreshToken)throw new Error(rtl?'تعذر الحصول على جلسة التجديد. سجل الخروج ثم الدخول مرة أخرى.':'Could not access the Firebase refresh session. Sign out and sign in again.');
+      const result=await window.pestAIAgentCreateSchedule({
+        title:aiScheduleTitle.trim(),prompt,frequency:aiScheduleFrequency,time:aiScheduleTime,
+        dayOfWeek:Number(aiScheduleDayOfWeek),dayOfMonth:Number(aiScheduleDayOfMonth),
+        scopes:aiScheduleScopes,refreshToken:authUser.refreshToken
+      });
+      setAiScheduleTitle('');setAiSchedulePrompt('');setAiScheduleNotice(rtl?'تم حفظ المهمة المجدولة.':'Scheduled task saved.');
+      await refreshAiWorkspace();
+    }catch(err){
+      console.error('AI schedule creation:',err);
+      setAiScheduleNotice(String(err?.message||err).slice(0,300));
+    }finally{setAiScheduleBusy(false);}
+  }
+  async function deleteAiSchedule(id){
+    if(!window.confirm(rtl?'هل تريد إلغاء هذه المهمة المجدولة؟':'Cancel this scheduled task?'))return;
+    try{await window.pestAIAgentDeleteSchedule(id);await refreshAiWorkspace();}
+    catch(err){setAiScheduleNotice(String(err?.message||err).slice(0,250));}
+  }
+  async function deleteAiDashboard(id){
+    if(!window.confirm(rtl?'هل تريد حذف لوحة المتابعة هذه؟':'Delete this dashboard?'))return;
+    try{await window.pestAIAgentDeleteDashboard(id);await refreshAiWorkspace();}
+    catch(err){setAiScheduleNotice(String(err?.message||err).slice(0,250));}
+  }
+  const aiScheduleDateText=timestamp=>timestamp?new Intl.DateTimeFormat(rtl?'ar-EG':'en-GB',{timeZone:'Africa/Cairo',dateStyle:'medium',timeStyle:'short'}).format(new Date(timestamp)):'—';
+  async function sendAssistantQuestion(questionOverride){
     const question=String(questionOverride||assistantInput||'').trim();
     if(!question||assistantBusy||assistantPendingActions.length)return;
     const history=[...assistantMessages,{role:'user',content:question}];
