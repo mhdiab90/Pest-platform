@@ -1076,6 +1076,16 @@ async function handleAgentRequest(body, env, claims, profile, token, config) {
   const available = TOOLS.filter(item => {
     const name = item.function.name;
     if (readOnly && !isReadTool(name) && name !== "propose_ai_dashboard") return false;
+    if (readOnly && Array.isArray(body.allowedScopes) && isReadTool(name)) {
+      const selected = body.allowedScopes;
+      const requiredScope = ["search_clients","search_vendors"].includes(name) ? "master" :
+        ["search_projects","get_project_detail"].includes(name) ? "projects" :
+        name === "search_tasks" ? "tasks" :
+        ["search_messages","search_users"].includes(name) ? "messages" :
+        name === "search_cash_custody" ? "cashCustody" : "";
+      if (requiredScope && !selected.includes(requiredScope)) return false;
+      if (name === "search_financial_records" && !["dashboard","statement","reports"].some(scope=>selected.includes(scope))) return false;
+    }
     if (name === "propose_ai_dashboard") return !readOnly && hasPermission(profile,"aiAgent","view");
     if (isReadTool(name)) {
       const moduleId = ["search_clients","search_vendors"].includes(name) ? "master" :
@@ -1344,7 +1354,7 @@ async function runScheduledAiTask(schedule,env) {
     "Scheduled task requested by the user: "+schedule.title,
     "Instruction: "+schedule.prompt
   ].join("\n");
-  const result=await handleAgentRequest({prompt,context:"",readOnly:true},env,claims,profile,token,config);
+  const result=await handleAgentRequest({prompt,context:"",readOnly:true,allowedScopes:schedule.scopes||[]},env,claims,profile,token,config);
   return {
     answer:result.answer,
     provider:result.provider,
@@ -1375,6 +1385,8 @@ export class AIAgentScheduler {
         const uid=safeSegment(body.uid,"user id");
         const dashboard=body.dashboard;
         if (!dashboard || !dashboard.id || !dashboard.title || !Array.isArray(dashboard.widgets)) throw new Error("Invalid dashboard.");
+        const existing=await this.ctx.storage.list({prefix:"dashboard:"+uid+":"});
+        if(existing.size>=25)throw new Error("Each user can save up to 25 AI dashboards.");
         const key="dashboard:"+uid+":"+safeSegment(dashboard.id,"dashboard id");
         await this.ctx.storage.put(key,dashboard);
         return jsonResponse({saved:true,dashboard},200,"");
@@ -1440,7 +1452,7 @@ export class AIAgentScheduler {
             const message=String(error&&error.message||error).slice(0,500);
             schedule.lastStatus="failed";
             schedule.lastError=message;
-            if (/Permission denied|not active|disabled the AI Agent|belongs to another user|INVALID_REFRESH_TOKEN|TOKEN_EXPIRED/i.test(message)) schedule.enabled=false;
+            if (/Permission denied|not active|disabled the AI Agent|belongs to another user|INVALID_REFRESH_TOKEN|TOKEN_EXPIRED|INVALID_GRANT|USER_DISABLED|USER_NOT_FOUND/i.test(message)) schedule.enabled=false;
             await this.ctx.storage.put("run:"+schedule.uid+":"+schedule.id+":"+String(now).padStart(13,"0"),{
               id:schedule.id,scheduleId:schedule.id,uid:schedule.uid,ranAt:now,status:"failed",error:message
             });
@@ -1449,7 +1461,7 @@ export class AIAgentScheduler {
           await this.ctx.storage.put(key,schedule);
           const history=await this.ctx.storage.list({prefix:"run:"+schedule.uid+":"+schedule.id+":"});
           const excess=[...history.keys()].sort().slice(0,Math.max(0,history.size-10));
-          if(excess.length)await this.ctx.storage.delete(excess);
+          for (const historyKey of excess) await this.ctx.storage.delete(historyKey);
         }
         return jsonResponse({processed:results.length,results},200,"");
       }
