@@ -2622,6 +2622,7 @@ function App(){
       });
       setAssistantMessages(old=>[...old,{role:'assistant',content:(rtl?'نتيجة تنفيذ الإجراءات بعد إعادة التحقق من الصلاحيات:\n':'Execution results after permission re-check:\n')+lines.join('\n')}]);
       setAssistantPendingActions([]);
+      if(results.some(item=>item.success&&item.name==='save_ai_dashboard'))await refreshAiWorkspace();
     }catch(err){
       console.error('AI Agent action execution:',err);
       setAssistantMessages(old=>[...old,{role:'assistant',content:(rtl?'تعذر تنفيذ الإجراءات: ':'Could not execute the actions: ')+String(err?.message||err)}]);
