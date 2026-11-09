@@ -62,9 +62,10 @@ This is a permission-controlled toolset, not a promise that every existing scree
 ## AI dashboards
 
 - Ask the AI Agent to create a dashboard or visual report.
-- The model must retrieve source data through the user's permitted search tools, then propose up to six widgets: metrics, bar charts and tables.
-- Saving a dashboard requires the user to review the proposal and explicitly confirm it.
-- Dashboards are stored in the user's private Durable Object workspace (up to 25 per user). They are snapshots: values reflect the time they were created. Ask the agent to rebuild a dashboard when updated figures are needed.
+- The model retrieves source data through the user's permitted search tools, then proposes up to six widgets: metrics, bar charts and tables. The Worker rejects a dashboard proposal unless each widget's source was retrieved successfully in the same request.
+- A visual preview of the metrics, charts and tables is shown before saving. The user must review the proposal and explicitly confirm it.
+- The Worker re-checks each widget source permission before saving. Dashboards are stored in the user's private Durable Object workspace (up to 25 per user).
+- Dashboards are snapshots: values reflect the time they were created. Ask the agent to rebuild a dashboard when updated figures are needed.
 
 ## Scheduled AI reports
 
