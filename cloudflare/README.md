@@ -66,6 +66,10 @@ This is a permission-controlled first toolset, not a promise that every existing
 - User-supplied content and database text are treated as untrusted data, not as instructions.
 - No AI Agent operation can change roles, permissions, passwords, Firebase rules, provider settings or API secrets.
 
+## Important Firebase Rules security note
+
+The AI Worker verifies the signed-in user's permissions before offering a read or write tool, and it uses that user's Firebase ID token for Realtime Database requests. However, the Firebase Rules currently supplied with this project allow any active account to read and write the top-level `clients`, `vendors`, `projects`, `quotes`, `inflows`, and `outflows` collections. That means the Agent respects the app permission matrix, but a determined user may still access these collections directly through Firebase outside the Agent. Before treating the permission matrix as a complete security boundary, tighten the Firebase Rules so each collection checks the corresponding per-user read/write permissions. Review and publish Firebase Rules manually in Firebase Console; this repository does not deploy them.
+
 ## API routes
 
 - `GET /health` — provider availability and service status.
