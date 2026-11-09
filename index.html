@@ -3272,29 +3272,34 @@ ReactDOM.createRoot(document.getElementById('root')).render(<AppErrorBoundary><A
 <script>
 (()=>{
   const WORKER_URL='https://pest-platform.ai-mhdiab90.workers.dev';
-  const postAgent=async(path,body)=>{
+  const agentRequest=async(path,method='POST',body)=>{
     const firebaseAuth=window.PEST_FIREBASE_AUTH;
     const user=firebaseAuth&&firebaseAuth.currentUser;
     if(!user)throw new Error('Sign-in is required. Please sign in again.');
     const idToken=await user.getIdToken();
-    const response=await fetch(WORKER_URL+path,{
-      method:'POST',
-      headers:{'Authorization':'Bearer '+idToken,'Content-Type':'application/json'},
-      body:JSON.stringify(body||{})
-    });
+    const headers={'Authorization':'Bearer '+idToken};
+    const options={method,headers,cache:'no-store'};
+    if(body!==undefined){headers['Content-Type']='application/json';options.body=JSON.stringify(body);}
+    const response=await fetch(WORKER_URL+path,options);
     let payload={};
     try{payload=await response.json();}catch(_){}
     if(!response.ok)throw new Error(payload.error||('AI Agent returned HTTP '+response.status+'.'));
     return payload;
   };
-  window.pestAIAgentAsk=(prompt,context)=>postAgent('/agent',{prompt:String(prompt||''),context:String(context||'')});
-  window.pestAIAgentExecute=actions=>postAgent('/execute',{actions:Array.isArray(actions)?actions:[]});
+  window.pestAIAgentAsk=(prompt,context)=>agentRequest('/agent','POST',{prompt:String(prompt||''),context:String(context||'')});
+  window.pestAIAgentExecute=actions=>agentRequest('/execute','POST',{actions:Array.isArray(actions)?actions:[]});
+  window.pestAIAgentListDashboards=()=>agentRequest('/dashboards','GET');
+  window.pestAIAgentDeleteDashboard=id=>agentRequest('/dashboards','DELETE',{id:String(id||'')});
+  window.pestAIAgentListSchedules=()=>agentRequest('/schedules','GET');
+  window.pestAIAgentCreateSchedule=schedule=>agentRequest('/schedules','POST',schedule||{});
+  window.pestAIAgentDeleteSchedule=id=>agentRequest('/schedules','DELETE',{id:String(id||'')});
   window.pestAIAsk=async prompt=>{
     const result=await window.pestAIAgentAsk(prompt,'');
     return result&&result.answer?result.answer:'';
   };
   window.pestAIStatus='checking';
   window.pestAIProviders={cloudflare:false,openrouter:false};
+  window.pestAISchedulingAvailable=false;
   (async()=>{
     try{
       const response=await fetch(WORKER_URL+'/health',{method:'GET',cache:'no-store'});
@@ -3302,6 +3307,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<AppErrorBoundary><A
       if(!response.ok||health.ok!==true)throw new Error('AI Agent Worker health check failed.');
       window.pestAIProviders=health.providers||{};
       window.pestAIModels=health.models||{};
+      window.pestAISchedulingAvailable=health.schedulingAvailable===true;
       window.pestAIStatus=(window.pestAIProviders.cloudflare||window.pestAIProviders.openrouter)?'ready':'unavailable';
     }catch(error){
       console.error('AI Agent Worker health check:',error);
@@ -3309,7 +3315,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<AppErrorBoundary><A
     }
     window.dispatchEvent(new Event('pest-ai-ready'));
   })();
-})();
+})();;
 </script>
 </body>
 </html>
