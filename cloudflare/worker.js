@@ -4,6 +4,8 @@ const ALLOWED_ORIGIN = "https://mhdiab90.github.io";
 const MODEL = "@cf/zai-org/glm-4.7-flash";
 const OPENROUTER_MODEL = "openrouter/free";
 const FIREBASE_JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
+const FIREBASE_API_KEY = "AIzaSyBPrzHFEIM3AOFclTzJ1SpG_Nq6BKHgrSo";
+const SCHEDULE_TIME_ZONE = "Africa/Cairo";
 const MAX_PROMPT_LENGTH = 24000;
 const MAX_AGENT_ACTIONS = 5;
 
@@ -13,7 +15,7 @@ let cachedJwksUntil = 0;
 function corsHeaders(origin) {
   const headers = {
     "Vary": "Origin",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
     "Access-Control-Max-Age": "86400"
   };
@@ -322,7 +324,31 @@ const TOOLS = [
   }, ["id"]),
   toolDefinition("send_internal_message", "Propose sending an internal message to one active user. The message will NOT be sent until the user confirms.", {
     recipientUid: { type: "string" }, subject: { type: "string" }, body: { type: "string" }
-  }, ["recipientUid", "body"])
+  }, ["recipientUid", "body"]),
+  toolDefinition("propose_ai_dashboard", "Build a visual dashboard from data you just retrieved with the permitted search tools. Only use exact values found in tool results; do not invent numbers. The user will preview and confirm saving it.", {
+    title: { type: "string" },
+    description: { type: "string" },
+    widgets: {
+      type: "array", minItems: 1, maxItems: 6,
+      items: {
+        type: "object",
+        properties: {
+          type: { type: "string", enum: ["metric","bar","table"] },
+          source: { type: "string", enum: ["master","projects","finance","tasks","messages","cashCustody"] },
+          title: { type: "string" },
+          label: { type: "string" },
+          value: { type: ["number","string"] },
+          unit: { type: "string" },
+          note: { type: "string" },
+          categories: { type: "array", items: { type: "string" }, maxItems: 10 },
+          values: { type: "array", items: { type: "number" }, maxItems: 10 },
+          columns: { type: "array", items: { type: "string" }, maxItems: 6 },
+          rows: { type: "array", items: { type: "array", items: { type: ["string","number"] }, maxItems: 6 }, maxItems: 10 }
+        },
+        required: ["type","source","title"]
+      }
+    }
+  }, ["title","widgets"])
 ];
 
 function toolName(call) {
@@ -585,7 +611,8 @@ function pendingPermission(name) {
     create_task: ["tasks", "add"],
     update_task: ["tasks", "edit"],
     delete_task: ["tasks", "delete"],
-    send_internal_message: ["messages", "add"]
+    send_internal_message: ["messages", "add"],
+    save_ai_dashboard: ["aiAgent", "view"]
   };
   return map[name] || null;
 }
@@ -609,6 +636,7 @@ function userFacingAction(name, args) {
   if (name === "update_task") return "تعديل المهمة " + args.id;
   if (name === "delete_task") return "حذف المهمة " + args.id;
   if (name === "send_internal_message") return "إرسال رسالة داخلية إلى المستخدم " + args.recipientUid;
+  if (name === "save_ai_dashboard") return "حفظ لوحة متابعة ذكية: " + args.title + " (" + (args.widgets || []).length + " عناصر)";
   return name;
 }
 
@@ -748,6 +776,45 @@ function validateProposedAction(name, args) {
       subject: cleanText(args.subject || "", 200),
       body: cleanText(args.body, 4000)
     };
+  }
+  if (name === "save_ai_dashboard") {
+    const title = cleanText(args.title, 100);
+    const widgetsIn = Array.isArray(args.widgets) ? args.widgets : [];
+    if (!title || !widgetsIn.length || widgetsIn.length > 6) throw new Error("A dashboard needs a title and one to six widgets.");
+    const sourcePermission = {
+      master: ["master","view"], projects: ["projects","view"], finance: null,
+      tasks: ["tasks","view"], messages: ["messages","view"], cashCustody: ["cashCustody","view"]
+    };
+    const widgets = widgetsIn.map((widget,index)=>{
+      if (!widget || !["metric","bar","table"].includes(widget.type)) throw new Error("Unsupported dashboard widget.");
+      const source = String(widget.source || "");
+      if (!Object.prototype.hasOwnProperty.call(sourcePermission,source)) throw new Error("Unsupported dashboard data source.");
+      const permission = sourcePermission[source];
+      if (permission) requirePermission(args.__profile || {},permission[0],permission[1]);
+      const item = { type:widget.type, source, title:cleanText(widget.title || ("Widget "+(index+1)),100) };
+      if (widget.type === "metric") {
+        if (widget.value === undefined || widget.value === null || (typeof widget.value === "number" && !Number.isFinite(widget.value))) throw new Error("Invalid metric value.");
+        item.value = typeof widget.value === "number" ? widget.value : cleanText(widget.value,80);
+        item.unit = cleanText(widget.unit || "",24);
+        item.note = cleanText(widget.note || "",180);
+      } else if (widget.type === "bar") {
+        const categories = Array.isArray(widget.categories) ? widget.categories.slice(0,10).map(x=>cleanText(x,80)) : [];
+        const values = Array.isArray(widget.values) ? widget.values.slice(0,10).map(x=>cleanNumber(x,"chart value",true)) : [];
+        if (!categories.length || categories.length !== values.length) throw new Error("Bar chart categories and values must match.");
+        item.categories = categories; item.values = values; item.unit = cleanText(widget.unit || "",24);
+      } else {
+        const columns = Array.isArray(widget.columns) ? widget.columns.slice(0,6).map(x=>cleanText(x,60)) : [];
+        const rows = Array.isArray(widget.rows) ? widget.rows.slice(0,10) : [];
+        if (!columns.length || rows.some(row=>!Array.isArray(row)||row.length!==columns.length)) throw new Error("Dashboard table columns and rows do not match.");
+        item.columns = columns;
+        item.rows = rows.map(row=>row.map(value=>typeof value==="number"?(Number.isFinite(value)?value:0):cleanText(value,160)));
+      }
+      return item;
+    });
+    if (widgets.some(widget=>widget.source==="finance") && !(args.__profile && (hasPermission(args.__profile,"dashboard","view")||hasPermission(args.__profile,"statement","view")||hasPermission(args.__profile,"reports","view")))) {
+      throw new Error("Permission denied: financial dashboard data.");
+    }
+    return { title, description:cleanText(args.description || "",300), widgets };
   }
   throw new Error("Unsupported action.");
 }
@@ -995,6 +1062,7 @@ function buildSystemPrompt(profile) {
 }
 
 async function handleAgentRequest(body, env, claims, profile, token, config) {
+  const readOnly = body.readOnly === true;
   requirePermission(profile, "aiAgent", "view");
   if (!config.enabled) throw new Error("The administrator has disabled the AI Agent.");
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
@@ -1005,6 +1073,8 @@ async function handleAgentRequest(body, env, claims, profile, token, config) {
   if (provider === "openrouter" && !env.OPENROUTER_API_KEY) throw new Error("OpenRouter is selected but its Cloudflare secret is not configured.");
   const available = TOOLS.filter(item => {
     const name = item.function.name;
+    if (readOnly && !isReadTool(name) && name !== "propose_ai_dashboard") return false;
+    if (name === "propose_ai_dashboard") return !readOnly && hasPermission(profile,"aiAgent","view");
     if (isReadTool(name)) {
       const moduleId = ["search_clients","search_vendors"].includes(name) ? "master" :
         ["search_projects","get_project_detail"].includes(name) ? "projects" :
@@ -1047,10 +1117,18 @@ async function handleAgentRequest(body, env, claims, profile, token, config) {
           if (!permission || !available.some(t => t.function.name === name)) throw new Error("This action is not available to your account.");
           requirePermission(profile, permission[0], permission[1]);
           if (pendingActions.length >= MAX_AGENT_ACTIONS) throw new Error("Maximum five pending actions per request.");
-          const normalized = validateProposedAction(name, args);
-          const action = { id: randomId("pending"), name, label: userFacingAction(name, normalized), args: normalized };
-          pendingActions.push(action);
-          output = { pendingConfirmation: true, action: action.label, message: "NOT executed. Waiting for the user's explicit confirmation." };
+          if (name === "propose_ai_dashboard") {
+            if (pendingActions.length >= MAX_AGENT_ACTIONS) throw new Error("Maximum five pending actions per request.");
+            const normalized = validateProposedAction("save_ai_dashboard", { ...args, __profile:profile });
+            const action = { id: randomId("pending"), name:"save_ai_dashboard", label:userFacingAction("save_ai_dashboard",normalized), args:normalized };
+            pendingActions.push(action);
+            output = { pendingConfirmation:true, action:action.label, message:"Dashboard prepared from retrieved records. Nothing is saved until the user confirms." };
+          } else {
+            const normalized = validateProposedAction(name, args);
+            const action = { id: randomId("pending"), name, label: userFacingAction(name, normalized), args: normalized };
+            pendingActions.push(action);
+            output = { pendingConfirmation: true, action: action.label, message: "NOT executed. Waiting for the user's explicit confirmation." };
+          }
         }
       } catch (error) {
         output = { error: String(error && error.message || error).slice(0, 300) };
