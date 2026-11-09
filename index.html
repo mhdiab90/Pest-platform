@@ -331,6 +331,7 @@ function App(){
   const [auditFrom,setAuditFrom] = useState('');
   const [auditTo,setAuditTo] = useState('');
   const [messages,setMessages] = useState([]);
+  const [messageReactionsById,setMessageReactionsById] = useState({});
   const [tasks,setTasks] = useState([]);
   const [whatsappManualNumber,setWhatsappManualNumber] = useState('');
   const [whatsappMessage,setWhatsappMessage] = useState({subject:'',body:''});
@@ -2062,10 +2063,10 @@ function App(){
     const base={messageId,senderUid:currentUser.uid,senderName:currentUser.fullName||currentUser.username||currentUser.email,senderAvatar:currentUser.avatar||'',subject:original.subject||(rtl?'رد على رسالة':'Reply to message'),body,date,createdAt:firebase.database.ServerValue.TIMESTAMP,visibility:'private',recipientUids,recipientNames,mentions:mentionedUsers.map(u=>u.uid),linkedProjects:contextRefs.linkedProjects,linkedTasks:contextRefs.linkedTasks,replyTo,replyToMessageId:originalMessageId,threadId:original.threadId||originalMessageId};
     const updates={};
     recipients.forEach(user=>{
-      const inboxId=db.ref('messages/'+user.uid).push().key;
+      const inboxId=messageId;
       updates['messages/'+user.uid+'/'+inboxId]={...base,id:inboxId,recipientUid:user.uid,mailboxUid:user.uid,read:false};
     });
-    const sentId=db.ref('messages/'+currentUser.uid).push().key;
+    const sentId=messageId;
     updates['messages/'+currentUser.uid+'/'+sentId]={...base,id:sentId,recipientUid:recipientUids[0]||'',mailboxUid:currentUser.uid,read:true,copyType:'sent'};
     try{
       await db.ref().update(updates);
@@ -2093,10 +2094,10 @@ function App(){
     const base={messageId,senderUid:currentUser.uid,senderName:currentUser.fullName||currentUser.username||currentUser.email,senderAvatar:currentUser.avatar||'',subject,body,date,createdAt:firebase.database.ServerValue.TIMESTAMP,visibility:'private',recipientUids,recipientNames,mentions:recipientUids,linkedProjects:contextRefs.linkedProjects,linkedTasks:contextRefs.linkedTasks,messageFormat:'chat',threadId:messageId};
     const updates={};
     recipients.forEach(user=>{
-      const inboxId=db.ref('messages/'+user.uid).push().key;
+      const inboxId=messageId;
       updates['messages/'+user.uid+'/'+inboxId]={...base,id:inboxId,recipientUid:user.uid,mailboxUid:user.uid,read:false};
     });
-    const sentId=db.ref('messages/'+currentUser.uid).push().key;
+    const sentId=messageId;
     updates['messages/'+currentUser.uid+'/'+sentId]={...base,id:sentId,recipientUid:recipientUids[0]||'',mailboxUid:currentUser.uid,read:true,copyType:'sent'};
     setChatSending(true);
     try{
@@ -2132,10 +2133,10 @@ function App(){
     const base={messageId,senderUid:currentUser.uid,senderName:currentUser.fullName||currentUser.username||currentUser.email,senderAvatar:currentUser.avatar||'',subject,body,date,createdAt:firebase.database.ServerValue.TIMESTAMP,visibility,recipientUids,recipientNames,mentions:mentionedUsers.map(u=>u.uid),linkedProjects:contextRefs.linkedProjects,linkedTasks:contextRefs.linkedTasks};
     const updates={};
     recipients.forEach(user=>{
-      const inboxId=db.ref('messages/'+user.uid).push().key;
+      const inboxId=messageId;
       updates['messages/'+user.uid+'/'+inboxId]={...base,id:inboxId,recipientUid:user.uid,mailboxUid:user.uid,read:false};
     });
-    const sentId=db.ref('messages/'+currentUser.uid).push().key;
+    const sentId=messageId;
     updates['messages/'+currentUser.uid+'/'+sentId]={...base,id:sentId,recipientUid:recipientUids[0]||'',mailboxUid:currentUser.uid,read:true,copyType:'sent'};
     try{
       // Atomic write keeps all recipient inbox copies and the sender's sent copy together.
@@ -2280,14 +2281,39 @@ function App(){
   });
   const shortcutMessages=messages.filter(m=>includesText([m.subject,m.body,m.senderName,m.senderUid,(Array.isArray(m.recipientNames)?m.recipientNames.join(' '):String(m.recipientNames||'')),(Array.isArray(m.linkedProjects)?m.linkedProjects.map(x=>x.name||x.code).join(' '):''),(Array.isArray(m.linkedTasks)?m.linkedTasks.map(x=>x.title).join(' '):'')].join(' '),messageShortcutSearch)).slice().sort((a,b)=>Number(a.createdAt||0)-Number(b.createdAt||0)).slice(-80);
   const shortcutUnreadCount=messages.filter(m=>m.senderUid!==currentUser.uid&&m.read!==true).length;
+  const reactionSubscriptionIds=[...new Set(messages.slice().sort((a,b)=>Number(a.createdAt||0)-Number(b.createdAt||0)).slice(-100).map(m=>String(m.id||'')).filter(Boolean))];
+  const reactionSubscriptionKey=reactionSubscriptionIds.join('|');
+  useEffect(()=>{
+    if(!currentUser?.uid||!reactionSubscriptionIds.length){setMessageReactionsById({});return;}
+    const subscriptions=[];
+    setMessageReactionsById(old=>Object.fromEntries(Object.entries(old).filter(([id])=>reactionSubscriptionIds.includes(id))));
+    reactionSubscriptionIds.forEach(messageId=>{
+      const ref=db.ref('messageReactions/'+messageId);
+      const handler=snapshot=>setMessageReactionsById(old=>({...old,[messageId]:snapshot.val()||{}}));
+      ref.on('value',handler,error=>console.error('Message reactions listener '+messageId,error));
+      subscriptions.push({ref,handler});
+    });
+    return ()=>subscriptions.forEach(({ref,handler})=>ref.off('value',handler));
+  },[currentUser?.uid,reactionSubscriptionKey]);
   const messageReactionOptions=['👍','❤️','😂','😮','😢','🙏'];
+  const messageReactionKey=messageItem=>String(messageItem?.id||messageItem?.messageId||'');
   async function toggleMessageReaction(messageItem,emoji){
-    if(!messageItem?.id||!currentUser?.uid)return;
-    const active=Boolean(messageItem.reactions?.[emoji]?.[currentUser.uid]);
-    try{await db.ref('messages/'+currentUser.uid+'/'+messageItem.id+'/reactions/'+emoji+'/'+currentUser.uid).set(active?null:true);}
-    catch(err){alert(firebaseErrorMessage(err,tr)+'\\n\\n'+(rtl?'تعذر حفظ التفاعل. تحقق من صلاحيات الرسائل في Firebase.':'Could not save reaction. Check Firebase message permissions.'));}
+    const messageId=messageReactionKey(messageItem);
+    if(!messageId||!currentUser?.uid)return;
+    const reactions=messageReactionsById[messageId]||messageItem.reactions||{};
+    const active=Boolean(reactions[emoji]?.[currentUser.uid]);
+    try{
+      await db.ref('messageReactions/'+messageId+'/'+emoji+'/'+currentUser.uid).set(active?null:true);
+      setMessageReactionsById(old=>{
+        const next={...(old[messageId]||{})};
+        const users={...(next[emoji]||{})};
+        if(active)delete users[currentUser.uid];else users[currentUser.uid]=true;
+        if(Object.keys(users).length)next[emoji]=users;else delete next[emoji];
+        return {...old,[messageId]:next};
+      });
+    }catch(err){alert(firebaseErrorMessage(err,tr)+'\\n\\n'+(rtl?'تعذر حفظ التفاعل. أضف صلاحية messageReactions إلى Firebase Rules كما هو موضح.':'Could not save reaction. Add the messageReactions permission to Firebase Rules as shown.'));}
   }
-  const renderMessageReactions=messageItem=><div className="flex flex-wrap items-center gap-1.5 mt-3" aria-label={rtl?'التفاعلات':'Reactions'}>{messageReactionOptions.map(emoji=>{const users=messageItem.reactions?.[emoji]||{};const count=Object.keys(users).filter(uid=>users[uid]).length;const active=Boolean(users[currentUser.uid]);return <button key={emoji} type="button" title={rtl?'تفاعل '+emoji:'React '+emoji} aria-pressed={active} onClick={()=>toggleMessageReaction(messageItem,emoji)} className={'inline-flex items-center gap-1 rounded-full border px-2 py-1 text-sm transition '+(active?'border-indigo-400 bg-indigo-100 shadow-sm':'border-white/80 bg-white/70 hover:bg-white')}><span>{emoji}</span>{count>0&&<small className="text-[10px] font-bold text-gray-600">{count}</small>}</button>;})}</div>;
+  const renderMessageReactions=messageItem=>{const reactions=messageReactionsById[messageReactionKey(messageItem)]||messageItem.reactions||{};return <div className="flex flex-wrap items-center gap-1.5 mt-3" aria-label={rtl?'التفاعلات':'Reactions'}>{messageReactionOptions.map(emoji=>{const users=reactions[emoji]||{};const count=Object.keys(users).filter(uid=>users[uid]).length;const active=Boolean(users[currentUser.uid]);return <button key={emoji} type="button" title={rtl?'تفاعل '+emoji:'React '+emoji} aria-pressed={active} onClick={()=>toggleMessageReaction(messageItem,emoji)} className={'inline-flex items-center gap-1 rounded-full border px-2 py-1 text-sm transition '+(active?'border-indigo-400 bg-indigo-100 shadow-sm':'border-white/80 bg-white/70 hover:bg-white')}><span>{emoji}</span>{count>0&&<small className="text-[10px] font-bold text-gray-600">{count}</small>}</button>;})}</div>;};
   useEffect(()=>{if(tab==='messages'&&messageHistoryScrollRef.current){const el=messageHistoryScrollRef.current;el.scrollTop=el.scrollHeight;}},[tab,myMessages.length,replyingToMessage]);
   useEffect(()=>{if(messageShortcutOpen&&shortcutMessagesScrollRef.current){const el=shortcutMessagesScrollRef.current;el.scrollTop=el.scrollHeight;}},[messageShortcutOpen,shortcutMessages.length,replyingToMessage]);
   const whatsappContacts=[
