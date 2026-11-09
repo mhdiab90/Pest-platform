@@ -735,7 +735,7 @@ function App(){
   const accepted=s=>['مقبول','approved','Approved'].includes(s);
   const collected=s=>['تم التحصيل','collected','Collected'].includes(s);
   const paid=s=>['تم السداد','paid','Paid','full'].includes(s);
-  const projectEvents=p=>Object.entries((p&&p.events)||{}).map(([id,e])=>({...e,id:e.id||id})).sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')) || Number(a.createdAt||0)-Number(b.createdAt||0));
+  const projectEvents=p=>Object.entries((p&&p.events)||{}).map(([id,e])=>({...e,id:e.id||id})).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')) || Number(b.createdAt||0)-Number(a.createdAt||0));
   const projectActionOptions=[
     {id:'purchase_request',label:rtl?'طلب شراء من المورد':'Purchase request',effect:'none',party:'vendor'},
     {id:'quotation_request',label:rtl?'طلب عرض سعر من المورد':'Request supplier quotation',effect:'none',party:'vendor'},
@@ -1903,11 +1903,14 @@ function App(){
     const code=selectedProjectCode;const target=projects.find(p=>p.code===code);
     if(!target) return alert(tr('selectProject'));
     const action=projectActionOptions.find(x=>x.id===projectEvent.actionCode)||projectActionOptions[0];
-    const effect=action.effect||'none';
+    const partyType=projectEvent.partyType||action.party||'';
+    const configuredEffect=action.effect||'none';
+    // Outstanding balance direction follows the selected counterparty: supplier = payable, customer = receivable.
+    const effect=['payable','receivable'].includes(configuredEffect)&&['vendor','client'].includes(partyType)?(partyType==='vendor'?'payable':'receivable'):configuredEffect;
     const normalizedType=effect==='cash_in'?'customer_collection':effect==='cash_out'?'supplier_payment':effect==='receivable'?'customer_receivable':effect==='payable'?'supplier_commitment':projectEvent.actionCode;
     const id=editingProjectEventId||db.ref('projects/'+code+'/events').push().key;
     const existingEvent=editingProjectEventId&&target.events?target.events[editingProjectEventId]:null;
-    const event={...projectEvent,id,projectCode:code,type:normalizedType,actionCode:projectEvent.actionCode,actionName:String(projectEvent.actionName||action.label).trim(),financialEffect:effect,date:projectEvent.date||new Date().toISOString().slice(0,10),dueDate:projectEvent.dueDate||'',partyCode:projectEvent.partyCode||'',partyType:projectEvent.partyType||action.party||'',referenceNo:String(projectEvent.referenceNo||'').trim(),quantity:Number(projectEvent.quantity||0),unit:String(projectEvent.unit||''),amount:Number(projectEvent.amount||0),settledAmount:Number(projectEvent.settledAmount||0),currency:projectEvent.currency||target.currency||'EGP',status:projectEvent.status||'open',paymentMethod:projectEvent.paymentMethod||'',responsible:String(projectEvent.responsible||'').trim(),priority:projectEvent.priority||'normal',note:String(projectEvent.note||'').trim(),createdBy:existingEvent?.createdBy||currentUser.uid,createdByName:existingEvent?.createdByName||currentUser.fullName,createdByAvatar:existingEvent?.createdByAvatar||currentUser.avatar||'',createdAt:existingEvent?.createdAt||firebase.database.ServerValue.TIMESTAMP,...(editingProjectEventId?{updatedAt:firebase.database.ServerValue.TIMESTAMP,updatedBy:currentUser.uid,updatedByName:currentUser.fullName}:{})};
+    const event={...projectEvent,id,projectCode:code,type:normalizedType,actionCode:projectEvent.actionCode,actionName:String(projectEvent.actionName||action.label).trim(),financialEffect:effect,date:projectEvent.date||new Date().toISOString().slice(0,10),dueDate:projectEvent.dueDate||'',partyCode:projectEvent.partyCode||'',partyType,referenceNo:String(projectEvent.referenceNo||'').trim(),quantity:Number(projectEvent.quantity||0),unit:String(projectEvent.unit||''),amount:Number(projectEvent.amount||0),settledAmount:Number(projectEvent.settledAmount||0),currency:projectEvent.currency||target.currency||'EGP',status:projectEvent.status||'open',paymentMethod:projectEvent.paymentMethod||'',responsible:String(projectEvent.responsible||'').trim(),priority:projectEvent.priority||'normal',note:String(projectEvent.note||'').trim(),createdBy:existingEvent?.createdBy||currentUser.uid,createdByName:existingEvent?.createdByName||currentUser.fullName,createdByAvatar:existingEvent?.createdByAvatar||currentUser.avatar||'',createdAt:existingEvent?.createdAt||firebase.database.ServerValue.TIMESTAMP,...(editingProjectEventId?{updatedAt:firebase.database.ServerValue.TIMESTAMP,updatedBy:currentUser.uid,updatedByName:currentUser.fullName}:{})};
     if(['cash_in','cash_out'].includes(effect)&&!['full','completed','paid','collected','تم السداد','تم التحصيل','تم الدفع','تم القبض','تم التنفيذ','منفذ'].includes(String(event.status).toLowerCase())&&event.settledAmount<=0){event.settledAmount=0;}
     try{
       const previousEventSnap=editingProjectEventId?await db.ref('projects/'+code+'/events/'+id).once('value'):null;
