@@ -433,10 +433,15 @@ function firebasePrefixQuery(field, value, limit) {
 }
 
 async function readRecentCollection(path, token, limit, orderField) {
-  return databaseRequest(path, token, "GET", undefined, {
-    orderBy: JSON.stringify(orderField || "date"),
-    limitToLast: Math.max(1, Math.min(Number(limit) || 50, 100))
-  });
+  const fields = Array.isArray(orderField) && orderField.length ? orderField : [orderField || "date"];
+  const max = Math.max(1, Math.min(Number(limit) || 50, 100));
+  const results = await Promise.all(fields.map(field => databaseRequest(path, token, "GET", undefined, {
+    orderBy: JSON.stringify(field),
+    limitToLast: max
+  })));
+  const merged = {};
+  results.forEach(data => Object.assign(merged, data || {}));
+  return merged;
 }
 
 async function searchIndexedCollection(path, token, query, fields, limit) {
@@ -502,7 +507,7 @@ async function runReadTool(name, args, claims, profile, token) {
     const sources = { quotations: "quotes", collections: "inflows", payments: "outflows" };
     const output = [];
     for (const kind of kinds) {
-      const rows = await readRecentCollection(sources[kind], token, 100);
+      const rows = await readRecentCollection(sources[kind], token, 100, ["date","transactionDate"]);
       output.push(...searchRows(rows, args.query, args.limit).map(row => ({
         kind, id: row.id, code: row.code || "", name: row.name || "",
         projectCode: row.projectCode || "", clientCode: row.clientCode || "",
@@ -552,7 +557,7 @@ async function runReadTool(name, args, claims, profile, token) {
   }
   if (name === "search_users") {
     requirePermission(profile, "messages", "view");
-    const data = await databaseRequest("userDirectory", token, "GET", undefined, firebasePrefixQuery("fullName", args.query, args.limit));
+    const data = await searchIndexedCollection("userDirectory", token, args.query, ["fullName","username","jobTitle","department"], args.limit);
     return Object.entries(data || {}).map(([uid, u]) => ({ ...(u || {}), uid }))
       .filter(u => u.uid !== claims.sub && u.status === "active" &&
         [u.fullName, u.username, u.jobTitle, u.department].join(" ").toLowerCase().includes(String(args.query || "").toLowerCase()))
