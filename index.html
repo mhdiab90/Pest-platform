@@ -935,12 +935,37 @@ function App(){
     const amount=Number(value||0);
     const convertedRate=fxRateToEgp(code);
     const negative=outgoing||amount<0;
-    return <span className="inline-flex flex-col items-start gap-0.5 leading-tight"><b>{cashAmountText(amount,code,outgoing)}</b>{code!=='EGP'&&convertedRate!==null&&<small dir="ltr" className={negative?'text-red-600':'text-emerald-700'}>≈ {negative?'(':''}{money(Math.abs(amount*convertedRate))} EGP{negative?')':''}</small>}{code!=='EGP'&&convertedRate===null&&fxRateStatus==='error'&&<small className="text-gray-400">{rtl?'سعر التحويل غير متاح':'Rate unavailable'}</small>}</span>;
+    return <span className="inline-flex flex-col items-start gap-0.5 leading-tight"><b>{cashAmountText(amount,code,outgoing)}</b>{code!=='EGP'&&convertedRate!==null&&<small dir="ltr" className={negative?'text-red-600':'text-emerald-700'}>≈ {negative?'(':''}{money(Math.abs(amount*convertedRate))} EGP{negative?')':''}</small>}{code!=='EGP'&&convertedRate===null&&<small className="text-gray-400">{rtl?'سعر التحويل غير متاح':'Rate unavailable'}</small>}</span>;
+  };
+  const cashMapToEgpTotal=map=>{
+    let total=0;
+    for(const [currency,value] of Object.entries(map||{})){
+      const amount=Number(value||0);
+      if(Math.abs(amount)<0.000001)continue;
+      const rate=fxRateToEgp(currency);
+      if(rate===null)return null;
+      total+=amount*rate;
+    }
+    return total;
+  };
+  const cashMapMissingRates=map=>Object.entries(map||{}).filter(([currency,value])=>Math.abs(Number(value||0))>=0.000001&&fxRateToEgp(currency)===null).map(([currency])=>currency);
+  const cashOriginalMapText=map=>{
+    const rows=Object.entries(map||{}).filter(([,value])=>Math.abs(Number(value||0))>0.000001).sort(([a],[b])=>a.localeCompare(b));
+    return rows.length?rows.map(([currency,value])=>money(Math.abs(Number(value)))+' '+currency).join(' + '):'0.00 EGP';
   };
   const cashMapText=(map,outgoing=false)=>{
-    const rows=Object.entries(map).filter(([,v])=>Math.abs(Number(v||0))>0.000001).sort(([a],[b])=>a.localeCompare(b));
-    return rows.length?<span dir="ltr" className="inline-flex flex-wrap items-start gap-x-4 gap-y-2">{rows.map(([currency,value])=><span key={currency} className="whitespace-nowrap">{cashAmountWithEgpText(value,currency,outgoing)}</span>)}</span>:<span dir="ltr">0.00 EGP</span>;
+    const rows=Object.entries(map||{}).filter(([,v])=>Math.abs(Number(v||0))>0.000001).sort(([a],[b])=>a.localeCompare(b));
+    const totalEgp=cashMapToEgpTotal(map);
+    const totalNegative=outgoing||(totalEgp!==null&&totalEgp<0);
+    return <span className="inline-flex flex-col items-start gap-2">
+      <span dir="ltr" className="inline-flex flex-wrap items-start gap-x-4 gap-y-2">{rows.length?rows.map(([currency,value])=><span key={currency} className="whitespace-nowrap">{cashAmountWithEgpText(value,currency,outgoing)}</span>):<b>0.00 EGP</b>}</span>
+      <small dir="ltr" className={totalEgp===null?'text-amber-700':totalNegative?'text-red-600':'text-emerald-700'}>{totalEgp===null?(rtl?'الإجمالي الموحد غير متاح لعدم توفر سعر عملة':'Unified total unavailable: a currency rate is missing'):(rtl?'الإجمالي بعد التحويل: ':'Converted total: ')+(totalNegative?'(':'')+money(Math.abs(totalEgp))+' EGP'+(totalNegative?')':'')}</small>
+    </span>;
   };
+  const totalReceivablesEgp=cashMapToEgpTotal(receivablesMap);
+  const totalPayablesEgp=cashMapToEgpTotal(payablesMap);
+  const netPositionEgp=totalReceivablesEgp===null||totalPayablesEgp===null?null:totalReceivablesEgp-totalPayablesEgp;
+  const missingPositionRates=[...new Set([...cashMapMissingRates(receivablesMap),...cashMapMissingRates(payablesMap)])];
   const isProjectCompleted=p=>/complete|completed|مكتمل|مغلق|منتهي|منتهى|done/i.test(String(p.status||''));
   const nowLocal=new Date();
   const todayKey=`${nowLocal.getFullYear()}-${String(nowLocal.getMonth()+1).padStart(2,'0')}-${String(nowLocal.getDate()).padStart(2,'0')}`;
@@ -2662,6 +2687,34 @@ function App(){
               <a href="https://www.exchangerate-api.com" target="_blank" rel="noopener noreferrer" className="block text-blue-700 underline mt-1">{rtl?'المصدر: ExchangeRate-API':'Rates by Exchange Rate API'}</a>
             </div>
           </div>
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+              <div><h3 className="text-lg font-extrabold text-slate-800">{rtl?'المركز المالي الموحد بالجنيه المصري':'Unified financial position in EGP'}</h3><p className="text-xs text-gray-500 mt-1">{rtl?'تجميع كل العملات بعد تحويلها إلى الجنيه، مع الاحتفاظ بالقيم الأصلية أدناه.':'All currencies converted and consolidated into EGP; original currency amounts are preserved below.'}</p></div>
+              <span className="rounded-full bg-indigo-50 text-indigo-700 px-3 py-1 text-xs font-bold">{rtl?'ملخص تنفيذي':'Executive summary'}</span>
+            </div>
+            {netPositionEgp===null?<div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{rtl?'لا يمكن حساب الإجمالي الموحد بدقة لأن سعر الصرف غير متاح للعملات: ':'Unified total cannot be calculated accurately because rates are unavailable for: '}{missingPositionRates.join('، ')||'—'}. {rtl?'سيظل العرض الأصلي ظاهرًا دون تخمين أسعار.':'Original balances remain visible; no exchange rate is guessed.'}</div>:<>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <article className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <p className="text-sm font-bold text-emerald-800">{rtl?'إجمالي المستحق لنا':'Total receivables'}</p>
+                  <p className="text-2xl sm:text-3xl font-extrabold text-emerald-800 mt-2" dir="ltr">{money(totalReceivablesEgp)} <span className="text-base">EGP</span></p>
+                  <p className="text-xs text-gray-600 mt-2">{rtl?'الأصلية: ':'Original: '}{cashOriginalMapText(receivablesMap)}</p>
+                </article>
+                <article className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+                  <p className="text-sm font-bold text-rose-800">{rtl?'إجمالي الالتزامات علينا':'Total payables'}</p>
+                  <p className="text-2xl sm:text-3xl font-extrabold text-rose-800 mt-2" dir="ltr">{money(totalPayablesEgp)} <span className="text-base">EGP</span></p>
+                  <p className="text-xs text-gray-600 mt-2">{rtl?'الأصلية: ':'Original: '}{cashOriginalMapText(payablesMap)}</p>
+                </article>
+                <article className={'rounded-xl border p-4 '+(netPositionEgp<0?'border-rose-300 bg-rose-50':'border-blue-200 bg-blue-50')}>
+                  <p className={'text-sm font-bold '+(netPositionEgp<0?'text-rose-800':'text-blue-800')}>{rtl?'صافي المركز المالي':'Net financial position'}</p>
+                  <p className={'text-2xl sm:text-3xl font-extrabold mt-2 '+(netPositionEgp<0?'text-rose-800':'text-blue-800')} dir="ltr">{netPositionEgp<0?'(':''}{money(Math.abs(netPositionEgp))} <span className="text-base">EGP</span>{netPositionEgp<0?')':''}</p>
+                  <span className={'inline-flex mt-2 rounded-full px-3 py-1 text-xs font-extrabold '+(netPositionEgp<0?'bg-rose-200 text-rose-900':'bg-blue-200 text-blue-900')}>{netPositionEgp<0?(rtl?'عجز':'DEFICIT'):netPositionEgp>0?(rtl?'فائض':'SURPLUS'):(rtl?'تعادل':'BREAK-EVEN')}</span>
+                </article>
+              </div>
+              <div className="mt-3 rounded-lg bg-slate-50 border border-slate-200 px-3 py-3 flex flex-wrap items-center justify-center gap-2 text-sm font-bold text-slate-700">
+                <span>{rtl?'المستحقات':'Receivables'}</span><b dir="ltr">{money(totalReceivablesEgp)}</b><span>−</span><span>{rtl?'الالتزامات':'Payables'}</span><b dir="ltr">{money(totalPayablesEgp)}</b><span>=</span><b className={netPositionEgp<0?'text-rose-700':'text-blue-700'}>{netPositionEgp<0?(rtl?'عجز ':'Deficit '):netPositionEgp>0?(rtl?'فائض ':'Surplus '):(rtl?'تعادل ':'Balanced ')}{money(Math.abs(netPositionEgp))} EGP</b>
+              </div>
+            </>}
+          </section>
           <details open className="app-collapsible"><summary><span>{rtl?'ملخص التدفق النقدي':'Cash flow overview'}</span></summary><div className="app-collapsible-body"><div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {[[tr('actualCashIn'),'actualCashIn',cashMapText(actualInMap),'#059669','fa-arrow-down'],[tr('actualCashOut'),'actualCashOut',cashMapText(actualOutMap,true),'#dc2626','fa-arrow-up'],[tr('netCashFlow'),'netCashFlow',cashMapText(netCashMap),'#2563eb','fa-scale-balanced'],[tr('receivables'),'receivables',cashMapText(receivablesMap),'#0891b2','fa-hand-holding-dollar'],[tr('payables'),'payables',cashMapText(payablesMap),'#d97706','fa-file-invoice-dollar'],[tr('expectedNet'),'expectedNet',cashMapText(expectedPositionMap),'#7c3aed','fa-chart-line']].map(([label,key,value,color,icon])=><button type="button" key={key} onClick={()=>openDashboardReport(key,label)} className="w-full text-start bg-white p-5 rounded-xl border shadow-sm flex items-start justify-between gap-3 hover:border-blue-300 hover:shadow-md transition cursor-pointer"><div className="min-w-0"><p className="text-sm text-gray-500 font-bold">{label}</p><p className="text-lg font-bold mt-2 break-words">{value}</p>{(key==='expectedNet'||key==='netCashFlow')&&<p className="text-xs text-gray-500 mt-1">{Object.entries(key==='expectedNet'?expectedPositionMap:netCashMap).map(([cur,val])=><b key={cur} dir="ltr" className="inline-block me-2">{cur}: {val>=0?tr('surplus'):tr('deficit')}</b>)}</p>}</div><i className={`fas ${icon} text-2xl`} style={{color}}></i></button>)}
           </div>
