@@ -902,10 +902,9 @@ async function handleWhatsAppMessageNotification(body, claims, profile, token, e
   }
 
   const notificationText = cleanText([
-    "From: " + cleanText(message.senderName || profile.fullName || profile.username || "Pest Platform", 120),
-    cleanText(message.subject || "", 180),
-    cleanText(message.body || "", 4000).slice(0, 560)
-  ].filter(Boolean).join("\n"), 900);
+    cleanText(message.senderName || profile.fullName || profile.username || "Pest Platform", 120),
+    cleanText(message.subject || "Internal message", 120)
+  ].filter(Boolean).join(" — "), 260);
   const sent = [];
   const skipped = [];
   const failed = [];
