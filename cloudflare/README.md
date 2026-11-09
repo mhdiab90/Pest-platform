@@ -90,7 +90,7 @@ WhatsApp requires businesses to have the recipient's number and opt-in permissio
 - The model retrieves source data through the user's permitted search tools, then proposes up to six widgets: metrics, bar charts and tables. The Worker rejects a dashboard proposal unless each widget's source was retrieved successfully in the same request.
 - A visual preview of the metrics, charts and tables is shown before saving. The user must review the proposal and explicitly confirm it.
 - The Worker re-checks each widget source permission before saving. Dashboards are stored in the user's private Durable Object workspace (up to 25 per user).
-- Dashboards are snapshots: values reflect the time they were created. Ask the agent to rebuild a dashboard when updated figures are needed.
+- Dashboards are snapshots between refreshes. Each saved dashboard has a **Refresh data** control: the Agent re-reads every widget source allowed to that user, proposes updated metrics/charts/tables with the same dashboard ID, and replaces the saved snapshot in place only after the user previews and confirms it. The saved dashboard's original owner and creation timestamp are preserved; the last-updated timestamp changes.
 
 ## Scheduled AI reports
 
