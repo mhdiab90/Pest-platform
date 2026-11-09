@@ -1518,12 +1518,15 @@ export class AIAgentScheduler {
         const key="wa-notify:"+uid+":"+messageId;
         const existing=await this.ctx.storage.get(key);
         if(existing)return jsonResponse({claimed:false,status:existing.status||"already processed"},200,"");
-        await this.ctx.storage.put(key,{uid,messageId,status:"sending",createdAt:Date.now()});
         const history=await this.ctx.storage.list({prefix:"wa-notify:"+uid+":"});
-        if(history.size>500){
+        const now=Date.now();
+        const recentBatches=[...history.values()].filter(item=>now-Number(item.createdAt||0)<60000).length;
+        if(recentBatches>=5)throw new Error("WhatsApp notification rate limit reached. Try again later.");
+        if(history.size>=500){
           const oldest=[...history.entries()].sort((a,b)=>Number(a[1].createdAt||0)-Number(b[1].createdAt||0));
-          for(const [oldKey] of oldest.slice(0,history.size-500))await this.ctx.storage.delete(oldKey);
+          for(const [oldKey] of oldest.slice(0,history.size-499))await this.ctx.storage.delete(oldKey);
         }
+        await this.ctx.storage.put(key,{uid,messageId,status:"sending",createdAt:now});
         return jsonResponse({claimed:true},200,"");
       }
       if (url.pathname==="/whatsapp-notification-result" && method==="POST") {
