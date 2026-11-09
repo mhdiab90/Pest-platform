@@ -316,7 +316,8 @@ function normalizeCall(call, index) {
 
 function getMessageResult(raw) {
   const choiceMessage = raw && raw.choices && raw.choices[0] && raw.choices[0].message;
-  const message = choiceMessage || raw && raw.response && typeof raw.response === "object" ? (choiceMessage || raw.response) : null;
+  let message = choiceMessage || null;
+  if (!message && raw && raw.response && typeof raw.response === "object") message = raw.response;
   const content = message && typeof message.content === "string" ? message.content :
     (raw && typeof raw.response === "string" ? raw.response : "");
   const calls = (message && message.tool_calls) || (raw && raw.tool_calls) || [];
@@ -758,6 +759,7 @@ function buildSystemPrompt(profile) {
 }
 
 async function handleAgentRequest(body, env, claims, profile, token, config) {
+  requirePermission(profile, "aiAgent", "view");
   if (!config.enabled) throw new Error("The administrator has disabled the AI Agent.");
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
   const context = typeof body.context === "string" ? body.context.slice(0, 18000) : "";
@@ -847,6 +849,7 @@ function normalizeIncomingActions(actions) {
 }
 
 async function handleExecuteRequest(body, claims, profile, token) {
+  requirePermission(profile, "aiAgent", "view");
   const actions = normalizeIncomingActions(body.actions);
   const results = [];
   for (const action of actions) {
