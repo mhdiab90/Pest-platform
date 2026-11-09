@@ -1104,13 +1104,13 @@ export default {
       if (!contentType.toLowerCase().includes("application/json")) return jsonResponse({ error: "Content-Type must be application/json." }, 415, origin);
       const body = await request.json();
       const profile = await loadProfile(claims, token);
+      const config = await loadAgentConfig(token);
+      if (!config.enabled) return jsonResponse({ error: "The administrator has disabled the AI Agent." }, 403, origin);
 
       if (url.pathname === "/execute") {
         const output = await handleExecuteRequest(body, claims, profile, token);
         return jsonResponse(output, 200, origin);
       }
-      const config = await loadAgentConfig(token);
-      if (!config.enabled) return jsonResponse({ error: "The administrator has disabled the AI Agent." }, 403, origin);
 
       if (url.pathname === "/ask") {
         const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
