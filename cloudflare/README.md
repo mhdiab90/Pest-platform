@@ -9,13 +9,21 @@ The Cloudflare Worker is the trusted gateway between the signed-in Pest Platform
 
 No provider API key is stored in Firebase, GitHub source code or the browser.
 
-## Deploy the Worker
+## Deploy the existing Worker
 
-1. Open Cloudflare Dashboard → **Workers & Pages** → select `pest-platform-ai`.
-2. Open **Edit Code**, replace the Worker with the complete current contents of `cloudflare/worker.js`, then **Save and Deploy**.
-3. In **Settings → Bindings**, confirm a Workers AI binding named exactly `AI` exists.
+The app is already configured to call:
+
+`https://pest-platform.ai-mhdiab90.workers.dev`
+
+Open this existing Worker in Cloudflare Dashboard → **Workers & Pages** (the Worker name is expected to be `pest-platform`, under the `ai-mhdiab90` workers.dev subdomain). Do not create a second Worker or change its public URL.
+
+1. Select the existing `pest-platform` Worker.
+2. Open **Edit Code**, replace the full source with the complete current contents of `cloudflare/worker.js` from this repository, then **Save and Deploy**.
+3. In **Settings → Bindings**, confirm a Workers AI binding named exactly `AI` exists. Keep the binding enabled for the default Cloudflare provider.
 4. To enable OpenRouter, create an OpenRouter API key, then in the Worker open **Settings → Variables and Secrets → Add → Secret**. Set the variable name to `OPENROUTER_API_KEY` and paste the key as the secret value. Do not paste the key into Pest Platform, Firebase, GitHub source code or chat.
 5. Deploy the Worker again after adding the secret.
+
+GitHub Pages deployment updates the website only; it does **not** automatically deploy the Cloudflare Worker. The Worker source in this repository must be deployed separately from the Cloudflare dashboard.
 
 OpenRouter keys: https://openrouter.ai/keys
 OpenRouter free models: https://openrouter.ai/collections/free-models/
