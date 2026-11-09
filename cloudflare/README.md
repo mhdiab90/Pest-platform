@@ -95,6 +95,7 @@ WhatsApp requires businesses to have the recipient's number and opt-in permissio
 ## Scheduled AI reports
 
 - Users with **AI Agent → Use** permission can create up to 10 recurring read-only reports for themselves.
+- Each schedule can be paused and resumed by its owner. Resuming checks the owner's current permission for every saved data scope, validates the current Firebase refresh session belongs to that same user, and stores the renewed session encrypted. The raw refresh token is never returned to the browser's schedule list.
 - Supported schedules are daily, weekly or monthly, using **Africa/Cairo** local time.
 - Cloudflare Cron Triggers run every minute (UTC); the Worker calculates the next Cairo-local run time.
 - A schedule stores an encrypted Firebase refresh token in the Durable Object. It is encrypted with AES-GCM using the Worker Secret `AI_SCHEDULER_ENCRYPTION_KEY`; the raw token is never returned to the browser or dashboard.
