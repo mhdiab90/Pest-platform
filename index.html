@@ -2463,36 +2463,58 @@ function App(){
     return picked.map(row=>Object.fromEntries(keys.filter(k=>row&&row[k]!==undefined&&row[k]!==null&&row[k]!=='').map(k=>[k,row[k]])));
   }
   function buildAssistantContext(question){
+    const canReadMaster=hasPermission('master','view');
+    const canReadProjects=hasPermission('projects','view');
+    const canReadFinance=hasPermission('dashboard','view')||hasPermission('statement','view')||hasPermission('reports','view');
+    const canReadTasks=hasPermission('tasks','view');
+    const canReadMessages=hasPermission('messages','view');
     const contactQuestion=/(هاتف|تليفون|موبايل|محمول|واتساب|رقم|بريد|ايميل|إيميل|phone|mobile|email|whatsapp)/i.test(question);
     const partyKeys=['code','name','englishName','taxNumber','commercialRegister','contactPerson','contactTitle','address','city','country','paymentTerms','creditLimit','currency','notes',...(contactQuestion?['phone','mobile','alternatePhone','email','alternateEmail','whatsapp']:[])];
-    const projectRows=assistantPickRows(projects,question,['code','name','status','projectType','contractNo','purchaseOrderNo','clientCode','clientCodes','vendorCode','vendorCodes','projectManager','startDate','expectedEndDate','actualEndDate','location','deliveryAddress','amount','costBudget','currency','paymentTerms','scope','notes'],10);
+    const projectRows=canReadProjects?assistantPickRows(projects,question,['code','name','status','projectType','contractNo','purchaseOrderNo','clientCode','clientCodes','vendorCode','vendorCodes','projectManager','startDate','expectedEndDate','actualEndDate','location','deliveryAddress','amount','costBudget','currency','paymentTerms','scope','notes'],10):[];
     const projectCodes=new Set(projectRows.map(p=>p.code));
-    const projectDetails=projects.filter(p=>projectCodes.has(p.code)).map(p=>({
+    const projectDetails=canReadProjects?projects.filter(p=>projectCodes.has(p.code)).map(p=>({
       code:p.code,name:p.name,status:p.status,amount:p.amount,costBudget:p.costBudget,currency:p.currency||'EGP',
       clientCodes:p.clientCodes||(p.clientCode?[p.clientCode]:[]),vendorCodes:p.vendorCodes||[],
       events:projectEvents(p).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).filter(e=>assistantSearchScore(e,question)>0).slice(0,10).map(e=>({actionName:e.actionName||e.type,date:e.date,dueDate:e.dueDate,partyType:e.partyType,partyCode:e.partyCode,referenceNo:e.referenceNo,amount:e.amount,settledAmount:e.settledAmount,currency:e.currency,status:e.status,paymentMethod:e.paymentMethod,responsible:e.responsible,note:e.note}))
-    }));
-    const cashSummary=currencyKeys.map(cur=>({currency:cur,actualCollections:Number(actualInMap[cur]||0),actualPayments:Number(actualOutMap[cur]||0),netCashFlow:Number(netCashMap[cur]||0),receivables:Number(receivablesMap[cur]||0),payables:Number(payablesMap[cur]||0),expectedNet:Number(expectedPositionMap[cur]||0)}));
+    })):[];
+    const cashSummary=canReadFinance?currencyKeys.map(cur=>({currency:cur,actualCollections:Number(actualInMap[cur]||0),actualPayments:Number(actualOutMap[cur]||0),netCashFlow:Number(netCashMap[cur]||0),receivables:Number(receivablesMap[cur]||0),payables:Number(payablesMap[cur]||0),expectedNet:Number(expectedPositionMap[cur]||0)})):[];
     const context={
       currentScreen:tab,
       programAreas:['Dashboard','Clients and vendors','Projects and project actions','Cash flow','Account statements','Reports','Messages','Tasks','Settings and user profile'],
-      counts:{projects:projects.length,clients:clients.length,vendors:vendors.length,quotations:quotes.length,projectEvents:allTimeline.length,collections:inflows.length,payments:outflows.length,tasks:tasks.length,messages:messages.length},
-      cashPosition:cashSummary,
-      matchingClients:assistantPickRows(clients,question,partyKeys,8),
-      matchingVendors:assistantPickRows(vendors,question,partyKeys,8),
-      matchingProjects:projectDetails,
-      matchingQuotations:assistantPickRows(quotes,question,['id','code','quoteNo','clientCode','projectCode','date','validUntil','status','amount','currency','notes'],8),
-      matchingCollections:assistantPickRows(inflows,question,['id','clientCode','projectCode','date','transactionDate','referenceNo','voucherNo','invoiceNo','amount','currency','status','note','notes'],8),
-      matchingPayments:assistantPickRows(outflows,question,['id','vendorCode','projectCode','date','transactionDate','referenceNo','voucherNo','invoiceNo','amount','currency','status','note','notes'],8),
-      matchingRecentEvents:assistantPickRows(allTimeline,question,['projectCode','projectName','actionName','type','date','dueDate','partyType','partyCode','referenceNo','amount','settledAmount','currency','status','paymentMethod','responsible','note'],10),
-      matchingTasks:assistantPickRows(tasks,question,['id','title','description','status','dueDate','createdAt','sourceSenderName'],8),
-      matchingMyMessages:assistantPickRows(messages,question,['id','subject','body','senderName','date','read'],8)
+      permissions:{clientsAndVendors:canReadMaster,projects:canReadProjects,financialRecords:canReadFinance,tasks:canReadTasks,messages:canReadMessages},
+      counts:{
+        projects:canReadProjects?projects.length:null,
+        clients:canReadMaster?clients.length:null,
+        vendors:canReadMaster?vendors.length:null,
+        quotations:canReadFinance?quotes.length:null,
+        projectEvents:canReadProjects?allTimeline.length:null,
+        collections:canReadFinance?inflows.length:null,
+        payments:canReadFinance?outflows.length:null,
+        tasks:canReadTasks?tasks.length:null,
+        messages:canReadMessages?messages.length:null
+      },
+      ...(canReadFinance?{cashPosition:cashSummary}:{}),
+      ...(canReadMaster?{
+        matchingClients:assistantPickRows(clients,question,partyKeys,8),
+        matchingVendors:assistantPickRows(vendors,question,partyKeys,8)
+      }:{}),
+      ...(canReadProjects?{
+        matchingProjects:projectDetails,
+        matchingRecentEvents:assistantPickRows(allTimeline,question,['projectCode','projectName','actionName','type','date','dueDate','partyType','partyCode','referenceNo','amount','settledAmount','currency','status','paymentMethod','responsible','note'],10)
+      }:{}),
+      ...(canReadFinance?{
+        matchingQuotations:assistantPickRows(quotes,question,['id','code','quoteNo','clientCode','projectCode','date','validUntil','status','amount','currency','notes'],8),
+        matchingCollections:assistantPickRows(inflows,question,['id','clientCode','projectCode','date','transactionDate','referenceNo','voucherNo','invoiceNo','amount','currency','status','note','notes'],8),
+        matchingPayments:assistantPickRows(outflows,question,['id','vendorCode','projectCode','date','transactionDate','referenceNo','voucherNo','invoiceNo','amount','currency','status','note','notes'],8)
+      }:{}),
+      ...(canReadTasks?{matchingTasks:assistantPickRows(tasks,question,['id','title','description','status','dueDate','createdAt','sourceSenderName'],8)}:{}),
+      ...(canReadMessages?{matchingMyMessages:assistantPickRows(messages,question,['id','subject','body','senderName','date','read'],8)}:{})
     };
-    const selected=projects.find(p=>p.code===selectedProjectCode);
-    if(selected && !projectCodes.has(selected.code)) context.openProject={code:selected.code,name:selected.name,status:selected.status,amount:selected.amount,currency:selected.currency,events:projectEvents(selected).slice(-10).map(e=>({actionName:e.actionName||e.type,date:e.date,dueDate:e.dueDate,amount:e.amount,currency:e.currency,status:e.status,note:e.note}))};
+    const selected=canReadProjects?projects.find(p=>p.code===selectedProjectCode):null;
+    if(selected&&!projectCodes.has(selected.code))context.openProject={code:selected.code,name:selected.name,status:selected.status,amount:selected.amount,currency:selected.currency,events:projectEvents(selected).slice(-10).map(e=>({actionName:e.actionName||e.type,date:e.date,dueDate:e.dueDate,amount:e.amount,currency:e.currency,status:e.status,note:e.note}))};
     return JSON.stringify(context).slice(0,18000);
   }
-  async function sendAssistantQuestion(questionOverride){
+    async function sendAssistantQuestion(questionOverride){
     const question=String(questionOverride||assistantInput||'').trim();
     if(!question||assistantBusy||assistantPendingActions.length)return;
     const history=[...assistantMessages,{role:'user',content:question}];
