@@ -1439,12 +1439,13 @@ function validateScheduleRequest(body,claims,profile,env) {
   });
 }
 
-async function schedulerBindingRequest(env,path,method,body,uid) {
+async function schedulerBindingRequest(env,path,method,body,uid,recordId) {
   if (!env.AI_AGENT_SCHEDULER) throw new Error("AI Agent scheduler storage is not configured.");
   const id=env.AI_AGENT_SCHEDULER.idFromName("pest-platform-global-scheduler");
   const stub=env.AI_AGENT_SCHEDULER.get(id);
   const url=new URL("https://ai-agent-scheduler.internal"+path);
   if (uid) url.searchParams.set("uid",uid);
+  if (recordId) url.searchParams.set("id",safeSegment(recordId,"record id"));
   const response=await stub.fetch(new Request(url.toString(),{
     method:method || "GET",
     headers:{"Content-Type":"application/json"},
@@ -1569,15 +1570,45 @@ export class AIAgentScheduler {
         }).sort((a,b)=>Number(a.nextRunAt||0)-Number(b.nextRunAt||0));
         return jsonResponse({schedules},200,"");
       }
+      if (url.pathname==="/schedule" && method==="GET") {
+        const uid=safeSegment(url.searchParams.get("uid"),"user id");
+        const id=safeSegment(url.searchParams.get("id"),"schedule id");
+        const schedule=await this.ctx.storage.get("schedule:"+uid+":"+id);
+        return jsonResponse({schedule:schedule||null},200,"");
+      }
       if (url.pathname==="/schedule" && method==="POST") {
         const body=await request.json();
         const schedule=body.schedule;
         if (!schedule || !schedule.uid || !schedule.id || !schedule.encryptedRefreshToken) throw new Error("Invalid schedule.");
-        const existing=await this.ctx.storage.list({prefix:"schedule:"+schedule.uid+":"});
+        const uid=safeSegment(schedule.uid,"user id"),id=safeSegment(schedule.id,"schedule id");
+        const existing=await this.ctx.storage.list({prefix:"schedule:"+uid+":"});
         if (existing.size>=10) throw new Error("Each user can keep up to 10 active or paused schedules.");
-        await this.ctx.storage.put("schedule:"+schedule.uid+":"+schedule.id,schedule);
+        const key="schedule:"+uid+":"+id;
+        if (await this.ctx.storage.get(key)) throw new Error("This scheduled task already exists.");
+        await this.ctx.storage.put(key,schedule);
         const {encryptedRefreshToken,...safe}=schedule;
         return jsonResponse({saved:true,schedule:safe},201,"");
+      }
+      if (url.pathname==="/schedule" && method==="PUT") {
+        const body=await request.json();
+        const schedule=body.schedule;
+        if (!schedule || !schedule.uid || !schedule.id) throw new Error("Invalid schedule update.");
+        const uid=safeSegment(schedule.uid,"user id"),id=safeSegment(schedule.id,"schedule id");
+        const key="schedule:"+uid+":"+id;
+        const existing=await this.ctx.storage.get(key);
+        if (!existing || existing.uid!==uid) throw new Error("Scheduled task no longer exists.");
+        const updated={
+          ...existing,
+          enabled:schedule.enabled===true,
+          nextRunAt:Number(schedule.nextRunAt||0),
+          updatedAt:Number(schedule.updatedAt||Date.now()),
+          lastError:cleanText(schedule.lastError||"",500),
+          ...(schedule.encryptedRefreshToken?{encryptedRefreshToken:String(schedule.encryptedRefreshToken)}:{})
+        };
+        if (updated.enabled && (!updated.encryptedRefreshToken || !updated.nextRunAt)) throw new Error("A resumed schedule needs a valid encrypted session and next run time.");
+        await this.ctx.storage.put(key,updated);
+        const {encryptedRefreshToken,...safe}=updated;
+        return jsonResponse({updated:true,schedule:safe},200,"");
       }
       if (url.pathname==="/schedule" && method==="DELETE") {
         const body=await request.json();
@@ -1591,6 +1622,7 @@ export class AIAgentScheduler {
         const due=[...values.entries()].filter(([,schedule])=>schedule.enabled===true&&Number(schedule.nextRunAt||0)<=now);
         const results=[];
         for (const [key,schedule] of due.slice(0,20)) {
+          const runStartedUpdatedAt=Number(schedule.updatedAt||0);
           schedule.lastRunAt=now;
           schedule.lastStatus="running";
           schedule.nextRunAt=nextScheduleTime(schedule,now);
@@ -1621,10 +1653,19 @@ export class AIAgentScheduler {
             });
             results.push({id:schedule.id,status:"failed",error:message});
           }
-          await this.ctx.storage.put(key,schedule);
           const history=await this.ctx.storage.list({prefix:"run:"+schedule.uid+":"+schedule.id+":"});
           const excess=[...history.keys()].sort().slice(0,Math.max(0,history.size-10));
           for (const historyKey of excess) await this.ctx.storage.delete(historyKey);
+          const latest=await this.ctx.storage.get(key);
+          if(latest){
+            if(Number(latest.updatedAt||0)>runStartedUpdatedAt){
+              schedule.enabled=latest.enabled===true;
+              schedule.nextRunAt=Number(latest.nextRunAt||0);
+              schedule.updatedAt=latest.updatedAt;
+              if(latest.encryptedRefreshToken)schedule.encryptedRefreshToken=latest.encryptedRefreshToken;
+            }
+            await this.ctx.storage.put(key,schedule);
+          }
         }
         return jsonResponse({processed:results.length,results},200,"");
       }
@@ -1707,6 +1748,36 @@ export default {
         if (request.method === "DELETE") {
           const id = safeSegment(body.id,"schedule id");
           const output = await schedulerBindingRequest(env,"/schedule","DELETE",{uid:claims.sub,id});
+          return jsonResponse(output,200,origin);
+        }
+        if (request.method === "POST" && (body.action === "pause" || body.action === "resume")) {
+          const id = safeSegment(body.id,"schedule id");
+          const loaded = await schedulerBindingRequest(env,"/schedule","GET",null,claims.sub,id);
+          const schedule = loaded && loaded.schedule;
+          if (!schedule || schedule.uid !== claims.sub) throw new Error("Scheduled task was not found for this account.");
+          if (body.action === "resume") {
+            const allowedScopes = new Set(["dashboard","statement","reports","master","projects","tasks","messages","cashCustody"]);
+            if (!Array.isArray(schedule.scopes) || !schedule.scopes.length || schedule.scopes.some(scope=>!allowedScopes.has(scope))) {
+              throw new Error("The saved schedule has invalid data permissions. Delete it and create a new one.");
+            }
+            schedule.scopes.forEach(scope=>requirePermission(profile,scope,"view"));
+            if (config.provider === "openrouter" && !env.OPENROUTER_API_KEY) {
+              throw new Error("OpenRouter is selected but its Cloudflare secret is not configured.");
+            }
+            const refreshToken = String(body.refreshToken || "");
+            if (refreshToken.length < 100 || refreshToken.length > 4096) throw new Error("Could not read the current Firebase refresh session. Sign in again.");
+            const session = await refreshScheduledFirebaseSession(refreshToken);
+            if (session.user_id !== claims.sub) throw new Error("The supplied Firebase session belongs to another user.");
+            schedule.encryptedRefreshToken = await encryptRefreshToken(session.refresh_token || refreshToken,env);
+            schedule.enabled = true;
+            schedule.nextRunAt = nextScheduleTime(schedule,Date.now());
+            schedule.lastError = "";
+          } else {
+            schedule.enabled = false;
+            schedule.nextRunAt = 0;
+          }
+          schedule.updatedAt = Date.now();
+          const output = await schedulerBindingRequest(env,"/schedule","PUT",{schedule},claims.sub);
           return jsonResponse(output,200,origin);
         }
         const schedule = await validateScheduleRequest(body,claims,profile,env);
