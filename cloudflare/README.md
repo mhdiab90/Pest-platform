@@ -9,21 +9,17 @@ The Cloudflare Worker is the trusted gateway between the signed-in Pest Platform
 
 No provider API key is stored in Firebase, GitHub source code or the browser.
 
-## Deploy the existing Worker
+## Existing Cloudflare deployment
 
-The app is already configured to call:
+The application already calls the existing Worker at:
 
 `https://pest-platform.ai-mhdiab90.workers.dev`
 
-Open this existing Worker in Cloudflare Dashboard → **Workers & Pages** (the Worker name is expected to be `pest-platform`, under the `ai-mhdiab90` workers.dev subdomain). Do not create a second Worker or change its public URL.
+Cloudflare's GitHub integration is connected to this repository. Pushes to `main` that change `cloudflare/worker.js` or `wrangler.jsonc` are built and deployed to the existing Worker named `pest-platform`. Do not create a second Worker or change its URL. After a push, verify the **Workers Builds: pest-platform** check run is complete and successful.
 
-1. Select the existing `pest-platform` Worker.
-2. Open **Edit Code**, replace the full source with the complete current contents of `cloudflare/worker.js` from this repository, then **Save and Deploy**.
-3. In **Settings → Bindings**, confirm a Workers AI binding named exactly `AI` exists. Keep the binding enabled for the default Cloudflare provider.
-4. To enable OpenRouter, create an OpenRouter API key, then in the Worker open **Settings → Variables and Secrets → Add → Secret**. Set the variable name to `OPENROUTER_API_KEY` and paste the key as the secret value. Do not paste the key into Pest Platform, Firebase, GitHub source code or chat.
-5. Deploy the Worker again after adding the secret.
+The `wrangler.jsonc` file defines the existing AI binding (`AI`), the private scheduler Durable Object (`AI_AGENT_SCHEDULER`), its initial SQLite migration and a one-minute Cron Trigger.
 
-GitHub Pages deployment updates the website only; it does **not** automatically deploy the Cloudflare Worker. The Worker source in this repository must be deployed separately from the Cloudflare dashboard.
+To enable the alternative OpenRouter provider, create a key at OpenRouter and add it as a **Secret** named `OPENROUTER_API_KEY` under Cloudflare Dashboard → Workers & Pages → `pest-platform` → Settings → Variables and Secrets. The Cloudflare GitHub integration does not create this secret automatically. Never place it in Firebase, browser code, GitHub files or chat.
 
 OpenRouter keys: https://openrouter.ai/keys
 OpenRouter free models: https://openrouter.ai/collections/free-models/
@@ -89,6 +85,16 @@ openssl rand -base64 32
 ```
 
 In Cloudflare Dashboard → Workers & Pages → `pest-platform` → Settings → Variables and Secrets, add a **Secret** named `AI_SCHEDULER_ENCRYPTION_KEY` and paste the generated value. Never put it in GitHub, Firebase, the application HTML or chat. Keep the same key: replacing or losing it makes previously stored encrypted schedule credentials unreadable; those schedules will need to be deleted and recreated. The Durable Object binding, SQLite migration and one-minute Cron Trigger are configured in `wrangler.jsonc` and are deployed with the Worker.
+
+On Windows PowerShell, this equivalent command also generates a random 32-byte value:
+
+```powershell
+$bytes = New-Object byte[] 32
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+$rng.GetBytes($bytes)
+[Convert]::ToBase64String($bytes)
+$rng.Dispose()
+```
 
 ## Safeguards
 
