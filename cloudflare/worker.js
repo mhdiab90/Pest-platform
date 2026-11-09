@@ -439,21 +439,23 @@ async function readRecentCollection(path, token, limit, orderField) {
   });
 }
 
-async function searchNamedCollection(path, token, query, limit) {
+async function searchIndexedCollection(path, token, query, fields, limit) {
   const needle = cleanText(query || "", 120);
-  const prefixQuery = firebasePrefixQuery("name", needle, limit);
-  const tasks = [databaseRequest(path, token, "GET", undefined, prefixQuery)];
+  const tasks = fields.map(field => databaseRequest(path, token, "GET", undefined, firebasePrefixQuery(field, needle, limit)));
   if (/^[A-Za-z0-9_-]{1,120}$/.test(needle)) tasks.push(databaseRequest(path + "/" + needle, token, "GET"));
   const results = await Promise.all(tasks);
-  const rows = { ...(results[0] || {}) };
-  if (results.length > 1 && results[1]) rows[needle] = results[1];
+  const rows = {};
+  results.forEach((data, index) => {
+    if (index === tasks.length - 1 && results.length > fields.length && data) rows[needle] = data;
+    else Object.assign(rows, data || {});
+  });
   return rows;
 }
 
 async function runReadTool(name, args, claims, profile, token) {
   if (name === "search_clients") {
     requirePermission(profile, "master", "view");
-    const rows = await searchNamedCollection("clients", token, args.query, args.limit);
+    const rows = await searchIndexedCollection("clients", token, args.query, ["name","englishName","phone","mobile","taxNumber"], args.limit);
     return searchRows(rows, args.query, args.limit).map(x => ({
       code: x.code, name: x.name, englishName: x.englishName || "", phone: x.phone || "",
       mobile: x.mobile || "", email: x.email || "", taxNumber: x.taxNumber || "",
@@ -462,7 +464,7 @@ async function runReadTool(name, args, claims, profile, token) {
   }
   if (name === "search_vendors") {
     requirePermission(profile, "master", "view");
-    const rows = await searchNamedCollection("vendors", token, args.query, args.limit);
+    const rows = await searchIndexedCollection("vendors", token, args.query, ["name","englishName","phone","mobile","taxNumber"], args.limit);
     return searchRows(rows, args.query, args.limit).map(x => ({
       code: x.code, name: x.name, englishName: x.englishName || "", phone: x.phone || "",
       mobile: x.mobile || "", email: x.email || "", taxNumber: x.taxNumber || "",
@@ -471,7 +473,7 @@ async function runReadTool(name, args, claims, profile, token) {
   }
   if (name === "search_projects") {
     requirePermission(profile, "projects", "view");
-    const rows = await searchNamedCollection("projects", token, args.query, args.limit);
+    const rows = await searchIndexedCollection("projects", token, args.query, ["name","status","contractNo","purchaseOrderNo"], args.limit);
     return searchRows(rows, args.query, args.limit).map(x => ({
       code: x.code, name: x.name, status: x.status || "", currency: x.currency || "EGP",
       amount: Number(x.amount || 0), costBudget: Number(x.costBudget || 0),
