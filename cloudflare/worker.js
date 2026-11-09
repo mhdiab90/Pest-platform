@@ -1183,6 +1183,281 @@ async function handleExecuteRequest(body, claims, profile, token, env) {
   return { results };
 }
 
+
+function base64UrlEncode(bytes) {
+  let binary = "";
+  for (const value of bytes) binary += String.fromCharCode(value);
+  return btoa(binary).replace(/\\+/g,"-").replace(/\\//g,"_").replace(/=+$/g,"");
+}
+
+async function schedulerCryptoKey(env) {
+  const secret = String(env.AI_SCHEDULER_ENCRYPTION_KEY || "").trim();
+  if (!secret) throw new Error("AI_SCHEDULER_ENCRYPTION_KEY is not configured.");
+  const raw = decodeBase64Url(secret);
+  if (raw.length !== 32) throw new Error("AI_SCHEDULER_ENCRYPTION_KEY must decode to exactly 32 bytes.");
+  return crypto.subtle.importKey("raw",raw,{name:"AES-GCM"},false,["encrypt","decrypt"]);
+}
+
+async function encryptRefreshToken(refreshToken,env) {
+  const key = await schedulerCryptoKey(env);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encrypted = await crypto.subtle.encrypt({name:"AES-GCM",iv},key,new TextEncoder().encode(refreshToken));
+  return base64UrlEncode(iv)+"."+base64UrlEncode(new Uint8Array(encrypted));
+}
+
+async function decryptRefreshToken(encryptedValue,env) {
+  const parts = String(encryptedValue || "").split(".");
+  if (parts.length !== 2) throw new Error("Stored schedule credential is invalid.");
+  const key = await schedulerCryptoKey(env);
+  const plain = await crypto.subtle.decrypt({name:"AES-GCM",iv:decodeBase64Url(parts[0])},key,decodeBase64Url(parts[1]));
+  return new TextDecoder().decode(plain);
+}
+
+function zonedDateParts(timestamp,timeZone) {
+  const values = new Intl.DateTimeFormat("en-GB",{
+    timeZone,year:"numeric",month:"2-digit",day:"2-digit",weekday:"short",
+    hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"
+  }).formatToParts(new Date(timestamp));
+  const parts = {};
+  values.forEach(item=>{if(item.type!=="literal")parts[item.type]=item.value;});
+  const weekdays = {Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6};
+  return {
+    year:Number(parts.year),month:Number(parts.month),day:Number(parts.day),
+    hour:Number(parts.hour),minute:Number(parts.minute),second:Number(parts.second),
+    weekday:weekdays[parts.weekday]
+  };
+}
+
+function localTimeToUtc(year,month,day,hour,minute,timeZone) {
+  const target = Date.UTC(year,month-1,day,hour,minute,0);
+  let guess = target;
+  for (let index=0;index<4;index+=1) {
+    const parts = zonedDateParts(guess,timeZone);
+    const represented = Date.UTC(parts.year,parts.month-1,parts.day,parts.hour,parts.minute,parts.second);
+    guess += target-represented;
+  }
+  return guess;
+}
+
+function nextScheduleTime(schedule,fromTimestamp) {
+  const zone = schedule.timeZone || SCHEDULE_TIME_ZONE;
+  const [hour,minute] = schedule.time.split(":").map(Number);
+  const current = zonedDateParts(fromTimestamp,zone);
+  for (let offset=0;offset<=370;offset+=1) {
+    const date = new Date(Date.UTC(current.year,current.month-1,current.day+offset));
+    const year=date.getUTCFullYear(),month=date.getUTCMonth()+1,day=date.getUTCDate(),weekday=date.getUTCDay();
+    if (schedule.frequency==="weekly" && weekday!==Number(schedule.dayOfWeek)) continue;
+    if (schedule.frequency==="monthly" && day!==Number(schedule.dayOfMonth)) continue;
+    const candidate=localTimeToUtc(year,month,day,hour,minute,zone);
+    if (candidate>fromTimestamp+15000) return candidate;
+    if (schedule.frequency==="daily" && offset===0) continue;
+  }
+  throw new Error("Could not calculate the next scheduled run.");
+}
+
+function validateScheduleRequest(body,claims,profile,env) {
+  if (!env.AI_AGENT_SCHEDULER) throw new Error("The Worker scheduler storage binding is missing.");
+  const title=cleanText(body.title || "",100);
+  const prompt=cleanText(body.prompt || "",3000);
+  if (!title || !prompt) throw new Error("A title and task instruction are required.");
+  const frequency=String(body.frequency || "");
+  if (!["daily","weekly","monthly"].includes(frequency)) throw new Error("Choose daily, weekly or monthly.");
+  const time=String(body.time || "");
+  if (!/^(?:[01]\\d|2[0-3]):[0-5]\\d$/.test(time)) throw new Error("Enter a valid local time in HH:MM format.");
+  const dayOfWeek=Number(body.dayOfWeek ?? 1);
+  const dayOfMonth=Number(body.dayOfMonth ?? 1);
+  if (frequency==="weekly" && (!Number.isInteger(dayOfWeek)||dayOfWeek<0||dayOfWeek>6)) throw new Error("Invalid day of week.");
+  if (frequency==="monthly" && (!Number.isInteger(dayOfMonth)||dayOfMonth<1||dayOfMonth>28)) throw new Error("Choose a monthly day from 1 to 28.");
+  const allowedScopes=["dashboard","statement","reports","master","projects","tasks","messages","cashCustody"];
+  const scopes=Array.isArray(body.scopes)?[...new Set(body.scopes.map(String))]:[];
+  if (!scopes.length || scopes.some(scope=>!allowedScopes.includes(scope))) throw new Error("Choose at least one valid data scope.");
+  scopes.forEach(scope=>{
+    if (["dashboard","statement","reports"].includes(scope)) requirePermission(profile,scope,"view");
+    else requirePermission(profile,scope,"view");
+  });
+  const refreshToken=String(body.refreshToken || "");
+  if (refreshToken.length<100 || refreshToken.length>4096) throw new Error("Could not read the current Firebase refresh token. Sign in again.");
+  const schedule={
+    id:randomId("schedule"),uid:claims.sub,title,prompt,frequency,time,
+    dayOfWeek,dayOfMonth,scopes,timeZone:SCHEDULE_TIME_ZONE,
+    encryptedRefreshToken:null,enabled:true,createdAt:Date.now(),updatedAt:Date.now(),
+    nextRunAt:0,lastRunAt:0,lastStatus:"never",lastAnswer:""
+  };
+  return encryptRefreshToken(refreshToken,env).then(encrypted=>{
+    schedule.encryptedRefreshToken=encrypted;
+    schedule.nextRunAt=nextScheduleTime(schedule,Date.now());
+    return schedule;
+  });
+}
+
+async function schedulerBindingRequest(env,path,method,body,uid) {
+  if (!env.AI_AGENT_SCHEDULER) throw new Error("AI Agent scheduler storage is not configured.");
+  const id=env.AI_AGENT_SCHEDULER.idFromName("pest-platform-global-scheduler");
+  const stub=env.AI_AGENT_SCHEDULER.get(id);
+  const url=new URL("https://ai-agent-scheduler.internal"+path);
+  if (uid) url.searchParams.set("uid",uid);
+  const response=await stub.fetch(new Request(url.toString(),{
+    method:method || "GET",
+    headers:{"Content-Type":"application/json"},
+    ...(body===null||body===undefined?{}:{body:JSON.stringify(body)})
+  }));
+  const payload=await response.json().catch(()=>({}));
+  if (!response.ok) throw new Error(payload.error || ("Scheduler storage returned HTTP "+response.status));
+  return payload;
+}
+
+async function refreshScheduledFirebaseSession(refreshToken) {
+  const response=await fetch("https://securetoken.googleapis.com/v1/token?key="+encodeURIComponent(FIREBASE_API_KEY),{
+    method:"POST",
+    headers:{"Content-Type":"application/x-www-form-urlencoded"},
+    body:new URLSearchParams({grant_type:"refresh_token",refresh_token:refreshToken})
+  });
+  const payload=await response.json().catch(()=>({}));
+  if (!response.ok || !payload.id_token || !payload.user_id) {
+    const errorCode=payload.error && payload.error.message ? payload.error.message : "refresh failed";
+    throw new Error("Scheduled user session could not be refreshed: "+String(errorCode).slice(0,120));
+  }
+  return payload;
+}
+
+async function runScheduledAiTask(schedule,env) {
+  const oldRefreshToken=await decryptRefreshToken(schedule.encryptedRefreshToken,env);
+  const session=await refreshScheduledFirebaseSession(oldRefreshToken);
+  if (session.user_id!==schedule.uid) throw new Error("The scheduled session belongs to another user. The schedule was stopped.");
+  const token=session.id_token;
+  const claims=await verifyFirebaseIdToken(token);
+  const profile=await loadProfile(claims,token);
+  requirePermission(profile,"aiAgent","view");
+  for (const scope of schedule.scopes || []) {
+    if (["dashboard","statement","reports"].includes(scope)) requirePermission(profile,scope,"view");
+    else requirePermission(profile,scope,"view");
+  }
+  const config=await loadAgentConfig(token);
+  if (!config.enabled) throw new Error("The administrator disabled the AI Agent.");
+  const prompt=[
+    "This is an automatically scheduled, read-only Pest Platform report.",
+    "Use the available read/search tools to retrieve the newest relevant records within the user's granted scopes.",
+    "Do not propose or perform any create, update, delete, approval, task or message action.",
+    "State the data scope and any limits of the records retrieved. Report facts, exceptions, overdue items and practical observations.",
+    "Scheduled task requested by the user: "+schedule.title,
+    "Instruction: "+schedule.prompt
+  ].join("\n");
+  const result=await handleAgentRequest({prompt,context:"",readOnly:true},env,claims,profile,token,config);
+  return {
+    answer:result.answer,
+    provider:result.provider,
+    model:result.model,
+    readResults:result.readResults,
+    refreshedToken:session.refresh_token || oldRefreshToken,
+    pendingActionCount:result.pendingActions.length
+  };
+}
+
+export class AIAgentScheduler {
+  constructor(ctx,env) {
+    this.ctx=ctx;
+    this.env=env;
+  }
+
+  async fetch(request) {
+    const url=new URL(request.url);
+    const method=request.method;
+    try {
+      if (url.pathname==="/dashboards" && method==="GET") {
+        const uid=safeSegment(url.searchParams.get("uid"),"user id");
+        const values=await this.ctx.storage.list({prefix:"dashboard:"+uid+":"});
+        return jsonResponse({dashboards:[...values.values()].sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0))},200,"");
+      }
+      if (url.pathname==="/dashboard" && method==="POST") {
+        const body=await request.json();
+        const uid=safeSegment(body.uid,"user id");
+        const dashboard=body.dashboard;
+        if (!dashboard || !dashboard.id || !dashboard.title || !Array.isArray(dashboard.widgets)) throw new Error("Invalid dashboard.");
+        const key="dashboard:"+uid+":"+safeSegment(dashboard.id,"dashboard id");
+        await this.ctx.storage.put(key,dashboard);
+        return jsonResponse({saved:true,dashboard},200,"");
+      }
+      if (url.pathname==="/dashboard" && method==="DELETE") {
+        const body=await request.json();
+        const uid=safeSegment(body.uid,"user id"),id=safeSegment(body.id,"dashboard id");
+        await this.ctx.storage.delete("dashboard:"+uid+":"+id);
+        return jsonResponse({deleted:true,id},200,"");
+      }
+      if (url.pathname==="/schedules" && method==="GET") {
+        const uid=safeSegment(url.searchParams.get("uid"),"user id");
+        const values=await this.ctx.storage.list({prefix:"schedule:"+uid+":"});
+        const schedules=[...values.values()].map(item=>{
+          const {encryptedRefreshToken,...safe}=item;
+          return safe;
+        }).sort((a,b)=>Number(a.nextRunAt||0)-Number(b.nextRunAt||0));
+        return jsonResponse({schedules},200,"");
+      }
+      if (url.pathname==="/schedule" && method==="POST") {
+        const body=await request.json();
+        const schedule=body.schedule;
+        if (!schedule || !schedule.uid || !schedule.id || !schedule.encryptedRefreshToken) throw new Error("Invalid schedule.");
+        const existing=await this.ctx.storage.list({prefix:"schedule:"+schedule.uid+":"});
+        if (existing.size>=10) throw new Error("Each user can keep up to 10 active or paused schedules.");
+        await this.ctx.storage.put("schedule:"+schedule.uid+":"+schedule.id,schedule);
+        const {encryptedRefreshToken,...safe}=schedule;
+        return jsonResponse({saved:true,schedule:safe},201,"");
+      }
+      if (url.pathname==="/schedule" && method==="DELETE") {
+        const body=await request.json();
+        const uid=safeSegment(body.uid,"user id"),id=safeSegment(body.id,"schedule id");
+        await this.ctx.storage.delete("schedule:"+uid+":"+id);
+        return jsonResponse({deleted:true,id},200,"");
+      }
+      if (url.pathname==="/tick" && method==="POST") {
+        const values=await this.ctx.storage.list({prefix:"schedule:"});
+        const now=Date.now();
+        const due=[...values.entries()].filter(([,schedule])=>schedule.enabled===true&&Number(schedule.nextRunAt||0)<=now);
+        const results=[];
+        for (const [key,schedule] of due.slice(0,20)) {
+          schedule.lastRunAt=now;
+          schedule.lastStatus="running";
+          schedule.nextRunAt=nextScheduleTime(schedule,now);
+          await this.ctx.storage.put(key,schedule);
+          try {
+            const output=await runScheduledAiTask(schedule,this.env);
+            if (output.refreshedToken) schedule.encryptedRefreshToken=await encryptRefreshToken(output.refreshedToken,this.env);
+            schedule.lastStatus="success";
+            schedule.lastAnswer=String(output.answer||"").slice(0,8000);
+            schedule.lastProvider=output.provider;
+            schedule.lastModel=output.model;
+            schedule.lastReadResults=output.readResults||[];
+            schedule.lastError="";
+            const historyKey="run:"+schedule.uid+":"+schedule.id+":"+String(now).padStart(13,"0");
+            await this.ctx.storage.put(historyKey,{
+              id:historyKey, scheduleId:schedule.id, uid:schedule.uid, ranAt:now,
+              status:"success", answer:schedule.lastAnswer, provider:schedule.lastProvider,
+              readResults:schedule.lastReadResults
+            });
+            results.push({id:schedule.id,status:"success"});
+          } catch (error) {
+            const message=String(error&&error.message||error).slice(0,500);
+            schedule.lastStatus="failed";
+            schedule.lastError=message;
+            if (/Permission denied|not active|disabled the AI Agent|belongs to another user|INVALID_REFRESH_TOKEN|TOKEN_EXPIRED/i.test(message)) schedule.enabled=false;
+            await this.ctx.storage.put("run:"+schedule.uid+":"+schedule.id+":"+String(now).padStart(13,"0"),{
+              id:schedule.id,scheduleId:schedule.id,uid:schedule.uid,ranAt:now,status:"failed",error:message
+            });
+            results.push({id:schedule.id,status:"failed",error:message});
+          }
+          await this.ctx.storage.put(key,schedule);
+          const history=await this.ctx.storage.list({prefix:"run:"+schedule.uid+":"+schedule.id+":"});
+          const excess=[...history.keys()].sort().slice(0,Math.max(0,history.size-10));
+          if(excess.length)await this.ctx.storage.delete(excess);
+        }
+        return jsonResponse({processed:results.length,results},200,"");
+      }
+      return jsonResponse({error:"Scheduler route not found."},404,"");
+    } catch (error) {
+      return jsonResponse({error:String(error&&error.message||error).slice(0,400)},400,"");
+    }
+  }
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get("Origin") || "";
