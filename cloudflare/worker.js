@@ -113,7 +113,7 @@ function hasPermission(profile, moduleId, action) {
   if (moduleId === "projects" && ["view", "add", "edit"].includes(action) &&
       (username === "omar" || emailLocal === "omar" || fullName === "omar")) return true;
   if (moduleId === "cashCustody" && ["view", "add", "edit"].includes(action) &&
-      user.permissions && user.permissions.cashCustody && user.permissions.cashCustody[action] !== false) return true;
+      (!user.permissions || !user.permissions.cashCustody || user.permissions.cashCustody[action] !== false)) return true;
   return Boolean(user.permissions && user.permissions[moduleId] && user.permissions[moduleId][action] === true);
 }
 
@@ -525,7 +525,7 @@ function pendingPermission(name) {
     create_project: ["projects", "add"],
     update_project: ["projects", "edit"],
     delete_project: ["projects", "delete"],
-    add_project_event: ["projects", "edit"],
+    add_project_event: ["projects", "add"],
     create_cash_custody_transaction: ["cashCustody", "add"],
     update_cash_custody_transaction: ["cashCustody", "edit"],
     delete_cash_custody_transaction: ["cashCustody", "delete"],
@@ -708,6 +708,7 @@ async function executeAction(action, claims, profile, token) {
   if (!permission) throw new Error("This action is not allowed.");
   requirePermission(profile, permission[0], permission[1]);
   const uid = claims.sub;
+  const actionKey = safeSegment(action.id, "action id");
   if (name === "create_client_or_vendor" || name === "update_client_or_vendor" || name === "delete_client_or_vendor") {
     const root = args.kind === "client" ? "clients" : "vendors";
     const path = root + "/" + args.code;
@@ -767,7 +768,7 @@ async function executeAction(action, claims, profile, token) {
     const project = await databaseRequest("projects/" + args.code, token, "GET");
     if (!project) throw new Error("Project was not found.");
     const event = args.event;
-    const id = randomId("ai_event");
+    const id = safeSegment("ai_event_" + actionKey, "event id");
     const effect = event.type === "customer_receivable" ? "receivable" :
       event.type === "supplier_commitment" ? "payable" :
       event.type === "customer_collection" ? "cash_in" :
@@ -783,7 +784,7 @@ async function executeAction(action, claims, profile, token) {
     return { saved: true, projectCode: args.code, eventId: id, type: event.type, amount: event.amount, currency: event.currency };
   }
   if (name === "create_cash_custody_transaction") {
-    const id = safeSegment("ai_custody_" + action.id, "transaction id");
+    const id = safeSegment("ai_custody_" + actionKey, "transaction id");
     const record = {
       id, ownerUid: uid, ...args,
       status: profile.role === "admin" ? "approved" : "pending",
@@ -823,7 +824,7 @@ async function executeAction(action, claims, profile, token) {
     return { saved: true, id: args.id, status: args.status, ownerUid: args.ownerUid };
   }
   if (name === "create_task") {
-    const id = randomId("task");
+    const id = safeSegment("ai_task_" + actionKey, "task id");
     const record = {
       id, title: args.title, description: args.description, dueDate: args.dueDate,
       status: "open", createdAt: Date.now(), createdBy: uid
@@ -852,7 +853,7 @@ async function executeAction(action, claims, profile, token) {
   if (name === "send_internal_message") {
     const recipient = await databaseRequest("userDirectory/" + args.recipientUid, token, "GET");
     if (!recipient || recipient.status !== "active") throw new Error("The selected recipient is not active.");
-    const id = randomId("ai_msg");
+    const id = safeSegment("ai_msg_" + actionKey, "message id");
     const date = new Date().toLocaleString("en-US");
     const common = {
       id, messageId: id, senderUid: uid,
@@ -986,7 +987,7 @@ function normalizeIncomingActions(actions) {
   }
   return actions.map(item => {
     if (!item || typeof item !== "object" || !pendingPermission(item.name)) throw new Error("An unsupported action was supplied.");
-    return { id: cleanText(item.id || "", 120), name: item.name, args: validateProposedAction(item.name, item.args || {}) };
+    return { id: safeSegment(item.id || "", "action id"), name: item.name, args: validateProposedAction(item.name, item.args || {}) };
   });
 }
 
