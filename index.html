@@ -735,7 +735,16 @@ function App(){
   const accepted=s=>['مقبول','approved','Approved'].includes(s);
   const collected=s=>['تم التحصيل','collected','Collected'].includes(s);
   const paid=s=>['تم السداد','paid','Paid','full'].includes(s);
-  const projectEvents=p=>Object.entries((p&&p.events)||{}).map(([id,e])=>({...e,id:e.id||id})).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')) || Number(b.createdAt||0)-Number(a.createdAt||0));
+  const projectEvents=p=>Object.entries((p&&p.events)||{}).map(([id,e])=>{
+    const event={...e,id:e.id||id};
+    const partyType=String(event.partyType||'').toLowerCase();
+    const isCashMovement=['supplier_payment','customer_collection'].includes(event.type)||['cash_in','cash_out'].includes(event.financialEffect);
+    const configuredEffect=event.financialEffect||({customer_receivable:'receivable',supplier_commitment:'payable'}[event.type]||'none');
+    const hasFinancialAmount=Number(event.amount||0)>0;
+    const financialEffect=hasFinancialAmount&&!isCashMovement&&['vendor','client'].includes(partyType)?(partyType==='vendor'?'payable':'receivable'):configuredEffect;
+    const type=financialEffect==='payable'?'supplier_commitment':financialEffect==='receivable'?'customer_receivable':event.type;
+    return {...event,financialEffect,type};
+  }).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')) || Number(b.createdAt||0)-Number(a.createdAt||0));
   const projectActionOptions=[
     {id:'purchase_request',label:rtl?'طلب شراء من المورد':'Purchase request',effect:'none',party:'vendor'},
     {id:'quotation_request',label:rtl?'طلب عرض سعر من المورد':'Request supplier quotation',effect:'none',party:'vendor'},
