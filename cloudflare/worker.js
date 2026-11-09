@@ -823,15 +823,17 @@ function whatsappNotificationsConfigured(env) {
   return Boolean(
     String(env.WHATSAPP_ACCESS_TOKEN || "").trim() &&
     /^[0-9]{5,40}$/.test(String(env.WHATSAPP_PHONE_NUMBER_ID || "").trim()) &&
-    /^v\\d+\\.\\d+$/.test(String(env.WHATSAPP_GRAPH_API_VERSION || "").trim()) &&
+    /^v\d+\.\d+$/.test(String(env.WHATSAPP_GRAPH_API_VERSION || "").trim()) &&
     /^[a-z0-9_]{1,512}$/i.test(String(env.WHATSAPP_NOTIFICATION_TEMPLATE_NAME || "").trim()) &&
     /^[a-z]{2,3}(?:_[A-Z]{2})?$/.test(String(env.WHATSAPP_NOTIFICATION_TEMPLATE_LANGUAGE || "").trim())
   );
 }
 
 function normalizeWhatsAppNumber(value) {
-  let digits = String(value || "").replace(/\\D/g, "");
+  let digits = String(value || "").replace(/\D/g, "");
   if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.startsWith("0") && digits.length >= 10) digits = "20" + digits.slice(1);
+  else if (digits.length === 10 && digits.startsWith("1")) digits = "20" + digits;
   if (digits.length < 8 || digits.length > 15 || digits.startsWith("0")) return "";
   return digits;
 }
@@ -902,8 +904,8 @@ async function handleWhatsAppMessageNotification(body, claims, profile, token, e
   const notificationText = cleanText([
     "From: " + cleanText(message.senderName || profile.fullName || profile.username || "Pest Platform", 120),
     cleanText(message.subject || "", 180),
-    cleanText(message.body || "", 900)
-  ].filter(Boolean).join("\\n"), 900);
+    cleanText(message.body || "", 4000).slice(0, 560)
+  ].filter(Boolean).join("\n"), 900);
   const sent = [];
   const skipped = [];
   const failed = [];
