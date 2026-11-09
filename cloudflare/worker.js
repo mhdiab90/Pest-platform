@@ -327,7 +327,7 @@ function getMessageResult(raw) {
   };
 }
 
-async function callModel(env, provider, messages, uid) {
+async function callModel(env, provider, messages, uid, allowedTools) {
   if (provider === "openrouter") {
     if (!env.OPENROUTER_API_KEY) throw new Error("OpenRouter is not configured. Add OPENROUTER_API_KEY as a Cloudflare Worker secret.");
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -341,7 +341,7 @@ async function callModel(env, provider, messages, uid) {
       body: JSON.stringify({
         model: OPENROUTER_MODEL,
         messages,
-        tools: TOOLS,
+        tools: allowedTools,
         tool_choice: "auto",
         parallel_tool_calls: false,
         temperature: 0.15,
@@ -359,7 +359,7 @@ async function callModel(env, provider, messages, uid) {
   if (!env.AI || typeof env.AI.run !== "function") throw new Error("Cloudflare Workers AI binding named AI is not configured.");
   const raw = await env.AI.run(MODEL, {
     messages,
-    tools: TOOLS.map(item => ({
+    tools: allowedTools.map(item => ({
       name: item.function.name,
       description: item.function.description,
       parameters: item.function.parameters
