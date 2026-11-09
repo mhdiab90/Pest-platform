@@ -79,7 +79,7 @@ Create and obtain Meta approval for a Utility template with **one body parameter
 
 Employees must enter their WhatsApp number and explicitly enable **WhatsApp notifications** in Profile → Personal details. The Worker verifies the recipient's current active directory record and `whatsappOptIn === true` before contacting them. Employees can withdraw consent by unchecking the same box. Existing users are not opted in automatically.
 
-The endpoint also verifies the sender's `messages.add` permission and confirms that the referenced message is already saved in that sender's Sent folder. A Durable Object claim prevents duplicate notification sends for the same message. Recipients without opt-in or a valid number are skipped. A failed WhatsApp API request does not undo the internal Pest Platform message.
+The endpoint also verifies the sender's `messages.add` permission and confirms that the referenced message is already saved in that sender's Sent folder. A Durable Object claim prevents duplicate notification sends for the same message, and each sender is limited to five notification batches per minute. Recipients without opt-in or a valid number are skipped. A failed WhatsApp API request does not undo the internal Pest Platform message.
 
 **Scope in this release:** automatic WhatsApp notifications cover internal messages, replies and quick chats addressed to opted-in employees. The manual `wa.me` composer remains available for employee/customer/supplier conversations and still requires the sender to press Send. Automated vendor/customer messages, task due-date alerts and user-registration alerts are not part of this release.
 
