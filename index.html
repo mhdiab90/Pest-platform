@@ -2601,6 +2601,25 @@ function App(){
       setAiScheduleNotice(String(err?.message||err).slice(0,300));
     }finally{setAiScheduleBusy(false);}
   }
+  async function toggleAiSchedule(schedule){
+    if(aiScheduleBusy||!schedule?.id)return;
+    const action=schedule.enabled===false?'resume':'pause';
+    if(!window.confirm(action==='pause'?(rtl?'إيقاف هذه المهمة مؤقتًا؟':'Pause this scheduled task?'):(rtl?'إعادة تشغيل هذه المهمة المجدولة؟':'Resume this scheduled task?')))return;
+    setAiScheduleBusy(true);setAiScheduleNotice('');
+    try{
+      const request={action,id:schedule.id};
+      if(action==='resume'){
+        const authUser=window.PEST_FIREBASE_AUTH?.currentUser;
+        if(!authUser?.refreshToken)throw new Error(rtl?'تعذر الوصول إلى جلسة Firebase الحالية. سجل الخروج ثم الدخول مرة أخرى.':'Could not access the current Firebase refresh session. Sign out and sign in again.');
+        request.refreshToken=authUser.refreshToken;
+      }
+      await window.pestAIAgentUpdateSchedule(request);
+      setAiScheduleNotice(action==='pause'?(rtl?'تم إيقاف المهمة مؤقتًا.':'Schedule paused.'):(rtl?'تم إعادة تشغيل المهمة.':'Schedule resumed.'));
+      await refreshAiWorkspace();
+    }catch(err){
+      setAiScheduleNotice(String(err?.message||err).slice(0,300));
+    }finally{setAiScheduleBusy(false);}
+  }
   async function deleteAiSchedule(id){
     if(!window.confirm(rtl?'هل تريد إلغاء هذه المهمة المجدولة؟':'Cancel this scheduled task?'))return;
     try{await window.pestAIAgentDeleteSchedule(id);await refreshAiWorkspace();}
@@ -3256,9 +3275,9 @@ function App(){
             <section className="mx-3 my-3 rounded-xl border border-slate-200 bg-white p-3 space-y-2">
               <div className="flex items-center justify-between gap-2"><b className="text-sm text-slate-800">{rtl?'مهامي المجدولة':'My scheduled tasks'}</b><button type="button" onClick={refreshAiWorkspace} className="text-xs text-blue-700 underline">{rtl?'تحديث':'Refresh'}</button></div>
               {aiSchedulesBusy?<p className="text-xs text-gray-500">{rtl?'جارٍ تحميل المهام...':'Loading schedules...'}</p>:aiSchedules.length===0?<p className="text-xs text-gray-500">{rtl?'لا توجد مهام مجدولة حاليًا.':'No scheduled tasks yet.'}</p>:aiSchedules.map(schedule=><article key={schedule.id} className="rounded-lg border p-3 space-y-1">
-                <div className="flex items-start justify-between gap-2"><div><b className="text-sm">{schedule.title}</b><p className="text-[11px] text-gray-500">{schedule.frequency==='daily'?(rtl?'يومي':'Daily'):schedule.frequency==='weekly'?(rtl?'أسبوعي':'Weekly'):(rtl?'شهري':'Monthly')} · {schedule.time} · {rtl?'توقيت القاهرة':'Cairo time'}</p></div><button type="button" onClick={()=>deleteAiSchedule(schedule.id)} className="text-xs text-rose-700 underline">{rtl?'إلغاء':'Cancel'}</button></div>
-                <p className="text-[11px] text-gray-600">{rtl?'التشغيل القادم: ':'Next run: '}{aiScheduleDateText(schedule.nextRunAt)}</p>
-                <p className="text-[11px]"><b>{rtl?'آخر حالة: ':'Last status: '}</b>{schedule.lastStatus==='success'?(rtl?'نجاح':'Success'):schedule.lastStatus==='failed'?(rtl?'فشل':'Failed'):schedule.lastStatus==='running'?(rtl?'قيد التشغيل':'Running'):(rtl?'لم تعمل بعد':'Not run yet')}</p>
+                <div className="flex items-start justify-between gap-2"><div><b className="text-sm">{schedule.title}</b><p className="text-[11px] text-gray-500">{schedule.frequency==='daily'?(rtl?'يومي':'Daily'):schedule.frequency==='weekly'?(rtl?'أسبوعي':'Weekly'):(rtl?'شهري':'Monthly')} · {schedule.time} · {rtl?'توقيت القاهرة':'Cairo time'}</p><p className={'text-[11px] font-bold '+(schedule.enabled===false?'text-amber-700':'text-emerald-700')}>{rtl?'حالة الجدولة: ':'Schedule: '}{schedule.enabled===false?(rtl?'متوقفة مؤقتًا':'Paused'):(rtl?'نشطة':'Active')}</p></div><div className="flex items-center gap-3"><button type="button" disabled={aiScheduleBusy} onClick={()=>toggleAiSchedule(schedule)} className="text-xs text-blue-700 underline disabled:opacity-50">{schedule.enabled===false?(rtl?'استئناف':'Resume'):(rtl?'إيقاف مؤقت':'Pause')}</button><button type="button" onClick={()=>deleteAiSchedule(schedule.id)} className="text-xs text-rose-700 underline">{rtl?'حذف':'Delete'}</button></div></div>
+                <p className="text-[11px] text-gray-600">{rtl?'التشغيل القادم: ':'Next run: '}{schedule.enabled===false?'—':aiScheduleDateText(schedule.nextRunAt)}</p>
+                <p className="text-[11px]"><b>{rtl?'آخر حالة تشغيل: ':'Last run: '}</b>{schedule.lastStatus==='success'?(rtl?'نجاح':'Success'):schedule.lastStatus==='failed'?(rtl?'فشل':'Failed'):schedule.lastStatus==='running'?(rtl?'قيد التشغيل':'Running'):(rtl?'لم تعمل بعد':'Not run yet')}</p>
                 {schedule.lastAnswer&&<details className="mt-1"><summary className="cursor-pointer text-xs text-blue-700">{rtl?'عرض آخر تقرير':'View last report'}</summary><p className="text-xs whitespace-pre-wrap mt-2">{schedule.lastAnswer}</p></details>}
                 {schedule.lastError&&<p className="text-[11px] text-rose-700">{schedule.lastError}</p>}
               </article>)}
@@ -3365,6 +3384,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<AppErrorBoundary><A
   window.pestAIAgentDeleteDashboard=id=>agentRequest('/dashboards','DELETE',{id:String(id||'')});
   window.pestAIAgentListSchedules=()=>agentRequest('/schedules','GET');
   window.pestAIAgentCreateSchedule=schedule=>agentRequest('/schedules','POST',schedule||{});
+  window.pestAIAgentUpdateSchedule=update=>agentRequest('/schedules','POST',update||{});
   window.pestAIAgentDeleteSchedule=id=>agentRequest('/schedules','DELETE',{id:String(id||'')});
   window.pestWhatsAppNotifyMessage=messageId=>agentRequest('/whatsapp/notify-message','POST',{messageId:String(messageId||'')});
   window.pestAIAsk=async prompt=>{
