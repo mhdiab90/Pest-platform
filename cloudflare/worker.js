@@ -1898,15 +1898,21 @@ async function validateAttachmentEntity(type,id,claims,profile,token,action,owne
   if(entityType==="company"){if(profile.role!=="admin")throw new Error("Company-wide attachments are restricted to administrators.");}
   else{
     requirePermission(profile,"attachments",action==="view"?"view":action==="upload"?"add":"delete");
+    const requireEntityPermission=(targetModule)=>{
+      if(action==="view")requirePermission(profile,targetModule,"view");
+      else if(action==="upload"){
+        if(!hasPermission(profile,targetModule,"add")&&!hasPermission(profile,targetModule,"edit"))throw new Error("Permission denied: "+targetModule+".add/edit.");
+      }else if(!hasPermission(profile,targetModule,"delete")&&!hasPermission(profile,targetModule,"edit"))throw new Error("Permission denied: "+targetModule+".delete/edit.");
+    };
     if(entityType==="project"||entityType==="client"||entityType==="vendor"){
-      requirePermission(profile,moduleId,action==="view"?"view":action==="upload"?"add":"edit");
+      requireEntityPermission(moduleId);
       const path=entityType==="project"?"projects/"+entityId:entityType==="client"?"clients/"+entityId:"vendors/"+entityId;
       if(!await databaseRequest(path,token,"GET"))throw new Error("The linked record was not found or is not accessible.");
     }else if(entityType==="task"){
-      requirePermission(profile,"tasks",action==="view"?"view":action==="upload"?"add":"edit");
+      requireEntityPermission("tasks");
       if(!await databaseRequest("tasks/"+claims.sub+"/"+entityId,token,"GET"))throw new Error("The linked task was not found in your account.");
     }else if(entityType==="message"){
-      requirePermission(profile,"messages",action==="view"?"view":action==="upload"?"add":"edit");
+      requireEntityPermission("messages");
       if(!await databaseRequest("messages/"+claims.sub+"/"+entityId,token,"GET"))throw new Error("The linked message was not found in your mailbox.");
     }else if(entityType==="financial"){
       if(!hasPermission(profile,"reports","view")&&!hasPermission(profile,"dashboard","view")&&!hasPermission(profile,"statement","view"))throw new Error("Permission denied: financial attachment access.");
@@ -1990,9 +1996,9 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     const type=cleanText(request.headers.get("X-Attachment-Entity-Type"),24),entityId=cleanText(request.headers.get("X-Attachment-Entity-Id"),120);
     let fileName=String(request.headers.get("X-Attachment-File-Name")||"");try{fileName=decodeURIComponent(fileName);}catch(_){}
     fileName=cleanText(fileName,180);
-    if(!fileName||/[\\u0000-\\u001f\\u007f]/.test(fileName)||fileName.includes("/")||fileName.includes("\\"))throw new Error("Invalid file name.");
+    if(!fileName||/[\u0000-\u001f\u007f].test(fileName)||fileName.includes("/")||fileName.includes("\\"))throw new Error("Invalid file name.");
     const mime=String(request.headers.get("Content-Type")||"application/octet-stream").split(";")[0].trim().toLowerCase();
-    const ext=(fileName.match(/\\.([a-z0-9]{1,10})$/i)||[])[1]?.toLowerCase()||"";
+    const ext=(fileName.match(/\.([a-z0-9]{1,10})$/i)||[])[1]?.toLowerCase()||"";
     if(!ATTACHMENT_ALLOWED_TYPES[mime]||!ATTACHMENT_ALLOWED_TYPES[mime].includes(ext))throw new Error("This file type is not allowed. Supported: PDF, JPG, PNG, WebP, DOC, DOCX, XLS, XLSX, CSV and TXT.");
     await validateAttachmentEntity(type,entityId,claims,profile,token,"upload");
     const length=Number(request.headers.get("Content-Length")||0);if(length>ATTACHMENT_MAX_FILE_BYTES)throw new Error("الحد الأقصى لحجم الملف الواحد 20 MB.");
@@ -2003,7 +2009,7 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     if(Number(usage.usedBytes||0)+bytes.byteLength>ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES)throw new Error("تم الوصول إلى الحد الداخلي لمساحة مرفقات البرنامج (14 GB). احذف بعض الملفات أو راجع المساحة المتاحة بحساب Google.");
     const accessToken=await googleDriveAccessToken(env,connection),folderId=await ensureGoogleDriveFolder(env,connection,accessToken);
     const id=crypto.randomUUID().replace(/-/g,"");
-    const driveFile=await googleDriveUpload(accessToken,{name:fileName,mimeType:mime,parents:[folderId],appProperties:{pestAttachmentId:id,pestEntityType:type,pestEntityId}},bytes,mime);
+    const driveFile=await googleDriveUpload(accessToken,{name:fileName,mimeType:mime,parents:[folderId],appProperties:{pest_attachment_id:id,pest_entity_type:type,pest_entity_id:entityId}},bytes,mime);
     const record={id,driveFileId:driveFile.id,fileName,mimeType:mime,fileSize:bytes.byteLength,entityType:type,entityId,ownerUid:claims.sub,createdByName:String(profile.fullName||profile.username||profile.email||claims.sub).slice(0,120),createdAt:new Date().toISOString(),driveCreatedAt:driveFile.createdTime||""};
     try{await driveStorageRequest(env,"/attachment-records","POST",{attachment:record});}
     catch(error){await googleDriveDelete(accessToken,driveFile.id).catch(()=>null);throw error;}
