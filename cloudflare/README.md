@@ -123,6 +123,60 @@ $rng.GetBytes($bytes)
 $rng.Dispose()
 ```
 
+## Private Google Drive attachments
+
+Pest Platform stores attachments in the company's Google Drive account. It does **not** use Supabase Storage, Firebase Storage, public Drive links, or Base64 files in Firebase.
+
+### Free storage and limits
+
+- A personal Google Account includes up to 15 GB shared across Google Drive, Gmail and Google Photos. Existing use by Gmail/Photos reduces the space available for Pest Platform files.
+- The application enforces a **13 GiB internal attachment budget** as a safety margin; Google may reject uploads earlier when the connected account is already using storage elsewhere.
+- Each file is limited to **20 MB**.
+- Allowed file types: PDF, JPG/JPEG, PNG, WebP, DOC, DOCX, XLS, XLSX, CSV and TXT.
+- PDF, images, CSV/TXT and Excel workbooks can be previewed in the app. Word documents and other non-previewable types are downloaded.
+- The attachment folder is named \`Pest Platform Attachments\`.
+- Files remain private in Drive. The browser does not receive a public Drive URL; the Worker checks the Firebase session and both the Attachments permission and the linked module permission before listing, uploading, viewing or deleting.
+- File metadata is stored in the existing \`AI_AGENT_SCHEDULER\` Durable Object. Google OAuth refresh tokens are encrypted with AES-GCM before being stored there. OAuth client credentials and the encryption key remain Cloudflare Worker variables/secrets.
+
+### One-time Google Cloud setup
+
+1. Use a dedicated Google Account for the company's shared attachments. Check its current Google storage usage first.
+2. Create a project in Google Cloud Console and enable the [Google Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com).
+3. Configure the OAuth consent screen as an External app. Add an application name, support email and developer contact email. Publish it as **In production** before using it as the long-term company connection: refresh tokens issued while an External app is in Testing expire after seven days for these scopes.
+4. Create an OAuth Client ID with application type **Web application**.
+5. Add this exact authorized redirect URI to the OAuth client:
+
+   \`https://pest-platform.ai-mhdiab90.workers.dev/drive/oauth/callback\`
+
+6. In Cloudflare Dashboard → Workers & Pages → \`pest-platform\` → Settings → Variables and Secrets, add:
+
+   | Name | Type | Value |
+   |---|---|---|
+   | \`GOOGLE_DRIVE_CLIENT_ID\` | Variable | OAuth client ID from Google Cloud |
+   | \`GOOGLE_DRIVE_CLIENT_SECRET\` | Secret | OAuth client secret from Google Cloud |
+   | \`GOOGLE_DRIVE_TOKEN_ENCRYPTION_KEY\` | Secret | Random 32-byte key encoded as Base64 |
+
+   Generate the encryption key locally using \`openssl rand -base64 32\`, or generate 32 random bytes using a trusted local password manager. Never put the generated key or OAuth client secret in GitHub, Firebase, the HTML app or chat. Keep a secure backup of the encryption key; losing it makes the stored Drive refresh token unreadable and requires reconnecting Google Drive.
+
+7. Deploy the updated Cloudflare Worker. Sign in to Pest Platform as a system administrator, open **Attachments**, then select **Connect Google Drive account** and approve the requested access.
+8. Refresh the Attachments screen. The connection status should show the connected Google account. The first upload creates the private \`Pest Platform Attachments\` folder automatically.
+
+The OAuth app requests only \`drive.file\` plus basic email identity. \`drive.file\` limits access to files created or opened by this application; it does not grant unrestricted access to the user's whole Drive.
+
+### User permissions and operations
+
+- In **Administration → User Permissions**, grant the user **Attachments → View** to access the screen.
+- Also grant the matching linked module permission: Projects, Clients & Vendors, Tasks, Messages, or Reports/Finance.
+- Grant **Attachments → Add** and the matching module's Add or Edit permission to allow uploads.
+- Grant **Attachments → Delete** and the linked module's Edit/Delete permission to allow deletion.
+- Company-wide attachments are administrator-only.
+- The app supports links to projects, customers, suppliers, the signed-in user's tasks and mailbox messages, financial records, and administrator-only company files.
+- Disconnecting Google Drive removes the stored app authorization but does not delete files from Drive or metadata from the app. Reconnect the same Google Account to restore access to the existing attachments. Do not connect a different account unless the files and metadata are migrated deliberately.
+
+### Important storage note
+
+The 13 GiB cap is an application safety limit, not a reservation of Google Drive capacity. Google Drive can still reject an upload if the account's combined Drive/Gmail/Photos storage is full. No Google billing account or bank card is required for a personal Google Account's included 15 GB storage. Google can change its product limits and OAuth requirements; review the current [Google storage information](https://support.google.com/drive/answer/6374270) and [OAuth web server guidance](https://developers.google.com/identity/protocols/oauth2/web-server) before changing the setup.
+
 ## Safeguards
 
 - Read tools are omitted from the model request when the user lacks the relevant View permission.
