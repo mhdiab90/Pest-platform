@@ -1597,10 +1597,35 @@ export class AIAgentScheduler {
           ownerUid:safeSegment(attachment.ownerUid,"attachment owner"),
           createdByName:cleanText(attachment.createdByName||"",120),
           createdAt:String(attachment.createdAt||new Date().toISOString()),
+          updatedAt:String(attachment.updatedAt||""),
+          updatedByName:cleanText(attachment.updatedByName||"",120),
+          note:cleanText(attachment.note||"",2000),
           driveCreatedAt:String(attachment.driveCreatedAt||"")
         };
         await this.ctx.storage.put(key,saved);
         return jsonResponse({saved:true},201,"");
+      }
+      if (url.pathname==="/attachment-record" && method==="POST") {
+        const body=await request.json(),attachment=body.attachment||{};
+        const entityType=safeSegment(attachment.entityType,"attachment entity type");
+        const entityId=safeSegment(attachment.entityId,"attachment entity id");
+        const id=safeSegment(attachment.id,"attachment id");
+        const key="attachment:"+entityType+":"+entityId+":"+id;
+        const existing=await this.ctx.storage.get(key);
+        if(!existing)throw new Error("Attachment record does not exist.");
+        if(attachment.driveFileId&&attachment.driveFileId!==existing.driveFileId)throw new Error("Attachment file identity cannot be changed.");
+        const saved={
+          ...existing,
+          fileName:cleanText(attachment.fileName||existing.fileName,180),
+          mimeType:cleanText(attachment.mimeType||existing.mimeType,120),
+          fileSize:Number(attachment.fileSize??existing.fileSize),
+          updatedAt:String(attachment.updatedAt||new Date().toISOString()),
+          updatedByName:cleanText(attachment.updatedByName||existing.updatedByName||"",120),
+          note:cleanText(attachment.note??existing.note??"",2000)
+        };
+        if(!Number.isFinite(saved.fileSize)||saved.fileSize<=0)throw new Error("Invalid updated attachment size.");
+        await this.ctx.storage.put(key,saved);
+        return jsonResponse({saved:true,attachment:saved},200,"");
       }
       if (url.pathname==="/attachment-record" && method==="DELETE") {
         const entityType=safeSegment(url.searchParams.get("entityType"),"attachment entity type");
@@ -1897,9 +1922,10 @@ async function validateAttachmentEntity(type,id,claims,profile,token,action,owne
   const entityType=cleanText(type,24),entityId=entityType==="company"?"company":safeSegment(id,"attachment record id"),moduleId=attachmentEntityModule(entityType);
   if(entityType==="company"){if(profile.role!=="admin")throw new Error("Company-wide attachments are restricted to administrators.");}
   else{
-    requirePermission(profile,"attachments",action==="view"?"view":action==="upload"?"add":"delete");
+    requirePermission(profile,"attachments",action==="view"?"view":action==="upload"?"add":action==="edit"?"edit":"delete");
     const requireEntityPermission=(targetModule)=>{
       if(action==="view")requirePermission(profile,targetModule,"view");
+      else if(action==="edit")requirePermission(profile,targetModule,"edit");
       else if(action==="upload"){
         if(!hasPermission(profile,targetModule,"add")&&!hasPermission(profile,targetModule,"edit"))throw new Error("Permission denied: "+targetModule+".add/edit.");
       }else if(!hasPermission(profile,targetModule,"delete")&&!hasPermission(profile,targetModule,"edit"))throw new Error("Permission denied: "+targetModule+".delete/edit.");
@@ -2028,6 +2054,42 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     catch(error){await googleDriveDelete(accessToken,driveFile.id).catch(()=>null);throw error;}
     return {success:true,attachment:record,storage:{usedBytes:Number(usage.usedBytes||0)+bytes.byteLength,limitBytes:ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES}};
   }
+  if(url.pathname==="/attachments/replace"&&request.method==="POST"){
+    const type=cleanText(request.headers.get("X-Attachment-Entity-Type"),24),entityId=cleanText(request.headers.get("X-Attachment-Entity-Id"),120),id=safeSegment(request.headers.get("X-Attachment-Id"),"attachment id");
+    const attachment=await findAttachment(env,type,entityId,id);
+    await validateAttachmentEntity(type,entityId,claims,profile,token,"upload",attachment.ownerUid);
+    const fileNameHeader=request.headers.get("X-Attachment-File-Name");
+    let fileName=attachment.fileName;
+    if(fileNameHeader){try{fileName=decodeURIComponent(fileNameHeader);}catch(_){}}
+    fileName=cleanText(fileName,180);
+    if(!fileName||/[\\u0000-\\u001f\\u007f]/.test(fileName)||fileName.includes("/")||fileName.includes("\\"))throw new Error("Invalid file name.");
+    const mime=String(request.headers.get("Content-Type")||attachment.mimeType||"application/octet-stream").split(";")[0].trim().toLowerCase();
+    const ext=(fileName.match(/\\.([a-z0-9]{1,10})$/i)||[])[1]?.toLowerCase()||"";
+    if(!ATTACHMENT_ALLOWED_TYPES[mime]||!ATTACHMENT_ALLOWED_TYPES[mime].includes(ext))throw new Error("Unsupported replacement file type.");
+    const length=Number(request.headers.get("Content-Length")||0);if(length>ATTACHMENT_MAX_FILE_BYTES)throw new Error("الحد الأقصى لحجم الملف الواحد 20 MB.");
+    const bytes=await request.arrayBuffer();if(!bytes.byteLength||bytes.byteLength>ATTACHMENT_MAX_FILE_BYTES)throw new Error("Invalid replacement file size.");
+    validateAttachmentBytes(new Uint8Array(bytes),mime);
+    const usage=await driveStorageRequest(env,"/attachment-usage","GET");
+    if(Number(usage.usedBytes||0)-Number(attachment.fileSize||0)+bytes.byteLength>ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES)throw new Error("The attachment storage limit would be exceeded.");
+    const connection=await getGoogleDriveConnection(env);if(!connection||!connection.encryptedRefreshToken)throw new Error("Google Drive is disconnected.");
+    const accessToken=await googleDriveAccessToken(env,connection);
+    const response=await fetch("https://www.googleapis.com/upload/drive/v3/files/"+encodeURIComponent(attachment.driveFileId)+"?uploadType=media",{method:"PATCH",headers:{Authorization:"Bearer "+accessToken,"Content-Type":mime},body:bytes});
+    const driveResult=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error("Google Drive replacement failed: "+String(driveResult.error&&driveResult.error.message||response.status).slice(0,180));
+    if(fileName!==attachment.fileName)await googleDriveApi(accessToken,"/files/"+encodeURIComponent(attachment.driveFileId),{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:fileName})});
+    const updated={...attachment,fileName,mimeType:mime,fileSize:bytes.byteLength,updatedAt:new Date().toISOString(),updatedByName:String(profile.fullName||profile.username||"").slice(0,120)};
+    await driveStorageRequest(env,"/attachment-record","POST",{attachment:updated});
+    return {success:true,attachment:updated,storage:{usedBytes:Number(usage.usedBytes||0)-Number(attachment.fileSize||0)+bytes.byteLength,limitBytes:ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES}};
+  }
+  if(url.pathname==="/attachments/annotate"&&request.method==="POST"){
+    const type=cleanText(body.entityType,24),entityId=cleanText(body.entityId,120),id=safeSegment(body.id,"attachment id");
+    const attachment=await findAttachment(env,type,entityId,id);
+    await validateAttachmentEntity(type,entityId,claims,profile,token,"edit",attachment.ownerUid);
+    const note=cleanText(body.note||"",2000);
+    const updated={...attachment,note,updatedAt:new Date().toISOString(),updatedByName:String(profile.fullName||profile.username||"").slice(0,120)};
+    await driveStorageRequest(env,"/attachment-record","POST",{attachment:updated});
+    return {success:true,attachment:updated};
+  }
   if(url.pathname==="/attachments/file"&&request.method==="GET"){
     const type=cleanText(url.searchParams.get("entityType"),24),entityId=cleanText(url.searchParams.get("entityId"),120),id=safeSegment(url.searchParams.get("id"),"attachment id");
     const attachment=await findAttachment(env,type,entityId,id);
@@ -2080,7 +2142,7 @@ export default {
     if (origin !== ALLOWED_ORIGIN) return jsonResponse({ error: "Origin is not allowed." }, 403, origin);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
     if (!["GET","POST","DELETE"].includes(request.method)) return jsonResponse({ error: "Method not allowed." }, 405, origin);
-    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/upload", "/attachments/file", "/attachments/usage"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
+    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/upload", "/attachments/replace", "/attachments/annotate", "/attachments/file", "/attachments/usage"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
 
     try {
       const authorization = request.headers.get("Authorization") || "";
@@ -2089,7 +2151,7 @@ export default {
       const token = match[1];
       const claims = await verifyFirebaseIdToken(token);
       let body = {};
-      const binaryUpload = url.pathname === "/attachments/upload";
+      const binaryUpload = url.pathname === "/attachments/upload" || url.pathname === "/attachments/replace";
       if (request.method !== "GET" && !binaryUpload) {
         const contentType = request.headers.get("Content-Type") || "";
         if (!contentType.toLowerCase().includes("application/json")) return jsonResponse({ error: "Content-Type must be application/json." }, 415, origin);
