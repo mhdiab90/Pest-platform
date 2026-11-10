@@ -343,6 +343,13 @@ function App(){
   const [attachmentEntityType,setAttachmentEntityType] = useState('project');
   const [attachmentEntityId,setAttachmentEntityId] = useState('');
   const [attachmentsList,setAttachmentsList] = useState([]);
+  const [masterPendingAttachments,setMasterPendingAttachments] = useState([]);
+  const [projectPendingAttachments,setProjectPendingAttachments] = useState([]);
+  const [eventPendingAttachments,setEventPendingAttachments] = useState([]);
+  const [messagePendingAttachments,setMessagePendingAttachments] = useState([]);
+  const [replyPendingAttachments,setReplyPendingAttachments] = useState([]);
+  const [chatPendingAttachments,setChatPendingAttachments] = useState([]);
+  const [cashCustodyPendingAttachments,setCashCustodyPendingAttachments] = useState([]);
   const [attachmentsBusy,setAttachmentsBusy] = useState(false);
   const [attachmentUploadBusy,setAttachmentUploadBusy] = useState(false);
   const [attachmentsNotice,setAttachmentsNotice] = useState('');
@@ -835,6 +842,42 @@ function App(){
     try{const result=await attachmentWorkerRequest('/attachments?entityType='+encodeURIComponent(attachmentEntityType)+'&entityId='+encodeURIComponent(attachmentEntityId),'GET');setAttachmentsList(result.attachments||[]);}
     catch(error){setAttachmentsList([]);setAttachmentsNotice(String(error.message||error));}
     finally{setAttachmentsBusy(false);}
+  }
+  function attachmentMimeType(file){
+    const ext=String(file?.name||'').split('.').pop().toLowerCase();
+    const map={pdf:'application/pdf',jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',webp:'image/webp',txt:'text/plain',csv:'text/csv',xls:'application/vnd.ms-excel',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',doc:'application/msword',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'};
+    return map[ext]||file?.type||'application/octet-stream';
+  }
+  function renderInlineAttachmentPicker(files,setFiles,spanClass='md:col-span-2 xl:col-span-3'){
+    if(!hasPermission('attachments','add'))return null;
+    return <div className={spanClass+' rounded-xl border border-dashed border-blue-300 bg-blue-50/60 p-3 space-y-2'}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div><b className="text-sm text-slate-800"><i className="fas fa-paperclip me-2 text-blue-700"></i>{rtl?'إضافة مرفقات مع السجل':'Attach files to this record'}</b><p className="text-xs text-slate-500 mt-1">{rtl?'يمكنك اختيار أكثر من ملف. الحد الأقصى 20 MB لكل ملف.':'Select multiple files. Maximum 20 MB per file.'}</p></div>
+        <label className="cursor-pointer inline-flex items-center gap-2 rounded-lg bg-blue-700 px-3 py-2 text-sm font-bold text-white hover:bg-blue-800"><i className="fas fa-plus"></i>{rtl?'اختيار ملفات':'Choose files'}<input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt" className="hidden" onChange={e=>{
+          const selected=Array.from(e.target.files||[]),allowed=new Set(['pdf','jpg','jpeg','png','webp','doc','docx','xls','xlsx','csv','txt']);
+          const valid=selected.filter(file=>file.size<=20*1024*1024&&allowed.has(String(file.name||'').split('.').pop().toLowerCase()));
+          const rejected=selected.filter(file=>!valid.includes(file));
+          if(rejected.length)alert((rtl?'تم تجاهل ملفات غير مدعومة أو أكبر من 20 MB: ':'Skipped unsupported files or files larger than 20 MB: ')+rejected.map(file=>file.name).join('، '));
+          setFiles(old=>[...old,...valid.filter(file=>!old.some(existing=>existing.name===file.name&&existing.size===file.size&&existing.lastModified===file.lastModified))]);
+          e.target.value='';
+        }}/></label>
+      </div>
+      {files.length>0&&<div className="flex flex-wrap gap-2">{files.map((file,index)=><span key={file.name+'-'+file.size+'-'+file.lastModified+'-'+index} className="inline-flex items-center gap-2 rounded-lg border bg-white px-2 py-1.5 text-xs"><i className="fas fa-file text-blue-600"></i><span className="max-w-56 truncate">{file.name}</span><span className="text-gray-400">{(file.size/1048576).toFixed(2)} MB</span><button type="button" aria-label={rtl?'إزالة الملف':'Remove file'} onClick={()=>setFiles(old=>old.filter((_,i)=>i!==index))} className="text-red-600 hover:text-red-800"><i className="fas fa-times"></i></button></span>)}</div>}
+    </div>;
+  }
+  async function uploadInlineAttachments(files,entityType,entityId,setFiles){
+    const pending=[...(files||[])];
+    for(const file of pending){
+      await attachmentWorkerRequest('/attachments/upload','POST',file,{
+        'Content-Type':attachmentMimeType(file),
+        'X-Attachment-Entity-Type':entityType,
+        'X-Attachment-Entity-Id':entityId,
+        'X-Attachment-File-Name':encodeURIComponent(file.name)
+      },true,false);
+      setFiles(old=>old.filter(item=>item!==file));
+    }
+    if(pending.length)await refreshDriveConnectionStatus();
+    return pending.length;
   }
   async function startGoogleDriveConnection(){
     if(!isAdmin)return;
@@ -2825,15 +2868,15 @@ function App(){
 
   const navGroups=[
     {id:'dashboard',label:tr('dashboard'),icon:'fa-gauge',tab:'dashboard'},
-    {id:'masterGroup',label:tr('master'),icon:'fa-database',children:[{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors',icon:'fa-address-book'},{id:'attachments',label:rtl?'المرفقات':'Attachments',icon:'fa-paperclip'}]},
+    {id:'masterGroup',label:tr('master'),icon:'fa-database',children:[{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors',icon:'fa-address-book'}]},
     {id:'projectsGroup',label:tr('projects'),icon:'fa-diagram-project',children:[{id:'projects',label:rtl?'قائمة المشروعات':'Project list',icon:'fa-list'},...(selectedProjectCode?[{id:'projectDetail',label:rtl?'ملف المشروع الحالي':'Current project file',icon:'fa-folder-open'}]:[])]},
     {id:'financeGroup',label:rtl?'المالية':'Finance',icon:'fa-coins',children:[{id:'statement',label:tr('statement'),icon:'fa-file-invoice-dollar'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody',icon:'fa-wallet'},{id:'reports',label:tr('reportCenter'),icon:'fa-chart-pie'}]},
     {id:'communicationGroup',label:rtl?'التواصل والمهام':'Communication & Tasks',icon:'fa-comments',children:[{id:'messages',label:tr('messages'),icon:'fa-envelope'},{id:'tasks',label:rtl?'المهام':'Tasks',icon:'fa-list-check'}]},
-    {id:'settingsGroup',label:tr('settings'),icon:'fa-sliders',children:[{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data',icon:'fa-database'},{id:'profile',label:tr('profile'),icon:'fa-user-gear'},...(isAdmin?[{id:'companySettings',label:tr('companySettings'),icon:'fa-building'},{id:'aiSettings',label:rtl?'إعدادات AI Agent':'AI Agent Settings',icon:'fa-wand-magic-sparkles'}]:[])]},
+    {id:'settingsGroup',label:tr('settings'),icon:'fa-sliders',children:[{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data',icon:'fa-database'},{id:'attachments',label:rtl?'المرفقات':'Attachments',icon:'fa-paperclip'},{id:'profile',label:tr('profile'),icon:'fa-user-gear'},...(isAdmin?[{id:'companySettings',label:tr('companySettings'),icon:'fa-building'},{id:'aiSettings',label:rtl?'إعدادات AI Agent':'AI Agent Settings',icon:'fa-wand-magic-sparkles'}]:[])]},
     ...(isAdmin?[{id:'adminGroup',label:rtl?'إدارة النظام':'Administration',icon:'fa-user-shield',children:[{id:'userRequests',label:tr('requestsReport'),icon:'fa-user-clock'},{id:'userManagement',label:rtl?'إدارة بيانات المستخدمين':'User Management',icon:'fa-users-gear'},{id:'userPermissions',label:rtl?'صلاحيات المستخدمين':'User Permissions',icon:'fa-user-lock'},{id:'auditLogs',label:rtl?'سجل نشاط المستخدمين':'User Activity Log',icon:'fa-clipboard-list'}]}]:[])
   ];
   useEffect(()=>{if(currentUser) void addLog('فتح الشاشة: '+String(tab||'dashboard'));},[tab,currentUser?.uid]);
-  const navGroupByTab={master:'masterGroup',attachments:'masterGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',cashCustody:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',aiSettings:'settingsGroup',userRequests:'adminGroup',userManagement:'adminGroup',userPermissions:'adminGroup',auditLogs:'adminGroup'};
+  const navGroupByTab={master:'masterGroup',attachments:'settingsGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',cashCustody:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',aiSettings:'settingsGroup',userRequests:'adminGroup',userManagement:'adminGroup',userPermissions:'adminGroup',auditLogs:'adminGroup'};
   const visibleNavGroups=navGroups.map(group=>group.tab?group:({...group,children:(group.children||[]).filter(item=>canAccessTab(item.id))})).filter(group=>group.tab?canAccessTab(group.tab):(group.children||[]).length>0);
   const navCatalog=visibleNavGroups.flatMap(group=>group.tab?[{id:group.tab,label:group.label,icon:group.icon}]:((group.children||[]).map(item=>({...item}))));
   const navMode=navPreferences.uid===(currentUser&&currentUser.uid)?navPreferences.mode:'side';
@@ -3101,6 +3144,8 @@ function App(){
               ...(hasPermission('master','view')?[{id:'client',label:rtl?'عميل':'Customer'},{id:'vendor',label:rtl?'مورد':'Supplier'}]:[]),
               ...(hasPermission('tasks','view')?[{id:'task',label:rtl?'مهمة':'Task'}]:[]),
               ...(hasPermission('messages','view')?[{id:'message',label:rtl?'رسالة':'Message'}]:[]),
+              ...(hasPermission('projects','view')?[{id:'projectEvent',label:rtl?'حدث مشروع':'Project event'}]:[]),
+              ...(hasPermission('cashCustody','view')?[{id:'cashCustody',label:rtl?'حركة عهدة':'Cash custody movement'}]:[]),
               ...((hasPermission('reports','view')||hasPermission('dashboard','view')||hasPermission('statement','view'))?[{id:'financial',label:rtl?'مستند مالي':'Financial record'}]:[]),
               ...(isAdmin?[{id:'company',label:rtl?'ملفات الشركة العامة':'Company files'}]:[])
             ];
@@ -3109,6 +3154,8 @@ function App(){
               attachmentEntityType==='vendor'?vendors.map(x=>({id:x.code,label:(x.name||x.code)+' · '+x.code})):
               attachmentEntityType==='task'?tasks.map(x=>({id:x.id,label:x.title||x.name||x.id})):
               attachmentEntityType==='message'?messages.map(x=>({id:x.id||x.messageId,label:x.subject||x.id||x.messageId})):
+              attachmentEntityType==='projectEvent'?projects.flatMap(p=>projectEvents(p).map(ev=>({id:p.code+'--'+ev.id,label:(p.name||p.code)+' · '+(ev.actionName||eventLabel(ev.type)||ev.id)}))):
+              attachmentEntityType==='cashCustody'?cashCustodyRows.map(t=>({id:(cashCustodyTarget||currentUser.uid)+'--'+t.id,label:(t.date||'')+' · '+(cashCustodyTypeLabels[t.type]||t.type)+' · '+(t.description||t.id)})):
               attachmentEntityType==='financial'?[
                 ...quotes.map(x=>({id:'quote_'+x.id,label:(rtl?'عرض سعر: ':'Quotation: ')+(x.projectName||x.projectCode||x.id)})),
                 ...inflows.map(x=>({id:'inflow_'+x.id,label:(rtl?'تحصيل: ':'Collection: ')+(x.projectName||x.projectCode||x.id)})),
