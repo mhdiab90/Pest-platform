@@ -1000,6 +1000,7 @@ function App(){
         'X-Attachment-File-Name':encodeURIComponent(file.name)
       },true,false);
       await refreshRecordAttachmentPanel(entityType,entityId);
+      if(entityType===attachmentEntityType&&entityId===attachmentEntityId)await refreshAttachmentList();
       await refreshDriveConnectionStatus();
       await addLog('استبدال مرفق: '+attachment.fileName+' ← '+file.name,currentUser,{entityType:'attachment',entityId:entityType+'/'+entityId+'/'+attachment.id});
     }finally{setAttachmentsBusy(false);}
@@ -1011,6 +1012,7 @@ function App(){
     try{
       await attachmentWorkerRequest('/attachments','DELETE',{id:attachment.id,entityType,entityId});
       await refreshRecordAttachmentPanel(entityType,entityId);
+      if(entityType===attachmentEntityType&&entityId===attachmentEntityId)await refreshAttachmentList();
       await refreshDriveConnectionStatus();
       await addLog('حذف مرفق: '+attachment.fileName,currentUser,{entityType:'attachment',entityId:entityType+'/'+entityId+'/'+attachment.id});
     }catch(error){alert(String(error.message||error));}
@@ -1105,6 +1107,7 @@ function App(){
       }
       await attachmentWorkerRequest('/attachments/annotate','POST',{id:attachment.id,entityType,entityId,note:String(attachmentEditor.note||'').trim()});
       await refreshRecordAttachmentPanel(entityType,entityId);
+      if(entityType===attachmentEntityType&&entityId===attachmentEntityId)await refreshAttachmentList();
       await refreshDriveConnectionStatus();
       await addLog('تعديل ملاحظات أو علامات مرفق: '+attachment.fileName,currentUser,{entityType:'attachment',entityId:entityType+'/'+entityId+'/'+attachment.id});
       setAttachmentEditor(null);setAttachmentMarkupDirty(false);
