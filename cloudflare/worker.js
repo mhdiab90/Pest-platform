@@ -16,7 +16,7 @@ function corsHeaders(origin) {
   const headers = {
     "Vary": "Origin",
     "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Attachment-Entity-Type, X-Attachment-Entity-Id, X-Attachment-File-Name",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Attachment-Entity-Type, X-Attachment-Entity-Id, X-Attachment-Id, X-Attachment-File-Name",
     "Access-Control-Max-Age": "86400"
   };
   if (origin === ALLOWED_ORIGIN) headers["Access-Control-Allow-Origin"] = ALLOWED_ORIGIN;
@@ -2062,9 +2062,9 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     let fileName=attachment.fileName;
     if(fileNameHeader){try{fileName=decodeURIComponent(fileNameHeader);}catch(_){}}
     fileName=cleanText(fileName,180);
-    if(!fileName||/[\\u0000-\\u001f\\u007f]/.test(fileName)||fileName.includes("/")||fileName.includes("\\"))throw new Error("Invalid file name.");
+    if(!fileName||/[\u0000-\u001f\u007f]/.test(fileName)||fileName.includes("/")||fileName.includes("\\"))throw new Error("Invalid file name.");
     const mime=String(request.headers.get("Content-Type")||attachment.mimeType||"application/octet-stream").split(";")[0].trim().toLowerCase();
-    const ext=(fileName.match(/\\.([a-z0-9]{1,10})$/i)||[])[1]?.toLowerCase()||"";
+    const ext=(fileName.match(/\.([a-z0-9]{1,10})$/i)||[])[1]?.toLowerCase()||"";
     if(!ATTACHMENT_ALLOWED_TYPES[mime]||!ATTACHMENT_ALLOWED_TYPES[mime].includes(ext))throw new Error("Unsupported replacement file type.");
     const length=Number(request.headers.get("Content-Length")||0);if(length>ATTACHMENT_MAX_FILE_BYTES)throw new Error("الحد الأقصى لحجم الملف الواحد 20 MB.");
     const bytes=await request.arrayBuffer();if(!bytes.byteLength||bytes.byteLength>ATTACHMENT_MAX_FILE_BYTES)throw new Error("Invalid replacement file size.");
