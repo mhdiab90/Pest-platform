@@ -873,9 +873,19 @@ function App(){
     setAttachmentsBusy(true);setAttachmentsNotice('');
     try{
       const path='/attachments/file?entityType='+encodeURIComponent(attachmentEntityType)+'&entityId='+encodeURIComponent(attachmentEntityId)+'&id='+encodeURIComponent(attachment.id);
-      const blob=await attachmentWorkerRequest(path,'GET',undefined,{},false,true),objectUrl=URL.createObjectURL(blob);
-      if(!download&&['application/pdf','image/jpeg','image/png','image/webp','text/plain','text/csv'].includes(attachment.mimeType))setAttachmentPreview({url:objectUrl,fileName:attachment.fileName,mimeType:attachment.mimeType});
-      else{const link=document.createElement('a');link.href=objectUrl;link.download=attachment.fileName;document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(objectUrl),60000);}
+      const blob=await attachmentWorkerRequest(path,'GET',undefined,{},false,true);
+      if(!download&&(attachment.mimeType.includes('spreadsheet')||attachment.mimeType==='application/vnd.ms-excel')){
+        const workbook=window.XLSX.read(await blob.arrayBuffer(),{type:'array'});
+        const sheet=workbook.Sheets[workbook.SheetNames[0]];
+        const rows=sheet?window.XLSX.utils.sheet_to_json(sheet,{header:1,defval:'',blankrows:false}).slice(0,200).map(row=>row.slice(0,24)):[];
+        setAttachmentPreview({kind:'table',fileName:attachment.fileName,rows});
+      }else if(!download&&(attachment.mimeType==='text/plain'||attachment.mimeType==='text/csv')){
+        setAttachmentPreview({kind:'text',fileName:attachment.fileName,text:(await blob.text()).slice(0,500000)});
+      }else{
+        const objectUrl=URL.createObjectURL(blob);
+        if(!download&&['application/pdf','image/jpeg','image/png','image/webp'].includes(attachment.mimeType))setAttachmentPreview({kind:'media',url:objectUrl,fileName:attachment.fileName,mimeType:attachment.mimeType});
+        else{const link=document.createElement('a');link.href=objectUrl;link.download=attachment.fileName;document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(objectUrl),60000);}
+      }
     }catch(error){setAttachmentsNotice(String(error.message||error));}
     finally{setAttachmentsBusy(false);}
   }
@@ -893,6 +903,20 @@ function App(){
   }
   useEffect(()=>{if(tab==='attachments'&&currentUser)void refreshDriveConnectionStatus();},[tab,currentUser?.uid]);
   useEffect(()=>{if(tab==='attachments'&&currentUser)void refreshAttachmentList();},[tab,attachmentEntityType,attachmentEntityId,currentUser?.uid]);
+  useEffect(()=>{
+    if(tab!=='attachments'||!currentUser)return;
+    const allowed=[
+      ...(hasPermission('projects','view')?['project']:[]),
+      ...(hasPermission('master','view')?['client','vendor']:[]),
+      ...(hasPermission('tasks','view')?['task']:[]),
+      ...(hasPermission('messages','view')?['message']:[]),
+      ...((hasPermission('reports','view')||hasPermission('dashboard','view')||hasPermission('statement','view'))?['financial']:[]),
+      ...(isAdmin?['company']:[])
+    ];
+    if(allowed.length&&!allowed.includes(attachmentEntityType)){
+      const next=allowed[0];setAttachmentEntityType(next);setAttachmentEntityId(next==='company'?'company':'');
+    }
+  },[tab,currentUser?.uid,attachmentEntityType]);
   useEffect(()=>()=>{if(attachmentPreview?.url)URL.revokeObjectURL(attachmentPreview.url);},[attachmentPreview?.url]);
   const money=n=>new Intl.NumberFormat(rtl?'ar-EG-u-nu-latn':'en-US',{numberingSystem:'latn',minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n||0));
   function latinDigits(value){
@@ -3159,7 +3183,9 @@ function App(){
                 </section>
               </>}
               {attachmentsNotice&&<div className="rounded-lg border bg-slate-50 p-3 text-sm text-slate-700">{attachmentsNotice}</div>}
-              {attachmentPreview&&<div className="fixed inset-0 z-[160] bg-slate-950/75 flex items-center justify-center p-2 sm:p-5" role="dialog" aria-modal="true" onMouseDown={e=>{if(e.target===e.currentTarget)setAttachmentPreview(null);}}><section className="w-full max-w-6xl h-[92vh] bg-white rounded-xl overflow-hidden flex flex-col"><header className="p-3 border-b flex items-center justify-between gap-2"><b className="truncate">{attachmentPreview.fileName}</b><button type="button" onClick={()=>setAttachmentPreview(null)} className="w-10 h-10 rounded-lg bg-slate-100" aria-label={rtl?'إغلاق':'Close'}><i className="fas fa-times"></i></button></header><div className="flex-1 bg-slate-100 overflow-auto grid place-items-center">{attachmentPreview.mimeType==='application/pdf'?<iframe title={attachmentPreview.fileName} src={attachmentPreview.url} className="w-full h-full bg-white"></iframe>:attachmentPreview.mimeType.startsWith('image/')?<img src={attachmentPreview.url} alt={attachmentPreview.fileName} className="max-w-full max-h-full object-contain"/>:<iframe title={attachmentPreview.fileName} src={attachmentPreview.url} className="w-full h-full bg-white"></iframe>}</div></section></div>}
+              {driveConnectionStatus.error&&<div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{driveConnectionStatus.error}</div>}
+              {typeOptions.length===0&&<div className="rounded-lg border bg-slate-50 p-3 text-sm text-gray-600">{rtl?'لا توجد صلاحيات لوحدات يمكن ربط المرفقات بها. اطلب من مدير النظام تفعيل صلاحيات المرفقات والوحدة المطلوبة.':'No accessible modules can be linked to attachments. Ask the administrator to grant attachment and module permissions.'}</div>}
+              {attachmentPreview&&<div className="fixed inset-0 z-[160] bg-slate-950/75 flex items-center justify-center p-2 sm:p-5" role="dialog" aria-modal="true" onMouseDown={e=>{if(e.target===e.currentTarget)setAttachmentPreview(null);}}><section className="w-full max-w-6xl h-[92vh] bg-white rounded-xl overflow-hidden flex flex-col"><header className="p-3 border-b flex items-center justify-between gap-2"><b className="truncate">{attachmentPreview.fileName}</b><button type="button" onClick={()=>setAttachmentPreview(null)} className="w-10 h-10 rounded-lg bg-slate-100" aria-label={rtl?'إغلاق':'Close'}><i className="fas fa-times"></i></button></header><div className="flex-1 bg-slate-100 overflow-auto">{attachmentPreview.kind==='table'?<div className="p-3 overflow-auto"><table className="w-full text-sm bg-white"><tbody>{attachmentPreview.rows.map((row,r)=><tr key={r} className="border-b">{row.map((cell,c)=><td key={c} className={'p-2 border-e '+(r===0?'font-bold bg-slate-100':'')}>{String(cell??'')}</td>)}</tr>)}</tbody></table><p className="text-xs text-gray-500 mt-2">{rtl?'معاينة أول 200 صف و24 عموداً من أول ورقة.':'Preview limited to the first 200 rows and 24 columns of the first sheet.'}</p></div>:attachmentPreview.kind==='text'?<pre className="p-4 whitespace-pre-wrap break-words text-sm bg-white min-h-full">{attachmentPreview.text}</pre>:attachmentPreview.mimeType==='application/pdf'?<iframe title={attachmentPreview.fileName} src={attachmentPreview.url} className="w-full h-full bg-white"></iframe>:<div className="w-full h-full grid place-items-center"><img src={attachmentPreview.url} alt={attachmentPreview.fileName} className="max-w-full max-h-full object-contain"/></div>}</div></section></div>}
             </>;
           })()}
         </div>}
