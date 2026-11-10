@@ -1198,7 +1198,7 @@ function App(){
   }
   function resetCashCustodyAttachmentDraft(){
     const next='draft_'+(window.crypto?.randomUUID?.()||Date.now()+'_'+Math.random().toString(36).slice(2));
-    try{if(currentUser?.uid)localStorage.setItem('pestCashCustodyAttachmentDraft:'+currentUser.uid,next);}catch(_){}
+    try{if(currentUser?.uid){localStorage.setItem('pestCashCustodyAttachmentDraft:'+currentUser.uid,next);localStorage.removeItem('pestCashCustodyAttachmentTarget:'+currentUser.uid);}}catch(_){}
     setCashCustodyDraftId(next);
     setCashCustodyStagedAttachments([]);
     setCashCustodyPendingLinkTargetId('');
@@ -1216,8 +1216,11 @@ function App(){
     if(!targetId||!cashCustodyStagedAttachments.length)return {ok:true};
     const sourceEntityId=currentUser.uid+'--'+cashCustodyDraftId;
     const targetEntityId=currentUser.uid+'--'+targetId;
+    try{localStorage.setItem('pestCashCustodyAttachmentTarget:'+currentUser.uid,targetId);}catch(_){}
     setCashCustodyBusy(true);
     try{
+      const targetSnapshot=await db.ref('cashCustodies/'+currentUser.uid+'/transactions/'+targetId).once('value');
+      if(!targetSnapshot.exists())throw new Error(rtl?'حركة العُهدة المحفوظة لم تعد موجودة.':'The saved cash-custody movement no longer exists.');
       const linked=await attachmentWorkerRequest('/attachments?entityType=cashCustody&entityId='+encodeURIComponent(targetEntityId),'GET');
       const linkedIds=new Set((linked.attachments||[]).map(x=>x.id));
       for(const item of [...cashCustodyStagedAttachments]){
@@ -1306,6 +1309,17 @@ function App(){
       .catch(()=>{});
     return()=>{active=false;};
   },[currentUser?.uid,cashCustodyDraftId]);
+  useEffect(()=>{
+    if(!currentUser?.uid)return;
+    const key='pestCashCustodyAttachmentTarget:'+currentUser.uid;
+    try{
+      if(cashCustodyPendingLinkTargetId)localStorage.setItem(key,cashCustodyPendingLinkTargetId);
+      else{
+        const saved=localStorage.getItem(key);
+        if(saved)setCashCustodyPendingLinkTargetId(saved);
+      }
+    }catch(_){}
+  },[currentUser?.uid,cashCustodyPendingLinkTargetId]);
   useEffect(()=>{if(tab==='attachments'&&currentUser)void refreshDriveConnectionStatus();},[tab,currentUser?.uid]);
   useEffect(()=>{if(tab==='attachments'&&currentUser)void refreshAttachmentList();},[tab,attachmentEntityType,attachmentEntityId,currentUser?.uid]);
   useEffect(()=>{
@@ -1956,6 +1970,7 @@ function App(){
       let linkResult={ok:true};
       if(cashCustodyStagedAttachments.length){
         setCashCustodyPendingLinkTargetId(transactionId);
+        try{localStorage.setItem('pestCashCustodyAttachmentTarget:'+currentUser.uid,transactionId);}catch(_){}
         linkResult=await finishCashCustodyAttachmentLink(transactionId);
       }else{
         resetCashCustodyAttachmentDraft();
