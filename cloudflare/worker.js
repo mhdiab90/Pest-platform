@@ -1950,9 +1950,14 @@ async function validateAttachmentEntity(type,id,claims,profile,token,action,owne
       requireEntityPermission("cashCustody");
       const separator=entityId.lastIndexOf("--");
       if(separator<=0||separator>=entityId.length-2)throw new Error("Invalid cash custody attachment reference.");
-      const ownerUid=entityId.slice(0,separator),transactionId=entityId.slice(separator+2);
+      const ownerUid=safeSegment(entityId.slice(0,separator),"cash custody owner");
+      const transactionId=safeSegment(entityId.slice(separator+2),"cash custody transaction");
+      // Cash-custody rows are loaded by the authenticated app from this same
+      // user's RTDB scope. Re-reading the row here through the Worker REST
+      // endpoint caused false "not found" results for valid own transactions.
+      // The composite reference is scoped to the authenticated owner; access
+      // to another user's rows still requires the explicit viewOthers grant.
       if(ownerUid!==claims.sub&&!hasPermission(profile,"cashCustody","viewOthers"))throw new Error("Permission denied: viewing another user's cash custody.");
-      if(!await databaseRequest("cashCustodies/"+ownerUid+"/transactions/"+transactionId,token,"GET"))throw new Error("The linked cash custody transaction was not found or is not accessible.");
     }else if(entityType==="financial"){
       if(!hasPermission(profile,"reports","view")&&!hasPermission(profile,"dashboard","view")&&!hasPermission(profile,"statement","view"))throw new Error("Permission denied: financial attachment access.");
       if(action==="upload"&&!hasPermission(profile,"reports","add")&&!hasPermission(profile,"reports","edit")&&!hasPermission(profile,"statement","add")&&!hasPermission(profile,"statement","edit")&&!hasPermission(profile,"dashboard","add"))throw new Error("Permission denied: financial attachment upload.");
