@@ -3493,7 +3493,7 @@ function App(){
                     </div>
                     {driveConnectionStatus.configured?<button type="button" onClick={startGoogleDriveConnection} className="rounded-lg bg-blue-600 text-white px-5 py-3 font-bold"><i className="fab fa-google me-2"></i>{rtl?'ربط حساب Google Drive':'Connect Google Drive account'}</button>:<p className="text-sm text-amber-800">{rtl?'لم يتم ضبط مفاتيح OAuth في Cloudflare Worker بعد.':'Google OAuth credentials are not configured in the Cloudflare Worker yet.'}</p>}</>:<p className="text-sm text-amber-800">{rtl?'لم يربط مدير النظام حساب Google Drive بعد.':'The system administrator has not connected Google Drive yet.'}</p>}
                   </div>}
-                {driveConnectionStatus.connected&&<div className={"rounded-lg border p-3 text-xs "+(driveConnectionStatus.workerVersion==="custody-attachments-20261110-2"?"border-emerald-200 bg-emerald-50 text-emerald-800":"border-amber-300 bg-amber-50 text-amber-900")}><b>{driveConnectionStatus.workerVersion==="custody-attachments-20261110-2"?(rtl?"إصدار خدمة المرفقات محدث":"Attachment service is up to date"):(rtl?"تنبيه: خدمة المرفقات على Cloudflare لم يتم تحديثها بعد":"Warning: the Cloudflare attachment service has not been updated yet")}</b><span className="block mt-1" dir="ltr">{driveConnectionStatus.workerVersion||"Worker version not reported"}</span>{driveConnectionStatus.workerVersion!=="custody-attachments-20261110-2"&&<span className="block mt-1">{rtl?"انشر cloudflare/worker.js من GitHub إلى Worker pest-platform ثم أعد تحميل هذه الشاشة.":"Deploy cloudflare/worker.js from GitHub to the pest-platform Worker, then refresh this screen."}</span>}</div>}
+                {driveConnectionStatus.connected&&<div className={"rounded-lg border p-3 text-xs "+(driveConnectionStatus.workerVersion==="firebase-auth-refresh-20261110-3"?"border-emerald-200 bg-emerald-50 text-emerald-800":"border-amber-300 bg-amber-50 text-amber-900")}><b>{driveConnectionStatus.workerVersion==="firebase-auth-refresh-20261110-3"?(rtl?"إصدار خدمة المرفقات محدث":"Attachment service is up to date"):(rtl?"تنبيه: خدمة المرفقات على Cloudflare لم يتم تحديثها بعد":"Warning: the Cloudflare attachment service has not been updated yet")}</b><span className="block mt-1" dir="ltr">{driveConnectionStatus.workerVersion||"Worker version not reported"}</span>{driveConnectionStatus.workerVersion!=="firebase-auth-refresh-20261110-3"&&<span className="block mt-1">{rtl?"انشر cloudflare/worker.js من GitHub إلى Worker pest-platform ثم أعد تحميل هذه الشاشة.":"Deploy cloudflare/worker.js from GitHub to the pest-platform Worker, then refresh this screen."}</span>}</div>}
                 {driveConnectionStatus.connected&&<div className="space-y-2">
                   <div className="flex justify-between text-xs text-gray-600"><span>{rtl?'استهلاك مرفقات البرنامج':'App attachment usage'}</span><b dir="ltr">{sizeText(used)} / {sizeText(limit)}</b></div>
                   <div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-blue-600 rounded-full" style={{width:percent+'%'}}></div></div>
@@ -3996,12 +3996,16 @@ ReactDOM.createRoot(document.getElementById('root')).render(<AppErrorBoundary><A
   const agentRequest=async(path,method='POST',body)=>{
     const firebaseAuth=window.PEST_FIREBASE_AUTH;
     const user=firebaseAuth&&firebaseAuth.currentUser;
-    if(!user)throw new Error('Sign-in is required. Please sign in again.');
-    const idToken=await user.getIdToken();
-    const headers={'Authorization':'Bearer '+idToken};
-    const options={method,headers,cache:'no-store'};
-    if(body!==undefined){headers['Content-Type']='application/json';options.body=JSON.stringify(body);}
-    const response=await fetch(WORKER_URL+path,options);
+    if(!user)throw new Error('No active Firebase session. Please sign in again.');
+    const send=async(forceRefresh)=>{
+      const idToken=await user.getIdToken(Boolean(forceRefresh));
+      const headers={'Authorization':'Bearer '+idToken};
+      const options={method,headers,cache:'no-store'};
+      if(body!==undefined){headers['Content-Type']='application/json';options.body=JSON.stringify(body);}
+      return fetch(WORKER_URL+path,options);
+    };
+    let response=await send(false);
+    if(response.status===401)response=await send(true);
     let payload={};
     try{payload=await response.json();}catch(_){}
     if(!response.ok)throw new Error(payload.error||('AI Agent returned HTTP '+response.status+'.'));
