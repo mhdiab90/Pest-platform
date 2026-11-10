@@ -2000,7 +2000,10 @@ async function validateAttachmentEntity(type,id,claims,profile,token,action,owne
       const projectCode=entityId.slice(0,separator),eventId=entityId.slice(separator+2);
       if(!await databaseRequest("projects/"+projectCode+"/events/"+eventId,token,"GET"))throw new Error("The linked project event was not found or is not accessible.");
     }else if(entityType==="cashCustodyDraft"){
-      requireEntityPermission("cashCustody");
+      if(action==="delete"){
+        requirePermission(profile,"attachments","delete");
+        if(!hasPermission(profile,"cashCustody","add")&&!hasPermission(profile,"cashCustody","edit"))throw new Error("Permission denied: cashCustody.add/edit.");
+      }else requireEntityPermission("cashCustody");
       const separator=entityId.lastIndexOf("--");
       if(separator<=0||separator>=entityId.length-2)throw new Error("Invalid cash custody draft attachment reference.");
       const ownerUid=safeSegment(entityId.slice(0,separator),"cash custody draft owner");
