@@ -1229,7 +1229,7 @@ function App(){
       const message=String(error.message||error);
       setCashCustodyPendingLinkTargetId(targetId);
       setCashCustodyNotice((rtl?'الحركة محفوظة، لكن تعذر ربط بعض المرفقات. اضغط «إكمال ربط المرفقات» لإعادة المحاولة. السبب: ':'The movement is saved, but some files could not be linked. Use “Finish linking attachments” to retry. Reason: ')+message);
-      return false;
+      return {ok:false,message};
     }finally{setCashCustodyBusy(false);}
   }
   async function uploadRecordAttachments(entityType,entityId,files){
@@ -1894,6 +1894,14 @@ function App(){
   async function addCashCustodyTransaction(e){
     e.preventDefault();
     if(!requirePermission('cashCustody',cashCustodyEditingId?'edit':'add'))return;
+    if(cashCustodyPendingAttachments.length){
+      setCashCustodyNotice(rtl?'ارفع كل الملفات المختارة أولاً قبل تسجيل الحركة.':'Upload all selected files before saving the movement.');
+      return;
+    }
+    if(cashCustodyPendingLinkTargetId&&cashCustodyStagedAttachments.length){
+      setCashCustodyNotice(rtl?'أكمل ربط مرفقات الحركة المحفوظة أولاً.':'Finish linking the attachments to the already-saved movement first.');
+      return;
+    }
     const amount=Number(cashCustodyForm.amount);
     const description=String(cashCustodyForm.description||'').trim();
     if(!Number.isFinite(amount)||amount<=0||!description)return alert(rtl?'أدخل مبلغاً صحيحاً وبياناً للحركة.':'Enter a valid positive amount and transaction description.');
@@ -1913,7 +1921,7 @@ function App(){
       let transactionStatus=isAdmin?'approved':'pending';
       if(cashCustodyEditingId){
         if(cashCustodyTargetUid!==currentUser.uid)throw new Error(rtl?'لا يمكن تعديل عهدة مستخدم آخر.':'You cannot edit another user\'s custody.');
-        const existing= cashCustodyRows.find(t=>t.id===cashCustodyEditingId);
+        const existing=cashCustodyRows.find(t=>t.id===cashCustodyEditingId);
         if(!existing||existing.status!=='pending')throw new Error(rtl?'لا يمكن تعديل حركة معتمدة أو غير موجودة.':'Approved or missing movements cannot be edited.');
         transactionStatus=existing.status;
         await db.ref('cashCustodies/'+currentUser.uid+'/transactions/'+cashCustodyEditingId).update({...base,updatedAt:firebase.database.ServerValue.TIMESTAMP,updatedBy:currentUser.uid});
@@ -1923,13 +1931,18 @@ function App(){
         const transaction={...base,id:ref.key,status:transactionStatus,createdBy:currentUser.uid,createdByName:currentUser.fullName||currentUser.username||'',createdAt:firebase.database.ServerValue.TIMESTAMP};
         await ref.set(transaction);
       }
-      const hasPendingCashCustodyAttachments=cashCustodyPendingAttachments.length>0;
-      setCashCustodyAttachmentTargetId(hasPendingCashCustodyAttachments?transactionId:'');
-      await addLog((cashCustodyEditingId?'تعديل':'تسجيل')+' حركة عهدة: '+(cashCustodyTypeLabels[cashCustodyForm.type]||cashCustodyForm.type),currentUser,{entityType:'cash-custody',entityId:currentUser.uid+'/'+transactionId,metadata:{amount,currency:base.currency,status:transactionStatus}});
+      let linkResult={ok:true};
+      if(cashCustodyStagedAttachments.length){
+        setCashCustodyPendingLinkTargetId(transactionId);
+        linkResult=await finishCashCustodyAttachmentLink(transactionId);
+      }else{
+        setCashCustodyDraftId('draft_'+(window.crypto?.randomUUID?.()||Date.now()+'_'+Math.random().toString(36).slice(2)));
+      }
+      await addLog((cashCustodyEditingId?'تعديل':'تسجيل')+' حركة عهدة: '+(cashCustodyTypeLabels[cashCustodyForm.type]||cashCustodyForm.type),currentUser,{entityType:'cash-custody',entityId:currentUser.uid+'/'+transactionId,metadata:{amount,currency:base.currency,status:transactionStatus,attachmentsLinked:Boolean(linkResult.ok)}});
       setCashCustodyEditingId('');
       setCashCustodyForm({type:'expense',date:new Date().toISOString().slice(0,10),amount:'',currency:'EGP',counterparty:'',projectCode:'',reference:'',description:''});
       const savedMessage=rtl?(transactionStatus==='approved'?'تم حفظ الحركة واعتمادها.':'تم حفظ الحركة وهي في انتظار الاعتماد.'):(transactionStatus==='approved'?'Movement saved and approved.':'Movement saved and awaiting approval.');
-      setCashCustodyNotice(savedMessage+(hasPendingCashCustodyAttachments?(rtl?' اضغط زر «رفع الملف» بجوار كل مرفق.':' Use the Upload button beside each attachment.') :''));
+      setCashCustodyNotice(savedMessage+(linkResult.ok?(rtl?(cashCustodyStagedAttachments.length?' وتم ربط المرفقات بالحركة.':''):''):(rtl?' تعذر ربط بعض الملفات: '+linkResult.message+' استخدم زر إكمال ربط المرفقات.':' Some files could not be linked: '+linkResult.message+' Use Finish linking attachments to retry.')));
     }catch(err){setCashCustodyNotice(firebaseErrorMessage(err,tr));}
     finally{setCashCustodyBusy(false);}
   }
