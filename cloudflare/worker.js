@@ -1996,7 +1996,7 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     const type=cleanText(request.headers.get("X-Attachment-Entity-Type"),24),entityId=cleanText(request.headers.get("X-Attachment-Entity-Id"),120);
     let fileName=String(request.headers.get("X-Attachment-File-Name")||"");try{fileName=decodeURIComponent(fileName);}catch(_){}
     fileName=cleanText(fileName,180);
-    if(!fileName||/[\u0000-\u001f\u007f].test(fileName)||fileName.includes("/")||fileName.includes("\\"))throw new Error("Invalid file name.");
+    if(!fileName||/[\u0000-\u001f\u007f]/.test(fileName)||fileName.includes("/")||fileName.includes("\\"))throw new Error("Invalid file name.");
     const mime=String(request.headers.get("Content-Type")||"application/octet-stream").split(";")[0].trim().toLowerCase();
     const ext=(fileName.match(/\.([a-z0-9]{1,10})$/i)||[])[1]?.toLowerCase()||"";
     if(!ATTACHMENT_ALLOWED_TYPES[mime]||!ATTACHMENT_ALLOWED_TYPES[mime].includes(ext))throw new Error("This file type is not allowed. Supported: PDF, JPG, PNG, WebP, DOC, DOCX, XLS, XLSX, CSV and TXT.");
