@@ -346,7 +346,7 @@ function App(){
   const [attachmentsBusy,setAttachmentsBusy] = useState(false);
   const [attachmentUploadBusy,setAttachmentUploadBusy] = useState(false);
   const [attachmentsNotice,setAttachmentsNotice] = useState('');
-  const [driveConnectionStatus,setDriveConnectionStatus] = useState({loading:false,configured:false,connected:false,googleEmail:'',storage:{usedBytes:0,limitBytes:14*1024*1024*1024}});
+  const [driveConnectionStatus,setDriveConnectionStatus] = useState({loading:false,configured:false,connected:false,googleEmail:'',storage:{usedBytes:0,limitBytes:13*1024*1024*1024}});
   const [attachmentPreview,setAttachmentPreview] = useState(null);
   const [tab,setTab] = useState('dashboard');
   const [navPreferences,setNavPreferences] = useState({uid:'',mode:'side',recent:[]});
@@ -3115,7 +3115,7 @@ function App(){
                 ...outflows.map(x=>({id:'outflow_'+x.id,label:(rtl?'مدفوعات: ':'Payment: ')+(x.projectName||x.projectCode||x.id)}))
               ]:[{id:'company',label:companyInfo.name||tr('app')}];
             const sizeText=value=>{const n=Number(value||0);return n>=1073741824?(n/1073741824).toFixed(2)+' GB':n>=1048576?(n/1048576).toFixed(2)+' MB':n>=1024?(n/1024).toFixed(1)+' KB':n+' B';};
-            const used=Number(driveConnectionStatus.storage?.usedBytes||0),limit=Number(driveConnectionStatus.storage?.limitBytes||14*1024*1024*1024),percent=limit?Math.min(100,used/limit*100):0;
+            const used=Number(driveConnectionStatus.storage?.usedBytes||0),limit=Number(driveConnectionStatus.storage?.limitBytes||13*1024*1024*1024),percent=limit?Math.min(100,used/limit*100):0;
             const formatIcon=mime=>mime==='application/pdf'?'fa-file-pdf':mime.startsWith('image/')?'fa-file-image':mime.includes('spreadsheet')||mime.includes('excel')?'fa-file-excel':mime.includes('word')?'fa-file-word':mime.includes('csv')?'fa-file-csv':'fa-file-lines';
             return <>
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -3150,7 +3150,7 @@ function App(){
                 {driveConnectionStatus.connected&&<div className="space-y-2">
                   <div className="flex justify-between text-xs text-gray-600"><span>{rtl?'استهلاك مرفقات البرنامج':'App attachment usage'}</span><b dir="ltr">{sizeText(used)} / {sizeText(limit)}</b></div>
                   <div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-blue-600 rounded-full" style={{width:percent+'%'}}></div></div>
-                  <p className="text-xs text-gray-500">{rtl?'حد داخلي 14 GB للمرفقات. حساب Google المجاني يوفر 15 GB مشتركة مع Gmail وGoogle Photos، وقد تقل المساحة المتاحة فعلياً حسب استخدام الحساب.':'Internal 14 GB attachment cap. Google’s free 15 GB is shared with Gmail and Google Photos, so actual available space may be lower.'}</p>
+                  <p className="text-xs text-gray-500">{rtl?'حد داخلي 13 GB تقريباً للمرفقات. حساب Google المجاني يوفر 15 GB مشتركة مع Gmail وGoogle Photos، وقد تقل المساحة المتاحة فعلياً حسب استخدام الحساب.':'Internal 13 GB attachment cap. Google’s free 15 GB is shared with Gmail and Google Photos, so actual available space may be lower.'}</p>
                 </div>}
               </section>
               {driveConnectionStatus.connected&&<>
