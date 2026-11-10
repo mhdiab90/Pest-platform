@@ -1892,7 +1892,7 @@ async function googleDriveDelete(accessToken,id){
   const response=await fetch("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(id),{method:"DELETE",headers:{Authorization:"Bearer "+accessToken}});
   if(!response.ok&&response.status!==404)throw new Error("Google Drive file deletion failed (HTTP "+response.status+").");
 }
-function attachmentEntityModule(type){const map={project:"projects",client:"master",vendor:"master",task:"tasks",message:"messages",financial:"reports",company:"settings"};if(!map[type])throw new Error("Unsupported attachment record type.");return map[type];}
+function attachmentEntityModule(type){const map={project:"projects",projectEvent:"projects",client:"master",vendor:"master",task:"tasks",message:"messages",cashCustody:"cashCustody",financial:"reports",company:"settings"};if(!map[type])throw new Error("Unsupported attachment record type.");return map[type];}
 async function validateAttachmentEntity(type,id,claims,profile,token,action,ownerUid){
   const entityType=cleanText(type,24),entityId=entityType==="company"?"company":safeSegment(id,"attachment record id"),moduleId=attachmentEntityModule(entityType);
   if(entityType==="company"){if(profile.role!=="admin")throw new Error("Company-wide attachments are restricted to administrators.");}
@@ -1914,6 +1914,19 @@ async function validateAttachmentEntity(type,id,claims,profile,token,action,owne
     }else if(entityType==="message"){
       requireEntityPermission("messages");
       if(!await databaseRequest("messages/"+claims.sub+"/"+entityId,token,"GET"))throw new Error("The linked message was not found in your mailbox.");
+    }else if(entityType==="projectEvent"){
+      requireEntityPermission("projects");
+      const separator=entityId.lastIndexOf("--");
+      if(separator<=0||separator>=entityId.length-2)throw new Error("Invalid project event attachment reference.");
+      const projectCode=entityId.slice(0,separator),eventId=entityId.slice(separator+2);
+      if(!await databaseRequest("projects/"+projectCode+"/events/"+eventId,token,"GET"))throw new Error("The linked project event was not found or is not accessible.");
+    }else if(entityType==="cashCustody"){
+      requireEntityPermission("cashCustody");
+      const separator=entityId.lastIndexOf("--");
+      if(separator<=0||separator>=entityId.length-2)throw new Error("Invalid cash custody attachment reference.");
+      const ownerUid=entityId.slice(0,separator),transactionId=entityId.slice(separator+2);
+      if(ownerUid!==claims.sub&&!hasPermission(profile,"cashCustody","viewOthers"))throw new Error("Permission denied: viewing another user's cash custody.");
+      if(!await databaseRequest("cashCustodies/"+ownerUid+"/transactions/"+transactionId,token,"GET"))throw new Error("The linked cash custody transaction was not found or is not accessible.");
     }else if(entityType==="financial"){
       if(!hasPermission(profile,"reports","view")&&!hasPermission(profile,"dashboard","view")&&!hasPermission(profile,"statement","view"))throw new Error("Permission denied: financial attachment access.");
       if(action==="upload"&&!hasPermission(profile,"reports","add")&&!hasPermission(profile,"reports","edit")&&!hasPermission(profile,"statement","add")&&!hasPermission(profile,"statement","edit")&&!hasPermission(profile,"dashboard","add"))throw new Error("Permission denied: financial attachment upload.");
