@@ -16,7 +16,7 @@ function corsHeaders(origin) {
   const headers = {
     "Vary": "Origin",
     "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Attachment-Entity-Type, X-Attachment-Entity-Id, X-Attachment-File-Name",
     "Access-Control-Max-Age": "86400"
   };
   if (origin === ALLOWED_ORIGIN) headers["Access-Control-Allow-Origin"] = ALLOWED_ORIGIN;
@@ -1803,6 +1803,236 @@ export class AIAgentScheduler {
   }
 }
 
+const GOOGLE_DRIVE_REDIRECT_URI="https://pest-platform.ai-mhdiab90.workers.dev/drive/oauth/callback";
+const GOOGLE_DRIVE_SCOPE="openid email https://www.googleapis.com/auth/drive.file";
+const ATTACHMENT_MAX_FILE_BYTES=20*1024*1024;
+const ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES=14*1024*1024*1024;
+const ATTACHMENT_ALLOWED_TYPES={
+  "application/pdf":["pdf"],"image/jpeg":["jpg","jpeg"],"image/png":["png"],"image/webp":["webp"],
+  "text/plain":["txt"],"text/csv":["csv"],"application/vnd.ms-excel":["xls"],
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":["xlsx"],
+  "application/msword":["doc"],"application/vnd.openxmlformats-officedocument.wordprocessingml.document":["docx"]
+};
+function googleDriveConfig(env){
+  const clientId=String(env.GOOGLE_DRIVE_CLIENT_ID||"").trim();
+  const clientSecret=String(env.GOOGLE_DRIVE_CLIENT_SECRET||"").trim();
+  const encryptionSecret=String(env.GOOGLE_DRIVE_TOKEN_ENCRYPTION_KEY||"").trim();
+  if(!clientId||!clientSecret||!encryptionSecret||!env.AI_AGENT_SCHEDULER)throw new Error("Google Drive is not configured. Set GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET, GOOGLE_DRIVE_TOKEN_ENCRYPTION_KEY and AI_AGENT_SCHEDULER in Cloudflare.");
+  return {clientId,clientSecret,encryptionSecret};
+}
+async function googleDriveCryptoKey(env){
+  const raw=decodeBase64Url(googleDriveConfig(env).encryptionSecret);
+  if(raw.length!==32)throw new Error("GOOGLE_DRIVE_TOKEN_ENCRYPTION_KEY must decode to exactly 32 bytes.");
+  return crypto.subtle.importKey("raw",raw,{name:"AES-GCM"},false,["encrypt","decrypt"]);
+}
+async function encryptGoogleDriveToken(token,env){
+  const key=await googleDriveCryptoKey(env),iv=crypto.getRandomValues(new Uint8Array(12));
+  const value=await crypto.subtle.encrypt({name:"AES-GCM",iv},key,new TextEncoder().encode(String(token)));
+  return base64UrlEncode(iv)+"."+base64UrlEncode(new Uint8Array(value));
+}
+async function decryptGoogleDriveToken(value,env){
+  const parts=String(value||"").split(".");
+  if(parts.length!==2)throw new Error("Stored Google Drive authorization is invalid.");
+  const key=await googleDriveCryptoKey(env);
+  const bytes=await crypto.subtle.decrypt({name:"AES-GCM",iv:decodeBase64Url(parts[0])},key,decodeBase64Url(parts[1]));
+  return new TextDecoder().decode(bytes);
+}
+async function driveStorageRequest(env,path,method,body,params){
+  if(!env.AI_AGENT_SCHEDULER)throw new Error("Cloudflare attachment metadata storage is not configured.");
+  const id=env.AI_AGENT_SCHEDULER.idFromName("pest-platform-global-scheduler"),stub=env.AI_AGENT_SCHEDULER.get(id);
+  const url=new URL("https://ai-agent-scheduler.internal"+path);
+  if(params)Object.entries(params).forEach(([k,v])=>{if(v!==undefined&&v!==null)url.searchParams.set(k,String(v));});
+  const response=await stub.fetch(new Request(url.toString(),{method:method||"GET",headers:{"Content-Type":"application/json"},...(body==null?{}:{body:JSON.stringify(body)})}));
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(data.error||("Cloudflare metadata storage returned HTTP "+response.status));
+  return data;
+}
+function driveHtmlPage(title,message,success){
+  const safe=s=>String(s||"").replace(/[<>&"]/g,"");
+  const color=success?"#047857":"#b91c1c";
+  const html="<!doctype html><html lang=\"ar\" dir=\"rtl\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>"+safe(title)+"</title><body style=\"font-family:Arial,sans-serif;background:#f1f5f9;display:grid;place-items:center;min-height:100vh;margin:0;padding:20px\"><main style=\"background:white;border:1px solid #e2e8f0;border-radius:16px;padding:30px;max-width:520px;text-align:center\"><div style=\"font-size:42px;color:"+color+"\">"+(success?"✓":"!")+"</div><h2>"+safe(title)+"</h2><p>"+safe(message)+"</p><p>يمكنك إغلاق هذه النافذة والعودة إلى Pest Platform ثم تحديث حالة الاتصال.</p><button onclick=\"window.close()\" style=\"background:#1d4ed8;color:white;border:0;border-radius:8px;padding:12px 22px\">إغلاق</button></main></body></html>";
+  return new Response(html,{status:200,headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"}});
+}
+async function getGoogleDriveConnection(env){const x=await driveStorageRequest(env,"/drive-connection","GET");return x.connection||null;}
+async function saveGoogleDriveConnection(env,connection){return driveStorageRequest(env,"/drive-connection","POST",{connection});}
+async function googleDriveAccessToken(env,connection){
+  const config=googleDriveConfig(env),refreshToken=await decryptGoogleDriveToken(connection.encryptedRefreshToken,env);
+  const response=await fetch("https://oauth2.googleapis.com/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams({client_id:config.clientId,client_secret:config.clientSecret,refresh_token:refreshToken,grant_type:"refresh_token"})});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok||!data.access_token)throw new Error("Google Drive authorization expired or was revoked. Reconnect the company Drive account. "+String(data.error_description||data.error||"").slice(0,120));
+  if(data.refresh_token){connection.encryptedRefreshToken=await encryptGoogleDriveToken(data.refresh_token,env);connection.updatedAt=Date.now();await saveGoogleDriveConnection(env,connection);}
+  return data.access_token;
+}
+async function googleDriveApi(accessToken,path,options){
+  const response=await fetch("https://www.googleapis.com/drive/v3"+path,{...(options||{}),headers:{"Authorization":"Bearer "+accessToken,"Accept":"application/json",...((options&&options.headers)||{})}});
+  const raw=await response.text();let data=null;try{data=raw?JSON.parse(raw):null;}catch(_){data=raw;}
+  if(!response.ok){const reason=data&&typeof data==="object"?(data.error&&data.error.message||data.message||JSON.stringify(data)):String(data||"");throw new Error("Google Drive API error: "+reason.slice(0,220));}
+  return data;
+}
+async function ensureGoogleDriveFolder(env,connection,accessToken){
+  if(connection.folderId)return connection.folderId;
+  const query=new URLSearchParams({q:"name = 'Pest Platform Attachments' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",pageSize:"10",fields:"files(id,name)"});
+  const found=await googleDriveApi(accessToken,"/files?"+query.toString(),{method:"GET"});
+  let folder=Array.isArray(found.files)?found.files[0]:null;
+  if(!folder)folder=await googleDriveApi(accessToken,"/files?fields=id,name",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:"Pest Platform Attachments",mimeType:"application/vnd.google-apps.folder"})});
+  if(!folder||!folder.id)throw new Error("Could not create the Pest Platform attachments folder.");
+  connection.folderId=folder.id;connection.updatedAt=Date.now();await saveGoogleDriveConnection(env,connection);
+  return folder.id;
+}
+async function googleDriveUpload(accessToken,metadata,bytes,mimeType){
+  const boundary="pestPlatform"+crypto.randomUUID().replace(/-/g,"");
+  const prefix="--"+boundary+"\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n"+JSON.stringify(metadata)+"\r\n--"+boundary+"\r\nContent-Type: "+mimeType+"\r\n\r\n";
+  const body=new Blob([prefix,bytes,"\r\n--"+boundary+"--"]);
+  const response=await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType,size,createdTime",{method:"POST",headers:{"Authorization":"Bearer "+accessToken,"Content-Type":"multipart/related; boundary="+boundary},body});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok||!data.id)throw new Error("Google Drive upload failed: "+String(data.error&&data.error.message||JSON.stringify(data)).slice(0,200));
+  return data;
+}
+async function googleDriveDelete(accessToken,id){
+  const response=await fetch("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(id),{method:"DELETE",headers:{Authorization:"Bearer "+accessToken}});
+  if(!response.ok&&response.status!==404)throw new Error("Google Drive file deletion failed (HTTP "+response.status+").");
+}
+function attachmentEntityModule(type){const map={project:"projects",client:"master",vendor:"master",task:"tasks",message:"messages",financial:"reports",company:"settings"};if(!map[type])throw new Error("Unsupported attachment record type.");return map[type];}
+async function validateAttachmentEntity(type,id,claims,profile,token,action,ownerUid){
+  const entityType=cleanText(type,24),entityId=entityType==="company"?"company":safeSegment(id,"attachment record id"),moduleId=attachmentEntityModule(entityType);
+  if(entityType==="company"){if(profile.role!=="admin")throw new Error("Company-wide attachments are restricted to administrators.");}
+  else{
+    requirePermission(profile,"attachments",action==="view"?"view":action==="upload"?"add":"delete");
+    if(entityType==="project"||entityType==="client"||entityType==="vendor"){
+      requirePermission(profile,moduleId,action==="view"?"view":action==="upload"?"add":"edit");
+      const path=entityType==="project"?"projects/"+entityId:entityType==="client"?"clients/"+entityId:"vendors/"+entityId;
+      if(!await databaseRequest(path,token,"GET"))throw new Error("The linked record was not found or is not accessible.");
+    }else if(entityType==="task"){
+      requirePermission(profile,"tasks",action==="view"?"view":action==="upload"?"add":"edit");
+      if(!await databaseRequest("tasks/"+claims.sub+"/"+entityId,token,"GET"))throw new Error("The linked task was not found in your account.");
+    }else if(entityType==="message"){
+      requirePermission(profile,"messages",action==="view"?"view":action==="upload"?"add":"edit");
+      if(!await databaseRequest("messages/"+claims.sub+"/"+entityId,token,"GET"))throw new Error("The linked message was not found in your mailbox.");
+    }else if(entityType==="financial"){
+      if(!hasPermission(profile,"reports","view")&&!hasPermission(profile,"dashboard","view")&&!hasPermission(profile,"statement","view"))throw new Error("Permission denied: financial attachment access.");
+      if(action==="upload"&&!hasPermission(profile,"reports","add")&&!hasPermission(profile,"reports","edit")&&!hasPermission(profile,"statement","add")&&!hasPermission(profile,"statement","edit")&&!hasPermission(profile,"dashboard","add"))throw new Error("Permission denied: financial attachment upload.");
+    }
+  }
+  if(action==="delete"&&ownerUid&&ownerUid!==claims.sub&&profile.role!=="admin")requirePermission(profile,"attachments","delete");
+  return {entityType,entityId,moduleId};
+}
+async function findAttachment(env,type,entityId,id){
+  const result=await driveStorageRequest(env,"/attachment-record","GET",null,{entityType:type,entityId,id});
+  if(!result.attachment)throw new Error("Attachment was not found.");
+  return result.attachment;
+}
+function validateAttachmentBytes(bytes,mime){
+  const starts=(...a)=>a.every((v,i)=>bytes[i]===v);
+  if(mime==="application/pdf"&&!(bytes.length>=5&&String.fromCharCode(...bytes.slice(0,5))==="%PDF-"))throw new Error("The selected file is not a valid PDF.");
+  if(mime==="image/png"&&!starts(0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a))throw new Error("The selected file is not a valid PNG.");
+  if(mime==="image/jpeg"&&!starts(0xff,0xd8,0xff))throw new Error("The selected file is not a valid JPEG.");
+  if(mime==="image/webp"&&!(bytes.length>=12&&String.fromCharCode(...bytes.slice(0,4))==="RIFF"&&String.fromCharCode(...bytes.slice(8,12))==="WEBP"))throw new Error("The selected file is not a valid WebP.");
+  if((mime==="application/vnd.openxmlformats-officedocument.wordprocessingml.document"||mime==="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")&&!(bytes.length>=4&&bytes[0]===0x50&&bytes[1]===0x4b))throw new Error("The selected Office file is not a valid DOCX/XLSX.");
+  if((mime==="application/msword"||mime==="application/vnd.ms-excel")&&!starts(0xd0,0xcf,0x11,0xe0))throw new Error("The selected legacy Office file is not valid.");
+}
+async function handleGoogleDriveOAuthCallback(request,env){
+  if(request.method!=="GET")return driveHtmlPage("تعذر ربط Google Drive","طريقة الطلب غير مدعومة.",false);
+  const url=new URL(request.url);
+  if(url.searchParams.get("error"))return driveHtmlPage("لم يتم ربط Google Drive","تم إلغاء التفويض أو رفض الوصول من Google.",false);
+  const code=String(url.searchParams.get("code")||""),state=String(url.searchParams.get("state")||"");
+  if(!code||!state)return driveHtmlPage("تعذر ربط Google Drive","بيانات الرجوع من Google غير مكتملة.",false);
+  try{
+    const config=googleDriveConfig(env);
+    const saved=(await driveStorageRequest(env,"/drive-state","GET",null,{state})).state;
+    if(!saved||Number(saved.expiresAt||0)<Date.now())throw new Error("OAuth state expired or already used.");
+    const response=await fetch("https://oauth2.googleapis.com/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams({code,client_id:config.clientId,client_secret:config.clientSecret,redirect_uri:GOOGLE_DRIVE_REDIRECT_URI,grant_type:"authorization_code"})});
+    const tokens=await response.json().catch(()=>({}));
+    if(!response.ok||!tokens.refresh_token)throw new Error(tokens.error_description||tokens.error||"Google did not return a refresh token. Reconnect and approve offline access.");
+    const userResponse=await fetch("https://www.googleapis.com/oauth2/v3/userinfo",{headers:{Authorization:"Bearer "+tokens.access_token}});
+    const userInfo=await userResponse.json().catch(()=>({}));
+    if(!userResponse.ok)throw new Error("Could not verify the connected Google account.");
+    await saveGoogleDriveConnection(env,{
+      encryptedRefreshToken:await encryptGoogleDriveToken(tokens.refresh_token,env),
+      googleEmail:String(userInfo.email||"").slice(0,180),googleName:String(userInfo.name||"").slice(0,120),
+      connectedBy:saved.uid,connectedAt:Date.now(),updatedAt:Date.now(),folderId:""
+    });
+    return driveHtmlPage("تم ربط Google Drive بنجاح","تم توصيل الحساب "+String(userInfo.email||"")+". يمكنك إغلاق النافذة والعودة إلى Pest Platform.",true);
+  }catch(error){console.error("Google Drive OAuth callback:",String(error&&error.message||error).slice(0,220));return driveHtmlPage("تعذر ربط Google Drive",String(error&&error.message||"حدث خطأ أثناء الاتصال.").slice(0,240),false);}
+}
+async function handleGoogleDriveRequest(request,url,body,claims,profile,token,env){
+  if(url.pathname==="/drive/status"&&request.method==="GET"){
+    requirePermission(profile,"attachments","view");
+    const connection=await getGoogleDriveConnection(env);
+    const storage=await driveStorageRequest(env,"/attachment-usage","GET");
+    return {configured:Boolean(env.GOOGLE_DRIVE_CLIENT_ID&&env.GOOGLE_DRIVE_CLIENT_SECRET&&env.GOOGLE_DRIVE_TOKEN_ENCRYPTION_KEY&&env.AI_AGENT_SCHEDULER),connected:Boolean(connection&&connection.encryptedRefreshToken),googleEmail:connection&&connection.googleEmail||"",folderReady:Boolean(connection&&connection.folderId),storage,maxFileBytes:ATTACHMENT_MAX_FILE_BYTES,softLimitBytes:ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES};
+  }
+  if(url.pathname==="/drive/connect"&&request.method==="POST"){
+    if(profile.role!=="admin")throw new Error("Only a system administrator can connect the company Google Drive account.");
+    const config=googleDriveConfig(env),state=crypto.randomUUID().replace(/-/g,"");
+    await driveStorageRequest(env,"/drive-state","POST",{stateRecord:{uid:claims.sub,createdAt:Date.now(),expiresAt:Date.now()+600000}},{state});
+    const authUrl=new URL("https://accounts.google.com/o/oauth2/v2/auth");
+    authUrl.searchParams.set("client_id",config.clientId);authUrl.searchParams.set("redirect_uri",GOOGLE_DRIVE_REDIRECT_URI);
+    authUrl.searchParams.set("response_type","code");authUrl.searchParams.set("scope",GOOGLE_DRIVE_SCOPE);
+    authUrl.searchParams.set("access_type","offline");authUrl.searchParams.set("prompt","consent");
+    authUrl.searchParams.set("include_granted_scopes","true");authUrl.searchParams.set("state",state);
+    return {authorizationUrl:authUrl.toString()};
+  }
+  if(url.pathname==="/drive/disconnect"&&request.method==="POST"){
+    if(profile.role!=="admin")throw new Error("Only a system administrator can disconnect company Google Drive.");
+    await driveStorageRequest(env,"/drive-connection","DELETE",{});
+    return {success:true,filesRemainInDrive:true};
+  }
+  if(url.pathname==="/attachments/usage"&&request.method==="GET"){requirePermission(profile,"attachments","view");return driveStorageRequest(env,"/attachment-usage","GET");}
+  if(url.pathname==="/attachments"&&request.method==="GET"){
+    const type=cleanText(url.searchParams.get("entityType"),24),entityId=cleanText(url.searchParams.get("entityId"),120);
+    await validateAttachmentEntity(type,entityId,claims,profile,token,"view");
+    const result=await driveStorageRequest(env,"/attachment-records","GET",null,{entityType:type,entityId});
+    return {attachments:result.attachments||[]};
+  }
+  if(url.pathname==="/attachments/upload"&&request.method==="POST"){
+    const connection=await getGoogleDriveConnection(env);
+    if(!connection||!connection.encryptedRefreshToken)throw new Error("لم يتم ربط حساب Google Drive الخاص بالشركة بعد.");
+    const type=cleanText(request.headers.get("X-Attachment-Entity-Type"),24),entityId=cleanText(request.headers.get("X-Attachment-Entity-Id"),120);
+    let fileName=String(request.headers.get("X-Attachment-File-Name")||"");try{fileName=decodeURIComponent(fileName);}catch(_){}
+    fileName=cleanText(fileName,180);
+    if(!fileName||/[\\u0000-\\u001f\\u007f]/.test(fileName)||fileName.includes("/")||fileName.includes("\\"))throw new Error("Invalid file name.");
+    const mime=String(request.headers.get("Content-Type")||"application/octet-stream").split(";")[0].trim().toLowerCase();
+    const ext=(fileName.match(/\\.([a-z0-9]{1,10})$/i)||[])[1]?.toLowerCase()||"";
+    if(!ATTACHMENT_ALLOWED_TYPES[mime]||!ATTACHMENT_ALLOWED_TYPES[mime].includes(ext))throw new Error("This file type is not allowed. Supported: PDF, JPG, PNG, WebP, DOC, DOCX, XLS, XLSX, CSV and TXT.");
+    await validateAttachmentEntity(type,entityId,claims,profile,token,"upload");
+    const length=Number(request.headers.get("Content-Length")||0);if(length>ATTACHMENT_MAX_FILE_BYTES)throw new Error("الحد الأقصى لحجم الملف الواحد 20 MB.");
+    const bytes=await request.arrayBuffer();if(!bytes.byteLength)throw new Error("الملف المحدد فارغ.");
+    if(bytes.byteLength>ATTACHMENT_MAX_FILE_BYTES)throw new Error("الحد الأقصى لحجم الملف الواحد 20 MB.");
+    validateAttachmentBytes(new Uint8Array(bytes),mime);
+    const usage=await driveStorageRequest(env,"/attachment-usage","GET");
+    if(Number(usage.usedBytes||0)+bytes.byteLength>ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES)throw new Error("تم الوصول إلى الحد الداخلي لمساحة مرفقات البرنامج (14 GB). احذف بعض الملفات أو راجع المساحة المتاحة بحساب Google.");
+    const accessToken=await googleDriveAccessToken(env,connection),folderId=await ensureGoogleDriveFolder(env,connection,accessToken);
+    const id=crypto.randomUUID().replace(/-/g,"");
+    const driveFile=await googleDriveUpload(accessToken,{name:fileName,mimeType:mime,parents:[folderId],appProperties:{pestAttachmentId:id,pestEntityType:type,pestEntityId}},bytes,mime);
+    const record={id,driveFileId:driveFile.id,fileName,mimeType:mime,fileSize:bytes.byteLength,entityType:type,entityId,ownerUid:claims.sub,createdByName:String(profile.fullName||profile.username||profile.email||claims.sub).slice(0,120),createdAt:new Date().toISOString(),driveCreatedAt:driveFile.createdTime||""};
+    try{await driveStorageRequest(env,"/attachment-records","POST",{attachment:record});}
+    catch(error){await googleDriveDelete(accessToken,driveFile.id).catch(()=>null);throw error;}
+    return {success:true,attachment:record,storage:{usedBytes:Number(usage.usedBytes||0)+bytes.byteLength,limitBytes:ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES}};
+  }
+  if(url.pathname==="/attachments/file"&&request.method==="GET"){
+    const type=cleanText(url.searchParams.get("entityType"),24),entityId=cleanText(url.searchParams.get("entityId"),120),id=safeSegment(url.searchParams.get("id"),"attachment id");
+    const attachment=await findAttachment(env,type,entityId,id);
+    await validateAttachmentEntity(type,entityId,claims,profile,token,"view",attachment.ownerUid);
+    const connection=await getGoogleDriveConnection(env);if(!connection||!connection.encryptedRefreshToken)throw new Error("Google Drive is disconnected.");
+    const accessToken=await googleDriveAccessToken(env,connection);
+    const response=await fetch("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(attachment.driveFileId)+"?alt=media",{headers:{Authorization:"Bearer "+accessToken}});
+    if(!response.ok)throw new Error("Could not download file from Google Drive (HTTP "+response.status+").");
+    const mime=["application/pdf","image/jpeg","image/png","image/webp","text/plain","text/csv"].includes(attachment.mimeType)?attachment.mimeType:"application/octet-stream";
+    const inline=mime!=="application/octet-stream",safeName=attachment.fileName.replace(/[\r\n"]/g,"_");
+    return new Response(response.body,{status:200,headers:{"Content-Type":mime,"Content-Disposition":(inline?"inline":"attachment")+"; filename*=UTF-8''"+encodeURIComponent(safeName),"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'none'; sandbox","Access-Control-Allow-Origin":ALLOWED_ORIGIN,"Vary":"Origin"}});
+  }
+  if(url.pathname==="/attachments"&&request.method==="DELETE"){
+    const type=cleanText(body.entityType,24),entityId=cleanText(body.entityId,120),id=safeSegment(body.id,"attachment id");
+    const attachment=await findAttachment(env,type,entityId,id);
+    await validateAttachmentEntity(type,entityId,claims,profile,token,"delete",attachment.ownerUid);
+    const connection=await getGoogleDriveConnection(env);if(!connection||!connection.encryptedRefreshToken)throw new Error("Google Drive is disconnected.");
+    const accessToken=await googleDriveAccessToken(env,connection);await googleDriveDelete(accessToken,attachment.driveFileId);
+    await driveStorageRequest(env,"/attachment-record","DELETE",null,{entityType:type,entityId,id});
+    return {success:true,id};
+  }
+  throw new Error("Unsupported Google Drive attachment operation.");
+}
+
 export default {
   async scheduled(controller,env,ctx) {
     if (!env.AI_AGENT_SCHEDULER) {
@@ -1823,13 +2053,15 @@ export default {
         providers: availableProviders(env),
         models: { cloudflare: MODEL, openrouter: OPENROUTER_MODEL },
         schedulingAvailable: Boolean(env.AI_AGENT_SCHEDULER && env.AI_SCHEDULER_ENCRYPTION_KEY),
-        whatsappNotificationsAvailable: Boolean(whatsappNotificationsConfigured(env) && env.AI_AGENT_SCHEDULER)
+        whatsappNotificationsAvailable: Boolean(whatsappNotificationsConfigured(env) && env.AI_AGENT_SCHEDULER),
+        googleDriveConfigured: Boolean(env.GOOGLE_DRIVE_CLIENT_ID && env.GOOGLE_DRIVE_CLIENT_SECRET && env.GOOGLE_DRIVE_TOKEN_ENCRYPTION_KEY && env.AI_AGENT_SCHEDULER)
       }, 200, origin);
     }
+    if (url.pathname === "/drive/oauth/callback") return handleGoogleDriveOAuthCallback(request,env);
     if (origin !== ALLOWED_ORIGIN) return jsonResponse({ error: "Origin is not allowed." }, 403, origin);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
     if (!["GET","POST","DELETE"].includes(request.method)) return jsonResponse({ error: "Method not allowed." }, 405, origin);
-    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
+    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/upload", "/attachments/file", "/attachments/usage"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
 
     try {
       const authorization = request.headers.get("Authorization") || "";
@@ -1838,12 +2070,18 @@ export default {
       const token = match[1];
       const claims = await verifyFirebaseIdToken(token);
       let body = {};
-      if (request.method !== "GET") {
+      const binaryUpload = url.pathname === "/attachments/upload";
+      if (request.method !== "GET" && !binaryUpload) {
         const contentType = request.headers.get("Content-Type") || "";
         if (!contentType.toLowerCase().includes("application/json")) return jsonResponse({ error: "Content-Type must be application/json." }, 415, origin);
         body = await request.json();
       }
       const profile = await loadProfile(claims, token);
+      if (url.pathname.startsWith("/drive/") || url.pathname.startsWith("/attachments")) {
+        const output = await handleGoogleDriveRequest(request,url,body,claims,profile,token,env);
+        if (output instanceof Response) return output;
+        return jsonResponse(output,200,origin);
+      }
       if (url.pathname === "/whatsapp/notify-message") {
         const output = await handleWhatsAppMessageNotification(body, claims, profile, token, env);
         return jsonResponse(output, 200, origin);
@@ -1929,6 +2167,10 @@ export default {
       const message = String(error && error.message || "");
       if (/token|sign-in|signing key/i.test(message)) return jsonResponse({ error: "Your session is invalid or expired. Sign in again." }, 401, origin);
       if (/Permission denied/.test(message)) return jsonResponse({ error: message }, 403, origin);
+      if (url.pathname.startsWith("/drive/") || url.pathname.startsWith("/attachments")) {
+        console.error("Pest Platform attachment request failed:",message.slice(0,300));
+        return jsonResponse({error:message.slice(0,320)||"Attachment request failed."},/not found/i.test(message)?404:400,origin);
+      }
       console.error("Pest Platform AI Agent request failed:", message.slice(0, 300));
       return jsonResponse({ error: message.includes("OpenRouter is selected") ? message : "AI Agent request failed. Check Worker bindings, free quota, and provider configuration. " + message.slice(0, 160) }, 502, origin);
     }
