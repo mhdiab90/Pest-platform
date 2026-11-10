@@ -2103,6 +2103,7 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     return {attachments:result.attachments||[]};
   }
   if(url.pathname==="/attachments/upload"&&request.method==="POST"){
+    googleDriveConfig(env);
     const connection=await getGoogleDriveConnection(env);
     if(!connection||!connection.encryptedRefreshToken)throw new Error("لم يتم ربط حساب Google Drive الخاص بالشركة بعد.");
     const type=cleanText(request.headers.get("X-Attachment-Entity-Type"),24),entityId=cleanText(request.headers.get("X-Attachment-Entity-Id"),120);
