@@ -1613,7 +1613,7 @@ export class AIAgentScheduler {
         const values=await this.ctx.storage.list({prefix:"attachment:"});
         let usedBytes=0;
         for(const item of values.values())usedBytes+=Number(item.fileSize||0);
-        return jsonResponse({usedBytes,attachmentCount:values.size,limitBytes:14*1024*1024*1024},200,"");
+        return jsonResponse({usedBytes,attachmentCount:values.size,limitBytes:13*1024*1024*1024},200,"");
       }
       if (url.pathname==="/whatsapp-notification-claim" && method==="POST") {
         const body=await request.json();
@@ -1806,7 +1806,7 @@ export class AIAgentScheduler {
 const GOOGLE_DRIVE_REDIRECT_URI="https://pest-platform.ai-mhdiab90.workers.dev/drive/oauth/callback";
 const GOOGLE_DRIVE_SCOPE="openid email https://www.googleapis.com/auth/drive.file";
 const ATTACHMENT_MAX_FILE_BYTES=20*1024*1024;
-const ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES=14*1024*1024*1024;
+const ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES=13*1024*1024*1024;
 const ATTACHMENT_ALLOWED_TYPES={
   "application/pdf":["pdf"],"image/jpeg":["jpg","jpeg"],"image/png":["png"],"image/webp":["webp"],
   "text/plain":["txt"],"text/csv":["csv"],"application/vnd.ms-excel":["xls"],
