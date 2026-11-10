@@ -834,13 +834,28 @@ function App(){
   const requirePermission=(moduleId,action)=>{if(hasPermission(moduleId,action))return true;alert(rtl?'ليس لديك صلاحية لتنفيذ هذه العملية. يرجى مراجعة مدير النظام.':'You do not have permission to perform this action. Contact your administrator.');return false;};
   async function attachmentWorkerRequest(path,method='GET',body,extraHeaders={},rawBody=false,asBlob=false){
     const user=window.PEST_FIREBASE_AUTH?.currentUser||auth.currentUser;
-    if(!user)throw new Error(rtl?'سجّل الدخول أولاً.':'Sign in first.');
-    const idToken=await user.getIdToken();
-    const headers={'Authorization':'Bearer '+idToken,...(extraHeaders||{})};
-    const options={method,headers,cache:'no-store'};
-    if(body!==undefined){if(rawBody)options.body=body;else{headers['Content-Type']='application/json';options.body=JSON.stringify(body);}}
-    const response=await fetch('https://pest-platform.ai-mhdiab90.workers.dev'+path,options);
-    if(!response.ok){let payload={};try{payload=await response.json();}catch(_){}throw new Error(payload.error||('Attachment service returned HTTP '+response.status+'.'));}
+    if(!user)throw new Error(rtl?'جلسة الدخول غير موجودة. سجّل الدخول مرة أخرى.':'No active Firebase session. Please sign in again.');
+    const send=async(forceRefresh)=>{
+      const idToken=await user.getIdToken(Boolean(forceRefresh));
+      if(!idToken)throw new Error('Firebase did not return an ID token.');
+      const headers={'Authorization':'Bearer '+idToken,...(extraHeaders||{})};
+      const options={method,headers,cache:'no-store'};
+      if(body!==undefined){if(rawBody)options.body=body;else{headers['Content-Type']='application/json';options.body=JSON.stringify(body);}}
+      return fetch('https://pest-platform.ai-mhdiab90.workers.dev'+path,options);
+    };
+    let response=await send(false);
+    if(response.status===401){
+      // Refresh the Firebase ID token and retry once. The same File/Blob body
+      // is reusable, so failed attachment uploads do not need to be selected again.
+      try{response=await send(true);}
+      catch(refreshError){throw new Error((rtl?'تعذر تجديد جلسة Firebase. سجّل الخروج ثم ادخل مرة أخرى. ':'Could not refresh the Firebase session. Sign out and sign in again. ')+String(refreshError.message||refreshError));}
+    }
+    if(!response.ok){
+      let payload={};try{payload=await response.json();}catch(_){}
+      const detail=payload.error||('Attachment service returned HTTP '+response.status+'.');
+      if(response.status===401)throw new Error((rtl?'رفضت خدمة المرفقات رمز الدخول بعد تحديثه: ':'The attachment service rejected the refreshed sign-in token: ')+detail);
+      throw new Error(detail);
+    }
     return asBlob?response.blob():response.json();
   }
   async function refreshDriveConnectionStatus(){
