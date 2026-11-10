@@ -12,6 +12,8 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet" />
   <style>
@@ -356,6 +358,14 @@ function App(){
   const [attachmentsNotice,setAttachmentsNotice] = useState('');
   const [driveConnectionStatus,setDriveConnectionStatus] = useState({loading:false,configured:false,connected:false,googleEmail:'',storage:{usedBytes:0,limitBytes:13*1024*1024*1024}});
   const [attachmentPreview,setAttachmentPreview] = useState(null);
+  const [recordAttachmentPanels,setRecordAttachmentPanels] = useState({});
+  const [attachmentEditor,setAttachmentEditor] = useState(null);
+  const [attachmentEditorBusy,setAttachmentEditorBusy] = useState(false);
+  const [attachmentEditorNotice,setAttachmentEditorNotice] = useState('');
+  const [attachmentMarkupDirty,setAttachmentMarkupDirty] = useState(false);
+  const attachmentBaseCanvasRef=useRef(null);
+  const attachmentMarkupCanvasRef=useRef(null);
+  const attachmentDrawingRef=useRef(false);
   const [tab,setTab] = useState('dashboard');
   const [navPreferences,setNavPreferences] = useState({uid:'',mode:'side',recent:[]});
   const [sidebarWidth,setSidebarWidth] = useState(()=>{const saved=Number(localStorage.getItem('pestSidebarWidth'));return Number.isFinite(saved)&&saved>=210&&saved<=440?saved:260;});
