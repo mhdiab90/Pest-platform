@@ -1528,6 +1528,93 @@ export class AIAgentScheduler {
     const url=new URL(request.url);
     const method=request.method;
     try {
+      if (url.pathname==="/drive-state" && method==="POST") {
+        const body=await request.json(),state=safeSegment(url.searchParams.get("state"),"OAuth state");
+        const item=body.stateRecord||{};
+        const uid=safeSegment(item.uid,"administrator id");
+        const expiresAt=Number(item.expiresAt||0);
+        if(!Number.isFinite(expiresAt)||expiresAt<=Date.now()||expiresAt>Date.now()+15*60*1000)throw new Error("Invalid or expired OAuth state.");
+        await this.ctx.storage.put("drive-state:"+state,{uid,createdAt:Date.now(),expiresAt});
+        return jsonResponse({saved:true},200,"");
+      }
+      if (url.pathname==="/drive-state" && method==="GET") {
+        const state=safeSegment(url.searchParams.get("state"),"OAuth state");
+        const key="drive-state:"+state;
+        const saved=await this.ctx.storage.get(key);
+        if(saved)await this.ctx.storage.delete(key);
+        return jsonResponse({state:saved&&Number(saved.expiresAt||0)>Date.now()?saved:null},200,"");
+      }
+      if (url.pathname==="/drive-connection" && method==="GET") {
+        const connection=await this.ctx.storage.get("drive:connection");
+        return jsonResponse({connection:connection||null},200,"");
+      }
+      if (url.pathname==="/drive-connection" && method==="POST") {
+        const body=await request.json(),connection=body.connection||{};
+        if(typeof connection.encryptedRefreshToken!=="string"||connection.encryptedRefreshToken.length<20||connection.encryptedRefreshToken.length>4096)throw new Error("Invalid encrypted Google Drive refresh token.");
+        const saved={
+          encryptedRefreshToken:connection.encryptedRefreshToken,
+          googleEmail:cleanText(connection.googleEmail||"",180),
+          googleName:cleanText(connection.googleName||"",120),
+          connectedBy:safeSegment(connection.connectedBy,"administrator id"),
+          connectedAt:Number(connection.connectedAt||Date.now()),
+          updatedAt:Number(connection.updatedAt||Date.now()),
+          folderId:connection.folderId?safeSegment(connection.folderId,"Google Drive folder id"):""
+        };
+        await this.ctx.storage.put("drive:connection",saved);
+        return jsonResponse({saved:true},200,"");
+      }
+      if (url.pathname==="/drive-connection" && method==="DELETE") {
+        await this.ctx.storage.delete("drive:connection");
+        return jsonResponse({disconnected:true},200,"");
+      }
+      if (url.pathname==="/attachment-records" && method==="GET") {
+        const entityType=safeSegment(url.searchParams.get("entityType"),"attachment entity type");
+        const entityId=safeSegment(url.searchParams.get("entityId"),"attachment entity id");
+        const values=await this.ctx.storage.list({prefix:"attachment:"+entityType+":"+entityId+":"});
+        const attachments=[...values.values()].sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));
+        return jsonResponse({attachments},200,"");
+      }
+      if (url.pathname==="/attachment-record" && method==="GET") {
+        const entityType=safeSegment(url.searchParams.get("entityType"),"attachment entity type");
+        const entityId=safeSegment(url.searchParams.get("entityId"),"attachment entity id");
+        const id=safeSegment(url.searchParams.get("id"),"attachment id");
+        const attachment=await this.ctx.storage.get("attachment:"+entityType+":"+entityId+":"+id);
+        return jsonResponse({attachment:attachment||null},200,"");
+      }
+      if (url.pathname==="/attachment-records" && method==="POST") {
+        const body=await request.json(),attachment=body.attachment||{};
+        const entityType=safeSegment(attachment.entityType,"attachment entity type");
+        const entityId=safeSegment(attachment.entityId,"attachment entity id");
+        const id=safeSegment(attachment.id,"attachment id");
+        if(!attachment.driveFileId||!attachment.fileName||!Number.isFinite(Number(attachment.fileSize))||Number(attachment.fileSize)<=0)throw new Error("Invalid attachment metadata.");
+        const key="attachment:"+entityType+":"+entityId+":"+id;
+        if(await this.ctx.storage.get(key))throw new Error("Attachment record already exists.");
+        const saved={
+          id,driveFileId:safeSegment(attachment.driveFileId,"Google Drive file id"),
+          fileName:cleanText(attachment.fileName,180),
+          mimeType:cleanText(attachment.mimeType||"application/octet-stream",120),
+          fileSize:Number(attachment.fileSize),entityType,entityId,
+          ownerUid:safeSegment(attachment.ownerUid,"attachment owner"),
+          createdByName:cleanText(attachment.createdByName||"",120),
+          createdAt:String(attachment.createdAt||new Date().toISOString()),
+          driveCreatedAt:String(attachment.driveCreatedAt||"")
+        };
+        await this.ctx.storage.put(key,saved);
+        return jsonResponse({saved:true},201,"");
+      }
+      if (url.pathname==="/attachment-record" && method==="DELETE") {
+        const entityType=safeSegment(url.searchParams.get("entityType"),"attachment entity type");
+        const entityId=safeSegment(url.searchParams.get("entityId"),"attachment entity id");
+        const id=safeSegment(url.searchParams.get("id"),"attachment id");
+        await this.ctx.storage.delete("attachment:"+entityType+":"+entityId+":"+id);
+        return jsonResponse({deleted:true},200,"");
+      }
+      if (url.pathname==="/attachment-usage" && method==="GET") {
+        const values=await this.ctx.storage.list({prefix:"attachment:"});
+        let usedBytes=0;
+        for(const item of values.values())usedBytes+=Number(item.fileSize||0);
+        return jsonResponse({usedBytes,attachmentCount:values.size,limitBytes:14*1024*1024*1024},200,"");
+      }
       if (url.pathname==="/whatsapp-notification-claim" && method==="POST") {
         const body=await request.json();
         const uid=safeSegment(body.uid,"user id"),messageId=safeSegment(body.messageId,"message id");
