@@ -2010,7 +2010,7 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     requirePermission(profile,"attachments","view");
     const connection=await getGoogleDriveConnection(env);
     const storage=await driveStorageRequest(env,"/attachment-usage","GET");
-    return {configured:Boolean(env.GOOGLE_DRIVE_CLIENT_ID&&env.GOOGLE_DRIVE_CLIENT_SECRET&&env.GOOGLE_DRIVE_TOKEN_ENCRYPTION_KEY&&env.AI_AGENT_SCHEDULER),connected:Boolean(connection&&connection.encryptedRefreshToken),googleEmail:connection&&connection.googleEmail||"",folderReady:Boolean(connection&&connection.folderId),storage,maxFileBytes:ATTACHMENT_MAX_FILE_BYTES,softLimitBytes:ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES};
+    return {workerVersion:"custody-attachments-20261110-2",configured:Boolean(env.GOOGLE_DRIVE_CLIENT_ID&&env.GOOGLE_DRIVE_CLIENT_SECRET&&env.GOOGLE_DRIVE_TOKEN_ENCRYPTION_KEY&&env.AI_AGENT_SCHEDULER),connected:Boolean(connection&&connection.encryptedRefreshToken),googleEmail:connection&&connection.googleEmail||"",folderReady:Boolean(connection&&connection.folderId),storage,maxFileBytes:ATTACHMENT_MAX_FILE_BYTES,softLimitBytes:ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES};
   }
   if(url.pathname==="/drive/connect"&&request.method==="POST"){
     if(profile.role!=="admin")throw new Error("Only a system administrator can connect the company Google Drive account.");
