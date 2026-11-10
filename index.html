@@ -938,10 +938,10 @@ function App(){
     }catch(error){setAttachmentsNotice(String(error.message||error));}
     finally{setAttachmentUploadBusy(false);input.value='';}
   }
-  async function openAttachmentFile(attachment,download=false){
+  async function openAttachmentFile(attachment,download=false,entityType=attachmentEntityType,entityId=attachmentEntityId){
     setAttachmentsBusy(true);setAttachmentsNotice('');
     try{
-      const path='/attachments/file?entityType='+encodeURIComponent(attachmentEntityType)+'&entityId='+encodeURIComponent(attachmentEntityId)+'&id='+encodeURIComponent(attachment.id);
+      const path='/attachments/file?entityType='+encodeURIComponent(entityType)+'&entityId='+encodeURIComponent(entityId)+'&id='+encodeURIComponent(attachment.id);
       const blob=await attachmentWorkerRequest(path,'GET',undefined,{},false,true);
       if(!download&&(attachment.mimeType.includes('spreadsheet')||attachment.mimeType==='application/vnd.ms-excel')){
         const workbook=window.XLSX.read(await blob.arrayBuffer(),{type:'array'});
@@ -952,7 +952,7 @@ function App(){
         setAttachmentPreview({kind:'text',fileName:attachment.fileName,text:(await blob.text()).slice(0,500000)});
       }else{
         const objectUrl=URL.createObjectURL(blob);
-        if(!download&&['application/pdf','image/jpeg','image/png','image/webp'].includes(attachment.mimeType))setAttachmentPreview({kind:'media',url:objectUrl,fileName:attachment.fileName,mimeType:attachment.mimeType});
+        if(!download&&['application/pdf','image/jpeg','image/png','image/webp'].includes(attachment.mimeType))setAttachmentPreview({kind:'media',url:objectUrl,fileName:attachment.fileName,mimeType:attachment.mimeType,entityType,entityId});
         else{const link=document.createElement('a');link.href=objectUrl;link.download=attachment.fileName;document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(objectUrl),60000);}
       }
     }catch(error){setAttachmentsNotice(String(error.message||error));}
@@ -969,6 +969,170 @@ function App(){
       await addLog('حذف مرفق: '+attachment.fileName);
     }catch(error){setAttachmentsNotice(String(error.message||error));}
     finally{setAttachmentsBusy(false);}
+  }
+  const recordAttachmentKey=(entityType,entityId)=>String(entityType||'')+'::'+String(entityId||'');
+  async function refreshRecordAttachmentPanel(entityType,entityId){
+    const key=recordAttachmentKey(entityType,entityId);
+    setRecordAttachmentPanels(old=>({...old,[key]:{...(old[key]||{}),loading:true,error:''}}));
+    try{
+      const result=await attachmentWorkerRequest('/attachments?entityType='+encodeURIComponent(entityType)+'&entityId='+encodeURIComponent(entityId),'GET');
+      setRecordAttachmentPanels(old=>({...old,[key]:{...(old[key]||{}),expanded:true,loaded:true,loading:false,attachments:Array.isArray(result.attachments)?result.attachments:[],error:''}}));
+    }catch(error){
+      setRecordAttachmentPanels(old=>({...old,[key]:{...(old[key]||{}),expanded:true,loaded:true,loading:false,attachments:[],error:String(error.message||error)}}));
+    }
+  }
+  function toggleRecordAttachmentPanel(entityType,entityId){
+    const key=recordAttachmentKey(entityType,entityId),current=recordAttachmentPanels[key];
+    if(current?.expanded){setRecordAttachmentPanels(old=>({...old,[key]:{...old[key],expanded:false}}));return;}
+    setRecordAttachmentPanels(old=>({...old,[key]:{...(old[key]||{}),expanded:true}}));
+    if(!current?.loaded)void refreshRecordAttachmentPanel(entityType,entityId);
+  }
+  async function replaceRecordAttachment(entityType,entityId,attachment,file){
+    if(!file||!requirePermission('attachments','add'))return;
+    if(file.size>20*1024*1024)throw new Error(rtl?'الحد الأقصى 20 MB للملف.':'Maximum file size is 20 MB.');
+    setAttachmentsBusy(true);
+    try{
+      await attachmentWorkerRequest('/attachments/replace','POST',file,{
+        'Content-Type':attachmentMimeType(file),
+        'X-Attachment-Entity-Type':entityType,
+        'X-Attachment-Entity-Id':entityId,
+        'X-Attachment-Id':attachment.id,
+        'X-Attachment-File-Name':encodeURIComponent(file.name)
+      },true,false);
+      await refreshRecordAttachmentPanel(entityType,entityId);
+      await refreshDriveConnectionStatus();
+      await addLog('استبدال مرفق: '+attachment.fileName+' ← '+file.name,currentUser,{entityType:'attachment',entityId:entityType+'/'+entityId+'/'+attachment.id});
+    }finally{setAttachmentsBusy(false);}
+  }
+  async function removeRecordAttachment(entityType,entityId,attachment){
+    if(!requirePermission('attachments','delete'))return;
+    if(!window.confirm((rtl?'هل تريد حذف المرفق ':'Delete attachment ')+attachment.fileName+'؟'))return;
+    setAttachmentsBusy(true);
+    try{
+      await attachmentWorkerRequest('/attachments','DELETE',{id:attachment.id,entityType,entityId});
+      await refreshRecordAttachmentPanel(entityType,entityId);
+      await refreshDriveConnectionStatus();
+      await addLog('حذف مرفق: '+attachment.fileName,currentUser,{entityType:'attachment',entityId:entityType+'/'+entityId+'/'+attachment.id});
+    }catch(error){alert(String(error.message||error));}
+    finally{setAttachmentsBusy(false);}
+  }
+  async function openAttachmentEditor(entityType,entityId,attachment){
+    if(!requirePermission('attachments','edit'))return;
+    setAttachmentEditorBusy(true);setAttachmentEditorNotice('');
+    try{
+      const path='/attachments/file?entityType='+encodeURIComponent(entityType)+'&entityId='+encodeURIComponent(entityId)+'&id='+encodeURIComponent(attachment.id);
+      const blob=await attachmentWorkerRequest(path,'GET',undefined,{},false,true);
+      setAttachmentMarkupDirty(false);
+      setAttachmentEditor({entityType,entityId,attachment,blob,note:attachment.note||'',mimeType:attachment.mimeType||blob.type||'',ready:false,editable:['application/pdf','image/jpeg','image/png','image/webp'].includes(attachment.mimeType)});
+    }catch(error){setAttachmentEditorNotice(String(error.message||error));}
+    finally{setAttachmentEditorBusy(false);}
+  }
+  useEffect(()=>{
+    if(!attachmentEditor)return;
+    let active=true;
+    async function renderAnnotatableFile(){
+      const base=attachmentBaseCanvasRef.current,markup=attachmentMarkupCanvasRef.current;
+      if(!base||!markup)return;
+      const ctx=base.getContext('2d'),overlay=markup.getContext('2d');
+      ctx.clearRect(0,0,base.width,base.height);overlay.clearRect(0,0,markup.width,markup.height);
+      try{
+        if(attachmentEditor.mimeType==='application/pdf'){
+          if(!window.pdfjsLib)throw new Error(rtl?'تعذر تحميل مكتبة معاينة PDF.':'Could not load the PDF preview library.');
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+          const pdf=await window.pdfjsLib.getDocument({data:await attachmentEditor.blob.arrayBuffer()}).promise;
+          const page=await pdf.getPage(1),viewport=page.getViewport({scale:1.35});
+          base.width=Math.ceil(viewport.width);base.height=Math.ceil(viewport.height);markup.width=base.width;markup.height=base.height;
+          await page.render({canvasContext:ctx,viewport}).promise;
+        }else if(attachmentEditor.mimeType.startsWith('image/')){
+          const image=new Image(),url=URL.createObjectURL(attachmentEditor.blob);
+          await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=url;});
+          URL.revokeObjectURL(url);
+          const scale=Math.min(1,1400/image.naturalWidth,1100/image.naturalHeight);
+          base.width=Math.max(1,Math.round(image.naturalWidth*scale));base.height=Math.max(1,Math.round(image.naturalHeight*scale));markup.width=base.width;markup.height=base.height;
+          ctx.drawImage(image,0,0,base.width,base.height);
+        }else{
+          base.width=1;base.height=1;markup.width=1;markup.height=1;
+        }
+        if(active)setAttachmentEditor(old=>old?({...old,ready:true}):old);
+      }catch(error){if(active)setAttachmentEditorNotice(String(error.message||error));}
+    }
+    void renderAnnotatableFile();
+    return ()=>{active=false;};
+  },[attachmentEditor?.attachment?.id,attachmentEditor?.mimeType]);
+  function attachmentCanvasPointerDown(event){
+    if(!attachmentEditor?.editable||!attachmentEditor.ready)return;
+    const canvas=attachmentMarkupCanvasRef.current,ctx=canvas?.getContext('2d');if(!ctx)return;
+    const rect=canvas.getBoundingClientRect(),x=(event.clientX-rect.left)*(canvas.width/rect.width),y=(event.clientY-rect.top)*(canvas.height/rect.height);
+    event.currentTarget.setPointerCapture?.(event.pointerId);attachmentDrawingRef.current=true;
+    ctx.globalCompositeOperation='source-over';ctx.strokeStyle='rgba(255,220,0,0.42)';ctx.lineWidth=Math.max(18,canvas.width/65);ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+0.1,y+0.1);ctx.stroke();
+    setAttachmentMarkupDirty(true);
+  }
+  function attachmentCanvasPointerMove(event){
+    if(!attachmentDrawingRef.current)return;
+    const canvas=attachmentMarkupCanvasRef.current,ctx=canvas?.getContext('2d');if(!ctx)return;
+    const rect=canvas.getBoundingClientRect(),x=(event.clientX-rect.left)*(canvas.width/rect.width),y=(event.clientY-rect.top)*(canvas.height/rect.height);
+    ctx.lineTo(x,y);ctx.stroke();
+  }
+  function attachmentCanvasPointerUp(){attachmentDrawingRef.current=false;}
+  async function saveAttachmentEditor(){
+    if(!attachmentEditor||attachmentEditorBusy)return;
+    if(!requirePermission('attachments','edit'))return;
+    setAttachmentEditorBusy(true);setAttachmentEditorNotice('');
+    try{
+      const {entityType,entityId,attachment}=attachmentEditor;
+      if(attachmentEditor.editable&&attachmentMarkupDirty){
+        const base=attachmentBaseCanvasRef.current,markup=attachmentMarkupCanvasRef.current;
+        let replacementBlob;
+        if(attachmentEditor.mimeType==='application/pdf'){
+          if(!window.PDFLib)throw new Error(rtl?'تعذر تحميل مكتبة تعديل PDF.':'Could not load the PDF editing library.');
+          const pdf=await window.PDFLib.PDFDocument.load(await attachmentEditor.blob.arrayBuffer());
+          const pages=pdf.getPages(),page=pages[0];
+          const png=await pdf.embedPng(markup.toDataURL('image/png'));
+          page.drawImage(png,{x:0,y:0,width:page.getWidth(),height:page.getHeight()});
+          replacementBlob=new Blob([await pdf.save()],{type:'application/pdf'});
+        }else{
+          const merged=document.createElement('canvas');merged.width=base.width;merged.height=base.height;
+          const ctx=merged.getContext('2d');ctx.drawImage(base,0,0);ctx.drawImage(markup,0,0);
+          replacementBlob=await new Promise((resolve,reject)=>merged.toBlob(blob=>blob?resolve(blob):reject(new Error('Could not create the annotated image.')),attachmentEditor.mimeType,0.94));
+        }
+        await attachmentWorkerRequest('/attachments/replace','POST',replacementBlob,{
+          'Content-Type':attachmentEditor.mimeType,
+          'X-Attachment-Entity-Type':entityType,
+          'X-Attachment-Entity-Id':entityId,
+          'X-Attachment-Id':attachment.id,
+          'X-Attachment-File-Name':encodeURIComponent(attachment.fileName)
+        },true,false);
+      }
+      await attachmentWorkerRequest('/attachments/annotate','POST',{id:attachment.id,entityType,entityId,note:String(attachmentEditor.note||'').trim()});
+      await refreshRecordAttachmentPanel(entityType,entityId);
+      await refreshDriveConnectionStatus();
+      await addLog('تعديل ملاحظات أو علامات مرفق: '+attachment.fileName,currentUser,{entityType:'attachment',entityId:entityType+'/'+entityId+'/'+attachment.id});
+      setAttachmentEditor(null);setAttachmentMarkupDirty(false);
+    }catch(error){setAttachmentEditorNotice(String(error.message||error));}
+    finally{setAttachmentEditorBusy(false);}
+  }
+  function renderRecordAttachments(entityType,entityId){
+    const key=recordAttachmentKey(entityType,entityId),panel=recordAttachmentPanels[key]||{};
+    if(!entityId||!hasPermission('attachments','view'))return null;
+    return <div className="mt-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-2 no-print">
+      <button type="button" onClick={()=>toggleRecordAttachmentPanel(entityType,entityId)} className="inline-flex items-center gap-2 rounded-lg bg-white border px-3 py-1.5 text-xs font-bold text-slate-700">
+        <i className="fas fa-paperclip text-blue-700"></i>{rtl?'المرفقات':'Attachments'}{panel.loaded&&<span className="rounded-full bg-blue-50 text-blue-700 px-1.5">{panel.attachments?.length||0}</span>}<i className={'fas '+(panel.expanded?'fa-chevron-up':'fa-chevron-down')+' text-[10px]'}></i>
+      </button>
+      {panel.expanded&&<div className="mt-2 space-y-2">
+        {panel.loading?<p className="text-xs text-gray-500">{rtl?'جارٍ تحميل الملفات...':'Loading files...'}</p>:panel.error?<p className="text-xs text-rose-700">{panel.error}</p>:!panel.attachments?.length?<p className="text-xs text-gray-500">{rtl?'لا توجد مرفقات مرتبطة بهذا البيان.':'No files are linked to this record.'}</p>:
+          panel.attachments.map(item=><div key={item.id} className="rounded-lg bg-white border p-2 flex flex-wrap items-center gap-2">
+            <i className={'fas '+(item.mimeType==='application/pdf'?'fa-file-pdf':item.mimeType?.startsWith('image/')?'fa-file-image':item.mimeType?.includes('spreadsheet')||item.mimeType?.includes('excel')?'fa-file-excel':'fa-file-lines')+' text-lg text-slate-500'}></i>
+            <div className="min-w-0 flex-1"><b className="block text-xs truncate">{item.fileName}</b><small className="block text-[11px] text-gray-500">{item.note?rtl?'ملاحظة: '+item.note:'Note: '+item.note:rtl?'بدون ملاحظة':'No note'}</small></div>
+            <div className="flex flex-wrap gap-1">
+              <button type="button" disabled={attachmentsBusy} onClick={()=>openAttachmentFile(item,false,entityType,entityId)} className="rounded bg-blue-50 text-blue-700 px-2 py-1 text-[11px] font-bold">{rtl?'عرض':'View'}</button>
+              <button type="button" disabled={attachmentsBusy} onClick={()=>openAttachmentFile(item,true,entityType,entityId)} className="rounded bg-slate-100 text-slate-700 px-2 py-1 text-[11px]">{rtl?'تنزيل':'Download'}</button>
+              {hasPermission('attachments','edit')&&<button type="button" disabled={attachmentEditorBusy} onClick={()=>openAttachmentEditor(entityType,entityId,item)} className="rounded bg-amber-50 text-amber-800 px-2 py-1 text-[11px] font-bold">{rtl?'ملاحظة / تمييز':'Annotate'}</button>}
+              {hasPermission('attachments','add')&&<label className="cursor-pointer rounded bg-indigo-50 text-indigo-700 px-2 py-1 text-[11px] font-bold">{rtl?'استبدال':'Replace'}<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt" className="hidden" disabled={attachmentsBusy} onChange={async e=>{const file=e.target.files?.[0];try{await replaceRecordAttachment(entityType,entityId,item,file);}catch(error){alert(String(error.message||error));}finally{e.target.value='';}}}/></label>}
+              {hasPermission('attachments','delete')&&<button type="button" disabled={attachmentsBusy} onClick={()=>removeRecordAttachment(entityType,entityId,item)} className="rounded bg-rose-50 text-rose-700 px-2 py-1 text-[11px]">{rtl?'حذف':'Delete'}</button>}
+            </div>
+          </div>)}
+      </div>}
+    </div>;
   }
   useEffect(()=>{if(tab==='attachments'&&currentUser)void refreshDriveConnectionStatus();},[tab,currentUser?.uid]);
   useEffect(()=>{if(tab==='attachments'&&currentUser)void refreshAttachmentList();},[tab,attachmentEntityType,attachmentEntityId,currentUser?.uid]);
