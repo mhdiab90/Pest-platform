@@ -1543,6 +1543,7 @@ function App(){
 
   function editCashCustodyDraft(transaction){
     if(!requirePermission('cashCustody','edit'))return;
+    setCashCustodyPendingAttachments([]);
     if(cashCustodyTargetUid!==currentUser.uid||!transaction||transaction.status!=='pending')return alert(rtl?'يمكن تعديل الحركات المعلقة الخاصة بك فقط.':'Only your own pending movements can be edited.');
     setCashCustodyEditingId(transaction.id);
     setCashCustodyForm({type:transaction.type||'expense',date:transaction.date||new Date().toISOString().slice(0,10),amount:String(transaction.amount||''),currency:transaction.currency||'EGP',counterparty:transaction.counterparty||'',projectCode:transaction.projectCode||'',reference:transaction.reference||'',description:transaction.description||''});
@@ -2204,7 +2205,7 @@ function App(){
   }
 
   function editMasterRecord(type,item){if(!requirePermission('master','edit'))return;
-    setMaster({...blankMaster(type),...item,type});setEditingMasterCode(item.code||'');setMasterFormOpen(true);
+    setMasterPendingAttachments([]);setMaster({...blankMaster(type),...item,type});setEditingMasterCode(item.code||'');setMasterFormOpen(true);
     setTab('master');window.scrollTo({top:0,behavior:'smooth'});
   }
 
@@ -2229,7 +2230,7 @@ function App(){
   }
 
   function editProjectRecord(item){
-    setProject({...blankProject(),...item,clientCodes:item.clientCodes|| (item.clientCode?[item.clientCode]:[]),vendorCodes:item.vendorCodes||[]});
+    setProjectPendingAttachments([]);setProject({...blankProject(),...item,clientCodes:item.clientCodes|| (item.clientCode?[item.clientCode]:[]),vendorCodes:item.vendorCodes||[]});
     setEditingProjectCode(item.code);setProjectFormOpen(true);setTab('projects');window.scrollTo({top:0,behavior:'smooth'});
   }
 
@@ -2263,7 +2264,7 @@ function App(){
     }catch(err){alert(firebaseErrorMessage(err,tr));}
   }
 
-  function editProjectEventRecord(ev){if(!requirePermission('projects','edit'))return;setProjectEvent({...blankProjectEvent(),...ev,actionCode:ev.actionCode||ev.type||'general_note',actionName:ev.actionName||eventLabel(ev.type),settledAmount:ev.settledAmount??'',dueDate:ev.dueDate||''});setEditingProjectEventId(ev.id);window.scrollTo({top:0,behavior:'smooth'});}
+  function editProjectEventRecord(ev){if(!requirePermission('projects','edit'))return;setEventPendingAttachments([]);setProjectEvent({...blankProjectEvent(),...ev,actionCode:ev.actionCode||ev.type||'general_note',actionName:ev.actionName||eventLabel(ev.type),settledAmount:ev.settledAmount??'',dueDate:ev.dueDate||''});setEditingProjectEventId(ev.id);window.scrollTo({top:0,behavior:'smooth'});}
   async function deleteProjectEventRecord(ev){if(!requirePermission('projects','delete'))return;if(!window.confirm(rtl?'هل تريد حذف هذا الحدث؟ سيتم تحديث ملخصات المشروع والتقارير.':'Delete this event? Project summaries and reports will be recalculated.'))return;try{await db.ref('projects/'+selectedProjectCode+'/events/'+ev.id).remove();await addLog('حذف حدث '+(ev.actionName||eventLabel(ev.type)),currentUser,{entityType:'project-event',entityId:selectedProjectCode+'/'+ev.id,changes:auditChanges(ev,null)});if(editingProjectEventId===ev.id){setEditingProjectEventId('');setProjectEvent(blankProjectEvent());}}catch(err){alert(firebaseErrorMessage(err,tr));}}
 
   function reportAsMessage(){
@@ -2332,12 +2333,14 @@ function App(){
   }
 
   function startMessageReply(original){
+    setReplyPendingAttachments([]);
     setReplyingToMessage(original);
     setReplyDraft('');
   }
   function cancelMessageReply(){
     setReplyingToMessage(null);
     setReplyDraft('');
+    setReplyPendingAttachments([]);
   }
   function insertReplyMention(item){insertContextToken(replyDraft,setReplyDraft,item);}
   function handleMessageTouchStart(event,original){
@@ -2504,6 +2507,7 @@ function App(){
   }
 
   function forwardMessage(m){
+    setMessagePendingAttachments([]);
     const outgoing=m.copyType==='sent'||m.senderUid===currentUser.uid;
     const candidates=outgoing?(Array.isArray(m.recipientUids)?m.recipientUids:(m.recipientUid&&m.recipientUid!=='*'?[m.recipientUid]:[])):[m.senderUid];
     const activeIds=userDirectory.filter(u=>u.uid&&u.status==='active').map(u=>u.uid);
@@ -3148,6 +3152,7 @@ function App(){
               <input className="border rounded-lg p-3" placeholder={tr('iban')} value={master.iban} onChange={e=>setMaster({...master,iban:e.target.value})}/>
               <textarea className="border rounded-lg p-3 md:col-span-2" rows="2" placeholder={tr('address')} value={master.address} onChange={e=>setMaster({...master,address:e.target.value})}></textarea>
               <textarea className="border rounded-lg p-3 md:col-span-2" rows="2" placeholder={tr('notes')} value={master.notes} onChange={e=>setMaster({...master,notes:e.target.value})}></textarea>
+              {renderInlineAttachmentPicker(masterPendingAttachments,setMasterPendingAttachments,'md:col-span-2 xl:col-span-3')}
               <button className="md:col-span-3 bg-blue-600 text-white rounded-lg p-3 font-bold">{editingMasterCode?tr('save'):tr('add')}</button>
             </form>}
           </section>
@@ -3278,6 +3283,7 @@ function App(){
             <input className="border rounded-lg p-3" placeholder={tr('paymentTerms')} value={project.paymentTerms} onChange={e=>setProject({...project,paymentTerms:e.target.value})}/>
             <textarea className="border rounded-lg p-3 md:col-span-2" rows="2" placeholder={tr('scope')} value={project.scope} onChange={e=>setProject({...project,scope:e.target.value})}></textarea>
             <textarea className="border rounded-lg p-3 md:col-span-2" rows="2" placeholder={tr('notes')} value={project.notes} onChange={e=>setProject({...project,notes:e.target.value})}></textarea>
+            {renderInlineAttachmentPicker(projectPendingAttachments,setProjectPendingAttachments,'md:col-span-2 xl:col-span-3')}
             <div className="md:col-span-3 flex flex-wrap gap-2"><button className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold">{editingProjectCode?tr('save'):tr('add')}</button>{editingProjectCode&&<button type="button" onClick={()=>{setProject(blankProject());setEditingProjectCode('');}} className="bg-gray-100 rounded-lg px-5 py-3">{tr('clear')}</button>}</div>
           </form>}</section>
           <details open className="app-collapsible"><summary><span>{rtl?'قائمة المشروعات':'Project list'}</span></summary><div className="app-collapsible-body"><section className="bg-white p-5 rounded-xl border overflow-x-auto"><div className="app-table-scroll"><table className="w-full text-sm"><thead><tr className="bg-gray-50"><th className="p-2">{tr('projectCode')}</th><th className="p-2">{tr('projectName')}</th><th className="p-2">{tr('customers')}</th><th className="p-2">{tr('suppliers')}</th><th className="p-2">{tr('amount')}</th><th className="p-2">{tr('status')}</th><th className="p-2">{tr('viewFile')}</th></tr></thead><tbody>{filteredProjects.map(p=><tr key={p.code} className="border-t"><td className="p-2">{p.code}</td><td className="p-2">{p.name}</td><td className="p-2">{(p.clientCodes|| (p.clientCode?[p.clientCode]:[])).map(c=>clients.find(x=>x.code===c)?.name||c).join('، ')||'—'}</td><td className="p-2">{(p.vendorCodes||[]).map(c=>vendors.find(x=>x.code===c)?.name||c).join('، ')||'—'}</td><td className="p-2">{money(p.amount)} {p.currency||'EGP'}</td><td className="p-2">{p.status}</td><td className="p-2 whitespace-nowrap"><button onClick={()=>{setSelectedProjectCode(p.code);setTab('projectDetail');}} className="text-blue-700 font-bold me-2">{tr('viewFile')}</button><button onClick={()=>editProjectRecord(p)} className="text-gray-600">{tr('edit')}</button></td></tr>)}</tbody></table></div>{filteredProjects.length===0&&<p className="text-sm text-gray-500 mt-3">{tr('noProjects')}</p>}</section></div></details>
@@ -3305,6 +3311,7 @@ function App(){
             <label className="text-sm font-bold">{rtl?'الكمية':'Quantity'}<input type="number" min="0" step="any" className="block border rounded-lg p-3 w-full mt-1 font-normal" value={projectEvent.quantity} onChange={e=>setProjectEvent({...projectEvent,quantity:e.target.value})}/></label>
             <label className="text-sm font-bold">{rtl?'الوحدة':'Unit'}<input className="block border rounded-lg p-3 w-full mt-1 font-normal" value={projectEvent.unit} onChange={e=>setProjectEvent({...projectEvent,unit:e.target.value})}/></label>
             <textarea rows="2" className="border rounded-lg p-3 md:col-span-2" placeholder={rtl?'الملاحظات / تفاصيل الإجراء':'Notes / action details'} value={projectEvent.note} onChange={e=>setProjectEvent({...projectEvent,note:e.target.value})}></textarea>
+            {renderInlineAttachmentPicker(eventPendingAttachments,setEventPendingAttachments,'md:col-span-2 xl:col-span-3')}
             <div className="md:col-span-3 flex flex-wrap gap-2"><button className="bg-blue-600 text-white rounded-lg p-3 font-bold">{editingProjectEventId?(rtl?'حفظ التعديلات':'Save changes'):tr('saveEvent')}</button>{editingProjectEventId&&<button type="button" onClick={()=>{setEditingProjectEventId('');setProjectEvent(blankProjectEvent());}} className="bg-gray-100 rounded-lg p-3">{rtl?'إلغاء التعديل':'Cancel edit'}</button>}</div>
           </form></div></details>
           <details open className="app-collapsible"><summary><span>{tr('timeline')}</span></summary><div className="app-collapsible-body"><section className="bg-white rounded-xl border p-5"><div className="flex flex-wrap justify-between gap-3 mb-3"><h3 className="font-bold">{tr('timeline')}</h3><input className="border rounded-lg p-2" placeholder={tr('reportSearch')} value={eventFilter} onChange={e=>setEventFilter(e.target.value)}/></div><div className="app-list-scroll space-y-3">{events.length===0?<p className="text-gray-500">{tr('noEvents')}</p>:events.slice().reverse().map(ev=><article key={ev.id} className="border-s-4 border-blue-500 bg-gray-50 rounded-lg p-4"><div className="flex flex-wrap justify-between gap-2"><b>{ev.actionName||eventLabel(ev.type)}</b><span className="text-xs text-gray-500">{eventDateLabel(ev.date)}{ev.dueDate?' · '+(rtl?'استحقاق: ':'Due: ')+eventDateLabel(ev.dueDate):''}</span></div><p className="text-sm mt-2">{ev.partyCode?nameOfParty(ev.partyType,ev.partyCode):''} {ev.referenceNo?'· '+ev.referenceNo:''} {ev.responsible?'· '+ev.responsible:''}</p><p className="text-sm mt-1">{ev.quantity?`${ev.quantity} ${ev.unit||''}`:''} {ev.amount?`· ${money(ev.amount)} ${ev.currency||'EGP'}`:''} {ev.paymentMethod?'· '+ev.paymentMethod:''} · {ev.status||''}</p>{ev.note&&<p className="mt-2 text-sm text-gray-700 whitespace-pre-wrap">{ev.note}</p>}<div className="flex flex-wrap items-center justify-between gap-2 mt-2"><div className="text-xs text-gray-500">{ev.createdByName?userIdentity(ev.createdBy,ev.createdByName,true,ev.createdByAvatar||''):null}</div><div className="flex gap-3 text-sm no-print"><button type="button" onClick={()=>editProjectEventRecord(ev)} className="text-blue-700 font-bold">{tr('edit')}</button><button type="button" onClick={()=>deleteProjectEventRecord(ev)} className="text-red-600">{rtl?'حذف':'Delete'}</button></div></div></article>)}</div></section></div></details>
@@ -3330,6 +3337,7 @@ function App(){
                 {mentionSuggestions.length>0&&<div className="absolute z-20 top-full inset-x-0 max-h-52 overflow-y-auto bg-white border rounded-lg shadow-xl">{mentionSuggestions.map(item=><button type="button" key={item.type+':'+item.id} onClick={()=>insertMessageMention(item)} className="w-full flex items-center justify-between gap-3 p-3 text-start hover:bg-blue-50"><span><b>{item.label}</b><small className="block text-gray-500">{item.detail}</small></span><i className={'fas '+(item.type==='user'?'fa-at':item.type==='project'?'fa-hashtag':'fa-list-check')+' text-blue-600'}></i></button>)}</div>}
               </div>
               <p className="text-xs text-gray-500">{rtl?'@ للمستخدم، # للمشروع، و& للمهمة. المستخدمون المذكورون سيُضافون تلقائيًا للمستلمين.':'Use @ for users, # for projects, and & for tasks. Mentioned users are automatically added as recipients.'}</p>
+              {renderInlineAttachmentPicker(messagePendingAttachments,setMessagePendingAttachments,'')}
               <button className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold"><i className="fas fa-paper-plane me-2"></i>{rtl?'إرسال الرسالة':'Send message'}</button>
             </form>
           </div></details>
@@ -3361,6 +3369,7 @@ function App(){
 <div className="relative"><textarea required rows="3" className="app-message-reply-field w-full border-2 border-indigo-300 rounded-lg p-3 font-bold text-base leading-7 bg-indigo-50/30 focus:ring-2 focus:ring-indigo-200" placeholder={rtl?'اكتب ردك واستخدم @ لمنشن مستخدم...':'Write your reply and use @ to mention a user...'} value={replyDraft} onChange={e=>setReplyDraft(e.target.value)} onKeyDown={handleMessageComposerKeyDown}></textarea>
 {replyMentionSuggestions.length>0&&<div className="absolute z-30 top-full inset-x-0 max-h-52 overflow-y-auto bg-white border rounded-lg shadow-xl">{replyMentionSuggestions.map(item=><button type="button" key={item.type+':'+item.id} onClick={()=>insertReplyMention(item)} className="w-full flex items-center justify-between gap-3 p-3 text-start hover:bg-blue-50"><span><b>{item.label}</b><small className="block text-gray-500">{item.detail}</small></span><i className={'fas '+(item.type==='user'?'fa-at':item.type==='project'?'fa-hashtag':'fa-list-check')+' text-blue-600'}></i></button>)}</div>}</div>
 <p className="text-xs text-gray-500">{rtl?'@ للمستخدم، # للمشروع، و& للمهمة. المنشن يضيف المستخدم إلى مستلمي الرد.':'Use @ for people, # for projects, and & for your tasks; mentioned users are added as recipients.'}</p>
+{renderInlineAttachmentPicker(replyPendingAttachments,setReplyPendingAttachments,'')}
 <div className="flex flex-wrap gap-2"><button type="submit" className="bg-indigo-600 text-white rounded-lg px-4 py-2 text-sm font-bold"><i className="fas fa-paper-plane me-1"></i>{rtl?'إرسال الرد':'Send reply'}</button><button type="button" onClick={cancelMessageReply} className="bg-gray-100 text-gray-700 rounded-lg px-4 py-2 text-sm">{rtl?'إغلاق':'Close'}</button></div></form>}
 </article>;})}</div>
             <section className="rounded-2xl border border-teal-200 bg-white p-3 md:p-4 space-y-3 shadow-sm">
@@ -3369,6 +3378,7 @@ function App(){
                 <div className="relative"><textarea rows="3" className="w-full border rounded-xl p-3 focus:ring-2 focus:ring-teal-200" placeholder={rtl?'ابدأ بـ @ لاختيار المستلم، ثم # لاختيار مشروع، و& لاختيار مهمة...':'Start with @ for a person, # for a project, and & for a task...'} value={chatDraft} onChange={e=>setChatDraft(e.target.value)} onKeyDown={handleMessageComposerKeyDown}></textarea>
                   {chatMentionSuggestions.length>0&&<div className="absolute z-40 top-full inset-x-0 max-h-60 overflow-y-auto bg-white border rounded-xl shadow-xl">{chatMentionSuggestions.map(item=><button type="button" key={item.type+':'+item.id} onClick={()=>insertChatMention(item)} className="w-full flex items-center justify-between gap-3 p-3 text-start hover:bg-teal-50 border-b last:border-0"><span className="min-w-0"><b className="block truncate">{item.label}</b><small className="block text-gray-500">{item.detail}</small></span><span className={'rounded-lg px-2 py-1 text-xs font-bold '+(item.type==='user'?'bg-violet-50 text-violet-700':item.type==='project'?'bg-blue-50 text-blue-700':'bg-emerald-50 text-emerald-700')}>{item.type==='user'?'@':item.type==='project'?'#':'&'}</span></button>)}</div>}
                 </div>
+                {renderInlineAttachmentPicker(chatPendingAttachments,setChatPendingAttachments,'')}
                 <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-gray-500">{rtl?'@ يحدد مستلمًا (ويمكن أكثر من شخص)، # يربط الرسالة بمشروع جارٍ، و& يربطها بإحدى مهامك.':'@ selects one or more recipients, # links a current project, and & links one of your tasks.'}</p><button type="submit" disabled={chatSending||!chatDraft.trim()} className="shrink-0 rounded-xl bg-teal-600 text-white px-5 py-2.5 font-bold disabled:opacity-50"><i className="fas fa-paper-plane me-2"></i>{chatSending?(rtl?'جارٍ الإرسال...':'Sending...'):(rtl?'إرسال':'Send')}</button></div>
               </form>
             </section>
@@ -3397,6 +3407,7 @@ function App(){
               <label className="text-sm font-bold">{rtl?'المشروع':'Project'}<select className="block w-full border rounded-lg p-3 mt-1 font-normal" value={cashCustodyForm.projectCode} onChange={e=>setCashCustodyForm({...cashCustodyForm,projectCode:e.target.value})}><option value="">{rtl?'بدون مشروع':'No project'}</option>{projects.map(p=><option key={p.code} value={p.code}>{p.name} ({p.code})</option>)}</select></label>
               <label className="text-sm font-bold">{rtl?'رقم المستند':'Document reference'}<input className="block w-full border rounded-lg p-3 mt-1 font-normal" value={cashCustodyForm.reference} onChange={e=>setCashCustodyForm({...cashCustodyForm,reference:e.target.value})}/></label>
               <label className="text-sm font-bold md:col-span-2 xl:col-span-4">{rtl?'بيان الحركة / الغرض من الصرف':'Description / Purpose'}<textarea required rows="2" className="block w-full border rounded-lg p-3 mt-1 font-normal" value={cashCustodyForm.description} onChange={e=>setCashCustodyForm({...cashCustodyForm,description:e.target.value})}/></label>
+              {renderInlineAttachmentPicker(cashCustodyPendingAttachments,setCashCustodyPendingAttachments,'md:col-span-2 xl:col-span-4')}
               <div className="md:col-span-2 xl:col-span-4"><button disabled={cashCustodyBusy} className="rounded-lg bg-blue-600 text-white px-6 py-3 font-bold disabled:opacity-50">{cashCustodyBusy?(rtl?'جارٍ الحفظ...':'Saving...'):(cashCustodyEditingId?(rtl?'حفظ التعديل':'Save changes'):(rtl?'تسجيل الحركة':'Save movement'))}</button>{cashCustodyEditingId&&<button type="button" onClick={()=>{setCashCustodyEditingId('');setCashCustodyForm({type:'expense',date:new Date().toISOString().slice(0,10),amount:'',currency:'EGP',counterparty:'',projectCode:'',reference:'',description:''});}} className="ms-2 rounded-lg bg-gray-100 px-4 py-3 font-bold">{rtl?'إلغاء التعديل':'Cancel edit'}</button>}</div>
             </form>
             {cashCustodyNotice&&<p className="text-sm text-green-700">{cashCustodyNotice}</p>}
