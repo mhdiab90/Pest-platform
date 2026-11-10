@@ -43,12 +43,15 @@ function decodeBase64Url(value) {
   return bytes;
 }
 
-async function getFirebaseJwks() {
-  if (cachedJwks && Date.now() < cachedJwksUntil) return cachedJwks;
-  const response = await fetch(FIREBASE_JWKS_URL, { headers: { "Accept": "application/json" } });
-  if (!response.ok) throw new Error("Could not retrieve Firebase signing keys.");
+async function getFirebaseJwks(forceRefresh = false) {
+  if (!forceRefresh && cachedJwks && Date.now() < cachedJwksUntil) return cachedJwks;
+  const response = await fetch(FIREBASE_JWKS_URL, {
+    headers: { "Accept": "application/json", "Cache-Control": "no-cache" },
+    cache: "no-store"
+  });
+  if (!response.ok) throw new Error("AUTH_KEYS_UNAVAILABLE: Could not retrieve Firebase signing keys.");
   const body = await response.json();
-  if (!Array.isArray(body.keys) || body.keys.length === 0) throw new Error("Firebase signing keys were not available.");
+  if (!Array.isArray(body.keys) || body.keys.length === 0) throw new Error("AUTH_KEYS_UNAVAILABLE: Firebase signing keys were not available.");
   const cacheControl = response.headers.get("Cache-Control") || "";
   const match = cacheControl.match(/max-age=(\d+)/i);
   const seconds = Math.min(Math.max(Number(match && match[1] || 3600), 300), 21600);
@@ -59,29 +62,44 @@ async function getFirebaseJwks() {
 
 async function verifyFirebaseIdToken(token) {
   const parts = String(token || "").split(".");
-  if (parts.length !== 3) throw new Error("Invalid sign-in token.");
-  const header = JSON.parse(new TextDecoder().decode(decodeBase64Url(parts[0])));
-  const claims = JSON.parse(new TextDecoder().decode(decodeBase64Url(parts[1])));
-  if (header.alg !== "RS256" || !header.kid) throw new Error("Unsupported sign-in token.");
+  if (parts.length !== 3) throw new Error("AUTH_INVALID_FORMAT: Firebase ID token must contain three sections.");
+  let header, claims;
+  try {
+    header = JSON.parse(new TextDecoder().decode(decodeBase64Url(parts[0])));
+    claims = JSON.parse(new TextDecoder().decode(decodeBase64Url(parts[1])));
+  } catch (_) {
+    throw new Error("AUTH_INVALID_FORMAT: Firebase ID token could not be decoded.");
+  }
+  if (header.alg !== "RS256" || !header.kid) throw new Error("AUTH_INVALID_HEADER: Firebase ID token header is invalid.");
   const now = Math.floor(Date.now() / 1000);
-  if (
-    claims.aud !== PROJECT_ID ||
-    claims.iss !== "https://securetoken.google.com/" + PROJECT_ID ||
-    !claims.sub || claims.sub.length > 128 ||
-    !Number.isFinite(claims.exp) || claims.exp <= now ||
-    !Number.isFinite(claims.iat) || claims.iat > now + 60
-  ) throw new Error("Sign-in token is expired or not valid for this application.");
-  const jwks = await getFirebaseJwks();
-  const jwk = jwks.find(key => key.kid === header.kid && key.kty === "RSA");
-  if (!jwk) throw new Error("Signing key was not recognized.");
-  const publicKey = await crypto.subtle.importKey(
-    "jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]
-  );
+  if (claims.aud !== PROJECT_ID) throw new Error("AUTH_WRONG_PROJECT: Firebase token audience does not match this application.");
+  if (claims.iss !== "https://securetoken.google.com/" + PROJECT_ID) throw new Error("AUTH_WRONG_PROJECT: Firebase token issuer does not match this application.");
+  if (!claims.sub || claims.sub.length > 128) throw new Error("AUTH_INVALID_SUBJECT: Firebase token has no valid user ID.");
+  if (!Number.isFinite(claims.exp)) throw new Error("AUTH_INVALID_EXPIRY: Firebase token has no valid expiration.");
+  if (claims.exp <= now) throw new Error("AUTH_EXPIRED: Firebase ID token has expired.");
+  if (!Number.isFinite(claims.iat) || claims.iat > now + 60) throw new Error("AUTH_NOT_YET_VALID: Firebase ID token issue time is invalid.");
+  let jwks = await getFirebaseJwks();
+  let jwk = jwks.find(key => key.kid === header.kid && key.kty === "RSA");
+  if (!jwk) {
+    // Firebase rotates signing keys. Refresh the key set once before rejecting
+    // a token that carries a newly issued key ID.
+    jwks = await getFirebaseJwks(true);
+    jwk = jwks.find(key => key.kid === header.kid && key.kty === "RSA");
+  }
+  if (!jwk) throw new Error("AUTH_SIGNING_KEY_UNKNOWN: Firebase signing key was not recognized after key refresh.");
+  let publicKey;
+  try {
+    publicKey = await crypto.subtle.importKey(
+      "jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]
+    );
+  } catch (_) {
+    throw new Error("AUTH_SIGNING_KEY_INVALID: Firebase signing key could not be imported.");
+  }
   const signingInput = new TextEncoder().encode(parts[0] + "." + parts[1]);
   const valid = await crypto.subtle.verify(
     "RSASSA-PKCS1-v1_5", publicKey, decodeBase64Url(parts[2]), signingInput
   );
-  if (!valid) throw new Error("Sign-in token signature is invalid.");
+  if (!valid) throw new Error("AUTH_SIGNATURE_INVALID: Firebase ID token signature verification failed.");
   return claims;
 }
 
@@ -2252,7 +2270,10 @@ export default {
       return jsonResponse(output, 200, origin);
     } catch (error) {
       const message = String(error && error.message || "");
-      if (/token|sign-in|signing key/i.test(message)) return jsonResponse({ error: "Your session is invalid or expired. Sign in again." }, 401, origin);
+      if (/^AUTH_/.test(message) || /token|sign-in|signing key/i.test(message)) {
+        const safeMessage = message.replace(/\s+/g, " ").slice(0, 240);
+        return jsonResponse({ error: safeMessage || "AUTH_INVALID: Firebase sign-in token was rejected.", code: "AUTH_INVALID" }, 401, origin);
+      }
       if (/Permission denied/.test(message)) return jsonResponse({ error: message }, 403, origin);
       if (url.pathname.startsWith("/drive/") || url.pathname.startsWith("/attachments")) {
         console.error("Pest Platform attachment request failed:",message.slice(0,300));
