@@ -1581,10 +1581,13 @@ function App(){
         const transaction={...base,id:ref.key,status:transactionStatus,createdBy:currentUser.uid,createdByName:currentUser.fullName||currentUser.username||'',createdAt:firebase.database.ServerValue.TIMESTAMP};
         await ref.set(transaction);
       }
+      let attachmentWarning='';
+      try{if(cashCustodyPendingAttachments.length)await uploadInlineAttachments(cashCustodyPendingAttachments,'cashCustody',currentUser.uid+'--'+transactionId,setCashCustodyPendingAttachments);}
+      catch(attachmentError){attachmentWarning=rtl?' تعذر رفع بعض المرفقات؛ يمكنك إضافتها لاحقاً من الإعدادات ← المرفقات.':' Some attachments could not be uploaded; you can add them later from Settings → Attachments.';setCashCustodyPendingAttachments([]);}
       await addLog((cashCustodyEditingId?'تعديل':'تسجيل')+' حركة عهدة: '+(cashCustodyTypeLabels[cashCustodyForm.type]||cashCustodyForm.type),currentUser,{entityType:'cash-custody',entityId:currentUser.uid+'/'+transactionId,metadata:{amount,currency:base.currency,status:transactionStatus}});
       setCashCustodyEditingId('');
       setCashCustodyForm({type:'expense',date:new Date().toISOString().slice(0,10),amount:'',currency:'EGP',counterparty:'',projectCode:'',reference:'',description:''});
-      setCashCustodyNotice(rtl?(transactionStatus==='approved'?'تم حفظ الحركة واعتمادها.':'تم حفظ الحركة وهي في انتظار الاعتماد.'):(transactionStatus==='approved'?'Movement saved and approved.':'Movement saved and awaiting approval.'));
+      setCashCustodyNotice((rtl?(transactionStatus==='approved'?'تم حفظ الحركة واعتمادها.':'تم حفظ الحركة وهي في انتظار الاعتماد.'):(transactionStatus==='approved'?'Movement saved and approved.':'Movement saved and awaiting approval.'))+attachmentWarning);
     }catch(err){setCashCustodyNotice(firebaseErrorMessage(err,tr));}
     finally{setCashCustodyBusy(false);}
   }
@@ -2193,8 +2196,10 @@ function App(){
         await db.ref(path+'/'+editingMasterCode).remove();
       }
       await db.ref(path+'/'+code).set(record);
+      try{if(masterPendingAttachments.length)await uploadInlineAttachments(masterPendingAttachments,type,code,setMasterPendingAttachments);}
+      catch(attachmentError){setMaster({...record,type});setEditingMasterCode(code);setMasterFormOpen(true);alert((rtl?'تم حفظ البيانات، لكن تعذر رفع بعض المرفقات. أصلح الاتصال ثم اضغط حفظ مرة أخرى لإكمال الرفع.\n':'The record was saved, but some attachments could not be uploaded. Fix the connection and press Save again to finish uploading.\n')+String(attachmentError.message||attachmentError));return;}
       await addLog((editingMasterCode?'تعديل ':'إضافة ')+(type==='client'?'عميل: ':'مورد: ')+name,currentUser,{entityType:type,entityId:code,changes:auditChanges(previousRecord,record),metadata:{oldCode:editingMasterCode||''}});
-      setMaster(blankMaster(type));setEditingMasterCode('');setMasterFormOpen(false);alert(tr('saved'));
+      setMaster(blankMaster(type));setMasterPendingAttachments([]);setEditingMasterCode('');setMasterFormOpen(false);alert(tr('saved'));
     }catch(err){alert(firebaseErrorMessage(err,tr));}
   }
 
@@ -2215,8 +2220,10 @@ function App(){
       const previousRecord=previousSnap?previousSnap.val():null;
       if(!editingProjectCode){const exists=await db.ref('projects/'+code).once('value');if(exists.exists()) return alert(rtl?'كود المشروع موجود بالفعل.':'Project code already exists.');record.createdAt=firebase.database.ServerValue.TIMESTAMP;}
       await db.ref('projects/'+code).update(record);
+      try{if(projectPendingAttachments.length)await uploadInlineAttachments(projectPendingAttachments,'project',code,setProjectPendingAttachments);}
+      catch(attachmentError){setProject({...blankProject(),...record});setEditingProjectCode(code);setProjectFormOpen(true);setSelectedProjectCode(code);alert((rtl?'تم حفظ المشروع، لكن تعذر رفع بعض المرفقات. أصلح الاتصال ثم اضغط حفظ مرة أخرى لإكمال الرفع.\n':'The project was saved, but some attachments could not be uploaded. Fix the connection and press Save again to finish uploading.\n')+String(attachmentError.message||attachmentError));return;}
       await addLog((editingProjectCode?'تعديل ':'إضافة مشروع: ')+name,currentUser,{entityType:'project',entityId:code,changes:auditChanges(previousRecord,{...(previousRecord||{}),...record})});
-      setSelectedProjectCode(code);setProject(blankProject());setEditingProjectCode('');setProjectFormOpen(false);setTab('projectDetail');
+      setSelectedProjectCode(code);setProject(blankProject());setProjectPendingAttachments([]);setEditingProjectCode('');setProjectFormOpen(false);setTab('projectDetail');
       alert(tr('projectAdded'));
     }catch(err){alert(firebaseErrorMessage(err,tr));}
   }
@@ -2248,8 +2255,10 @@ function App(){
       await db.ref('projects/'+code+'/events/'+id).set(event);
       const lifecycleStatus={purchase_request:rtl?'طلب شراء':'Purchase request',supplier_confirmation:rtl?'تأكيد المورد':'Supplier confirmed',goods_received:rtl?'استلام بضاعة':'Goods received',customer_delivery:rtl?'توريد للعميل':'Delivered to customer',project_completed:rtl?'مكتمل':'Completed',project_closed:rtl?'مغلق':'Closed'};
       await db.ref('projects/'+code).update({lastActivityAt:firebase.database.ServerValue.TIMESTAMP,lastActivityType:event.actionCode,...(lifecycleStatus[event.actionCode]?{status:lifecycleStatus[event.actionCode]}:{})});
+      try{if(eventPendingAttachments.length)await uploadInlineAttachments(eventPendingAttachments,'projectEvent',code+'--'+id,setEventPendingAttachments);}
+      catch(attachmentError){setEditingProjectEventId(id);alert((rtl?'تم حفظ الحدث، لكن تعذر رفع بعض المرفقات. أصلح الاتصال ثم اضغط حفظ التعديلات لإكمال الرفع.\n':'The event was saved, but some attachments could not be uploaded. Fix the connection and save the event again to finish uploading.\n')+String(attachmentError.message||attachmentError));return;}
       await addLog((editingProjectEventId?'تعديل ':'إضافة ')+ 'حدث '+event.actionName+' للمشروع '+code,currentUser,{entityType:'project-event',entityId:code+'/'+id,changes:auditChanges(previousEvent,event)});
-      setProjectEvent(blankProjectEvent());setEditingProjectEventId('');
+      setProjectEvent(blankProjectEvent());setEventPendingAttachments([]);setEditingProjectEventId('');
       alert(tr('eventSaved'));
     }catch(err){alert(firebaseErrorMessage(err,tr));}
   }
@@ -2398,10 +2407,13 @@ function App(){
     updates['messages/'+currentUser.uid+'/'+sentId]={...base,id:sentId,recipientUid:recipientUids[0]||'',mailboxUid:currentUser.uid,read:true,copyType:'sent'};
     try{
       await db.ref().update(updates);
+      let attachmentWarning='';
+      try{if(replyPendingAttachments.length)await uploadInlineAttachments(replyPendingAttachments,'message',messageId,setReplyPendingAttachments);}
+      catch(attachmentError){attachmentWarning=rtl?' تعذر رفع بعض مرفقات الرد؛ أضفها لاحقاً من الإعدادات ← المرفقات.':' Some reply attachments could not be uploaded; add them later from Settings → Attachments.';setReplyPendingAttachments([]);}
       await addLog('الرد على رسالة: '+(original.subject||originalMessageId),currentUser,{entityType:'message-reply',entityId:messageId,metadata:{replyToMessageId:originalMessageId,recipientCount:recipients.length,mentionCount:mentionedUsers.length}});
       const whatsappResult=await notifyWhatsAppAfterMessage(messageId);
       cancelMessageReply();
-      alert((rtl?'تم إرسال الرد بنجاح إلى '+recipients.length+' مستخدم.':'Reply sent successfully to '+recipients.length+' user(s).')+whatsappNotificationSummary(whatsappResult));
+      alert((rtl?'تم إرسال الرد بنجاح إلى '+recipients.length+' مستخدم.':'Reply sent successfully to '+recipients.length+' user(s).')+whatsappNotificationSummary(whatsappResult)+attachmentWarning);
     }catch(err){
       alert(firebaseErrorMessage(err,tr)+'\n\n'+(rtl?'تعذر حفظ الرد. تحقق من صلاحيات Firebase Rules للرسائل.':'The reply could not be saved. Check Firebase message rules.'));
     }
@@ -2431,10 +2443,14 @@ function App(){
     setChatSending(true);
     try{
       await db.ref().update(updates);
+      let attachmentWarning='';
+      try{if(chatPendingAttachments.length)await uploadInlineAttachments(chatPendingAttachments,'message',messageId,setChatPendingAttachments);}
+      catch(attachmentError){attachmentWarning=rtl?' تم إرسال المحادثة، لكن تعذر رفع بعض المرفقات؛ أضفها لاحقاً من الإعدادات ← المرفقات.':' Chat sent, but some attachments could not be uploaded; add them later from Settings → Attachments.';setChatPendingAttachments([]);}
       setChatDraft('');
       await addLog('إرسال محادثة سريعة',currentUser,{entityType:'message',entityId:messageId,metadata:{recipientCount:recipients.length,mentionCount:recipients.length,linkedProjectCount:contextRefs.linkedProjects.length,linkedTaskCount:contextRefs.linkedTasks.length,visibility:'private'}});
       const whatsappResult=await notifyWhatsAppAfterMessage(messageId);
       if(whatsappResult&&whatsappResult.error)console.warn('Quick-chat WhatsApp notification:',whatsappResult.error);
+      if(attachmentWarning)alert(attachmentWarning);
     }catch(err){
       alert(firebaseErrorMessage(err,tr)+'\n\n'+(rtl?'تعذر إرسال المحادثة. تحقق من قواعد صلاحيات الرسائل في Firebase.':'Could not send chat message. Check Firebase message permissions.'));
     }finally{
@@ -2472,13 +2488,16 @@ function App(){
     try{
       // Atomic write keeps all recipient inbox copies and the sender's sent copy together.
       await db.ref().update(updates);
+      let attachmentWarning='';
+      try{if(messagePendingAttachments.length)await uploadInlineAttachments(messagePendingAttachments,'message',messageId,setMessagePendingAttachments);}
+      catch(attachmentError){attachmentWarning=rtl?' تم إرسال الرسالة، لكن تعذر رفع بعض المرفقات؛ أعد إرفاقها من الإعدادات ← المرفقات.':' Message sent, but some attachments could not be uploaded; add them later from Settings → Attachments.';setMessagePendingAttachments([]);}
       setMessage({recipients:'',subject:'',body:''});
       setSelectedMessageRecipients([]);
       setMessageRecipientSearch('');
       setMessageMode('direct');
       await addLog(visibility==='public'?'إرسال رسالة عامة لكل المستخدمين':'إرسال رسالة داخلية',currentUser,{entityType:'message',entityId:messageId,metadata:{recipientCount:recipients.length,mentionCount:mentionedUsers.length,visibility}});
       const whatsappResult=await notifyWhatsAppAfterMessage(messageId);
-      alert((rtl?'تم إرسال الرسالة إلى '+recipients.length+' مستخدم.':'Message delivered to '+recipients.length+' user(s).')+whatsappNotificationSummary(whatsappResult));
+      alert((rtl?'تم إرسال الرسالة إلى '+recipients.length+' مستخدم.':'Message delivered to '+recipients.length+' user(s).')+whatsappNotificationSummary(whatsappResult)+attachmentWarning);
     }catch(err){
       alert(firebaseErrorMessage(err,tr)+'\n\n'+(rtl?'قد تحتاج إلى تحديث Firebase Rules للسماح بحفظ نسخة الرسائل المرسلة في صندوق المرسل.':'Firebase Rules may need an update to allow the sender sent-copy record.'));
     }
