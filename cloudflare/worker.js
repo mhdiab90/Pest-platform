@@ -1856,11 +1856,27 @@ const ATTACHMENT_ALLOWED_TYPES={
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":["xlsx"],
   "application/msword":["doc"],"application/vnd.openxmlformats-officedocument.wordprocessingml.document":["docx"]
 };
+function googleDriveConfigurationStatus(env){
+  const clientId=String(env.GOOGLE_DRIVE_CLIENT_ID||"").trim();
+  const clientSecret=String(env.GOOGLE_DRIVE_CLIENT_SECRET||"").trim();
+  const encryptionSecret=String(env.GOOGLE_DRIVE_TOKEN_ENCRYPTION_KEY||"").trim();
+  const missing=[];
+  if(!clientId)missing.push("GOOGLE_DRIVE_CLIENT_ID (Text variable)");
+  if(!clientSecret)missing.push("GOOGLE_DRIVE_CLIENT_SECRET (Secret)");
+  if(!encryptionSecret)missing.push("GOOGLE_DRIVE_TOKEN_ENCRYPTION_KEY (Secret)");
+  else{
+    try{if(decodeBase64Url(encryptionSecret).length!==32)missing.push("GOOGLE_DRIVE_TOKEN_ENCRYPTION_KEY (must decode to exactly 32 bytes)");}
+    catch(_){missing.push("GOOGLE_DRIVE_TOKEN_ENCRYPTION_KEY (invalid Base64 value)");}
+  }
+  if(!env.AI_AGENT_SCHEDULER)missing.push("AI_AGENT_SCHEDULER (Durable Object binding)");
+  return {ready:missing.length===0,missing,clientIdConfigured:Boolean(clientId),clientSecretConfigured:Boolean(clientSecret),encryptionKeyConfigured:Boolean(encryptionSecret),metadataBindingConfigured:Boolean(env.AI_AGENT_SCHEDULER)};
+}
 function googleDriveConfig(env){
   const clientId=String(env.GOOGLE_DRIVE_CLIENT_ID||"").trim();
   const clientSecret=String(env.GOOGLE_DRIVE_CLIENT_SECRET||"").trim();
   const encryptionSecret=String(env.GOOGLE_DRIVE_TOKEN_ENCRYPTION_KEY||"").trim();
-  if(!clientId||!clientSecret||!encryptionSecret||!env.AI_AGENT_SCHEDULER)throw new Error("Google Drive is not configured. Set GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET, GOOGLE_DRIVE_TOKEN_ENCRYPTION_KEY and AI_AGENT_SCHEDULER in Cloudflare.");
+  const setup=googleDriveConfigurationStatus(env);
+  if(!setup.ready)throw new Error("Google Drive setup is incomplete. Missing or invalid Cloudflare configuration: "+setup.missing.join("; ")+".");
   return {clientId,clientSecret,encryptionSecret};
 }
 async function googleDriveCryptoKey(env){
@@ -2026,9 +2042,13 @@ async function handleGoogleDriveOAuthCallback(request,env){
 async function handleGoogleDriveRequest(request,url,body,claims,profile,token,env){
   if(url.pathname==="/drive/status"&&request.method==="GET"){
     requirePermission(profile,"attachments","view");
-    const connection=await getGoogleDriveConnection(env);
-    const storage=await driveStorageRequest(env,"/attachment-usage","GET");
-    return {workerVersion:"firebase-auth-refresh-20261110-3",configured:Boolean(env.GOOGLE_DRIVE_CLIENT_ID&&env.GOOGLE_DRIVE_CLIENT_SECRET&&env.GOOGLE_DRIVE_TOKEN_ENCRYPTION_KEY&&env.AI_AGENT_SCHEDULER),connected:Boolean(connection&&connection.encryptedRefreshToken),googleEmail:connection&&connection.googleEmail||"",folderReady:Boolean(connection&&connection.folderId),storage,maxFileBytes:ATTACHMENT_MAX_FILE_BYTES,softLimitBytes:ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES};
+    const configuration=googleDriveConfigurationStatus(env);
+    let connection=null,storage={usedBytes:0,attachmentCount:0,limitBytes:ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES},metadataStorageError="";
+    if(env.AI_AGENT_SCHEDULER){
+      try{connection=await getGoogleDriveConnection(env);storage=await driveStorageRequest(env,"/attachment-usage","GET");}
+      catch(error){metadataStorageError=String(error.message||error).slice(0,240);}
+    }else metadataStorageError="AI_AGENT_SCHEDULER Durable Object binding is missing.";
+    return {workerVersion:"cash-custody-preupload-20261110-4",configured:configuration.ready,configurationMissing:configuration.missing,configuration,metadataStorageError,connected:Boolean(connection&&connection.encryptedRefreshToken),googleEmail:connection&&connection.googleEmail||"",folderReady:Boolean(connection&&connection.folderId),storage,maxFileBytes:ATTACHMENT_MAX_FILE_BYTES,softLimitBytes:ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES};
   }
   if(url.pathname==="/drive/connect"&&request.method==="POST"){
     if(profile.role!=="admin")throw new Error("Only a system administrator can connect the company Google Drive account.");
