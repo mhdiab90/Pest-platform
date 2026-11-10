@@ -340,6 +340,14 @@ function App(){
   const [whatsappContactFilter,setWhatsappContactFilter] = useState('all');
   const [whatsappDrafts,setWhatsappDrafts] = useState([]);
   const [whatsappApiReady,setWhatsappApiReady] = useState(false);
+  const [attachmentEntityType,setAttachmentEntityType] = useState('project');
+  const [attachmentEntityId,setAttachmentEntityId] = useState('');
+  const [attachmentsList,setAttachmentsList] = useState([]);
+  const [attachmentsBusy,setAttachmentsBusy] = useState(false);
+  const [attachmentUploadBusy,setAttachmentUploadBusy] = useState(false);
+  const [attachmentsNotice,setAttachmentsNotice] = useState('');
+  const [driveConnectionStatus,setDriveConnectionStatus] = useState({loading:false,configured:false,connected:false,googleEmail:'',storage:{usedBytes:0,limitBytes:14*1024*1024*1024}});
+  const [attachmentPreview,setAttachmentPreview] = useState(null);
   const [tab,setTab] = useState('dashboard');
   const [navPreferences,setNavPreferences] = useState({uid:'',mode:'side',recent:[]});
   const [sidebarWidth,setSidebarWidth] = useState(()=>{const saved=Number(localStorage.getItem('pestSidebarWidth'));return Number.isFinite(saved)&&saved>=210&&saved<=440?saved:260;});
@@ -799,11 +807,93 @@ function App(){
   const omarUsername=String(currentUser?.username||'').trim().toLowerCase();
   const omarEmailLocal=String(currentUser?.email||'').split('@')[0].trim().toLowerCase();
   const isOmarProjectUser=omarUsername==='omar'||omarEmailLocal==='omar'||String(currentUser?.fullName||'').trim().toLowerCase()==='omar';
-  const permissionModules=[{id:'dashboard',label:rtl?'لوحة التحكم':'Dashboard'},{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors'},{id:'projects',label:rtl?'المشروعات وملفاتها':'Projects & Project files'},{id:'statement',label:rtl?'التدفقات النقدية':'Cash flow'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody'},{id:'reports',label:rtl?'التقارير':'Reports'},{id:'messages',label:rtl?'الرسائل وWhatsApp':'Messages & WhatsApp'},{id:'tasks',label:rtl?'المهام':'Tasks'},{id:'aiAgent',label:rtl?'المساعد الذكي (استخدام)':'AI Agent (Use)'},{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data'}];
+  const permissionModules=[{id:'dashboard',label:rtl?'لوحة التحكم':'Dashboard'},{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors'},{id:'projects',label:rtl?'المشروعات وملفاتها':'Projects & Project files'},{id:'attachments',label:rtl?'المرفقات':'Attachments'},{id:'statement',label:rtl?'التدفقات النقدية':'Cash flow'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody'},{id:'reports',label:rtl?'التقارير':'Reports'},{id:'messages',label:rtl?'الرسائل وWhatsApp':'Messages & WhatsApp'},{id:'tasks',label:rtl?'المهام':'Tasks'},{id:'aiAgent',label:rtl?'المساعد الذكي (استخدام)':'AI Agent (Use)'},{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data'}];
   const permissionActions=[{id:'view',label:rtl?'عرض':'View'},{id:'add',label:rtl?'إضافة':'Add'},{id:'edit',label:rtl?'تعديل':'Edit'},{id:'delete',label:rtl?'حذف':'Delete'},{id:'approve',label:rtl?'اعتماد':'Approve'},{id:'export',label:rtl?'تصدير':'Export'},{id:'manage',label:rtl?'إدارة':'Manage'},{id:'viewOthers',label:rtl?'عرض عهد الآخرين':'View others'}];
   const hasPermission=(moduleId,action='view')=>isAdmin||moduleId==='profile'&&action==='view'||(isOmarProjectUser&&moduleId==='projects'&&['view','add','edit'].includes(action))||moduleId==='cashCustody'&&['view','add','edit'].includes(action)&&currentUser?.permissions?.cashCustody?.[action]!==false||currentUser?.permissions?.[moduleId]?.[action]===true;
   const canAccessTab=tabId=>['companySettings','aiSettings','userRequests','userPermissions','userManagement'].includes(tabId)?Boolean(isAdmin):hasPermission(tabId==='projectDetail'?'projects':tabId,'view');
   const requirePermission=(moduleId,action)=>{if(hasPermission(moduleId,action))return true;alert(rtl?'ليس لديك صلاحية لتنفيذ هذه العملية. يرجى مراجعة مدير النظام.':'You do not have permission to perform this action. Contact your administrator.');return false;};
+  async function attachmentWorkerRequest(path,method='GET',body,extraHeaders={},rawBody=false,asBlob=false){
+    const user=window.PEST_FIREBASE_AUTH?.currentUser||auth.currentUser;
+    if(!user)throw new Error(rtl?'سجّل الدخول أولاً.':'Sign in first.');
+    const idToken=await user.getIdToken();
+    const headers={'Authorization':'Bearer '+idToken,...(extraHeaders||{})};
+    const options={method,headers,cache:'no-store'};
+    if(body!==undefined){if(rawBody)options.body=body;else{headers['Content-Type']='application/json';options.body=JSON.stringify(body);}}
+    const response=await fetch('https://pest-platform.ai-mhdiab90.workers.dev'+path,options);
+    if(!response.ok){let payload={};try{payload=await response.json();}catch(_){}throw new Error(payload.error||('Attachment service returned HTTP '+response.status+'.'));}
+    return asBlob?response.blob():response.json();
+  }
+  async function refreshDriveConnectionStatus(){
+    if(!hasPermission('attachments','view'))return;
+    setDriveConnectionStatus(old=>({...old,loading:true}));
+    try{const status=await attachmentWorkerRequest('/drive/status','GET');setDriveConnectionStatus({...status,loading:false});}
+    catch(error){setDriveConnectionStatus(old=>({...old,loading:false,error:String(error.message||error)}));}
+  }
+  async function refreshAttachmentList(){
+    if(!attachmentEntityId||!hasPermission('attachments','view')){setAttachmentsList([]);return;}
+    setAttachmentsBusy(true);setAttachmentsNotice('');
+    try{const result=await attachmentWorkerRequest('/attachments?entityType='+encodeURIComponent(attachmentEntityType)+'&entityId='+encodeURIComponent(attachmentEntityId),'GET');setAttachmentsList(result.attachments||[]);}
+    catch(error){setAttachmentsList([]);setAttachmentsNotice(String(error.message||error));}
+    finally{setAttachmentsBusy(false);}
+  }
+  async function startGoogleDriveConnection(){
+    if(!isAdmin)return;
+    const popup=window.open('about:blank','_blank');if(popup)popup.opener=null;
+    try{const result=await attachmentWorkerRequest('/drive/connect','POST',{});if(popup)popup.location=result.authorizationUrl;else window.location.href=result.authorizationUrl;}
+    catch(error){if(popup)popup.close();setAttachmentsNotice(String(error.message||error));}
+  }
+  async function disconnectGoogleDrive(){
+    if(!isAdmin||!window.confirm(rtl?'هل تريد فصل حساب Google Drive؟ لن يتم حذف الملفات من Drive.':'Disconnect Google Drive? Existing files will remain in Drive.'))return;
+    setAttachmentsBusy(true);
+    try{await attachmentWorkerRequest('/drive/disconnect','POST',{});await refreshDriveConnectionStatus();setAttachmentsNotice(rtl?'تم فصل الحساب. الملفات ما زالت محفوظة في Google Drive.':'Drive disconnected. Existing files remain in Google Drive.');}
+    catch(error){setAttachmentsNotice(String(error.message||error));}
+    finally{setAttachmentsBusy(false);}
+  }
+  async function uploadAttachments(event){
+    const input=event.target,files=Array.from(input.files||[]);if(!files.length)return;
+    if(!requirePermission('attachments','add')){input.value='';return;}
+    setAttachmentUploadBusy(true);setAttachmentsNotice('');
+    try{
+      for(const file of files){
+        if(file.size>20*1024*1024)throw new Error((rtl?'الملف أكبر من 20 MB: ':'File exceeds 20 MB: ')+file.name);
+        await attachmentWorkerRequest('/attachments/upload','POST',file,{
+          'Content-Type':file.type||'application/octet-stream',
+          'X-Attachment-Entity-Type':attachmentEntityType,
+          'X-Attachment-Entity-Id':attachmentEntityId,
+          'X-Attachment-File-Name':encodeURIComponent(file.name)
+        },true,false);
+      }
+      await refreshAttachmentList();await refreshDriveConnectionStatus();
+      setAttachmentsNotice(rtl?'تم رفع الملفات بنجاح.':'Files uploaded successfully.');
+      await addLog('رفع مرفقات: '+attachmentEntityType+' / '+attachmentEntityId);
+    }catch(error){setAttachmentsNotice(String(error.message||error));}
+    finally{setAttachmentUploadBusy(false);input.value='';}
+  }
+  async function openAttachmentFile(attachment,download=false){
+    setAttachmentsBusy(true);setAttachmentsNotice('');
+    try{
+      const path='/attachments/file?entityType='+encodeURIComponent(attachmentEntityType)+'&entityId='+encodeURIComponent(attachmentEntityId)+'&id='+encodeURIComponent(attachment.id);
+      const blob=await attachmentWorkerRequest(path,'GET',undefined,{},false,true),objectUrl=URL.createObjectURL(blob);
+      if(!download&&['application/pdf','image/jpeg','image/png','image/webp','text/plain','text/csv'].includes(attachment.mimeType))setAttachmentPreview({url:objectUrl,fileName:attachment.fileName,mimeType:attachment.mimeType});
+      else{const link=document.createElement('a');link.href=objectUrl;link.download=attachment.fileName;document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(objectUrl),60000);}
+    }catch(error){setAttachmentsNotice(String(error.message||error));}
+    finally{setAttachmentsBusy(false);}
+  }
+  async function deleteAttachment(attachment){
+    if(!requirePermission('attachments','delete'))return;
+    if(!window.confirm((rtl?'هل تريد حذف المرفق ':'Delete attachment ')+attachment.fileName+'؟'))return;
+    setAttachmentsBusy(true);setAttachmentsNotice('');
+    try{
+      await attachmentWorkerRequest('/attachments','DELETE',{id:attachment.id,entityType:attachmentEntityType,entityId:attachmentEntityId});
+      await refreshAttachmentList();await refreshDriveConnectionStatus();
+      setAttachmentsNotice(rtl?'تم حذف المرفق من البرنامج وGoogle Drive.':'Attachment deleted from the app and Google Drive.');
+      await addLog('حذف مرفق: '+attachment.fileName);
+    }catch(error){setAttachmentsNotice(String(error.message||error));}
+    finally{setAttachmentsBusy(false);}
+  }
+  useEffect(()=>{if(tab==='attachments'&&currentUser)void refreshDriveConnectionStatus();},[tab,currentUser?.uid]);
+  useEffect(()=>{if(tab==='attachments'&&currentUser)void refreshAttachmentList();},[tab,attachmentEntityType,attachmentEntityId,currentUser?.uid]);
+  useEffect(()=>()=>{if(attachmentPreview?.url)URL.revokeObjectURL(attachmentPreview.url);},[attachmentPreview?.url]);
   const money=n=>new Intl.NumberFormat(rtl?'ar-EG-u-nu-latn':'en-US',{numberingSystem:'latn',minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n||0));
   function latinDigits(value){
     return String(value??'').replace(/[٠-٩]/g,d=>String(d.charCodeAt(0)-0x660)).replace(/[۰-۹]/g,d=>String(d.charCodeAt(0)-0x6f0));
@@ -2711,7 +2801,7 @@ function App(){
 
   const navGroups=[
     {id:'dashboard',label:tr('dashboard'),icon:'fa-gauge',tab:'dashboard'},
-    {id:'masterGroup',label:tr('master'),icon:'fa-database',children:[{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors',icon:'fa-address-book'}]},
+    {id:'masterGroup',label:tr('master'),icon:'fa-database',children:[{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors',icon:'fa-address-book'},{id:'attachments',label:rtl?'المرفقات':'Attachments',icon:'fa-paperclip'}]},
     {id:'projectsGroup',label:tr('projects'),icon:'fa-diagram-project',children:[{id:'projects',label:rtl?'قائمة المشروعات':'Project list',icon:'fa-list'},...(selectedProjectCode?[{id:'projectDetail',label:rtl?'ملف المشروع الحالي':'Current project file',icon:'fa-folder-open'}]:[])]},
     {id:'financeGroup',label:rtl?'المالية':'Finance',icon:'fa-coins',children:[{id:'statement',label:tr('statement'),icon:'fa-file-invoice-dollar'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody',icon:'fa-wallet'},{id:'reports',label:tr('reportCenter'),icon:'fa-chart-pie'}]},
     {id:'communicationGroup',label:rtl?'التواصل والمهام':'Communication & Tasks',icon:'fa-comments',children:[{id:'messages',label:tr('messages'),icon:'fa-envelope'},{id:'tasks',label:rtl?'المهام':'Tasks',icon:'fa-list-check'}]},
@@ -2719,7 +2809,7 @@ function App(){
     ...(isAdmin?[{id:'adminGroup',label:rtl?'إدارة النظام':'Administration',icon:'fa-user-shield',children:[{id:'userRequests',label:tr('requestsReport'),icon:'fa-user-clock'},{id:'userManagement',label:rtl?'إدارة بيانات المستخدمين':'User Management',icon:'fa-users-gear'},{id:'userPermissions',label:rtl?'صلاحيات المستخدمين':'User Permissions',icon:'fa-user-lock'},{id:'auditLogs',label:rtl?'سجل نشاط المستخدمين':'User Activity Log',icon:'fa-clipboard-list'}]}]:[])
   ];
   useEffect(()=>{if(currentUser) void addLog('فتح الشاشة: '+String(tab||'dashboard'));},[tab,currentUser?.uid]);
-  const navGroupByTab={master:'masterGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',cashCustody:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',aiSettings:'settingsGroup',userRequests:'adminGroup',userManagement:'adminGroup',userPermissions:'adminGroup',auditLogs:'adminGroup'};
+  const navGroupByTab={master:'masterGroup',attachments:'masterGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',cashCustody:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',aiSettings:'settingsGroup',userRequests:'adminGroup',userManagement:'adminGroup',userPermissions:'adminGroup',auditLogs:'adminGroup'};
   const visibleNavGroups=navGroups.map(group=>group.tab?group:({...group,children:(group.children||[]).filter(item=>canAccessTab(item.id))})).filter(group=>group.tab?canAccessTab(group.tab):(group.children||[]).length>0);
   const navCatalog=visibleNavGroups.flatMap(group=>group.tab?[{id:group.tab,label:group.label,icon:group.icon}]:((group.children||[]).map(item=>({...item}))));
   const navMode=navPreferences.uid===(currentUser&&currentUser.uid)?navPreferences.mode:'side';
@@ -2980,6 +3070,99 @@ function App(){
         </div>}
 
 
+        {tab==='attachments'&&<div className="space-y-5 max-w-6xl">
+          {(()=>{
+            const typeOptions=[
+              ...(hasPermission('projects','view')?[{id:'project',label:rtl?'مشروع':'Project'}]:[]),
+              ...(hasPermission('master','view')?[{id:'client',label:rtl?'عميل':'Customer'},{id:'vendor',label:rtl?'مورد':'Supplier'}]:[]),
+              ...(hasPermission('tasks','view')?[{id:'task',label:rtl?'مهمة':'Task'}]:[]),
+              ...(hasPermission('messages','view')?[{id:'message',label:rtl?'رسالة':'Message'}]:[]),
+              ...((hasPermission('reports','view')||hasPermission('dashboard','view')||hasPermission('statement','view'))?[{id:'financial',label:rtl?'مستند مالي':'Financial record'}]:[]),
+              ...(isAdmin?[{id:'company',label:rtl?'ملفات الشركة العامة':'Company files'}]:[])
+            ];
+            const targets=attachmentEntityType==='project'?projects.map(x=>({id:x.code,label:(x.name||x.code)+' · '+x.code})):
+              attachmentEntityType==='client'?clients.map(x=>({id:x.code,label:(x.name||x.code)+' · '+x.code})):
+              attachmentEntityType==='vendor'?vendors.map(x=>({id:x.code,label:(x.name||x.code)+' · '+x.code})):
+              attachmentEntityType==='task'?tasks.map(x=>({id:x.id,label:x.title||x.name||x.id})):
+              attachmentEntityType==='message'?messages.map(x=>({id:x.id||x.messageId,label:x.subject||x.id||x.messageId})):
+              attachmentEntityType==='financial'?[
+                ...quotes.map(x=>({id:'quote_'+x.id,label:(rtl?'عرض سعر: ':'Quotation: ')+(x.projectName||x.projectCode||x.id)})),
+                ...inflows.map(x=>({id:'inflow_'+x.id,label:(rtl?'تحصيل: ':'Collection: ')+(x.projectName||x.projectCode||x.id)})),
+                ...outflows.map(x=>({id:'outflow_'+x.id,label:(rtl?'مدفوعات: ':'Payment: ')+(x.projectName||x.projectCode||x.id)}))
+              ]:[{id:'company',label:companyInfo.name||tr('app')}];
+            const sizeText=value=>{const n=Number(value||0);return n>=1073741824?(n/1073741824).toFixed(2)+' GB':n>=1048576?(n/1048576).toFixed(2)+' MB':n>=1024?(n/1024).toFixed(1)+' KB':n+' B';};
+            const used=Number(driveConnectionStatus.storage?.usedBytes||0),limit=Number(driveConnectionStatus.storage?.limitBytes||14*1024*1024*1024),percent=limit?Math.min(100,used/limit*100):0;
+            const formatIcon=mime=>mime==='application/pdf'?'fa-file-pdf':mime.startsWith('image/')?'fa-file-image':mime.includes('spreadsheet')||mime.includes('excel')?'fa-file-excel':mime.includes('word')?'fa-file-word':mime.includes('csv')?'fa-file-csv':'fa-file-lines';
+            return <>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div><h2 className="font-bold text-xl">{rtl?'إدارة المرفقات':'Attachments'}</h2><p className="text-sm text-gray-500 mt-1">{rtl?'ارفع ملفات المشروعات والعملاء والموردين والمستندات المالية واعرضها من داخل البرنامج.':'Upload and preview project, customer, supplier and financial documents inside the application.'}</p></div>
+                <button type="button" onClick={()=>{void refreshDriveConnectionStatus();void refreshAttachmentList();}} disabled={driveConnectionStatus.loading||attachmentsBusy} className="rounded-lg border px-4 py-2 text-sm font-bold hover:bg-slate-50"><i className="fas fa-rotate me-2"></i>{rtl?'تحديث':'Refresh'}</button>
+              </div>
+              <section className="bg-white border rounded-xl p-4 sm:p-5 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div><h3 className="font-bold">{rtl?'اتصال مساحة Google Drive':'Google Drive storage connection'}</h3><p className="text-xs text-gray-500 mt-1">{rtl?'مساحة الشركة المشتركة، مع وصول خاص حسب صلاحيات كل مستخدم.':'Shared company storage with access controlled by each user’s permissions.'}</p></div>
+                  {driveConnectionStatus.connected?<span className="rounded-full bg-emerald-50 text-emerald-700 px-3 py-1 text-xs font-bold"><i className="fas fa-check-circle me-1"></i>{rtl?'متصل':'Connected'}</span>:<span className="rounded-full bg-amber-50 text-amber-700 px-3 py-1 text-xs font-bold">{rtl?'غير متصل':'Not connected'}</span>}
+                </div>
+                {driveConnectionStatus.connected?
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 flex flex-wrap items-center justify-between gap-3"><div><b className="text-emerald-900">{driveConnectionStatus.googleEmail||'Google Drive'}</b><p className="text-xs text-emerald-800 mt-1">{rtl?'حساب التخزين المتصل بالشركة':'Company storage account'}</p></div>{isAdmin&&<button type="button" disabled={attachmentsBusy} onClick={disconnectGoogleDrive} className="rounded-lg bg-white border border-emerald-300 px-3 py-2 text-sm text-rose-700 font-bold">{rtl?'فصل الحساب':'Disconnect'}</button>}</div>:
+                  <div className="space-y-3">
+                    {isAdmin?<><div className="rounded-lg bg-slate-50 border p-3 text-sm space-y-2">
+                      <b>{rtl?'إعداد أول مرة – مطلوب من مدير النظام':'One-time setup – system administrator'}</b>
+                      <ol className="list-decimal ps-5 space-y-1 text-gray-700">
+                        <li>{rtl?'افتح Google Cloud وأنشئ مشروعاً، ثم فعّل Google Drive API.':'Create a Google Cloud project and enable the Google Drive API.'} <a className="text-blue-700 underline" target="_blank" rel="noopener noreferrer" href="https://console.cloud.google.com/apis/library/drive.googleapis.com">Google Drive API</a></li>
+                        <li>{rtl?'اضبط OAuth Consent Screen كـ External وأضف بيانات التطبيق، ثم اجعل النشر In production حتى لا تنتهي صلاحية Refresh Token بعد 7 أيام في وضع Testing.':'Configure the OAuth consent screen as External and publish it to Production; Testing refresh tokens expire after 7 days.'} <a className="text-blue-700 underline" target="_blank" rel="noopener noreferrer" href="https://console.cloud.google.com/auth/overview">OAuth setup</a></li>
+                        <li>{rtl?'أنشئ OAuth Client ID من نوع Web application، وأضف رابط الرجوع التالي كما هو:':'Create an OAuth Client ID for a Web application and add this exact redirect URI:'}<code dir="ltr" className="block break-all bg-white border rounded p-2 mt-1 text-xs">https://pest-platform.ai-mhdiab90.workers.dev/drive/oauth/callback</code></li>
+                        <li>{rtl?'في Cloudflare Worker pest-platform أضف المتغيرات والأسرار المذكورة أدناه، ثم انشر Worker.':'Add the variables and secrets below to the pest-platform Cloudflare Worker, then deploy it.'}</li>
+                      </ol>
+                      <div className="border-t pt-2 space-y-1"><b>{rtl?'متغيرات وأسرار Cloudflare المطلوبة':'Required Cloudflare variables and secrets'}</b>
+                        <p><code>GOOGLE_DRIVE_CLIENT_ID</code> — {rtl?'Variable من Google OAuth Client':'Google OAuth Client ID variable'}</p>
+                        <p><code>GOOGLE_DRIVE_CLIENT_SECRET</code> — {rtl?'Secret من Google OAuth Client':'Google OAuth Client secret'}</p>
+                        <p><code>GOOGLE_DRIVE_TOKEN_ENCRYPTION_KEY</code> — {rtl?'Secret عشوائي 32 بايت مشفر Base64':'Random 32-byte base64 secret'}</p>
+                        <p className="text-xs text-gray-500">{rtl?'لا تضع أي Secret في GitHub أو Firebase أو واجهة البرنامج.':'Never put secrets in GitHub, Firebase or browser code.'}</p>
+                      </div>
+                    </div>
+                    {driveConnectionStatus.configured?<button type="button" onClick={startGoogleDriveConnection} className="rounded-lg bg-blue-600 text-white px-5 py-3 font-bold"><i className="fab fa-google me-2"></i>{rtl?'ربط حساب Google Drive':'Connect Google Drive account'}</button>:<p className="text-sm text-amber-800">{rtl?'لم يتم ضبط مفاتيح OAuth في Cloudflare Worker بعد.':'Google OAuth credentials are not configured in the Cloudflare Worker yet.'}</p>}</>:<p className="text-sm text-amber-800">{rtl?'لم يربط مدير النظام حساب Google Drive بعد.':'The system administrator has not connected Google Drive yet.'}</p>}
+                  </div>}
+                {driveConnectionStatus.connected&&<div className="space-y-2">
+                  <div className="flex justify-between text-xs text-gray-600"><span>{rtl?'استهلاك مرفقات البرنامج':'App attachment usage'}</span><b dir="ltr">{sizeText(used)} / {sizeText(limit)}</b></div>
+                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-blue-600 rounded-full" style={{width:percent+'%'}}></div></div>
+                  <p className="text-xs text-gray-500">{rtl?'حد داخلي 14 GB للمرفقات. حساب Google المجاني يوفر 15 GB مشتركة مع Gmail وGoogle Photos، وقد تقل المساحة المتاحة فعلياً حسب استخدام الحساب.':'Internal 14 GB attachment cap. Google’s free 15 GB is shared with Gmail and Google Photos, so actual available space may be lower.'}</p>
+                </div>}
+              </section>
+              {driveConnectionStatus.connected&&<>
+                <section className="bg-white border rounded-xl p-4 sm:p-5 space-y-3">
+                  <h3 className="font-bold">{rtl?'اختر السجل المرتبط بالمرفقات':'Choose the record linked to these files'}</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label className="text-sm font-bold">{rtl?'نوع السجل':'Record type'}<select className="block w-full mt-1 border rounded-lg p-3 font-normal" value={attachmentEntityType} onChange={e=>{const next=e.target.value;setAttachmentEntityType(next);setAttachmentEntityId(next==='company'?'company':'');setAttachmentsList([]);}}>{typeOptions.map(x=><option key={x.id} value={x.id}>{x.label}</option>)}</select></label>
+                    <label className="text-sm font-bold">{rtl?'السجل':'Record'}{attachmentEntityType==='company'?<input className="block w-full mt-1 border rounded-lg p-3 font-normal bg-slate-50" disabled value={companyInfo.name||tr('app')}/>:<select className="block w-full mt-1 border rounded-lg p-3 font-normal" value={attachmentEntityId} onChange={e=>setAttachmentEntityId(e.target.value)}><option value="">{rtl?'اختر السجل':'Select a record'}</option>{targets.map(x=><option key={x.id} value={x.id}>{x.label}</option>)}</select>}</label>
+                  </div>
+                  {!attachmentEntityId&&attachmentEntityType!=='company'&&<p className="text-xs text-amber-700">{rtl?'اختر سجلاً لعرض أو رفع مرفقاته.':'Select a record to view or upload its attachments.'}</p>}
+                  {attachmentEntityId&&hasPermission('attachments','add')&&<div className="rounded-lg border border-dashed border-blue-300 bg-blue-50/50 p-4">
+                    <label className={'inline-flex items-center gap-2 rounded-lg px-4 py-3 font-bold text-white '+(attachmentUploadBusy?'bg-slate-400':'bg-blue-600 cursor-pointer')}>
+                      <i className="fas fa-cloud-arrow-up"></i>{attachmentUploadBusy?(rtl?'جارٍ رفع الملفات...':'Uploading files...'):(rtl?'اختيار ملفات للرفع':'Choose files to upload')}
+                      <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt" className="hidden" disabled={attachmentUploadBusy} onChange={uploadAttachments}/>
+                    </label>
+                    <p className="text-xs text-gray-500 mt-2">{rtl?'الحد الأقصى 20 MB للملف. الصيغ: PDF، صور، Word، Excel، CSV وTXT.':'Maximum 20 MB per file. Formats: PDF, images, Word, Excel, CSV and TXT.'}</p>
+                  </div>}
+                </section>
+                <section className="bg-white border rounded-xl p-4 sm:p-5 space-y-3">
+                  <div className="flex items-center justify-between gap-3"><h3 className="font-bold">{rtl?'ملفات السجل':'Record attachments'}</h3><span className="text-xs text-gray-500">{attachmentsList.length} {rtl?'ملف':'files'}</span></div>
+                  {attachmentsBusy?<p className="text-sm text-gray-500">{rtl?'جارٍ تحميل المرفقات...':'Loading attachments...'}</p>:attachmentsList.length===0?<p className="text-sm text-gray-500 py-6 text-center">{rtl?'لا توجد مرفقات لهذا السجل حتى الآن.':'No attachments are linked to this record yet.'}</p>:<div className="divide-y">{attachmentsList.map(item=><div key={item.id} className="py-3 flex flex-wrap items-center gap-3">
+                    <div className="w-11 h-11 rounded-lg bg-slate-100 text-slate-600 grid place-items-center"><i className={'fas '+formatIcon(item.mimeType)+' text-xl'}></i></div>
+                    <div className="flex-1 min-w-0"><b className="block truncate">{item.fileName}</b><p className="text-xs text-gray-500 mt-1">{sizeText(item.fileSize)} · {item.createdByName||'—'} · {item.createdAt?new Date(item.createdAt).toLocaleString(rtl?'ar-EG':'en-GB'):'—'}</p></div>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" disabled={attachmentsBusy} onClick={()=>openAttachmentFile(item,false)} className="rounded-lg bg-blue-50 text-blue-700 px-3 py-2 text-sm font-bold"><i className="fas fa-eye me-1"></i>{rtl?'عرض':'View'}</button>
+                      <button type="button" disabled={attachmentsBusy} onClick={()=>openAttachmentFile(item,true)} className="rounded-lg bg-slate-100 text-slate-700 px-3 py-2 text-sm font-bold"><i className="fas fa-download me-1"></i>{rtl?'تنزيل':'Download'}</button>
+                      {hasPermission('attachments','delete')&&<button type="button" disabled={attachmentsBusy} onClick={()=>deleteAttachment(item)} className="rounded-lg bg-rose-50 text-rose-700 px-3 py-2 text-sm font-bold"><i className="fas fa-trash me-1"></i>{rtl?'حذف':'Delete'}</button>}
+                    </div>
+                  </div>)}</div>}
+                </section>
+              </>}
+              {attachmentsNotice&&<div className="rounded-lg border bg-slate-50 p-3 text-sm text-slate-700">{attachmentsNotice}</div>}
+              {attachmentPreview&&<div className="fixed inset-0 z-[160] bg-slate-950/75 flex items-center justify-center p-2 sm:p-5" role="dialog" aria-modal="true" onMouseDown={e=>{if(e.target===e.currentTarget)setAttachmentPreview(null);}}><section className="w-full max-w-6xl h-[92vh] bg-white rounded-xl overflow-hidden flex flex-col"><header className="p-3 border-b flex items-center justify-between gap-2"><b className="truncate">{attachmentPreview.fileName}</b><button type="button" onClick={()=>setAttachmentPreview(null)} className="w-10 h-10 rounded-lg bg-slate-100" aria-label={rtl?'إغلاق':'Close'}><i className="fas fa-times"></i></button></header><div className="flex-1 bg-slate-100 overflow-auto grid place-items-center">{attachmentPreview.mimeType==='application/pdf'?<iframe title={attachmentPreview.fileName} src={attachmentPreview.url} className="w-full h-full bg-white"></iframe>:attachmentPreview.mimeType.startsWith('image/')?<img src={attachmentPreview.url} alt={attachmentPreview.fileName} className="max-w-full max-h-full object-contain"/>:<iframe title={attachmentPreview.fileName} src={attachmentPreview.url} className="w-full h-full bg-white"></iframe>}</div></section></div>}
+            </>;
+          })()}
+        </div>}
         {tab==='projects'&&<div className="space-y-5">
           <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="font-bold text-xl">{tr('projects')}</h2><input className="border rounded-lg p-2 min-w-64" placeholder={tr('searchAll')} value={projectFilter} onChange={e=>setProjectFilter(e.target.value)}/></div>
           <section className="bg-white p-5 rounded-xl border"><div className="flex flex-wrap justify-between items-center gap-3 mb-3"><h3 className="font-bold">{editingProjectCode?(rtl?'تعديل المشروع':'Edit project'):(rtl?'إضافة مشروع جديد':'Add new project')}</h3><button type="button" aria-expanded={projectFormOpen} onClick={()=>setProjectFormOpen(old=>!old)} className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-bold"><i className={projectFormOpen?'fas fa-chevron-up me-2':'fas fa-chevron-down me-2'}></i>{projectFormOpen?(rtl?'طي النموذج':'Collapse form'):(rtl?'فتح النموذج':'Expand form')}</button></div>{projectFormOpen&&<form onSubmit={addProject} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
