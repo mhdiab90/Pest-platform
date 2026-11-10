@@ -353,6 +353,8 @@ function App(){
   const [replyPendingAttachments,setReplyPendingAttachments] = useState([]);
   const [chatPendingAttachments,setChatPendingAttachments] = useState([]);
   const [cashCustodyPendingAttachments,setCashCustodyPendingAttachments] = useState([]);
+  const [cashCustodyAttachmentTargetId,setCashCustodyAttachmentTargetId] = useState('');
+  const [inlineAttachmentStatuses,setInlineAttachmentStatuses] = useState({});
   const [attachmentsBusy,setAttachmentsBusy] = useState(false);
   const [attachmentUploadBusy,setAttachmentUploadBusy] = useState(false);
   const [attachmentsNotice,setAttachmentsNotice] = useState('');
@@ -859,11 +861,55 @@ function App(){
     const map={pdf:'application/pdf',jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',webp:'image/webp',txt:'text/plain',csv:'text/csv',xls:'application/vnd.ms-excel',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',doc:'application/msword',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'};
     return map[ext]||file?.type||'application/octet-stream';
   }
-  function renderInlineAttachmentPicker(files,setFiles,spanClass='md:col-span-2 xl:col-span-3'){
+  const inlineAttachmentStatusKey=(entityType,entityId,file)=>[entityType||'generic',entityId||'pending',file.name,file.size,file.lastModified].join('::');
+  async function previewInlineAttachment(file){
+    try{
+      const mime=attachmentMimeType(file),name=file.name||'Attachment';
+      if(mime==='application/pdf'||mime.startsWith('image/')){
+        setAttachmentPreview({kind:'media',url:URL.createObjectURL(file),fileName:name,mimeType:mime});
+      }else if(mime==='text/plain'||mime==='text/csv'){
+        setAttachmentPreview({kind:'text',fileName:name,text:(await file.text()).slice(0,500000)});
+      }else if(mime==='application/vnd.ms-excel'||mime==='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'){
+        const workbook=window.XLSX.read(await file.arrayBuffer(),{type:'array'});
+        const sheet=workbook.Sheets[workbook.SheetNames[0]];
+        const rows=sheet?window.XLSX.utils.sheet_to_json(sheet,{header:1,defval:'',blankrows:false}).slice(0,200).map(row=>row.slice(0,24)):[];
+        setAttachmentPreview({kind:'table',fileName:name,rows});
+      }else{
+        setAttachmentPreview({kind:'unsupported',url:URL.createObjectURL(file),fileName:name,mimeType:mime});
+      }
+    }catch(error){alert((rtl?'تعذرت معاينة الملف: ':'Could not preview file: ')+String(error.message||error));}
+  }
+  async function uploadQueuedInlineAttachment(file,files,setFiles,uploadContext){
+    const entityType=uploadContext?.entityType||'cashCustody',entityId=String(uploadContext?.entityId||'');
+    if(!entityId){setCashCustodyNotice(rtl?'احفظ حركة العُهدة أولاً، ثم اضغط رفع بجوار الملف.':'Save the cash-custody movement first, then use the Upload button beside the file.');return;}
+    const statusKey=inlineAttachmentStatusKey(entityType,entityId,file);
+    setInlineAttachmentStatuses(old=>({...old,[statusKey]:{state:'uploading',message:''}}));
+    try{
+      await attachmentWorkerRequest('/attachments/upload','POST',file,{
+        'Content-Type':attachmentMimeType(file),
+        'X-Attachment-Entity-Type':entityType,
+        'X-Attachment-Entity-Id':entityId,
+        'X-Attachment-File-Name':encodeURIComponent(file.name)
+      },true,false);
+      setInlineAttachmentStatuses(old=>({...old,[statusKey]:{state:'success',message:rtl?'تم رفع الملف والتحقق من حفظه.':'Upload completed and file was saved.'}}));
+      setFiles(old=>old.filter(item=>item!==file));
+      if(files.length<=1&&entityType==='cashCustody')setCashCustodyAttachmentTargetId('');
+      await refreshRecordAttachmentPanel(entityType,entityId);
+      if(entityType===attachmentEntityType&&entityId===attachmentEntityId)await refreshAttachmentList();
+      await refreshDriveConnectionStatus();
+      setCashCustodyNotice((rtl?'تم رفع الملف بنجاح والتحقق من حفظه: ':'File uploaded and verified: ')+file.name);
+      await addLog('رفع مرفق: '+file.name,currentUser,{entityType:'attachment',entityId:entityType+'/'+entityId});
+    }catch(error){
+      const message=String(error.message||error);
+      setInlineAttachmentStatuses(old=>({...old,[statusKey]:{state:'error',message}}));
+      setCashCustodyNotice((rtl?'فشل رفع الملف '+file.name+': ':'Upload failed for '+file.name+': ')+message);
+    }
+  }
+  function renderInlineAttachmentPicker(files,setFiles,spanClass='md:col-span-2 xl:col-span-3',uploadContext=null){
     if(!hasPermission('attachments','add'))return null;
     return <div className={spanClass+' rounded-xl border border-dashed border-blue-300 bg-blue-50/60 p-3 space-y-2'}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div><b className="text-sm text-slate-800"><i className="fas fa-paperclip me-2 text-blue-700"></i>{rtl?'إضافة مرفقات مع السجل':'Attach files to this record'}</b><p className="text-xs text-slate-500 mt-1">{rtl?'يمكنك اختيار أكثر من ملف. الحد الأقصى 20 MB لكل ملف.':'Select multiple files. Maximum 20 MB per file.'}</p></div>
+        <div><b className="text-sm text-slate-800"><i className="fas fa-paperclip me-2 text-blue-700"></i>{rtl?'إضافة مرفقات مع السجل':'Attach files to this record'}</b><p className="text-xs text-slate-500 mt-1">{rtl?'اختر الملفات، عاين كل ملف، ثم ارفعه منفرداً من الزر المجاور له. الحد الأقصى 20 MB لكل ملف.':'Choose files, preview each one, then upload it individually. Maximum 20 MB per file.'}</p></div>
         <label className="cursor-pointer inline-flex items-center gap-2 rounded-lg bg-blue-700 px-3 py-2 text-sm font-bold text-white hover:bg-blue-800"><i className="fas fa-plus"></i>{rtl?'اختيار ملفات':'Choose files'}<input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt" className="hidden" onChange={e=>{
           const selected=Array.from(e.target.files||[]),allowed=new Set(['pdf','jpg','jpeg','png','webp','doc','docx','xls','xlsx','csv','txt']);
           const valid=selected.filter(file=>file.size<=20*1024*1024&&allowed.has(String(file.name||'').split('.').pop().toLowerCase()));
@@ -873,7 +919,21 @@ function App(){
           e.target.value='';
         }}/></label>
       </div>
-      {files.length>0&&<div className="flex flex-wrap gap-2">{files.map((file,index)=><span key={file.name+'-'+file.size+'-'+file.lastModified+'-'+index} className="inline-flex items-center gap-2 rounded-lg border bg-white px-2 py-1.5 text-xs"><i className="fas fa-file text-blue-600"></i><span className="max-w-56 truncate">{file.name}</span><span className="text-gray-400">{(file.size/1048576).toFixed(2)} MB</span><button type="button" aria-label={rtl?'إزالة الملف':'Remove file'} onClick={()=>setFiles(old=>old.filter((_,i)=>i!==index))} className="text-red-600 hover:text-red-800"><i className="fas fa-times"></i></button></span>)}</div>}
+      {files.length>0&&<div className="space-y-2">{files.map((file,index)=>{
+        const entityType=uploadContext?.entityType||'generic',entityId=uploadContext?.entityId||'pending';
+        const status=inlineAttachmentStatuses[inlineAttachmentStatusKey(entityType,entityId,file)];
+        return <div key={file.name+'-'+file.size+'-'+file.lastModified+'-'+index} className="rounded-lg border bg-white p-2 flex flex-wrap items-center gap-2 text-xs">
+          <i className="fas fa-file text-blue-600"></i><span className="max-w-56 truncate font-semibold">{file.name}</span><span className="text-gray-400">{(file.size/1048576).toFixed(2)} MB</span>
+          <button type="button" onClick={()=>void previewInlineAttachment(file)} className="rounded-md bg-slate-100 px-2.5 py-1.5 font-bold text-slate-700"><i className="fas fa-eye me-1"></i>{rtl?'معاينة':'Preview'}</button>
+          {uploadContext&&<button type="button" disabled={!uploadContext.entityId||status?.state==='uploading'} onClick={()=>void uploadQueuedInlineAttachment(file,files,setFiles,uploadContext)} className="rounded-md bg-blue-700 px-2.5 py-1.5 font-bold text-white disabled:opacity-40"><i className={'fas '+(status?.state==='uploading'?'fa-spinner fa-spin':'fa-cloud-arrow-up')+' me-1'}></i>{status?.state==='uploading'?(rtl?'جارٍ الرفع':'Uploading'):rtl?'رفع الملف':'Upload'}</button>}
+          {status?.state==='error'&&<span className="basis-full text-rose-700 break-words">{rtl?'فشل الرفع: ':'Upload failed: '}{status.message}</span>}
+          <button type="button" aria-label={rtl?'إزالة الملف':'Remove file'} onClick={()=>{
+            const next=files.filter((_,i)=>i!==index);setFiles(next);
+            if(uploadContext?.entityType==='cashCustody'&&!next.length)setCashCustodyAttachmentTargetId('');
+          }} className="ms-auto text-red-600 hover:text-red-800"><i className="fas fa-times"></i></button>
+        </div>;
+      })}</div>}
+      {uploadContext&&!uploadContext.entityId&&files.length>0&&<p className="text-xs text-amber-700">{rtl?'احفظ حركة العُهدة أولاً لتفعيل أزرار الرفع.':'Save the movement first to enable the upload buttons.'}</p>}
     </div>;
   }
   function renderTaskAttachmentPicker(messageId){
@@ -1739,6 +1799,7 @@ function App(){
     setCashCustodyPendingAttachments([]);
     if(cashCustodyTargetUid!==currentUser.uid||!transaction||transaction.status!=='pending')return alert(rtl?'يمكن تعديل الحركات المعلقة الخاصة بك فقط.':'Only your own pending movements can be edited.');
     setCashCustodyEditingId(transaction.id);
+    setCashCustodyAttachmentTargetId(transaction.id);
     setCashCustodyForm({type:transaction.type||'expense',date:transaction.date||new Date().toISOString().slice(0,10),amount:String(transaction.amount||''),currency:transaction.currency||'EGP',counterparty:transaction.counterparty||'',projectCode:transaction.projectCode||'',reference:transaction.reference||'',description:transaction.description||''});
     setCashCustodyNotice(rtl?'أنت تعدل حركة معلقة. احفظ التعديل أو ألغِه.':'Editing a pending movement. Save your changes or cancel.');
   }
@@ -1775,13 +1836,13 @@ function App(){
         const transaction={...base,id:ref.key,status:transactionStatus,createdBy:currentUser.uid,createdByName:currentUser.fullName||currentUser.username||'',createdAt:firebase.database.ServerValue.TIMESTAMP};
         await ref.set(transaction);
       }
-      let attachmentWarning='';
-      try{if(cashCustodyPendingAttachments.length)await uploadInlineAttachments(cashCustodyPendingAttachments,'cashCustody',currentUser.uid+'--'+transactionId,setCashCustodyPendingAttachments);}
-      catch(attachmentError){attachmentWarning=rtl?' تعذر رفع بعض المرفقات؛ يمكنك إضافتها لاحقاً من الإعدادات ← المرفقات.':' Some attachments could not be uploaded; you can add them later from Settings → Attachments.';setCashCustodyPendingAttachments([]);}
+      const hasPendingCashCustodyAttachments=cashCustodyPendingAttachments.length>0;
+      setCashCustodyAttachmentTargetId(hasPendingCashCustodyAttachments?transactionId:'');
       await addLog((cashCustodyEditingId?'تعديل':'تسجيل')+' حركة عهدة: '+(cashCustodyTypeLabels[cashCustodyForm.type]||cashCustodyForm.type),currentUser,{entityType:'cash-custody',entityId:currentUser.uid+'/'+transactionId,metadata:{amount,currency:base.currency,status:transactionStatus}});
       setCashCustodyEditingId('');
       setCashCustodyForm({type:'expense',date:new Date().toISOString().slice(0,10),amount:'',currency:'EGP',counterparty:'',projectCode:'',reference:'',description:''});
-      setCashCustodyNotice((rtl?(transactionStatus==='approved'?'تم حفظ الحركة واعتمادها.':'تم حفظ الحركة وهي في انتظار الاعتماد.'):(transactionStatus==='approved'?'Movement saved and approved.':'Movement saved and awaiting approval.'))+attachmentWarning);
+      const savedMessage=rtl?(transactionStatus==='approved'?'تم حفظ الحركة واعتمادها.':'تم حفظ الحركة وهي في انتظار الاعتماد.'):(transactionStatus==='approved'?'Movement saved and approved.':'Movement saved and awaiting approval.');
+      setCashCustodyNotice(savedMessage+(hasPendingCashCustodyAttachments?(rtl?' اضغط زر «رفع الملف» بجوار كل مرفق.':' Use the Upload button beside each attachment.') :''));
     }catch(err){setCashCustodyNotice(firebaseErrorMessage(err,tr));}
     finally{setCashCustodyBusy(false);}
   }
@@ -3457,7 +3518,7 @@ function App(){
               {attachmentsNotice&&<div className="rounded-lg border bg-slate-50 p-3 text-sm text-slate-700">{attachmentsNotice}</div>}
               {driveConnectionStatus.error&&<div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{driveConnectionStatus.error}</div>}
               {typeOptions.length===0&&<div className="rounded-lg border bg-slate-50 p-3 text-sm text-gray-600">{rtl?'لا توجد صلاحيات لوحدات يمكن ربط المرفقات بها. اطلب من مدير النظام تفعيل صلاحيات المرفقات والوحدة المطلوبة.':'No accessible modules can be linked to attachments. Ask the administrator to grant attachment and module permissions.'}</div>}
-              {attachmentPreview&&<div className="fixed inset-0 z-[160] bg-slate-950/75 flex items-center justify-center p-2 sm:p-5" role="dialog" aria-modal="true" onMouseDown={e=>{if(e.target===e.currentTarget)setAttachmentPreview(null);}}><section className="w-full max-w-6xl h-[92vh] bg-white rounded-xl overflow-hidden flex flex-col"><header className="p-3 border-b flex items-center justify-between gap-2"><b className="truncate">{attachmentPreview.fileName}</b><button type="button" onClick={()=>setAttachmentPreview(null)} className="w-10 h-10 rounded-lg bg-slate-100" aria-label={rtl?'إغلاق':'Close'}><i className="fas fa-times"></i></button></header><div className="flex-1 bg-slate-100 overflow-auto">{attachmentPreview.kind==='table'?<div className="p-3 overflow-auto"><table className="w-full text-sm bg-white"><tbody>{attachmentPreview.rows.map((row,r)=><tr key={r} className="border-b">{row.map((cell,c)=><td key={c} className={'p-2 border-e '+(r===0?'font-bold bg-slate-100':'')}>{String(cell??'')}</td>)}</tr>)}</tbody></table><p className="text-xs text-gray-500 mt-2">{rtl?'معاينة أول 200 صف و24 عموداً من أول ورقة.':'Preview limited to the first 200 rows and 24 columns of the first sheet.'}</p></div>:attachmentPreview.kind==='text'?<pre className="p-4 whitespace-pre-wrap break-words text-sm bg-white min-h-full">{attachmentPreview.text}</pre>:attachmentPreview.mimeType==='application/pdf'?<iframe title={attachmentPreview.fileName} src={attachmentPreview.url} className="w-full h-full bg-white"></iframe>:<div className="w-full h-full grid place-items-center"><img src={attachmentPreview.url} alt={attachmentPreview.fileName} className="max-w-full max-h-full object-contain"/></div>}</div></section></div>}
+              {attachmentPreview&&<div className="fixed inset-0 z-[160] bg-slate-950/75 flex items-center justify-center p-2 sm:p-5" role="dialog" aria-modal="true" onMouseDown={e=>{if(e.target===e.currentTarget)setAttachmentPreview(null);}}><section className="w-full max-w-6xl h-[92vh] bg-white rounded-xl overflow-hidden flex flex-col"><header className="p-3 border-b flex items-center justify-between gap-2"><b className="truncate">{attachmentPreview.fileName}</b><button type="button" onClick={()=>setAttachmentPreview(null)} className="w-10 h-10 rounded-lg bg-slate-100" aria-label={rtl?'إغلاق':'Close'}><i className="fas fa-times"></i></button></header><div className="flex-1 bg-slate-100 overflow-auto">{attachmentPreview.kind==='table'?<div className="p-3 overflow-auto"><table className="w-full text-sm bg-white"><tbody>{attachmentPreview.rows.map((row,r)=><tr key={r} className="border-b">{row.map((cell,c)=><td key={c} className={'p-2 border-e '+(r===0?'font-bold bg-slate-100':'')}>{String(cell??'')}</td>)}</tr>)}</tbody></table><p className="text-xs text-gray-500 mt-2">{rtl?'معاينة أول 200 صف و24 عموداً من أول ورقة.':'Preview limited to the first 200 rows and 24 columns of the first sheet.'}</p></div>:attachmentPreview.kind==='text'?<pre className="p-4 whitespace-pre-wrap break-words text-sm bg-white min-h-full">{attachmentPreview.text}</pre>:attachmentPreview.kind==='unsupported'?<div className="h-full grid place-items-center p-6 text-center space-y-3"><i className="fas fa-file-lines text-5xl text-slate-400"></i><p className="font-bold">{rtl?'هذا النوع من الملفات لا يعرضه المتصفح مباشرة.':'This file type cannot be previewed directly in the browser.'}</p><a href={attachmentPreview.url} download={attachmentPreview.fileName} className="rounded-lg bg-blue-700 text-white px-4 py-2 font-bold">{rtl?'تحميل الملف':'Download file'}</a></div>:attachmentPreview.mimeType==='application/pdf'?<iframe title={attachmentPreview.fileName} src={attachmentPreview.url} className="w-full h-full bg-white"></iframe>:<div className="w-full h-full grid place-items-center"><img src={attachmentPreview.url} alt={attachmentPreview.fileName} className="max-w-full max-h-full object-contain"/></div>}</div></section></div>}
             </>;
           })()}
         </div>}
@@ -3609,10 +3670,10 @@ function App(){
               <label className="text-sm font-bold">{rtl?'المشروع':'Project'}<select className="block w-full border rounded-lg p-3 mt-1 font-normal" value={cashCustodyForm.projectCode} onChange={e=>setCashCustodyForm({...cashCustodyForm,projectCode:e.target.value})}><option value="">{rtl?'بدون مشروع':'No project'}</option>{projects.map(p=><option key={p.code} value={p.code}>{p.name} ({p.code})</option>)}</select></label>
               <label className="text-sm font-bold">{rtl?'رقم المستند':'Document reference'}<input className="block w-full border rounded-lg p-3 mt-1 font-normal" value={cashCustodyForm.reference} onChange={e=>setCashCustodyForm({...cashCustodyForm,reference:e.target.value})}/></label>
               <label className="text-sm font-bold md:col-span-2 xl:col-span-4">{rtl?'بيان الحركة / الغرض من الصرف':'Description / Purpose'}<textarea required rows="2" className="block w-full border rounded-lg p-3 mt-1 font-normal" value={cashCustodyForm.description} onChange={e=>setCashCustodyForm({...cashCustodyForm,description:e.target.value})}/></label>
-              {renderInlineAttachmentPicker(cashCustodyPendingAttachments,setCashCustodyPendingAttachments,'md:col-span-2 xl:col-span-4')}
-              <div className="md:col-span-2 xl:col-span-4"><button disabled={cashCustodyBusy} className="rounded-lg bg-blue-600 text-white px-6 py-3 font-bold disabled:opacity-50">{cashCustodyBusy?(rtl?'جارٍ الحفظ...':'Saving...'):(cashCustodyEditingId?(rtl?'حفظ التعديل':'Save changes'):(rtl?'تسجيل الحركة':'Save movement'))}</button>{cashCustodyEditingId&&<button type="button" onClick={()=>{setCashCustodyPendingAttachments([]);setCashCustodyEditingId('');setCashCustodyForm({type:'expense',date:new Date().toISOString().slice(0,10),amount:'',currency:'EGP',counterparty:'',projectCode:'',reference:'',description:''});}} className="ms-2 rounded-lg bg-gray-100 px-4 py-3 font-bold">{rtl?'إلغاء التعديل':'Cancel edit'}</button>}</div>
+              {renderInlineAttachmentPicker(cashCustodyPendingAttachments,setCashCustodyPendingAttachments,'md:col-span-2 xl:col-span-4',{entityType:'cashCustody',entityId:cashCustodyAttachmentTargetId?currentUser.uid+'--'+cashCustodyAttachmentTargetId:''})}
+              <div className="md:col-span-2 xl:col-span-4"><button disabled={cashCustodyBusy||Boolean(cashCustodyAttachmentTargetId&&cashCustodyPendingAttachments.length)} className="rounded-lg bg-blue-600 text-white px-6 py-3 font-bold disabled:opacity-50">{cashCustodyBusy?(rtl?'جارٍ الحفظ...':'Saving...'):(cashCustodyEditingId?(rtl?'حفظ التعديل':'Save changes'):(rtl?'تسجيل الحركة':'Save movement'))}</button>{cashCustodyEditingId&&<button type="button" onClick={()=>{setCashCustodyPendingAttachments([]);setCashCustodyAttachmentTargetId('');setCashCustodyEditingId('');setCashCustodyForm({type:'expense',date:new Date().toISOString().slice(0,10),amount:'',currency:'EGP',counterparty:'',projectCode:'',reference:'',description:''});}} className="ms-2 rounded-lg bg-gray-100 px-4 py-3 font-bold">{rtl?'إلغاء التعديل':'Cancel edit'}</button>}</div>
             </form>
-            {cashCustodyNotice&&<p className="text-sm text-green-700">{cashCustodyNotice}</p>}
+            {cashCustodyNotice&&<p className={'text-sm '+(/فشل|تعذر|خطأ|failed|error/i.test(cashCustodyNotice)?'text-rose-700':'text-green-700')}>{cashCustodyNotice}</p>}
           </section>
           <section className="bg-white border rounded-xl p-4 space-y-3">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 no-print">
