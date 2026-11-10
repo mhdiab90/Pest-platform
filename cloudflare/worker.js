@@ -1645,6 +1645,25 @@ export class AIAgentScheduler {
         await this.ctx.storage.put(key,saved);
         return jsonResponse({saved:true,attachment:saved},200,"");
       }
+      if (url.pathname==="/attachment-transfer" && method==="POST") {
+        const body=await request.json();
+        const sourceType=safeSegment(body.sourceEntityType,"source attachment type");
+        const sourceId=safeSegment(body.sourceEntityId,"source attachment id");
+        const targetType=safeSegment(body.targetEntityType,"target attachment type");
+        const targetId=safeSegment(body.targetEntityId,"target attachment id");
+        const id=safeSegment(body.id,"attachment id");
+        const ownerUid=safeSegment(body.ownerUid,"attachment owner");
+        if(sourceType!=="cashCustodyDraft"||targetType!=="cashCustody")throw new Error("Unsupported attachment transfer.");
+        const sourceKey="attachment:"+sourceType+":"+sourceId+":"+id;
+        const targetKey="attachment:"+targetType+":"+targetId+":"+id;
+        const existing=await this.ctx.storage.get(sourceKey);
+        if(!existing||existing.ownerUid!==ownerUid)throw new Error("Staged attachment was not found for this owner.");
+        if(await this.ctx.storage.get(targetKey))throw new Error("Attachment is already linked to the target transaction.");
+        const saved={...existing,entityType:targetType,entityId:targetId,updatedAt:new Date().toISOString()};
+        await this.ctx.storage.put(targetKey,saved);
+        await this.ctx.storage.delete(sourceKey);
+        return jsonResponse({transferred:true,attachment:saved},200,"");
+      }
       if (url.pathname==="/attachment-record" && method==="DELETE") {
         const entityType=safeSegment(url.searchParams.get("entityType"),"attachment entity type");
         const entityId=safeSegment(url.searchParams.get("entityId"),"attachment entity id");
@@ -1951,7 +1970,7 @@ async function googleDriveDelete(accessToken,id){
   const response=await fetch("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(id),{method:"DELETE",headers:{Authorization:"Bearer "+accessToken}});
   if(!response.ok&&response.status!==404)throw new Error("Google Drive file deletion failed (HTTP "+response.status+").");
 }
-function attachmentEntityModule(type){const map={project:"projects",projectEvent:"projects",client:"master",vendor:"master",task:"tasks",message:"messages",cashCustody:"cashCustody",financial:"reports",company:"settings"};if(!map[type])throw new Error("Unsupported attachment record type.");return map[type];}
+function attachmentEntityModule(type){const map={project:"projects",projectEvent:"projects",client:"master",vendor:"master",task:"tasks",message:"messages",cashCustody:"cashCustody",cashCustodyDraft:"cashCustody",financial:"reports",company:"settings"};if(!map[type])throw new Error("Unsupported attachment record type.");return map[type];}
 async function validateAttachmentEntity(type,id,claims,profile,token,action,ownerUid){
   const entityType=cleanText(type,24),entityId=entityType==="company"?"company":safeSegment(id,"attachment record id"),moduleId=attachmentEntityModule(entityType);
   if(entityType==="company"){if(profile.role!=="admin")throw new Error("Company-wide attachments are restricted to administrators.");}
@@ -1980,6 +1999,13 @@ async function validateAttachmentEntity(type,id,claims,profile,token,action,owne
       if(separator<=0||separator>=entityId.length-2)throw new Error("Invalid project event attachment reference.");
       const projectCode=entityId.slice(0,separator),eventId=entityId.slice(separator+2);
       if(!await databaseRequest("projects/"+projectCode+"/events/"+eventId,token,"GET"))throw new Error("The linked project event was not found or is not accessible.");
+    }else if(entityType==="cashCustodyDraft"){
+      requireEntityPermission("cashCustody");
+      const separator=entityId.lastIndexOf("--");
+      if(separator<=0||separator>=entityId.length-2)throw new Error("Invalid cash custody draft attachment reference.");
+      const ownerUid=safeSegment(entityId.slice(0,separator),"cash custody draft owner");
+      safeSegment(entityId.slice(separator+2),"cash custody draft id");
+      if(ownerUid!==claims.sub)throw new Error("Permission denied: cash custody draft belongs to another user.");
     }else if(entityType==="cashCustody"){
       requireEntityPermission("cashCustody");
       const separator=entityId.lastIndexOf("--");
@@ -2098,6 +2124,23 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     catch(error){await googleDriveDelete(accessToken,driveFile.id).catch(()=>null);throw error;}
     return {success:true,attachment:record,storage:{usedBytes:Number(usage.usedBytes||0)+bytes.byteLength,limitBytes:ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES}};
   }
+  if(url.pathname==="/attachments/attach"&&request.method==="POST"){
+    const id=safeSegment(body.id,"attachment id");
+    const sourceType=cleanText(body.sourceEntityType,24),sourceId=cleanText(body.sourceEntityId,120);
+    const targetType=cleanText(body.targetEntityType,24),targetId=cleanText(body.targetEntityId,120);
+    if(sourceType!=="cashCustodyDraft"||targetType!=="cashCustody")throw new Error("Unsupported cash custody attachment linking operation.");
+    const sourceSeparator=sourceId.lastIndexOf("--"),targetSeparator=targetId.lastIndexOf("--");
+    if(sourceSeparator<=0||targetSeparator<=0)throw new Error("Invalid cash custody attachment owner reference.");
+    const sourceOwner=safeSegment(sourceId.slice(0,sourceSeparator),"staged file owner");
+    const targetOwner=safeSegment(targetId.slice(0,targetSeparator),"target transaction owner");
+    if(sourceOwner!==claims.sub||targetOwner!==claims.sub||sourceOwner!==targetOwner)throw new Error("Permission denied: only your own staged files can be linked to your own cash custody transactions.");
+    const attachment=await findAttachment(env,sourceType,sourceId,id);
+    if(attachment.ownerUid!==claims.sub)throw new Error("Permission denied: staged attachment belongs to another user.");
+    await validateAttachmentEntity(sourceType,sourceId,claims,profile,token,"upload",attachment.ownerUid);
+    await validateAttachmentEntity(targetType,targetId,claims,profile,token,"upload",attachment.ownerUid);
+    const result=await driveStorageRequest(env,"/attachment-transfer","POST",{id,sourceEntityType:sourceType,sourceEntityId:sourceId,targetEntityType:targetType,targetEntityId:targetId,ownerUid:claims.sub});
+    return {success:true,linked:true,attachment:result.attachment};
+  }
   if(url.pathname==="/attachments/replace"&&request.method==="POST"){
     const type=cleanText(request.headers.get("X-Attachment-Entity-Type"),24),entityId=cleanText(request.headers.get("X-Attachment-Entity-Id"),120),id=safeSegment(request.headers.get("X-Attachment-Id"),"attachment id");
     const attachment=await findAttachment(env,type,entityId,id);
@@ -2186,7 +2229,7 @@ export default {
     if (origin !== ALLOWED_ORIGIN) return jsonResponse({ error: "Origin is not allowed." }, 403, origin);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
     if (!["GET","POST","DELETE"].includes(request.method)) return jsonResponse({ error: "Method not allowed." }, 405, origin);
-    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/upload", "/attachments/replace", "/attachments/annotate", "/attachments/file", "/attachments/usage"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
+    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/upload", "/attachments/attach", "/attachments/replace", "/attachments/annotate", "/attachments/file", "/attachments/usage"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
 
     try {
       const authorization = request.headers.get("Authorization") || "";
