@@ -2157,7 +2157,6 @@ function App(){
     if(target!==currentUser.uid)setCashCustodyBookScope('personal');
     setCashCustodyNotice('');
     if(target===currentUser.uid)return;
-    if(Array.isArray(cashCustodyByUid[target]))return;
     try{
       const snap=await db.ref('cashCustodies/'+target+'/transactions').once('value');
       const rows=Object.entries(snap.val()||{}).map(([id,value])=>({...value,id:value&&value.id?value.id:id}));
