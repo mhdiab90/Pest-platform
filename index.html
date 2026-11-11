@@ -1697,7 +1697,9 @@ function App(){
     return true;
   }).sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0));
   const cashCustodyTarget=cashCustodyTargetUid||(currentUser&&currentUser.uid)||'';
-  const cashCustodyRows=(cashCustodyByUid[cashCustodyTarget]||[]).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||Number(b.createdAt||0)-Number(a.createdAt||0));
+  const companyCustodyOwnerUid=isAdmin?currentUser.uid:(userDirectory.find(u=>u.role==='admin'&&u.status==='active')?.uid||activeUsers.find(u=>u.role==='admin'&&u.status==='active')?.uid||'');
+  const cashCustodySelectedBookScope=isAdmin&&cashCustodyTarget===companyCustodyOwnerUid?cashCustodyBookScope:'personal';
+  const cashCustodyRows=(cashCustodyByUid[cashCustodyTarget]||[]).filter(t=>(t.bookScope||'personal')===cashCustodySelectedBookScope).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||Number(b.createdAt||0)-Number(a.createdAt||0));
   const cashCustodyFiltered=cashCustodyRows.filter(t=>{
     const text=[t.type,t.description,t.counterparty,t.projectCode,t.reference,t.createdByName,t.status,t.date].join(' ');
     return (!cashCustodySearch.trim()||includesText(text,cashCustodySearch.trim()))&&String(t.currency||'EGP').toUpperCase()===String(cashCustodyCurrencyFilter||'EGP').toUpperCase();
@@ -3124,11 +3126,17 @@ function App(){
   const unreadMessages=messages.filter(m=>m.read!==true);
   const notificationItems=[
     ...unreadMessages.map(m=>({id:'message:'+m.id,type:'message',title:m.subject|| (rtl?'رسالة جديدة':'New message'),description:(rtl?'من: ':'From: ')+(m.senderName||m.senderUid||''),createdAt:Number(m.createdAt||0),message:m})),
+    ...cashCustodyNotifications.filter(n=>n.read!==true).map(n=>({id:'cashCustody:'+n.id,type:'cashCustody',title:rtl?'حركة مالية تخص عهدتك':'Financial movement for your custody',description:[n.senderName,money(n.amount)+' '+(n.currency||'EGP'),n.description].filter(Boolean).join(' · '),createdAt:Number(n.createdAt||0),cashCustody:n})),
     ...(isAdmin?pendingRequests.filter(r=>!seenRequestIds.includes(r.uid)).map(r=>({id:'request:'+r.uid,type:'request',title:rtl?'طلب مستخدم جديد':'New user request',description:(r.fullName||r.username||r.email||r.uid),createdAt:Number(r.createdAt||0),request:r})):[])
   ].sort((a,b)=>b.createdAt-a.createdAt);
   function markRequestNotificationSeen(uid){setSeenRequestIds(old=>{const next=old.includes(uid)?old:[...old,uid];try{localStorage.setItem('pestSeenAdminRequests:'+currentUser.uid,JSON.stringify(next));}catch(err){console.warn('Could not save notification read state:',err);}return next;});}
   async function openNotification(item){
     setNotificationOpen(false);
+    if(item.type==='cashCustody'){
+      try{await db.ref('cashCustodyNotifications/'+currentUser.uid+'/'+item.cashCustody.id).update({read:true,readAt:firebase.database.ServerValue.TIMESTAMP});setCashCustodyNotifications(old=>old.map(n=>n.id===item.cashCustody.id?{...n,read:true}:n));setCashCustodyTargetUid(currentUser.uid);setCashCustodyBookScope(item.cashCustody.bookScope==='company'?'company':'personal');setCashCustodyCurrencyFilter(item.cashCustody.currency||'EGP');setCashCustodySearch('');navigateToTab('cashCustody');}
+      catch(err){alert(firebaseErrorMessage(err,tr));}
+      return;
+    }
     if(item.type==='message'){
       try{await db.ref('messages/'+currentUser.uid+'/'+item.message.id).update({read:true});await addLog('قراءة رسالة: '+(item.message.subject||item.message.id));setMessages(old=>old.map(m=>m.id===item.message.id?{...m,read:true}:m));navigateToTab('messages');}
       catch(err){alert(firebaseErrorMessage(err,tr));}
@@ -3581,7 +3589,7 @@ function App(){
           <button type="button" aria-expanded={notificationOpen} onClick={()=>setNotificationOpen(old=>!old)} className="relative p-2 rounded-lg hover:bg-black/10" title={rtl?'التنبيهات':'Notifications'}><i className="fas fa-bell text-xl"></i>{notificationItems.length>0&&<span className="absolute -top-1 -right-1 rounded-full bg-red-600 text-xs min-w-5 px-1.5 text-center">{notificationItems.length}</span>}</button>
           {notificationOpen&&<div className="absolute end-0 top-12 z-[80] w-[min(92vw,370px)] max-h-[70vh] overflow-y-auto bg-white text-slate-800 rounded-xl shadow-2xl border">
             <div className="p-3 border-b flex items-center justify-between"><b>{rtl?'مركز التنبيهات':'Notification center'}</b><span className="text-xs text-gray-500">{notificationItems.length} {rtl?'غير مقروء':'unread'}</span></div>
-            {notificationItems.length===0?<p className="p-5 text-sm text-gray-500 text-center">{rtl?'لا توجد تنبيهات جديدة.':'No new notifications.'}</p>:notificationItems.map(item=><button key={item.id} type="button" onClick={()=>openNotification(item)} className="w-full text-start p-3 border-b hover:bg-slate-50 flex items-start gap-3"><span className={'w-9 h-9 shrink-0 rounded-full grid place-items-center '+(item.type==='message'?'bg-blue-50 text-blue-700':'bg-amber-50 text-amber-700')}><i className={'fas '+(item.type==='message'?'fa-envelope':'fa-user-plus')}></i></span><span className="min-w-0 flex-1"><b className="block text-sm">{item.title}</b><span className="block text-xs text-gray-500 mt-1 truncate">{item.description}</span><span className="block text-[11px] text-gray-400 mt-1">{item.type==='message'?(rtl?'اضغط لفتح الرسالة واعتبارها مقروءة':'Open and mark as read'):(rtl?'اضغط لفتح طلب المستخدم واعتباره تمت مراجعته':'Open and mark request as seen')}</span></span><i className="fas fa-chevron-left text-xs text-gray-400 mt-2"></i></button>)}
+            {notificationItems.length===0?<p className="p-5 text-sm text-gray-500 text-center">{rtl?'لا توجد تنبيهات جديدة.':'No new notifications.'}</p>:notificationItems.map(item=><button key={item.id} type="button" onClick={()=>openNotification(item)} className="w-full text-start p-3 border-b hover:bg-slate-50 flex items-start gap-3"><span className={'w-9 h-9 shrink-0 rounded-full grid place-items-center '+(item.type==='cashCustody'?'bg-emerald-50 text-emerald-700':item.type==='message'?'bg-blue-50 text-blue-700':'bg-amber-50 text-amber-700')}><i className={'fas '+(item.type==='cashCustody'?'fa-money-bill-transfer':item.type==='message'?'fa-envelope':'fa-user-plus')}></i></span><span className="min-w-0 flex-1"><b className="block text-sm">{item.title}</b><span className="block text-xs text-gray-500 mt-1 truncate">{item.description}</span><span className="block text-[11px] text-gray-400 mt-1">{item.type==='message'?(rtl?'اضغط لفتح الرسالة واعتبارها مقروءة': 'Open and mark as read'):item.type==='cashCustody'?(rtl?'اضغط لفتح حركة العهدة':'Open the linked custody movement'):(rtl?'اضغط لفتح طلب المستخدم واعتباره تمت مراجعته':'Open and mark request as seen')}</span></span><i className="fas fa-chevron-left text-xs text-gray-400 mt-2"></i></button>)}
           </div>}
         </div>
         <div className="relative"><button onClick={()=>{setShowThemeMenu(!showThemeMenu);setShowUserMenu(false);}} className="p-2" title={tr('theme')}><i className="fas fa-palette text-xl"></i></button>
