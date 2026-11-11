@@ -3330,12 +3330,18 @@ function App(){
   const themeNames={blue:'themeBlue',green:'themeGreen',purple:'themePurple',teal:'themeTeal',red:'themeRed',sky:'themeSky',mint:'themeMint',rose:'themeRose',orange:'themeOrange',amber:'themeAmber',indigo:'themeIndigo',slate:'themeSlate',royal:'themeRoyal',navy:'themeNavy',emerald:'themeEmerald',forest:'themeForest',crimson:'themeCrimson',burgundy:'themeBurgundy',plum:'themePlum',charcoal:'themeCharcoal',cobalt:'themeCobalt'};
   const selectedItems=(account.type==='client'?clients:vendors).filter(x=>includesText([x.code,x.name,x.taxNumber,x.phone,x.email].join(' '),globalSearch));
   const chosen=selectedItems.find(x=>x.code===account.code);
+  const accountFinancialEvents=allTimeline.filter(e=>e.partyType===account.type&&String(e.partyCode||'')===String(account.code||''));
+  const accountReceivableEvents=account.type==='client'?accountFinancialEvents.filter(e=>e.type==='customer_receivable'): [];
+  const accountPayableEvents=account.type==='vendor'?accountFinancialEvents.filter(e=>e.type==='supplier_commitment'): [];
+  const accountProjectCodesWithReceivables=new Set(accountReceivableEvents.map(e=>String(e.projectCode||'')));
+  const accountQuotes=account.type==='client'?quotes.filter(q=>q.clientCode===account.code&&accepted(q.status)&&!accountProjectCodesWithReceivables.has(String(q.projectCode||''))):[];
   const totalDue=account.type==='client'
-    ? quotes.filter(q=>q.clientCode===account.code && accepted(q.status)).reduce((s,x)=>s+Number(x.amount||0),0)
-    : outflows.filter(x=>x.vendorCode===account.code).reduce((s,x)=>s+Number(x.amount||0),0);
+    ? accountQuotes.reduce((sum,x)=>sum+Number(x.amount||0),0)+accountReceivableEvents.filter(e=>!isClosedFinancialEvent(e)).reduce((sum,e)=>sum+Number(e.amount||0),0)
+    : outflows.filter(x=>x.vendorCode===account.code).reduce((sum,x)=>sum+Number(x.amount||0),0)+accountPayableEvents.filter(e=>!isClosedFinancialEvent(e)).reduce((sum,e)=>sum+Number(e.amount||0),0);
   const totalPaid=account.type==='client'
-    ? inflows.filter(x=>x.clientCode===account.code && collected(x.status)).reduce((s,x)=>s+Number(x.amount||0),0)
-    : outflows.filter(x=>x.vendorCode===account.code && paid(x.status)).reduce((s,x)=>s+Number(x.amount||0),0);
+    ? inflows.filter(x=>x.clientCode===account.code&&collected(x.status)).reduce((sum,x)=>sum+Number(x.amount||0),0)+cashAmountRows(accountFinancialEvents.filter(e=>e.type==='customer_collection')).reduce((sum,e)=>sum+Number(e.amount||0),0)+accountReceivableEvents.reduce((sum,e)=>sum+Number(e.settledAmount||0),0)
+    : outflows.filter(x=>x.vendorCode===account.code&&paid(x.status)).reduce((sum,x)=>sum+Number(x.amount||0),0)+cashAmountRows(accountFinancialEvents.filter(e=>e.type==='supplier_payment')).reduce((sum,e)=>sum+Number(e.amount||0),0)+accountPayableEvents.reduce((sum,e)=>sum+Number(e.settledAmount||0),0);
+  const remainingDue=Math.max(0,totalDue-totalPaid);
 
 
   function assistantSearchScore(record,query){
@@ -3806,7 +3812,7 @@ function App(){
           <label className="text-sm font-bold">{tr('accountType')}<select className="block w-full border rounded-lg p-3 mt-1" value={account.type} onChange={e=>setAccount({type:e.target.value,code:''})}><option value="client">{tr('client')}</option><option value="vendor">{tr('vendor')}</option></select></label>
           <label className="text-sm font-bold">{tr('selectAccount')}<select className="block w-full border rounded-lg p-3 mt-1" value={account.code} onChange={e=>setAccount({...account,code:e.target.value})}><option value="">{tr('choose')}</option>{selectedItems.map(x=><option key={x.code} value={x.code}>{x.name} ({x.code})</option>)}</select></label>
         </div>
-        {chosen&&<div className="grid grid-cols-1 md:grid-cols-3 gap-4">{[[tr('due'),totalDue,'blue'],[tr('paid'),totalPaid,'green'],[tr('remaining'),totalDue-totalPaid,'amber']].map(([label,value,color])=><div key={label} className={`bg-${color}-50 border-r-4 border-${color}-600 p-4 rounded`}><p className="text-sm text-gray-500 font-bold">{label}</p><p className="text-2xl font-bold mt-2">{money(value)} EGP</p></div>)}</div>}
+        {chosen&&<div className="grid grid-cols-1 md:grid-cols-3 gap-4">{[[tr('due'),totalDue,'blue'],[tr('paid'),totalPaid,'green'],[tr('remaining'),remainingDue,'amber']].map(([label,value,color])=><div key={label} className={`bg-${color}-50 border-r-4 border-${color}-600 p-4 rounded`}><p className="text-sm text-gray-500 font-bold">{label}</p><p className="text-2xl font-bold mt-2">{money(value)} EGP</p></div>)}</div>}
         </div></details>}
 
         {tab==='master'&&<div className="space-y-5">
