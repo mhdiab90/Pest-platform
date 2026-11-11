@@ -870,7 +870,6 @@ function App(){
     if(assistantOpen&&hasPermission('aiAgent','view')){
       needMaster();needProjects();needFinance();needDirectory();needTasks();
     }
-    if(notificationOpen){
       const messageQuery=db.ref('messages/'+uid).orderByChild('read').equalTo(false);
       subscribe('messages:unread:'+uid,messageQuery,s=>{
         const next=toArray(s.val());
@@ -908,7 +907,6 @@ function App(){
         subscribe('userRequests:pending',db.ref('userRequests').orderByChild('status').equalTo('pending'),updatePending('pending'));
         subscribe('userRequests:deferred',db.ref('userRequests').orderByChild('status').equalTo('مؤجل'),updatePending('deferred'));
       }
-    }
 
     // Keep only the small, security-critical profile and custody-notification streams
     // active globally. Large ledgers and message bodies are loaded on their screens.
@@ -924,7 +922,7 @@ function App(){
         notifyUserOfIncoming({id:'cashCustody:'+item.id,type:'cashCustody',cashCustody:item});
       }
     });
-  },[currentUser?.uid,tab,notificationOpen,assistantOpen,attachmentEntityType]);
+  },[currentUser?.uid,tab,assistantOpen,attachmentEntityType]);
 
   function unlockNotificationAudio(){
     if(!notificationPreferencesRef.current.sound||typeof window==='undefined')return;
