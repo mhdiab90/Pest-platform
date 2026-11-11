@@ -327,9 +327,13 @@ function App(){
   const [adminUserNotice,setAdminUserNotice] = useState('');
   const [cashCustodyByUid,setCashCustodyByUid] = useState({});
   const [cashCustodyTargetUid,setCashCustodyTargetUid] = useState('');
+  const [cashCustodyBookScope,setCashCustodyBookScope] = useState('personal');
+  const [cashCustodyNotifications,setCashCustodyNotifications] = useState([]);
+  const [partyCashCustodyRows,setPartyCashCustodyRows] = useState([]);
+  const [partyCashCustodyLoading,setPartyCashCustodyLoading] = useState(false);
   const [cashCustodyCurrencyFilter,setCashCustodyCurrencyFilter] = useState('EGP');
   const [cashCustodySearch,setCashCustodySearch] = useState('');
-  const [cashCustodyForm,setCashCustodyForm] = useState({type:'receipt',date:new Date().toISOString().slice(0,10),amount:'',currency:'EGP',counterparty:'',projectCode:'',reference:'',description:''});
+  const [cashCustodyForm,setCashCustodyForm] = useState({type:'receipt',date:new Date().toISOString().slice(0,10),amount:'',currency:'EGP',counterparty:'',counterpartyType:'',counterpartyUid:'',counterpartyCode:'',counterpartyName:'',projectCode:'',reference:'',description:''});
   const [cashCustodyBusy,setCashCustodyBusy] = useState(false);
   const [cashCustodyEditingId,setCashCustodyEditingId] = useState('');
   const [cashCustodyNotice,setCashCustodyNotice] = useState('');
@@ -351,6 +355,7 @@ function App(){
   const [auditTo,setAuditTo] = useState('');
   const [messages,setMessages] = useState([]);
   const [messageReactionsById,setMessageReactionsById] = useState({});
+  const cashCustodyNotificationIdsRef=useRef(null);
   const [tasks,setTasks] = useState([]);
   const [taskEditingId,setTaskEditingId] = useState('');
   const [taskEditDraft,setTaskEditDraft] = useState({title:'',description:''});
@@ -564,7 +569,7 @@ function App(){
   useEffect(()=>{try{localStorage.setItem('pestSoundNotifications',soundNotificationsEnabled?'true':'false');}catch(_){}},[soundNotificationsEnabled]);
   useEffect(()=>{try{localStorage.setItem('pestDesktopNotifications',desktopNotificationsEnabled?'true':'false');}catch(_){}},[desktopNotificationsEnabled]);
 
-  useEffect(()=>{if(currentUser&&currentUser.uid){setCashCustodyTargetUid(currentUser.uid);setCashCustodySearch('');setCashCustodyNotice('');}else{setCashCustodyTargetUid('');setCashCustodyByUid({});}},[currentUser&&currentUser.uid]);
+  useEffect(()=>{if(currentUser&&currentUser.uid){setCashCustodyTargetUid(currentUser.uid);setCashCustodyBookScope('personal');setCashCustodySearch('');setCashCustodyNotice('');}else{setCashCustodyTargetUid('');setCashCustodyBookScope('personal');setCashCustodyByUid({});setCashCustodyNotifications([]);}},[currentUser&&currentUser.uid]);
 
   useEffect(()=>{
     if(!currentUser || !currentUser.uid){setSeenRequestIds([]);return;}
@@ -736,6 +741,16 @@ function App(){
       const rows=Object.entries(s.val()||{}).map(([id,value])=>({...value,id:value&&value.id?value.id:id}));
       setCashCustodyByUid(old=>({...old,[currentUser.uid]:rows}));
     });
+    cashCustodyNotificationIdsRef.current=null;
+    watch('cashCustodyNotifications/'+currentUser.uid,s=>{
+      const rows=Object.entries(s.val()||{}).map(([id,value])=>({...value,id:value&&value.id?value.id:id}));
+      if(cashCustodyNotificationIdsRef.current===null)cashCustodyNotificationIdsRef.current=new Set(rows.map(x=>x.id));
+      else{
+        rows.forEach(item=>{if(!cashCustodyNotificationIdsRef.current.has(item.id)&&item.read!==true)notifyUserOfIncoming({id:'cashCustody:'+item.id,type:'cashCustody',cashCustody:item});});
+        cashCustodyNotificationIdsRef.current=new Set(rows.map(x=>x.id));
+      }
+      setCashCustodyNotifications(rows);
+    });
     if(currentUser.role==='admin'){
       watch('users',s=>{
         const rawUsers=s.val()||{};const users=toArray(rawUsers);setActiveUsers(users);
@@ -746,7 +761,7 @@ function App(){
           if(uid===currentUser.uid && !u.uid) updates['users/'+uid+'/uid']=uid;
           // Never expose legacy username-keyed accounts in the recipient directory.
           if(linkedToAuth && Object.prototype.hasOwnProperty.call(u,'password')) updates['users/'+uid+'/password']=null;
-          if(linkedToAuth && ['active','نشط','مفعل','enabled'].includes(String(u.status||'').toLowerCase())) updates['userDirectory/'+uid]={uid,username:u.username||'',fullName:u.fullName||'',jobTitle:u.jobTitle||'',department:u.department||'',phone:u.phone||'',email:u.email||'',whatsapp:u.whatsapp||'',whatsappOptIn:u.whatsappOptIn===true,whatsappOptInAt:u.whatsappOptInAt||null,whatsappOptOutAt:u.whatsappOptOutAt||null,avatar:u.avatar||'',status:'active'};
+          if(linkedToAuth && ['active','نشط','مفعل','enabled'].includes(String(u.status||'').toLowerCase())) updates['userDirectory/'+uid]={uid,username:u.username||'',fullName:u.fullName||'',jobTitle:u.jobTitle||'',department:u.department||'',role:u.role||'user',phone:u.phone||'',email:u.email||'',whatsapp:u.whatsapp||'',whatsappOptIn:u.whatsappOptIn===true,whatsappOptInAt:u.whatsappOptInAt||null,whatsappOptOutAt:u.whatsappOptOutAt||null,avatar:u.avatar||'',status:'active'};
         });
         if(Object.keys(updates).length) db.ref().update(updates).catch(err=>console.warn('Directory sync / password cleanup:',err));
       });
