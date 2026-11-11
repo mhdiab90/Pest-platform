@@ -835,12 +835,14 @@ function App(){
     const prefs=notificationPreferencesRef.current;
     if(!prefs.desktop||typeof Notification==='undefined'||Notification.permission!=='granted')return;
     try{
-      const title=item.type==='message'?(rtl?'رسالة جديدة من '+(item.message.senderName||'مستخدم'):'New message from '+(item.message.senderName||'user')):(rtl?'طلب مستخدم جديد':'New user request');
-      const body=item.type==='message'?String(item.message.body||item.message.subject||'').slice(0,160):String(item.request.fullName||item.request.username||item.request.email||'');
+      const title=item.type==='cashCustody'?(rtl?'حركة مالية جديدة تخص عهدتك':'New financial movement for your custody'):item.type==='message'?(rtl?'رسالة جديدة من '+(item.message.senderName||'مستخدم'):'New message from '+(item.message.senderName||'user')):(rtl?'طلب مستخدم جديد':'New user request');
+      const body=item.type==='cashCustody'?[item.cashCustody.senderName,money(item.cashCustody.amount)+' '+(item.cashCustody.currency||'EGP'),item.cashCustody.description].filter(Boolean).join(' · '):item.type==='message'?String(item.message.body||item.message.subject||'').slice(0,160):String(item.request.fullName||item.request.username||item.request.email||'');
       const popup=new Notification(title,{body,tag:'pest-'+item.id,renotify:true,silent:true});
       popup.onclick=()=>{
         window.focus();
-        if(item.type==='message'){
+        if(item.type==='cashCustody'){
+          setNotificationOpen(false);setCashCustodyTargetUid(currentUser.uid);setCashCustodyBookScope(item.cashCustody.bookScope==='company'?'company':'personal');setCashCustodyCurrencyFilter(item.cashCustody.currency||'EGP');setTab('cashCustody');
+        }else if(item.type==='message'){
           setAssistantOpen(false);setMessageShortcutOpen(true);setMessageShortcutSearch('');
           markShortcutMessageRead(item.message);
         }else if(item.type==='request'){
