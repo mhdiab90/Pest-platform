@@ -2004,14 +2004,14 @@ async function validateAttachmentEntity(type,id,claims,profile,token,action,owne
         requirePermission(profile,"attachments","delete");
         if(!hasPermission(profile,"cashCustody","add")&&!hasPermission(profile,"cashCustody","edit"))throw new Error("Permission denied: cashCustody.add/edit.");
       }else requireEntityPermission("cashCustody");
-      const separator=entityId.lastIndexOf("--");
+      const separator=entityId.indexOf("--");
       if(separator<=0||separator>=entityId.length-2)throw new Error("Invalid cash custody draft attachment reference.");
       const ownerUid=safeSegment(entityId.slice(0,separator),"cash custody draft owner");
       safeSegment(entityId.slice(separator+2),"cash custody draft id");
       if(ownerUid!==claims.sub)throw new Error("Permission denied: cash custody draft belongs to another user.");
     }else if(entityType==="cashCustody"){
       requireEntityPermission("cashCustody");
-      const separator=entityId.lastIndexOf("--");
+      const separator=entityId.indexOf("--");
       if(separator<=0||separator>=entityId.length-2)throw new Error("Invalid cash custody attachment reference.");
       const ownerUid=safeSegment(entityId.slice(0,separator),"cash custody owner");
       const transactionId=safeSegment(entityId.slice(separator+2),"cash custody transaction");
@@ -2133,11 +2133,14 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     const sourceType=cleanText(body.sourceEntityType,24),sourceId=cleanText(body.sourceEntityId,120);
     const targetType=cleanText(body.targetEntityType,24),targetId=cleanText(body.targetEntityId,120);
     if(sourceType!=="cashCustodyDraft"||targetType!=="cashCustody")throw new Error("Unsupported cash custody attachment linking operation.");
-    const sourceSeparator=sourceId.lastIndexOf("--"),targetSeparator=targetId.lastIndexOf("--");
-    if(sourceSeparator<=0||targetSeparator<=0)throw new Error("Invalid cash custody attachment owner reference.");
+    const sourceSeparator=sourceId.indexOf("--"),targetSeparator=targetId.indexOf("--");
+    if(sourceSeparator<=0||targetSeparator<=0||sourceSeparator>=sourceId.length-2||targetSeparator>=targetId.length-2)throw new Error("Invalid cash custody attachment owner reference.");
     const sourceOwner=safeSegment(sourceId.slice(0,sourceSeparator),"staged file owner");
-    const targetOwner=safeSegment(targetId.slice(0,targetSeparator),"target transaction owner");
-    if(sourceOwner!==claims.sub||targetOwner!==claims.sub||sourceOwner!==targetOwner)throw new Error("Permission denied: only your own staged files can be linked to your own cash custody transactions.");
+    const encodedTargetOwner=safeSegment(targetId.slice(0,targetSeparator),"target transaction owner");
+    const targetOwner=safeSegment(body.targetOwnerUid||encodedTargetOwner,"target transaction owner");
+    if(encodedTargetOwner!==targetOwner)throw new Error("The target cash-custody owner does not match the attachment reference.");
+    if(sourceOwner!==claims.sub)throw new Error("Permission denied: staged files must belong to the signed-in user.");
+    if(targetOwner!==claims.sub&&!(profile.role==="admin"&&hasPermission(profile,"cashCustody","viewOthers")))throw new Error("Permission denied: managing another user's cash-custody attachments requires administrator access and cashCustody.viewOthers.");
     const attachment=await findAttachment(env,sourceType,sourceId,id);
     if(attachment.ownerUid!==claims.sub)throw new Error("Permission denied: staged attachment belongs to another user.");
     await validateAttachmentEntity(sourceType,sourceId,claims,profile,token,"upload",attachment.ownerUid);
