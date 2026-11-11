@@ -2212,7 +2212,7 @@ function App(){
     if(!window.confirm((rtl?'حذف حركة العهدة؟ سيتم حذف الحركة المقابلة المرتبطة بها، وسيعاد احتساب الرصيد مع الاحتفاظ بأثر الحذف في سجل النشاط.\n':'Delete this custody movement and its linked counterpart? Balances will be recalculated and the deletion retained in the audit log.\n')+(transaction.description||transaction.id)))return;
     try{
       if(hasPermission('attachments','delete'))await deleteRecordAttachments('cashCustody',ownerUid+'--'+transaction.id);
-      const updates={'cashCustodies/'+ownerUid+'/transactions/'+transaction.id:null};
+      const updates={['cashCustodies/'+ownerUid+'/transactions/'+transaction.id]:null};
       if(transaction.linkedTransactionId&&transaction.linkedOwnerUid)updates['cashCustodies/'+transaction.linkedOwnerUid+'/transactions/'+transaction.linkedTransactionId]=null;
       if(transaction.linkedProjectEventId&&transaction.projectCode)updates['projects/'+transaction.projectCode+'/events/'+transaction.linkedProjectEventId]=null;
       await db.ref().update(updates);
