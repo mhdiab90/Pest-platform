@@ -780,7 +780,6 @@ function App(){
         setUnreadNotificationMessages(next.filter(m=>m.read!==true));
       });
     };
-    const needs=[];
     if(tab==='dashboard'){
       needMaster();needProjects();needFinance();
       if(isAdmin && !subscriptions.has('logs:all')){
@@ -979,6 +978,7 @@ function App(){
     if(!currentUser||!message||message.senderUid===currentUser.uid||message.read===true)return;
     db.ref('messages/'+currentUser.uid+'/'+message.id).update({read:true}).then(()=>{
       setMessages(old=>old.map(m=>m.id===message.id?{...m,read:true}:m));
+      setUnreadNotificationMessages(old=>old.filter(m=>m.id!==message.id));
     }).catch(err=>console.warn('Could not mark shortcut message as read:',err));
   }
   function openShortcutReply(message){
@@ -2019,7 +2019,7 @@ function App(){
     if(leavingUser) void addLog('تسجيل خروج',leavingUser);
     try{
       await auth.signOut();
-      setCurrentUser(null);setMessages([]);setUserRequests([]);setActiveUsers([]);
+      setCurrentUser(null);setMessages([]);setUserRequests([]);setPendingNotificationRequests([]);setUnreadNotificationMessages([]);setActiveUsers([]);
       setTab('dashboard');setView('login');setAuthError('');setAuthSuccess('');
       setAuthReady(true);registrationUid.current=null;
     }catch(err){
@@ -2135,6 +2135,7 @@ function App(){
     if(target!==currentUser.uid)setCashCustodyBookScope('personal');
     setCashCustodyNotice('');
     if(target===currentUser.uid)return;
+    if(Array.isArray(cashCustodyByUid[target]))return;
     try{
       const snap=await db.ref('cashCustodies/'+target+'/transactions').once('value');
       const rows=Object.entries(snap.val()||{}).map(([id,value])=>({...value,id:value&&value.id?value.id:id}));
