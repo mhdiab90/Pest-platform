@@ -2114,7 +2114,7 @@ function App(){
         projectCode:String(cashCustodyForm.projectCode||'').trim(),
         reference:String(cashCustodyForm.reference||'').trim(),description
       };
-      let transactionId=cashCustodyEditingId,mirrorTransactionId='',mirrorOwnerUid='',transactionStatus=isAdmin?'approved':'pending',previousCashCustodyRecord=null;
+      let transactionId=cashCustodyEditingId,mirrorTransactionId='',mirrorOwnerUid='',transactionStatus=isAdmin?'approved':'pending',previousCashCustodyRecord=null,notificationToCreate=null;
       const updates={};
       const sourcePath='cashCustodies/'+sourceOwnerUid+'/transactions/';
       let existing=null;
@@ -2149,7 +2149,7 @@ function App(){
           }
           if(['user','company'].includes(counterpartyType)&&mirrorOwnerUid!==currentUser.uid&&!existing?.linkedTransactionId){
             const notificationId=db.ref('cashCustodyNotifications/'+mirrorOwnerUid).push().key;
-            updates['cashCustodyNotifications/'+mirrorOwnerUid+'/'+notificationId]={id:notificationId,recipientUid:mirrorOwnerUid,senderUid:currentUser.uid,senderName:sourcePartyName,amount,currency:base.currency,date:base.date,description,bookScope:mirrorBookScope,transactionId:mirrorTransactionId,pairGroupId:transactionId,createdAt:firebase.database.ServerValue.TIMESTAMP,read:false};
+            notificationToCreate={ownerUid:mirrorOwnerUid,notificationId,record:{id:notificationId,recipientUid:mirrorOwnerUid,senderUid:currentUser.uid,senderName:sourcePartyName,amount,currency:base.currency,date:base.date,description,bookScope:mirrorBookScope,transactionId:mirrorTransactionId,pairGroupId:transactionId,createdAt:firebase.database.ServerValue.TIMESTAMP,read:false}};
           }
         }
       }else if(existing?.linkedTransactionId){
@@ -2169,6 +2169,8 @@ function App(){
         if(existing?.linkedTransactionId&&!canPair)updates['cashCustodies/'+existing.linkedOwnerUid+'/transactions/'+existing.linkedTransactionId]=null;
       }
       await db.ref().update(updates);
+      let notificationSent=false,notificationError='';
+      if(notificationToCreate){try{await db.ref('cashCustodyNotifications/'+notificationToCreate.ownerUid+'/'+notificationToCreate.notificationId).set(notificationToCreate.record);notificationSent=true;}catch(error){notificationError=String(error.message||error);console.warn('Cash custody notification could not be delivered:',error);}}
       let linkResult={ok:true};
       if(cashCustodyStagedAttachments.length){
         const transactionOwnerUid=sourceOwnerUid;
@@ -2179,7 +2181,7 @@ function App(){
       await addLog((cashCustodyEditingId?'تعديل':'تسجيل')+' حركة عهدة: '+(cashCustodyTypeLabels[cashCustodyForm.type]||cashCustodyForm.type),currentUser,{entityType:'cash-custody',entityId:sourceOwnerUid+'/'+transactionId,changes:cashCustodyEditingId?auditChanges(previousCashCustodyRecord,sourceRecord):{},metadata:{amount,currency:base.currency,status:transactionStatus,counterpartyType,counterpartyUid,counterpartyCode,paired:Boolean(sourceRecord.linkedTransactionId),attachmentsLinked:Boolean(linkResult.ok)}});
       setCashCustodyEditingId('');setCashCustodyForm({type:'expense',date:new Date().toISOString().slice(0,10),amount:'',currency:'EGP',counterparty:'',counterpartyType:'',counterpartyUid:'',counterpartyCode:'',counterpartyName:'',projectCode:'',reference:'',description:''});
       const savedMessage=rtl?(transactionStatus==='approved'?'تم حفظ الحركة واعتمادها.':'تم حفظ الحركة وهي في انتظار الاعتماد.'):(transactionStatus==='approved'?'Movement saved and approved.':'Movement saved and awaiting approval.');
-      setCashCustodyNotice(savedMessage+(sourceRecord.linkedTransactionId?(rtl?' وتم تسجيل الحركة المقابلة وإرسال إشعار للطرف الآخر.':' The linked counterparty entry and notification were created.'):(rtl?'':'')+(linkResult.ok?'':(rtl?' تعذر ربط بعض الملفات: '+linkResult.message+' استخدم زر إكمال ربط المرفقات.':' Some files could not be linked: '+linkResult.message+' Use Finish linking attachments to retry.'))));
+      setCashCustodyNotice(savedMessage+(sourceRecord.linkedTransactionId?(rtl?(notificationSent?' وتم تسجيل الحركة المقابلة وإرسال الإشعار.':' تم تسجيل الحركة المقابلة، لكن تعذر إرسال الإشعار: '+notificationError):(notificationSent?' The linked entry and notification were saved.':' The linked entry was saved, but its notification failed: '+notificationError)):'')+(linkResult.ok?'':(rtl?' تعذر ربط بعض الملفات: '+linkResult.message+' استخدم زر إكمال ربط المرفقات.':' Some files could not be linked: '+linkResult.message+' Use Finish linking attachments.')));
     }catch(err){setCashCustodyNotice(firebaseErrorMessage(err,tr));}
     finally{setCashCustodyBusy(false);}
   }
