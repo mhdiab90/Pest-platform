@@ -3,6 +3,7 @@
   "name": "pest-platform",
   "main": "cloudflare/worker.js",
   "compatibility_date": "2026-11-09",
+  "keep_vars": true,
   "workers_dev": true,
   "ai": {
     "binding": "AI"
