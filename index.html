@@ -377,6 +377,7 @@ function App(){
   const [cashCustodyDraftId,setCashCustodyDraftId] = useState(()=>('draft_'+(window.crypto?.randomUUID?.()||Date.now()+'_'+Math.random().toString(36).slice(2))));
   const [cashCustodyStagedAttachments,setCashCustodyStagedAttachments] = useState([]);
   const [cashCustodyPendingLinkTargetId,setCashCustodyPendingLinkTargetId] = useState('');
+  const [cashCustodyPendingLinkOwnerUid,setCashCustodyPendingLinkOwnerUid] = useState('');
   const [inlineAttachmentStatuses,setInlineAttachmentStatuses] = useState({});
   const [attachmentsBusy,setAttachmentsBusy] = useState(false);
   const [attachmentUploadBusy,setAttachmentUploadBusy] = useState(false);
@@ -1261,10 +1262,11 @@ function App(){
   }
   function resetCashCustodyAttachmentDraft(){
     const next='draft_'+(window.crypto?.randomUUID?.()||Date.now()+'_'+Math.random().toString(36).slice(2));
-    try{if(currentUser?.uid){localStorage.setItem('pestCashCustodyAttachmentDraft:'+currentUser.uid,next);localStorage.removeItem('pestCashCustodyAttachmentTarget:'+currentUser.uid);}}catch(_){}
+    try{if(currentUser?.uid){localStorage.setItem('pestCashCustodyAttachmentDraft:'+currentUser.uid,next);localStorage.removeItem('pestCashCustodyAttachmentTarget:'+currentUser.uid);localStorage.removeItem('pestCashCustodyAttachmentOwner:'+currentUser.uid);}}catch(_){}
     setCashCustodyDraftId(next);
     setCashCustodyStagedAttachments([]);
     setCashCustodyPendingLinkTargetId('');
+    setCashCustodyPendingLinkOwnerUid('');
   }
   async function removeCashCustodyStagedAttachment(item){
     const entityId=currentUser.uid+'--'+cashCustodyDraftId;
@@ -1275,14 +1277,18 @@ function App(){
       setCashCustodyNotice(rtl?'تمت إزالة الملف المرفوع من قائمة المرفقات المؤقتة.':'Staged attachment removed.');
     }catch(error){setCashCustodyNotice((rtl?'تعذر إزالة الملف: ':'Could not remove staged file: ')+String(error.message||error));}
   }
-  async function finishCashCustodyAttachmentLink(targetId=cashCustodyPendingLinkTargetId){
+  async function finishCashCustodyAttachmentLink(targetId=cashCustodyPendingLinkTargetId,targetOwnerUid=cashCustodyPendingLinkOwnerUid||cashCustodyTargetUid||currentUser.uid){
     if(!targetId)return {ok:true};
+    targetOwnerUid=String(targetOwnerUid||currentUser.uid);
     const sourceEntityId=currentUser.uid+'--'+cashCustodyDraftId;
-    const targetEntityId=currentUser.uid+'--'+targetId;
-    try{localStorage.setItem('pestCashCustodyAttachmentTarget:'+currentUser.uid,targetId);}catch(_){}
+    const targetEntityId=targetOwnerUid+'--'+targetId;
+    try{
+      localStorage.setItem('pestCashCustodyAttachmentTarget:'+currentUser.uid,targetId);
+      localStorage.setItem('pestCashCustodyAttachmentOwner:'+currentUser.uid,targetOwnerUid);
+    }catch(_){}
     setCashCustodyBusy(true);
     try{
-      const targetSnapshot=await db.ref('cashCustodies/'+currentUser.uid+'/transactions/'+targetId).once('value');
+      const targetSnapshot=await db.ref('cashCustodies/'+targetOwnerUid+'/transactions/'+targetId).once('value');
       if(!targetSnapshot.exists())throw new Error(rtl?'حركة العُهدة المحفوظة لم تعد موجودة.':'The saved cash-custody movement no longer exists.');
       let stagedItems=[...cashCustodyStagedAttachments];
       if(!stagedItems.length){
@@ -1294,7 +1300,7 @@ function App(){
       const linkedIds=new Set((linked.attachments||[]).map(x=>x.id));
       for(const item of stagedItems){
         if(!linkedIds.has(item.id)){
-          await attachmentWorkerRequest('/attachments/attach','POST',{id:item.id,sourceEntityType:'cashCustodyDraft',sourceEntityId,targetEntityType:'cashCustody',targetEntityId});
+          await attachmentWorkerRequest('/attachments/attach','POST',{id:item.id,sourceEntityType:'cashCustodyDraft',sourceEntityId,targetEntityType:'cashCustody',targetEntityId,targetOwnerUid});
           linkedIds.add(item.id);
         }
         setCashCustodyStagedAttachments(old=>old.filter(x=>x.id!==item.id));
@@ -1382,14 +1388,20 @@ function App(){
   useEffect(()=>{
     if(!currentUser?.uid)return;
     const key='pestCashCustodyAttachmentTarget:'+currentUser.uid;
+    const ownerKey='pestCashCustodyAttachmentOwner:'+currentUser.uid;
     try{
       if(cashCustodyPendingLinkTargetId)localStorage.setItem(key,cashCustodyPendingLinkTargetId);
       else{
         const saved=localStorage.getItem(key);
         if(saved)setCashCustodyPendingLinkTargetId(saved);
       }
+      if(cashCustodyPendingLinkOwnerUid)localStorage.setItem(ownerKey,cashCustodyPendingLinkOwnerUid);
+      else{
+        const savedOwner=localStorage.getItem(ownerKey);
+        if(savedOwner)setCashCustodyPendingLinkOwnerUid(savedOwner);
+      }
     }catch(_){}
-  },[currentUser?.uid,cashCustodyPendingLinkTargetId]);
+  },[currentUser?.uid,cashCustodyPendingLinkTargetId,cashCustodyPendingLinkOwnerUid]);
   useEffect(()=>{if(tab==='attachments'&&currentUser)void refreshDriveConnectionStatus();},[tab,currentUser?.uid]);
   useEffect(()=>{if(tab==='attachments'&&currentUser)void refreshAttachmentList();},[tab,attachmentEntityType,attachmentEntityId,currentUser?.uid]);
   useEffect(()=>{
@@ -2043,9 +2055,11 @@ function App(){
       }
       let linkResult={ok:true};
       if(cashCustodyStagedAttachments.length){
+        const transactionOwnerUid=cashCustodyEditingId?(cashCustodyTargetUid||currentUser.uid):currentUser.uid;
         setCashCustodyPendingLinkTargetId(transactionId);
-        try{localStorage.setItem('pestCashCustodyAttachmentTarget:'+currentUser.uid,transactionId);}catch(_){}
-        linkResult=await finishCashCustodyAttachmentLink(transactionId);
+        setCashCustodyPendingLinkOwnerUid(transactionOwnerUid);
+        try{localStorage.setItem('pestCashCustodyAttachmentTarget:'+currentUser.uid,transactionId);localStorage.setItem('pestCashCustodyAttachmentOwner:'+currentUser.uid,transactionOwnerUid);}catch(_){}
+        linkResult=await finishCashCustodyAttachmentLink(transactionId,transactionOwnerUid);
       }else{
         resetCashCustodyAttachmentDraft();
       }
