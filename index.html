@@ -485,7 +485,6 @@ function App(){
   const [excelSummary,setExcelSummary] = useState('');
   const [backupBusy,setBackupBusy] = useState('');
   const [backupMessage,setBackupMessage] = useState('');
-  const messageIdsRef = useRef(null);
   const [requestFilter,setRequestFilter] = useState('all');
   const [requestStatusDrafts,setRequestStatusDrafts] = useState({});
   const [theme,setTheme] = useState(()=>localStorage.getItem('pestTheme') || 'blue');
@@ -727,7 +726,7 @@ function App(){
       setInflows([]);setOutflows([]);setLogs([]);setTasks([]);setMessages([]);
       setUnreadNotificationMessages([]);setPendingNotificationRequests([]);
       setActiveUsers([]);setUserRequests([]);setCashCustodyByUid({});setCashCustodyNotifications([]);
-      messageIdsRef.current=null;requestIdsRef.current=null;unreadMessageIdsRef.current=null;
+      requestIdsRef.current=null;unreadMessageIdsRef.current=null;
       notificationRequestReadyRef.current={pending:false,deferred:false};notificationRequestRowsRef.current={pending:[],deferred:[]};
       notifiedIncomingMessageIdsRef.current=new Set();
       return;
@@ -738,7 +737,7 @@ function App(){
       setInflows([]);setOutflows([]);setLogs([]);setTasks([]);setMessages([]);
       setUnreadNotificationMessages([]);setPendingNotificationRequests([]);
       setActiveUsers([]);setUserRequests([]);setCashCustodyByUid({});setCashCustodyNotifications([]);
-      messageIdsRef.current=null;requestIdsRef.current=null;unreadMessageIdsRef.current=null;
+      requestIdsRef.current=null;unreadMessageIdsRef.current=null;
       notificationRequestReadyRef.current={pending:false,deferred:false};notificationRequestRowsRef.current={pending:[],deferred:[]};
       notifiedIncomingMessageIdsRef.current=new Set();
     }
