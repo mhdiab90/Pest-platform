@@ -1506,6 +1506,8 @@ function App(){
   const nameOfParty=(type,code)=>{const arr=type==='vendor'?vendors:clients;return arr.find(x=>x.code===code)?.name||code||'—';};
   const eventDateLabel=value=>value?new Date(String(value).length===10?value+'T00:00:00':value).toLocaleDateString(rtl?'ar-EG-u-nu-latn':'en-US'):'—';
   const includesText=(values,q)=>!q || String(values||'').toLowerCase().includes(q.toLowerCase());
+  const isClosedFinancialEvent=event=>['closed','settled','paid','collected','full','completed','تم السداد','تم التحصيل','مغلق','مقفول','مسدد','تمت التسوية'].includes(String(event?.status||'').toLowerCase());
+  const isOpenFinancialEvent=event=>['receivable','payable'].includes(event?.financialEffect)&&!isClosedFinancialEvent(event)&&!['cancelled','rejected','ملغي','مرفوض'].includes(String(event?.status||'').toLowerCase());
   const cashEventSettled=e=>['full','completed','paid','collected','تم السداد','تم التحصيل','تم الدفع','تم القبض','تم التنفيذ','منفذ'].includes(String(e.status||'').toLowerCase()) || (String(e.status||'').toLowerCase()==='partial'&&(Number(e.settledAmount||0)>0||e.settledAmount===undefined));
   const cashEventAmount=e=>String(e.status||'').toLowerCase()==='partial'&&Number(e.settledAmount||0)>0?Number(e.settledAmount||0):Number(e.amount||0);
   const cashAmountRows=rows=>rows.map(e=>({...e,amount:cashEventAmount(e)}));
@@ -2035,9 +2037,6 @@ function App(){
     transfer_out:rtl?'عهدة محولة صادرة':'Custody transfer out'
   };
   function cashCustodySign(type){return ['receipt','topup','refund','opening_balance','adjustment_in','transfer_in'].includes(type)?1:-1;}
-  const isClosedFinancialEvent=event=>['closed','settled','paid','collected','full','completed','تم السداد','تم التحصيل','مغلق','مقفول','مسدد','تمت التسوية'].includes(String(event?.status||'').toLowerCase());
-  const isOpenFinancialEvent=event=>['receivable','payable'].includes(event?.financialEffect)&&!isClosedFinancialEvent(event)&&!['cancelled','rejected','ملغي','مرفوض'].includes(String(event?.status||'').toLowerCase());
-
   function cashCustodyCounterpartyOptions(){
     const users=userDirectory.filter(u=>u.uid&&u.uid!==currentUser?.uid&&u.status==='active');
     return users;
