@@ -318,6 +318,8 @@ function App(){
   const [avatarBusy,setAvatarBusy] = useState(false);
   const [companyInfo,setCompanyInfo] = useState({name:rtl?'اسم الشركة':'Company name',logo:''});
   const [userRequests,setUserRequests] = useState([]);
+  const [pendingNotificationRequests,setPendingNotificationRequests] = useState([]);
+  const [unreadNotificationMessages,setUnreadNotificationMessages] = useState([]);
   const [activeUsers,setActiveUsers] = useState([]);
   const [userAdminSearch,setUserAdminSearch] = useState('');
   const [adminUserSelectedUid,setAdminUserSelectedUid] = useState('');
@@ -464,6 +466,11 @@ function App(){
   const notificationPreferencesRef = useRef({sound:true,desktop:false});
   const notificationAudioRef = useRef(null);
   const requestIdsRef = useRef(null);
+  const dataSubscriptionsRef = useRef(new Map());
+  const dataSubscriptionOwnerUidRef = useRef('');
+  const unreadMessageIdsRef = useRef(null);
+  const notificationRequestRowsRef = useRef({pending:[],deferred:[]});
+  const notifiedIncomingMessageIdsRef = useRef(new Set());
   const replyTouchStartRef = useRef(null);
   const [newPassword,setNewPassword] = useState('');
   const [currentPassword,setCurrentPassword] = useState('');
@@ -696,91 +703,209 @@ function App(){
     return ()=>{mounted=false;unsubscribe();};
   },[]);
 
-  // Subscribe only after Firebase Authentication and the active profile are confirmed.
+  // Subscribe to shared data only when a screen needs it. Each dataset is loaded
+  // at most once per signed-in session; subscriptions remain cached for live updates
+  // and are detached on logout or account switch.
   useEffect(()=>{
-    if(!currentUser) return;
-    const refs=[];
-    const watch=(path,handler)=>{
-      const ref=db.ref(path);
-      ref.on('value',handler,err=>console.error('Database listener '+path,err));
-      refs.push({ref,handler});
+    const uid=currentUser?.uid||'';
+    const subscriptions=dataSubscriptionsRef.current;
+    const detachAll=()=>{
+      subscriptions.forEach(({ref,handler})=>{try{ref.off('value',handler);}catch(_){}});
+      subscriptions.clear();
+      dataSubscriptionOwnerUidRef.current='';
     };
-    requestIdsRef.current=null;
-    watch('userDirectory',s=>setUserDirectory(toArray(s.val())));
-    watch('clients',s=>setClients(toArray(s.val())));
-    watch('vendors',s=>setVendors(toArray(s.val())));
-    watch('quotes',s=>setQuotes(toArray(s.val())));
-    watch('projects',s=>setProjects(toArray(s.val())));
-    watch('inflows',s=>setInflows(toArray(s.val())));
-    watch('outflows',s=>setOutflows(toArray(s.val())));
-    if(isAdmin) watch('logs',s=>setLogs(toArray(s.val())));
-    else setLogs([]);
-    watch('users/'+currentUser.uid,s=>{
+    if(!uid){
+      detachAll();
+      setUserDirectory([]);setClients([]);setVendors([]);setQuotes([]);setProjects([]);
+      setInflows([]);setOutflows([]);setLogs([]);setTasks([]);setMessages([]);
+      setUnreadNotificationMessages([]);setPendingNotificationRequests([]);
+      setActiveUsers([]);setUserRequests([]);setCashCustodyByUid({});setCashCustodyNotifications([]);
+      messageIdsRef.current=null;requestIdsRef.current=null;unreadMessageIdsRef.current=null;
+      notificationRequestRowsRef.current={pending:[],deferred:[]};
+      notifiedIncomingMessageIdsRef.current=new Set();
+      return;
+    }
+    if(dataSubscriptionOwnerUidRef.current && dataSubscriptionOwnerUidRef.current!==uid){
+      detachAll();
+      setUserDirectory([]);setClients([]);setVendors([]);setQuotes([]);setProjects([]);
+      setInflows([]);setOutflows([]);setLogs([]);setTasks([]);setMessages([]);
+      setUnreadNotificationMessages([]);setPendingNotificationRequests([]);
+      setActiveUsers([]);setUserRequests([]);setCashCustodyByUid({});setCashCustodyNotifications([]);
+      messageIdsRef.current=null;requestIdsRef.current=null;unreadMessageIdsRef.current=null;
+      notificationRequestRowsRef.current={pending:[],deferred:[]};
+      notifiedIncomingMessageIdsRef.current=new Set();
+    }
+    dataSubscriptionOwnerUidRef.current=uid;
+
+    const subscribe=(key,ref,handler)=>{
+      if(subscriptions.has(key))return;
+      const listener=snapshot=>handler(snapshot);
+      ref.on('value',listener,error=>{
+        console.error('Lazy Firebase listener '+key,error);
+        subscriptions.delete(key);
+      });
+      subscriptions.set(key,{ref,handler:listener});
+    };
+    const watch=(key,path,handler)=>subscribe(key,db.ref(path),handler);
+    const watchArray=(key,path,setter)=>watch(key,path,s=>setter(toArray(s.val())));
+    const needMaster=()=>{
+      watchArray('clients','clients',setClients);
+      watchArray('vendors','vendors',setVendors);
+    };
+    const needProjects=()=>watchArray('projects','projects',setProjects);
+    const needFinance=()=>{
+      watchArray('quotes','quotes',setQuotes);
+      watchArray('inflows','inflows',setInflows);
+      watchArray('outflows','outflows',setOutflows);
+    };
+    const needDirectory=()=>watchArray('userDirectory','userDirectory',setUserDirectory);
+    const needTasks=()=>watchArray('tasks:'+uid,'tasks/'+uid,setTasks);
+    const needMessages=()=>{
+      messageIdsRef.current=null;
+      watchArray('messages:'+uid,'messages/'+uid,s=>{});
+    };
+    const needs=[];
+    if(tab==='dashboard'){
+      needMaster();needProjects();needFinance();
+      if(isAdmin && !subscriptions.has('logs:all')){
+        const logQuery=db.ref('logs').orderByChild('createdAt').limitToLast(20);
+        subscribe('logs:recent',logQuery,s=>setLogs(toArray(s.val())));
+      }
+    }else if(tab==='master'){
+      needMaster();needProjects();
+    }else if(tab==='projects'||tab==='projectDetail'){
+      needMaster();needProjects();
+    }else if(tab==='statement'||tab==='reports'){
+      needMaster();needProjects();needFinance();
+    }else if(tab==='cashCustody'){
+      needMaster();needProjects();needDirectory();
+      watch('cashCustody:'+uid,'cashCustodies/'+uid+'/transactions',s=>{
+        const rows=Object.entries(s.val()||{}).map(([id,value])=>({...value,id:value&&value.id?value.id:id}));
+        setCashCustodyByUid(old=>({...old,[uid]:rows}));
+      });
+    }else if(tab==='messages'){
+      needDirectory();needMaster();needProjects();needTasks();
+      subscribe('messages:'+uid,db.ref('messages/'+uid),s=>{
+        const next=toArray(s.val());
+        if(messageIdsRef.current===null){messageIdsRef.current=new Set(next.map(m=>m.id));}
+        else{
+          next.forEach(m=>{
+            if(!messageIdsRef.current.has(m.id)&&m.senderUid!==uid&&m.read!==true&&(m.mailboxUid===uid||m.recipientUid===uid)){
+              const id=String(m.id||'');
+              if(id&&!notifiedIncomingMessageIdsRef.current.has(id)){
+                notifiedIncomingMessageIdsRef.current.add(id);
+                notifyUserOfIncoming({id:'message:'+id,type:'message',message:m});
+              }
+            }
+          });
+          messageIdsRef.current=new Set(next.map(m=>m.id));
+        }
+        setMessages(next);
+        setUnreadNotificationMessages(next.filter(m=>m.read!==true));
+      });
+    }else if(tab==='tasks'){
+      needTasks();
+    }else if(tab==='userRequests'&&isAdmin){
+      watch('userRequests:all','userRequests',s=>{
+        const rawRequests=s.val()||{};const nextRequests=toArray(rawRequests);setUserRequests(nextRequests);
+        const cleanup={};
+        Object.entries(rawRequests).forEach(([key,req])=>{if(req&&Object.prototype.hasOwnProperty.call(req,'password'))cleanup['userRequests/'+key+'/password']=null;});
+        if(Object.keys(cleanup).length)db.ref().update(cleanup).catch(err=>console.warn('Legacy request password cleanup:',err));
+      });
+    }else if((tab==='userManagement'||tab==='userPermissions'||tab==='auditLogs')&&isAdmin){
+      needDirectory();
+      watch('users:all','users',s=>{
+        const rawUsers=s.val()||{};const users=toArray(rawUsers);setActiveUsers(users);
+        const updates={};
+        const directoryByUid=new Map((userDirectory||[]).map(item=>[item.uid,item]));
+        Object.entries(rawUsers).forEach(([userUid,user])=>{
+          if(!user)return;
+          const linkedToAuth=Boolean(user.uid)||userUid===uid;
+          if(userUid===uid&&!user.uid)updates['users/'+userUid+'/uid']=userUid;
+          if(linkedToAuth&&Object.prototype.hasOwnProperty.call(user,'password'))updates['users/'+userUid+'/password']=null;
+          if(linkedToAuth&&['active','نشط','مفعل','enabled'].includes(String(user.status||'').toLowerCase())){
+            const profile={uid:userUid,username:user.username||'',fullName:user.fullName||'',jobTitle:user.jobTitle||'',department:user.department||'',role:user.role||'user',phone:user.phone||'',email:user.email||'',whatsapp:user.whatsapp||'',whatsappOptIn:user.whatsappOptIn===true,whatsappOptInAt:user.whatsappOptInAt||null,whatsappOptOutAt:user.whatsappOptOutAt||null,avatar:user.avatar||'',status:'active'};
+            if(JSON.stringify(directoryByUid.get(userUid)||{})!==JSON.stringify(profile))updates['userDirectory/'+userUid]=profile;
+          }
+        });
+        if(Object.keys(updates).length)db.ref().update(updates).catch(err=>console.warn('Directory sync / password cleanup:',err));
+      });
+    }
+    if(tab==='auditLogs'&&isAdmin){
+      const recent=subscriptions.get('logs:recent');
+      if(recent){recent.ref.off('value',recent.handler);subscriptions.delete('logs:recent');}
+      watchArray('logs:all','logs',setLogs);
+    }
+    if(tab==='attachments'){
+      if(attachmentEntityType==='project'||attachmentEntityType==='financial')needProjects();
+      if(attachmentEntityType==='client'||attachmentEntityType==='vendor'||attachmentEntityType==='financial')needMaster();
+      if(attachmentEntityType==='task')needTasks();
+      if(attachmentEntityType==='message'){needDirectory();needMessages();}
+    }
+    if(assistantOpen&&hasPermission('aiAgent','view')){
+      needMaster();needProjects();needFinance();needDirectory();needTasks();
+    }
+    if(notificationOpen){
+      const messageQuery=db.ref('messages/'+uid).orderByChild('read').equalTo(false);
+      subscribe('messages:unread:'+uid,messageQuery,s=>{
+        const next=toArray(s.val());
+        if(unreadMessageIdsRef.current===null)unreadMessageIdsRef.current=new Set(next.map(m=>m.id));
+        else{
+          next.forEach(m=>{
+            const id=String(m.id||'');
+            if(id&&!unreadMessageIdsRef.current.has(id)&&m.senderUid!==uid&&!notifiedIncomingMessageIdsRef.current.has(id)){
+              notifiedIncomingMessageIdsRef.current.add(id);
+              notifyUserOfIncoming({id:'message:'+id,type:'message',message:m});
+            }
+          });
+          unreadMessageIdsRef.current=new Set(next.map(m=>m.id));
+        }
+        setUnreadNotificationMessages(next);
+      });
+      if(isAdmin){
+        const updatePending=kind=>snapshot=>{
+          notificationRequestRowsRef.current={...notificationRequestRowsRef.current,[kind]:toArray(snapshot.val())};
+          const merged=[...notificationRequestRowsRef.current.pending,...notificationRequestRowsRef.current.deferred];
+          setPendingNotificationRequests(merged);
+          if(requestIdsRef.current===null)requestIdsRef.current=new Set(merged.map(item=>item.uid));
+          else{
+            merged.forEach(request=>{
+              if(!requestIdsRef.current.has(request.uid)&&request.uid){
+                notifyUserOfIncoming({id:'request:'+request.uid,type:'request',request});
+              }
+            });
+            requestIdsRef.current=new Set(merged.map(item=>item.uid));
+          }
+        };
+        subscribe('userRequests:pending',db.ref('userRequests').orderByChild('status').equalTo('pending'),updatePending('pending'));
+        subscribe('userRequests:deferred',db.ref('userRequests').orderByChild('status').equalTo('مؤجل'),updatePending('deferred'));
+      }
+    }
+
+    // Keep only the small, security-critical profile and custody-notification streams
+    // active globally. Large ledgers and message bodies are loaded on their screens.
+    watch('currentUserProfile:'+uid,'users/'+uid,s=>{
       const profile=s.val();
       const active=profile&&['active','نشط','مفعل','enabled'].includes(String(profile.status||'').toLowerCase());
-      if(!active&&auth.currentUser&&auth.currentUser.uid===currentUser.uid){
+      if(!active&&auth.currentUser&&auth.currentUser.uid===uid){
         auth.signOut().catch(err=>console.warn('Unable to sign out a deactivated account:',err));
       }
     });
-    watch('tasks/'+currentUser.uid,s=>setTasks(toArray(s.val())));
-    messageIdsRef.current=null;
-    watch('messages/'+currentUser.uid,s=>{
-      const next=toArray(s.val());
-      if(messageIdsRef.current===null){messageIdsRef.current=new Set(next.map(m=>m.id));}
-      else{
-        next.forEach(m=>{
-          if(!messageIdsRef.current.has(m.id) && m.senderUid!==currentUser.uid && m.read!==true && (m.mailboxUid===currentUser.uid||m.recipientUid===currentUser.uid)){
-            notifyUserOfIncoming({id:'message:'+m.id,type:'message',message:m});
-          }
-        });
-        messageIdsRef.current=new Set(next.map(m=>m.id));
-      }
-      setMessages(next);
-    });
-    watch('cashCustodies/'+currentUser.uid+'/transactions',s=>{
-      const rows=Object.entries(s.val()||{}).map(([id,value])=>({...value,id:value&&value.id?value.id:id}));
-      setCashCustodyByUid(old=>({...old,[currentUser.uid]:rows}));
-    });
-    cashCustodyNotificationIdsRef.current=null;
-    watch('cashCustodyNotifications/'+currentUser.uid,s=>{
+    cashCustodyNotificationIdsRef.current=cashCustodyNotificationIdsRef.current||null;
+    watch('cashCustodyNotifications:'+uid,'cashCustodyNotifications/'+uid,s=>{
       const rows=Object.entries(s.val()||{}).map(([id,value])=>({...value,id:value&&value.id?value.id:id}));
       if(cashCustodyNotificationIdsRef.current===null)cashCustodyNotificationIdsRef.current=new Set(rows.map(x=>x.id));
       else{
-        rows.forEach(item=>{if(!cashCustodyNotificationIdsRef.current.has(item.id)&&item.read!==true)notifyUserOfIncoming({id:'cashCustody:'+item.id,type:'cashCustody',cashCustody:item});});
+        rows.forEach(item=>{
+          if(!cashCustodyNotificationIdsRef.current.has(item.id)&&item.read!==true){
+            notifyUserOfIncoming({id:'cashCustody:'+item.id,type:'cashCustody',cashCustody:item});
+          }
+        });
         cashCustodyNotificationIdsRef.current=new Set(rows.map(x=>x.id));
       }
       setCashCustodyNotifications(rows);
     });
-    if(currentUser.role==='admin'){
-      watch('users',s=>{
-        const rawUsers=s.val()||{};const users=toArray(rawUsers);setActiveUsers(users);
-        const updates={};
-        Object.entries(rawUsers).forEach(([uid,u])=>{
-          if(!u) return;
-          const linkedToAuth=Boolean(u.uid) || uid===currentUser.uid;
-          if(uid===currentUser.uid && !u.uid) updates['users/'+uid+'/uid']=uid;
-          // Never expose legacy username-keyed accounts in the recipient directory.
-          if(linkedToAuth && Object.prototype.hasOwnProperty.call(u,'password')) updates['users/'+uid+'/password']=null;
-          if(linkedToAuth && ['active','نشط','مفعل','enabled'].includes(String(u.status||'').toLowerCase())) updates['userDirectory/'+uid]={uid,username:u.username||'',fullName:u.fullName||'',jobTitle:u.jobTitle||'',department:u.department||'',role:u.role||'user',phone:u.phone||'',email:u.email||'',whatsapp:u.whatsapp||'',whatsappOptIn:u.whatsappOptIn===true,whatsappOptInAt:u.whatsappOptInAt||null,whatsappOptOutAt:u.whatsappOptOutAt||null,avatar:u.avatar||'',status:'active'};
-        });
-        if(Object.keys(updates).length) db.ref().update(updates).catch(err=>console.warn('Directory sync / password cleanup:',err));
-      });
-      watch('userRequests',s=>{
-        const rawRequests=s.val()||{};const nextRequests=toArray(rawRequests);setUserRequests(nextRequests);
-        if(requestIdsRef.current===null){requestIdsRef.current=new Set(nextRequests.map(r=>r.uid));}
-        else{
-          nextRequests.forEach(req=>{if(!requestIdsRef.current.has(req.uid)&&['pending','مؤجل'].includes(String(req.status||'').toLowerCase()))notifyUserOfIncoming({id:'request:'+req.uid,type:'request',request:req});});
-          requestIdsRef.current=new Set(nextRequests.map(r=>r.uid));
-        }
-        const cleanup={};
-        Object.entries(rawRequests).forEach(([key,req])=>{if(req && Object.prototype.hasOwnProperty.call(req,'password')) cleanup['userRequests/'+key+'/password']=null;});
-        if(Object.keys(cleanup).length) db.ref().update(cleanup).catch(err=>console.warn('Legacy request password cleanup:',err));
-      });
-    }else{
-      setActiveUsers([]);setUserRequests([]);
-    }
-    return ()=>refs.forEach(x=>x.ref.off('value',x.handler));
-  },[currentUser]);
+  },[currentUser?.uid,tab,notificationOpen,assistantOpen,attachmentEntityType]);
 
   function unlockNotificationAudio(){
     if(!notificationPreferencesRef.current.sound||typeof window==='undefined')return;
@@ -3255,8 +3380,8 @@ function App(){
     }catch(err){alert(firebaseErrorMessage(err,tr));}
   }
 
-  const pendingRequests=userRequests.filter(r=>['pending','مؤجل'].includes(String(r.status||'').toLowerCase()) && r.uid);
-  const unreadMessages=messages.filter(m=>m.read!==true);
+  const pendingRequests=pendingNotificationRequests.filter(r=>['pending','مؤجل'].includes(String(r.status||'').toLowerCase()) && r.uid);
+  const unreadMessages=unreadNotificationMessages.filter(m=>m.read!==true);
   const notificationItems=[
     ...unreadMessages.map(m=>({id:'message:'+m.id,type:'message',title:m.subject|| (rtl?'رسالة جديدة':'New message'),description:(rtl?'من: ':'From: ')+(m.senderName||m.senderUid||''),createdAt:Number(m.createdAt||0),message:m})),
     ...cashCustodyNotifications.filter(n=>n.read!==true).map(n=>({id:'cashCustody:'+n.id,type:'cashCustody',title:rtl?'حركة مالية تخص عهدتك':'Financial movement for your custody',description:[n.senderName,money(n.amount)+' '+(n.currency||'EGP'),n.description].filter(Boolean).join(' · '),createdAt:Number(n.createdAt||0),cashCustody:n})),
