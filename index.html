@@ -1795,7 +1795,7 @@ function App(){
   const completedProjectCount=selectedProjectsForCash.filter(isProjectCompleted).length;
   const delayedProjectCount=selectedProjectsForCash.filter(p=>!isProjectCompleted(p) && p.expectedEndDate && String(p.expectedEndDate)<todayKey).length;
   const activeProjectCount=selectedProjectsForCash.length-completedProjectCount;
-  function openDashboardReport(key,title){setDashboardReportKey(key);setDashboardReportTitle(title||tr('reportSummary'));setDashboardReportSearch('');}
+  function openDashboardReport(key,title){if(key==='users'&&isAdmin){navigateToTab('userManagement');return;}setDashboardReportKey(key);setDashboardReportTitle(title||tr('reportSummary'));setDashboardReportSearch('');}
   const dashboardReportRows=(()=>{
     if(!dashboardReportKey)return [];
     const keyParts=dashboardReportKey.split(':');
