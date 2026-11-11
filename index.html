@@ -761,8 +761,24 @@ function App(){
     const needDirectory=()=>watchArray('userDirectory','userDirectory',setUserDirectory);
     const needTasks=()=>watchArray('tasks:'+uid,'tasks/'+uid,setTasks);
     const needMessages=()=>{
-      messageIdsRef.current=null;
-      watchArray('messages:'+uid,'messages/'+uid,s=>{});
+      subscribe('messages:'+uid,db.ref('messages/'+uid),s=>{
+        const next=toArray(s.val());
+        if(messageIdsRef.current===null){messageIdsRef.current=new Set(next.map(m=>m.id));}
+        else{
+          next.forEach(m=>{
+            if(!messageIdsRef.current.has(m.id)&&m.senderUid!==uid&&m.read!==true&&(m.mailboxUid===uid||m.recipientUid===uid)){
+              const id=String(m.id||'');
+              if(id&&!notifiedIncomingMessageIdsRef.current.has(id)){
+                notifiedIncomingMessageIdsRef.current.add(id);
+                notifyUserOfIncoming({id:'message:'+id,type:'message',message:m});
+              }
+            }
+          });
+          messageIdsRef.current=new Set(next.map(m=>m.id));
+        }
+        setMessages(next);
+        setUnreadNotificationMessages(next.filter(m=>m.read!==true));
+      });
     };
     const needs=[];
     if(tab==='dashboard'){
@@ -784,25 +800,7 @@ function App(){
         setCashCustodyByUid(old=>({...old,[uid]:rows}));
       });
     }else if(tab==='messages'){
-      needDirectory();needMaster();needProjects();needTasks();
-      subscribe('messages:'+uid,db.ref('messages/'+uid),s=>{
-        const next=toArray(s.val());
-        if(messageIdsRef.current===null){messageIdsRef.current=new Set(next.map(m=>m.id));}
-        else{
-          next.forEach(m=>{
-            if(!messageIdsRef.current.has(m.id)&&m.senderUid!==uid&&m.read!==true&&(m.mailboxUid===uid||m.recipientUid===uid)){
-              const id=String(m.id||'');
-              if(id&&!notifiedIncomingMessageIdsRef.current.has(id)){
-                notifiedIncomingMessageIdsRef.current.add(id);
-                notifyUserOfIncoming({id:'message:'+id,type:'message',message:m});
-              }
-            }
-          });
-          messageIdsRef.current=new Set(next.map(m=>m.id));
-        }
-        setMessages(next);
-        setUnreadNotificationMessages(next.filter(m=>m.read!==true));
-      });
+      needDirectory();needMaster();needProjects();needTasks();needMessages();
     }else if(tab==='tasks'){
       needTasks();
     }else if(tab==='userRequests'&&isAdmin){
