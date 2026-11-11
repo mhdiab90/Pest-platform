@@ -1991,6 +1991,7 @@ function App(){
     if(!currentUser||!currentUser.uid)return;
     const target=uid===currentUser.uid||hasPermission('cashCustody','viewOthers')?uid:currentUser.uid;
     setCashCustodyTargetUid(target);
+    if(target!==currentUser.uid)setCashCustodyBookScope('personal');
     setCashCustodyNotice('');
     if(target===currentUser.uid)return;
     try{
@@ -1999,6 +2000,7 @@ function App(){
       setCashCustodyByUid(old=>({...old,[target]:rows}));
     }catch(err){
       setCashCustodyTargetUid(currentUser.uid);
+      setCashCustodyBookScope('personal');
       setCashCustodyNotice(firebaseErrorMessage(err,tr));
     }
   }
@@ -2018,75 +2020,147 @@ function App(){
   };
   function cashCustodySign(type){return ['receipt','topup','refund','opening_balance','adjustment_in','transfer_in'].includes(type)?1:-1;}
 
+  function cashCustodyCounterpartyOptions(){
+    const users=userDirectory.filter(u=>u.uid&&u.uid!==currentUser?.uid&&u.status==='active');
+    return users;
+  }
+  function setCashCustodyCounterparty(type,value){
+    if(type==='user'){
+      const selected=cashCustodyCounterpartyOptions().find(u=>u.uid===value);
+      setCashCustodyForm(old=>({...old,counterpartyType:type,counterpartyUid:selected?.uid||'',counterpartyCode:'',counterpartyName:selected?.fullName||selected?.username||'',counterparty:selected?.fullName||selected?.username||''}));
+    }else if(type==='client'||type==='vendor'){
+      const list=type==='client'?clients:vendors;
+      const selected=list.find(x=>x.code===value);
+      setCashCustodyForm(old=>({...old,counterpartyType:type,counterpartyUid:'',counterpartyCode:selected?.code||'',counterpartyName:selected?.name||'',counterparty:selected?.name||''}));
+    }else if(type==='company'){
+      setCashCustodyForm(old=>({...old,counterpartyType:'company',counterpartyUid:companyCustodyOwnerUid||currentUser.uid,counterpartyCode:'',counterpartyName:companyInfo.name||tr('app'),counterparty:companyInfo.name||tr('app')}));
+    }else{
+      setCashCustodyForm(old=>({...old,counterpartyType:type||'',counterpartyUid:'',counterpartyCode:'',counterpartyName:'',counterparty:''}));
+    }
+  }
+  function cashCustodyMirrorType(type){
+    return cashCustodySign(type)>0?'expense':'receipt';
+  }
+  function cashCustodyPairEligible(type){
+    return ['receipt','topup','refund','expense','return'].includes(type);
+  }
+  function cashCustodyPartyEventType(type){
+    return cashCustodySign(type)>0?'customer_collection':'supplier_payment';
+  }
   function editCashCustodyDraft(transaction){
     if(!requirePermission('cashCustody','edit'))return;
+    if(transaction?.pairRole==='counterparty')return alert(rtl?'هذه حركة مقابلة مرتبطة بحركة الطرف الآخر. يتم تعديلها من مصدر الحركة فقط.':'This is the linked counterparty entry. Edit it from the originating movement only.');
     if(cashCustodyPendingLinkTargetId||cashCustodyStagedAttachments.length)return alert(rtl?'أكمل ربط مرفقات المسودة الحالية أولاً، ثم عدّل الحركة المطلوبة.':'Finish linking the current draft attachments before editing another movement.');
     setCashCustodyPendingAttachments([]);
-    if(cashCustodyTargetUid!==currentUser.uid&&(!isAdmin||!hasPermission('cashCustody','viewOthers'))||!transaction)return alert(rtl?'لا تملك صلاحية تعديل عهدة هذا المستخدم.':'You cannot edit this user\'s cash-custody movements.');
+    if(cashCustodyTargetUid!==currentUser.uid&&(!isAdmin||!hasPermission('cashCustody','viewOthers'))||!transaction)return alert(rtl?'لا تملك صلاحية تعديل عهدة هذا المستخدم.':'You cannot edit this user\'s custody movements.');
     if(transaction.status==='approved'&&!isAdmin)return alert(rtl?'الحركة المعتمدة لا يعدلها إلا مدير النظام حفاظًا على سلامة الرصيد.':'Only a system administrator can edit an approved movement to protect ledger integrity.');
     setCashCustodyEditingId(transaction.id);
     setCashCustodyAttachmentTargetId(transaction.id);
-    setCashCustodyForm({type:transaction.type||'expense',date:transaction.date||new Date().toISOString().slice(0,10),amount:String(transaction.amount||''),currency:transaction.currency||'EGP',counterparty:transaction.counterparty||'',projectCode:transaction.projectCode||'',reference:transaction.reference||'',description:transaction.description||''});
-    setCashCustodyNotice(rtl?'أنت تعدل حركة معلقة. احفظ التعديل أو ألغِه.':'Editing a pending movement. Save your changes or cancel.');
+    setCashCustodyBookScope(transaction.bookScope==='company'?'company':'personal');
+    setCashCustodyForm({type:transaction.type||'expense',date:transaction.date||new Date().toISOString().slice(0,10),amount:String(transaction.amount||''),currency:transaction.currency||'EGP',counterparty:transaction.counterparty||'',counterpartyType:transaction.counterpartyType||'',counterpartyUid:transaction.counterpartyUid||'',counterpartyCode:transaction.counterpartyCode||'',counterpartyName:transaction.counterpartyName||transaction.counterparty||'',projectCode:transaction.projectCode||'',reference:transaction.reference||'',description:transaction.description||''});
+    setCashCustodyNotice(rtl?'أنت تعدل حركة العهدة. إذا كانت مرتبطة بطرف آخر فسيتم تحديث الطرفين معًا.':'Editing a custody movement. Linked counterparty entries will be updated together.');
   }
 
   async function addCashCustodyTransaction(e){
     e.preventDefault();
     if(!requirePermission('cashCustody',cashCustodyEditingId?'edit':'add'))return;
-    if(cashCustodyPendingAttachments.length){
-      setCashCustodyNotice(rtl?'ارفع كل الملفات المختارة أولاً قبل تسجيل الحركة.':'Upload all selected files before saving the movement.');
-      return;
-    }
-    if(cashCustodyPendingLinkTargetId){
-      setCashCustodyNotice(rtl?'أكمل ربط مرفقات الحركة المحفوظة أولاً.':'Finish linking the attachments to the already-saved movement first.');
-      return;
-    }
-    const amount=Number(cashCustodyForm.amount);
-    const description=String(cashCustodyForm.description||'').trim();
+    if(cashCustodyPendingAttachments.length){setCashCustodyNotice(rtl?'ارفع كل الملفات المختارة أولاً قبل تسجيل الحركة.':'Upload all selected files before saving the movement.');return;}
+    if(cashCustodyPendingLinkTargetId){setCashCustodyNotice(rtl?'أكمل ربط مرفقات الحركة المحفوظة أولاً.':'Finish linking the attachments to the already-saved movement first.');return;}
+    const amount=Number(cashCustodyForm.amount),description=String(cashCustodyForm.description||'').trim();
     if(!Number.isFinite(amount)||amount<=0||!description)return alert(rtl?'أدخل مبلغاً صحيحاً وبياناً للحركة.':'Enter a valid positive amount and transaction description.');
     const validTypes=['receipt','topup','expense','return','refund','opening_balance','adjustment_in','adjustment_out'];
     if(!validTypes.includes(cashCustodyForm.type))return alert(tr('noData'));
+    if(cashCustodyEditingId&&cashCustodyTarget!==currentUser.uid&&!isAdmin)return alert(rtl?'لا يمكن تعديل عهدة مستخدم آخر.':'You cannot edit another user\'s custody.');
+    const sourceOwnerUid=cashCustodyEditingId?(cashCustodyTargetUid||currentUser.uid):currentUser.uid;
+    const sourceBookScope=cashCustodyEditingId?cashCustodySelectedBookScope:(isAdmin&&cashCustodyBookScope==='company'?'company':'personal');
+    if(sourceBookScope==='company'&&!isAdmin)return alert(rtl?'دفتر الشركة متاح لمدير النظام فقط.':'The company book is available to the administrator only.');
+    const counterpartyType=String(cashCustodyForm.counterpartyType||'');
+    const counterpartyUid=String(cashCustodyForm.counterpartyUid||'');
+    const counterpartyCode=String(cashCustodyForm.counterpartyCode||'');
+    const counterpartyName=String(cashCustodyForm.counterpartyName||cashCustodyForm.counterparty||'').trim();
+    const canPair=cashCustodyPairEligible(cashCustodyForm.type)&&['user','company'].includes(counterpartyType);
+    const hasPartyEvent=cashCustodyPairEligible(cashCustodyForm.type)&&['client','vendor'].includes(counterpartyType);
+    if(counterpartyType==='user'&&(!counterpartyUid||counterpartyUid===currentUser.uid||!cashCustodyCounterpartyOptions().some(u=>u.uid===counterpartyUid)))return alert(rtl?'اختر مستخدمًا نشطًا صحيحًا.':'Select a valid active user.');
+    if(counterpartyType==='company'&&!companyCustodyOwnerUid)return alert(rtl?'تعذر تحديد حساب مدير النظام لدفتر الشركة.':'Could not identify the administrator company book.');
+    if(['client','vendor'].includes(counterpartyType)&&(!counterpartyCode||!cashCustodyForm.projectCode))return alert(rtl?'اختر العميل أو المورد والمشروع المرتبط بالحركة حتى تظهر في كشف الحساب.':'Choose the customer or supplier and the related project so the movement appears in its statement.');
+    if(hasPartyEvent&&!projects.some(p=>p.code===cashCustodyForm.projectCode))return alert(rtl?'اختر مشروعًا صحيحًا.':'Select a valid project.');
     setCashCustodyBusy(true);setCashCustodyNotice('');
     try{
+      const ownerProfile=(sourceOwnerUid===currentUser.uid?currentUser:userDirectory.find(u=>u.uid===sourceOwnerUid)||{});
       const base={
-        ownerUid:cashCustodyEditingId?(cashCustodyTargetUid||currentUser.uid):currentUser.uid,type:cashCustodyForm.type,amount,
+        ownerUid:sourceOwnerUid,bookScope:sourceBookScope,type:cashCustodyForm.type,amount,
         currency:String(cashCustodyForm.currency||'EGP').toUpperCase(),
         date:cashCustodyForm.date||new Date().toISOString().slice(0,10),
-        counterparty:String(cashCustodyForm.counterparty||'').trim(),
+        counterparty:String(counterpartyName||cashCustodyForm.counterparty||'').trim(),
+        counterpartyType,counterpartyUid:counterpartyUid||null,counterpartyCode:counterpartyCode||null,counterpartyName:counterpartyName||'',
         projectCode:String(cashCustodyForm.projectCode||'').trim(),
         reference:String(cashCustodyForm.reference||'').trim(),description
       };
-      let transactionId=cashCustodyEditingId;
-      let transactionStatus=isAdmin?'approved':'pending';
-      let previousCashCustodyRecord=null;
+      let transactionId=cashCustodyEditingId,mirrorTransactionId='',mirrorOwnerUid='',transactionStatus=isAdmin?'approved':'pending',previousCashCustodyRecord=null;
+      const updates={};
+      const sourcePath='cashCustodies/'+sourceOwnerUid+'/transactions/';
+      let existing=null;
       if(cashCustodyEditingId){
-        if(cashCustodyTargetUid!==currentUser.uid&&(!isAdmin||!hasPermission('cashCustody','viewOthers')))throw new Error(rtl?'لا تملك صلاحية تعديل عهدة هذا المستخدم.':'You cannot edit this user\'s custody.');
-        const existing=cashCustodyRows.find(t=>t.id===cashCustodyEditingId);
+        existing=cashCustodyRows.find(t=>t.id===cashCustodyEditingId);
         if(!existing)throw new Error(rtl?'الحركة غير موجودة.':'Movement not found.');
+        if(existing.pairRole==='counterparty')throw new Error(rtl?'لا يمكن تعديل الحركة المقابلة مباشرة.':'The linked counterparty entry cannot be edited directly.');
         if(existing.status==='approved'&&!isAdmin)throw new Error(rtl?'تعديل الحركة المعتمدة متاح لمدير النظام فقط.':'Only an administrator can edit an approved movement.');
-        previousCashCustodyRecord=existing;transactionStatus=existing.status;
-        await db.ref('cashCustodies/'+(cashCustodyTargetUid||currentUser.uid)+'/transactions/'+cashCustodyEditingId).update({...base,status:transactionStatus,updatedAt:firebase.database.ServerValue.TIMESTAMP,updatedBy:currentUser.uid,updatedByName:currentUser.fullName||currentUser.username||''});
+        if(existing.linkedTransactionId&&((existing.counterpartyType||'')!==counterpartyType||(existing.counterpartyUid||'')!==counterpartyUid||(existing.counterpartyCode||'')!==counterpartyCode))throw new Error(rtl?'لا يمكن تغيير الطرف المرتبط بحركة مزدوجة؛ احذف الحركة وأنشئ حركة جديدة.':'The counterparty of a paired movement cannot be changed. Delete and recreate the movement.');
+        transactionId=existing.id;previousCashCustodyRecord=existing;transactionStatus=existing.status||transactionStatus;
+        mirrorOwnerUid=existing.linkedOwnerUid||'';
+        mirrorTransactionId=existing.linkedTransactionId||'';
       }else{
-        const ref=db.ref('cashCustodies/'+currentUser.uid+'/transactions').push();
-        transactionId=ref.key;
-        const transaction={...base,id:ref.key,status:transactionStatus,createdBy:currentUser.uid,createdByName:currentUser.fullName||currentUser.username||'',createdAt:firebase.database.ServerValue.TIMESTAMP};
-        await ref.set(transaction);
+        transactionId=db.ref(sourcePath).push().key;
       }
+      const sourceRecord={...base,id:transactionId,status:transactionStatus,createdBy:existing?.createdBy||currentUser.uid,createdByName:existing?.createdByName||currentUser.fullName||currentUser.username||'',createdAt:existing?.createdAt||firebase.database.ServerValue.TIMESTAMP,...(existing?{updatedAt:firebase.database.ServerValue.TIMESTAMP,updatedBy:currentUser.uid,updatedByName:currentUser.fullName||currentUser.username||''}:{})};
+      if(canPair){
+        mirrorOwnerUid=counterpartyType==='company'?companyCustodyOwnerUid:counterpartyUid;
+        if(counterpartyType==='company'&&sourceBookScope==='company')throw new Error(rtl?'لا يمكن اختيار الشركة كطرف مقابل في دفتر الشركة نفسه.':'The company cannot be its own counterparty in the company book.');
+        if(counterpartyType==='user'&&mirrorOwnerUid===sourceOwnerUid)throw new Error(rtl?'لا يمكن ربط الحركة بنفس دفتر العهدة.':'A movement cannot be paired to the same custody ledger.');
+        if(mirrorOwnerUid!==sourceOwnerUid||sourceBookScope!==(counterpartyType==='company'?'company':'personal')){
+          mirrorTransactionId=mirrorTransactionId||db.ref('cashCustodies/'+mirrorOwnerUid+'/transactions').push().key;
+          const mirrorBookScope=counterpartyType==='company'?'company':'personal';
+          const sourcePartyType=sourceBookScope==='company'?'company':'user';
+          const sourcePartyName=sourceBookScope==='company'?(companyInfo.name||tr('app')):(currentUser.fullName||currentUser.username||'');
+          const mirrorRecord={id:mirrorTransactionId,ownerUid:mirrorOwnerUid,bookScope:mirrorBookScope,type:cashCustodyMirrorType(cashCustodyForm.type),amount,currency:base.currency,date:base.date,counterparty:sourcePartyName,counterpartyType:sourcePartyType,counterpartyUid:sourceBookScope==='personal'?sourceOwnerUid:null,counterpartyCode:null,counterpartyName:sourcePartyName,projectCode:base.projectCode,reference:base.reference,description:(rtl?'حركة مقابلة: ':'Linked movement: ')+description,status:transactionStatus,createdBy:currentUser.uid,createdByName:currentUser.fullName||currentUser.username||'',createdAt:existing?.createdAt||firebase.database.ServerValue.TIMESTAMP,pairRole:'counterparty',pairGroupId:transactionId,linkedOwnerUid:sourceOwnerUid,linkedTransactionId:transactionId};
+          sourceRecord.pairRole='origin';sourceRecord.pairGroupId=transactionId;sourceRecord.linkedOwnerUid=mirrorOwnerUid;sourceRecord.linkedTransactionId=mirrorTransactionId;
+          if(existing?.linkedTransactionId){
+            updates['cashCustodies/'+mirrorOwnerUid+'/transactions/'+mirrorTransactionId]={...mirrorRecord,createdBy:existing.createdBy||currentUser.uid,createdByName:existing.createdByName||currentUser.fullName||'',createdAt:existing.createdAt||firebase.database.ServerValue.TIMESTAMP,updatedAt:firebase.database.ServerValue.TIMESTAMP,updatedBy:currentUser.uid,updatedByName:currentUser.fullName||currentUser.username||''};
+          }else{
+            updates['cashCustodies/'+mirrorOwnerUid+'/transactions/'+mirrorTransactionId]=mirrorRecord;
+          }
+          if(counterpartyType==='user'&&!existing?.linkedTransactionId){
+            const notificationId=db.ref('cashCustodyNotifications/'+mirrorOwnerUid).push().key;
+            updates['cashCustodyNotifications/'+mirrorOwnerUid+'/'+notificationId]={id:notificationId,recipientUid:mirrorOwnerUid,senderUid:currentUser.uid,senderName:sourcePartyName,amount,currency:base.currency,date:base.date,description,bookScope:mirrorBookScope,transactionId:mirrorTransactionId,pairGroupId:transactionId,createdAt:firebase.database.ServerValue.TIMESTAMP,read:false};
+          }
+        }
+      }else if(existing?.linkedTransactionId){
+        updates['cashCustodies/'+(existing.linkedOwnerUid||'')+'/transactions/'+existing.linkedTransactionId]=null;
+      }
+      if(hasPartyEvent){
+        const projectRef=db.ref('projects/'+base.projectCode+'/events');
+        const eventId=existing?.linkedProjectEventId||projectRef.push().key;
+        const partyEventType=cashCustodyPartyEventType(cashCustodyForm.type);
+        const partyEvent={id:eventId,projectCode:base.projectCode,type:partyEventType,actionCode:partyEventType,actionName:partyEventType==='customer_collection'?(rtl?'تحصيل عهدة من عميل':'Cash collected from customer'):(rtl?'سداد عهدة إلى مورد':'Cash paid to supplier'),financialEffect:partyEventType==='customer_collection'?'cash_in':'cash_out',partyType:counterpartyType,partyCode:counterpartyCode,date:base.date,dueDate:'',referenceNo:base.reference,quantity:0,unit:'',amount,settledAmount:amount,currency:base.currency,status:'full',paymentMethod:'cash',responsible:currentUser.fullName||currentUser.username||'',priority:'normal',note:description,createdBy:currentUser.uid,createdByName:currentUser.fullName||currentUser.username||'',createdAt:existing?.createdAt||firebase.database.ServerValue.TIMESTAMP,linkedCashCustodyOwnerUid:sourceOwnerUid,linkedCashCustodyId:transactionId,...(existing?{updatedAt:firebase.database.ServerValue.TIMESTAMP,updatedBy:currentUser.uid,updatedByName:currentUser.fullName||currentUser.username||''}:{})};
+        sourceRecord.linkedProjectEventId=eventId;
+        updates['projects/'+base.projectCode+'/events/'+eventId]=partyEvent;
+      }
+      updates[sourcePath+transactionId]=sourceRecord;
+      if(cashCustodyEditingId){
+        if(existing?.linkedTransactionId&&!canPair)updates['cashCustodies/'+existing.linkedOwnerUid+'/transactions/'+existing.linkedTransactionId]=null;
+      }
+      await db.ref().update(updates);
       let linkResult={ok:true};
       if(cashCustodyStagedAttachments.length){
-        const transactionOwnerUid=cashCustodyEditingId?(cashCustodyTargetUid||currentUser.uid):currentUser.uid;
-        setCashCustodyPendingLinkTargetId(transactionId);
-        setCashCustodyPendingLinkOwnerUid(transactionOwnerUid);
+        const transactionOwnerUid=sourceOwnerUid;
+        setCashCustodyPendingLinkTargetId(transactionId);setCashCustodyPendingLinkOwnerUid(transactionOwnerUid);
         try{localStorage.setItem('pestCashCustodyAttachmentTarget:'+currentUser.uid,transactionId);localStorage.setItem('pestCashCustodyAttachmentOwner:'+currentUser.uid,transactionOwnerUid);}catch(_){}
         linkResult=await finishCashCustodyAttachmentLink(transactionId,transactionOwnerUid);
-      }else{
-        resetCashCustodyAttachmentDraft();
-      }
-      await addLog((cashCustodyEditingId?'تعديل':'تسجيل')+' حركة عهدة: '+(cashCustodyTypeLabels[cashCustodyForm.type]||cashCustodyForm.type),currentUser,{entityType:'cash-custody',entityId:(cashCustodyEditingId?(cashCustodyTargetUid||currentUser.uid):currentUser.uid)+'/'+transactionId,changes:cashCustodyEditingId?auditChanges(previousCashCustodyRecord,{...(previousCashCustodyRecord||{}),...base,status:transactionStatus}):{},metadata:{amount,currency:base.currency,status:transactionStatus,attachmentsLinked:Boolean(linkResult.ok)}});
-      setCashCustodyEditingId('');
-      setCashCustodyForm({type:'expense',date:new Date().toISOString().slice(0,10),amount:'',currency:'EGP',counterparty:'',projectCode:'',reference:'',description:''});
+      }else resetCashCustodyAttachmentDraft();
+      await addLog((cashCustodyEditingId?'تعديل':'تسجيل')+' حركة عهدة: '+(cashCustodyTypeLabels[cashCustodyForm.type]||cashCustodyForm.type),currentUser,{entityType:'cash-custody',entityId:sourceOwnerUid+'/'+transactionId,changes:cashCustodyEditingId?auditChanges(previousCashCustodyRecord,sourceRecord):{},metadata:{amount,currency:base.currency,status:transactionStatus,counterpartyType,counterpartyUid,counterpartyCode,paired:Boolean(sourceRecord.linkedTransactionId),attachmentsLinked:Boolean(linkResult.ok)}});
+      setCashCustodyEditingId('');setCashCustodyForm({type:'expense',date:new Date().toISOString().slice(0,10),amount:'',currency:'EGP',counterparty:'',counterpartyType:'',counterpartyUid:'',counterpartyCode:'',counterpartyName:'',projectCode:'',reference:'',description:''});
       const savedMessage=rtl?(transactionStatus==='approved'?'تم حفظ الحركة واعتمادها.':'تم حفظ الحركة وهي في انتظار الاعتماد.'):(transactionStatus==='approved'?'Movement saved and approved.':'Movement saved and awaiting approval.');
-      setCashCustodyNotice(savedMessage+(linkResult.ok?(rtl?(cashCustodyStagedAttachments.length?' وتم ربط المرفقات بالحركة.':''):''):(rtl?' تعذر ربط بعض الملفات: '+linkResult.message+' استخدم زر إكمال ربط المرفقات.':' Some files could not be linked: '+linkResult.message+' Use Finish linking attachments to retry.')));
+      setCashCustodyNotice(savedMessage+(sourceRecord.linkedTransactionId?(rtl?' وتم تسجيل الحركة المقابلة وإرسال إشعار للطرف الآخر.':' The linked counterparty entry and notification were created.'):(rtl?'':'')+(linkResult.ok?'':(rtl?' تعذر ربط بعض الملفات: '+linkResult.message+' استخدم زر إكمال ربط المرفقات.':' Some files could not be linked: '+linkResult.message+' Use Finish linking attachments to retry.'))));
     }catch(err){setCashCustodyNotice(firebaseErrorMessage(err,tr));}
     finally{setCashCustodyBusy(false);}
   }
