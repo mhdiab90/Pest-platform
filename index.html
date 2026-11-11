@@ -2942,16 +2942,16 @@ function App(){
     }
   }
 
-  function forwardMessage(m){  function editInternalMessage(m){if(!m||m.senderUid!==currentUser.uid||m.copyType!=='sent')return;if(!requirePermission('messages','edit'))return;setMessageEditingId(m.messageId||m.id);setMessageMode(m.visibility==='public'?'public':'direct');setMessage({recipients:'',subject:m.subject||'',body:m.body||''});setSelectedMessageRecipients(Array.isArray(m.recipientUids)?m.recipientUids.filter(uid=>uid&&uid!==currentUser.uid):(m.recipientUid?[m.recipientUid]:[]));setMessageRecipientSearch('');setTab('messages');window.scrollTo({top:0,behavior:'smooth'});}
+  function editInternalMessage(m){if(!m||m.senderUid!==currentUser.uid||m.copyType!=='sent')return;if(!requirePermission('messages','edit'))return;setMessageEditingId(m.messageId||m.id);setMessageMode(m.visibility==='public'?'public':'direct');setMessage({recipients:'',subject:m.subject||'',body:m.body||''});setSelectedMessageRecipients(Array.isArray(m.recipientUids)?m.recipientUids.filter(uid=>uid&&uid!==currentUser.uid):(m.recipientUid?[m.recipientUid]:[]));setMessageRecipientSearch('');setTab('messages');window.scrollTo({top:0,behavior:'smooth'});}
   async function deleteInternalMessage(m){if(!m||!requirePermission('messages','delete'))return;const id=m.messageId||m.id,isSender=m.senderUid===currentUser.uid&&(m.copyType==='sent'||m.mailboxUid===currentUser.uid);if(!window.confirm(isSender?(rtl?'حذف الرسالة من صندوقك وصناديق المستلمين؟':'Delete this message from your mailbox and all recipients?'):(rtl?'حذف نسخة الرسالة من صندوقك فقط؟':'Remove this message from your mailbox only?')))return;try{const updates={};if(isSender){const recipients=Array.isArray(m.recipientUids)?m.recipientUids:(m.recipientUid&&m.recipientUid!=='*'?[m.recipientUid]:[]);[...new Set([...recipients,currentUser.uid])].forEach(uid=>{updates['messages/'+uid+'/'+id]=null;});if(hasPermission('attachments','delete'))await deleteRecordAttachments('message',id);}else updates['messages/'+currentUser.uid+'/'+id]=null;await db.ref().update(updates);await addLog(isSender?'حذف رسالة مرسلة: '+(m.subject||id):'حذف رسالة واردة من صندوق المستخدم: '+(m.subject||id),currentUser,{entityType:'message',entityId:id,changes:auditChanges({subject:m.subject,body:m.body},null),metadata:{globalDelete:isSender}});if(messageEditingId===id){setMessageEditingId('');setMessage({recipients:'',subject:'',body:''});}}catch(err){alert(firebaseErrorMessage(err,tr));}}
-
+  function forwardMessage(m){
     setMessagePendingAttachments([]);
     const outgoing=m.copyType==='sent'||m.senderUid===currentUser.uid;
     const candidates=outgoing?(Array.isArray(m.recipientUids)?m.recipientUids:(m.recipientUid&&m.recipientUid!=='*'?[m.recipientUid]:[])):[m.senderUid];
     const activeIds=userDirectory.filter(u=>u.uid&&u.status==='active').map(u=>u.uid);
     setSelectedMessageRecipients(candidates.filter(uid=>uid&&uid!==currentUser.uid&&activeIds.includes(uid)));
     setMessageMode('direct');
-    const quoted=(rtl?'رسالة معاد توجيهها':'Forwarded message')+'\n'+(m.senderName||'')+'\n'+(m.subject||'')+'\n\n'+(m.body||'');
+    const quoted=(rtl?'رسالة معاد توجيهها':'Forwarded message')+'\\n'+(m.senderName||'')+'\\n'+(m.subject||'')+'\\n\\n'+(m.body||'');
     setMessage({recipients:'',subject:(rtl?'إعادة توجيه: ':'Fwd: ')+(m.subject||''),body:quoted});
     setTab('messages');
     window.scrollTo({top:0,behavior:'smooth'});
