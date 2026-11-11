@@ -357,7 +357,6 @@ function App(){
   const [auditTo,setAuditTo] = useState('');
   const [messages,setMessages] = useState([]);
   const [messageReactionsById,setMessageReactionsById] = useState({});
-  const cashCustodyNotificationIdsRef=useRef(null);
   const [tasks,setTasks] = useState([]);
   const [taskEditingId,setTaskEditingId] = useState('');
   const [taskEditDraft,setTaskEditDraft] = useState({title:'',description:''});
@@ -728,7 +727,7 @@ function App(){
       setInflows([]);setOutflows([]);setLogs([]);setTasks([]);setMessages([]);
       setUnreadNotificationMessages([]);setPendingNotificationRequests([]);
       setActiveUsers([]);setUserRequests([]);setCashCustodyByUid({});setCashCustodyNotifications([]);
-      messageIdsRef.current=null;requestIdsRef.current=null;unreadMessageIdsRef.current=null;cashCustodyNotificationIdsRef.current=null;
+      messageIdsRef.current=null;requestIdsRef.current=null;unreadMessageIdsRef.current=null;
       notificationRequestReadyRef.current={pending:false,deferred:false};notificationRequestRowsRef.current={pending:[],deferred:[]};
       notifiedIncomingMessageIdsRef.current=new Set();
       return;
@@ -839,10 +838,7 @@ function App(){
       needMaster();needProjects();needFinance();
     }else if(tab==='cashCustody'){
       needMaster();needProjects();needDirectory();
-      watch('cashCustody:'+uid,'cashCustodies/'+uid+'/transactions',s=>{
-        const rows=Object.entries(s.val()||{}).map(([id,value])=>({...value,id:value&&value.id?value.id:id}));
-        setCashCustodyByUid(old=>({...old,[uid]:rows}));
-      });
+      watchArray('cashCustody:'+uid,'cashCustodies/'+uid+'/transactions',rows=>setCashCustodyByUid(old=>({...old,[uid]:rows})));
     }else if(tab==='messages'){
       needDirectory();needMaster();needProjects();needTasks();needMessages();
     }else if(tab==='tasks'){
@@ -924,19 +920,10 @@ function App(){
         auth.signOut().catch(err=>console.warn('Unable to sign out a deactivated account:',err));
       }
     });
-    cashCustodyNotificationIdsRef.current=cashCustodyNotificationIdsRef.current||null;
-    watch('cashCustodyNotifications:'+uid,'cashCustodyNotifications/'+uid,s=>{
-      const rows=Object.entries(s.val()||{}).map(([id,value])=>({...value,id:value&&value.id?value.id:id}));
-      if(cashCustodyNotificationIdsRef.current===null)cashCustodyNotificationIdsRef.current=new Set(rows.map(x=>x.id));
-      else{
-        rows.forEach(item=>{
-          if(!cashCustodyNotificationIdsRef.current.has(item.id)&&item.read!==true){
-            notifyUserOfIncoming({id:'cashCustody:'+item.id,type:'cashCustody',cashCustody:item});
-          }
-        });
-        cashCustodyNotificationIdsRef.current=new Set(rows.map(x=>x.id));
+    watchArray('cashCustodyNotifications:'+uid,'cashCustodyNotifications/'+uid,setCashCustodyNotifications,(eventType,item)=>{
+      if(eventType==='added'&&item&&item.read!==true&&Number(item.createdAt||0)>=sessionStartedAtRef.current){
+        notifyUserOfIncoming({id:'cashCustody:'+item.id,type:'cashCustody',cashCustody:item});
       }
-      setCashCustodyNotifications(rows);
     });
   },[currentUser?.uid,tab,notificationOpen,assistantOpen,attachmentEntityType]);
 
@@ -3431,7 +3418,7 @@ function App(){
       return;
     }
     if(item.type==='message'){
-      try{await db.ref('messages/'+currentUser.uid+'/'+item.message.id).update({read:true});await addLog('قراءة رسالة: '+(item.message.subject||item.message.id));setMessages(old=>old.map(m=>m.id===item.message.id?{...m,read:true}:m));navigateToTab('messages');}
+      try{await db.ref('messages/'+currentUser.uid+'/'+item.message.id).update({read:true});await addLog('قراءة رسالة: '+(item.message.subject||item.message.id));setMessages(old=>old.map(m=>m.id===item.message.id?{...m,read:true}:m));setUnreadNotificationMessages(old=>old.filter(m=>m.id!==item.message.id));navigateToTab('messages');}
       catch(err){alert(firebaseErrorMessage(err,tr));}
       return;
     }
@@ -3968,7 +3955,7 @@ function App(){
           </div>
           </div></details>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            {[[tr('clients'),'clients',clients.length,'fa-user-tie'],[tr('vendors'),'vendors',vendors.length,'fa-truck'],[tr('projects'),'projects',selectedProjectsForCash.length,'fa-diagram-project'],[tr('users'),'users',isAdmin?activeUsers.filter(u=>u._hasAuthUid || u.uid===currentUser.uid).length:'—','fa-users']].map(([label,key,value,icon])=><button type="button" key={key} onClick={()=>openDashboardReport(key,label)} className="w-full text-start bg-white p-4 rounded-xl border shadow-sm flex justify-between items-center hover:border-blue-300 hover:shadow-md transition"><div><p className="text-sm text-gray-500">{label}</p><p className="text-2xl font-bold mt-1">{value}</p></div><i className={`fas ${icon} text-2xl text-blue-500`}></i></button>)}
+            {[[tr('clients'),'clients',clients.length,'fa-user-tie'],[tr('vendors'),'vendors',vendors.length,'fa-truck'],[tr('projects'),'projects',selectedProjectsForCash.length,'fa-diagram-project'],[tr('users'),'users',isAdmin?(activeUsers.length?activeUsers.filter(u=>u._hasAuthUid || u.uid===currentUser.uid).length:'—'):'—','fa-users']].map(([label,key,value,icon])=><button type="button" key={key} onClick={()=>openDashboardReport(key,label)} className="w-full text-start bg-white p-4 rounded-xl border shadow-sm flex justify-between items-center hover:border-blue-300 hover:shadow-md transition"><div><p className="text-sm text-gray-500">{label}</p><p className="text-2xl font-bold mt-1">{value}</p></div><i className={`fas ${icon} text-2xl text-blue-500`}></i></button>)}
           </div>
           <details open className="app-collapsible"><summary><span>{tr('projectStatusSummary')}</span></summary><div className="app-collapsible-body"><section className="bg-white p-5 rounded-xl border shadow-sm"><div className="flex flex-wrap justify-between gap-3 items-center mb-3"><h3 className="font-bold">{tr('projectStatusSummary')}</h3><div className="flex flex-wrap gap-x-4 gap-y-2"><button type="button" onClick={()=>openDashboardReport('projectContractValue',tr('totalContractValue'))} className="text-xs text-gray-600 text-start hover:text-blue-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded">{tr('totalContractValue')}: {cashMapText(projectContractMap)} <small className="block text-blue-700 font-bold">{rtl?'اضغط لعرض التفاصيل':'Click for details'}</small></button><button type="button" onClick={()=>openDashboardReport('projectEstimatedCost',tr('estimatedProjectCost'))} className="text-xs text-gray-600 text-start hover:text-blue-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded">{tr('estimatedProjectCost')}: {cashMapText(projectCostMap)} <small className="block text-blue-700 font-bold">{rtl?'اضغط لعرض التفاصيل':'Click for details'}</small></button></div></div><div className="grid grid-cols-1 sm:grid-cols-3 gap-3"><button type="button" onClick={()=>openDashboardReport('activeProjects',tr('activeProjects'))} className="text-start bg-blue-50 rounded-lg p-4 hover:ring-2 hover:ring-blue-200"><small className="text-gray-600">{tr('activeProjects')}</small><b className="block text-2xl mt-1">{activeProjectCount}</b></button><button type="button" onClick={()=>openDashboardReport('completedProjects',tr('completedProjects'))} className="text-start bg-green-50 rounded-lg p-4 hover:ring-2 hover:ring-green-200"><small className="text-gray-600">{tr('completedProjects')}</small><b className="block text-2xl mt-1">{completedProjectCount}</b></button><button type="button" onClick={()=>openDashboardReport('delayedProjects',tr('delayedProjects'))} className="text-start bg-red-50 rounded-lg p-4 hover:ring-2 hover:ring-red-200"><small className="text-gray-600">{tr('delayedProjects')}</small><b className="block text-2xl mt-1">{delayedProjectCount}</b></button></div></section></div></details>
           <details open className="app-collapsible"><summary><span>{tr('cashFlow')} · {tr('cashCurrency')}</span></summary><div className="app-collapsible-body"><section className="bg-white p-5 rounded-xl border shadow-sm overflow-x-auto"><h3 className="font-bold mb-3">{tr('cashFlow')} · {tr('cashCurrency')}</h3><div className="app-table-scroll"><table className="w-full text-sm min-w-[760px]"><thead className="bg-gray-50"><tr><th className="p-3 text-start">{tr('cashCurrency')}</th><th className="p-3 text-start">{tr('cashActualIn')}</th><th className="p-3 text-start">{tr('cashActualOut')}</th><th className="p-3 text-start">{tr('cashNet')}</th><th className="p-3 text-start">{tr('currentReceivables')}</th><th className="p-3 text-start">{tr('currentPayables')}</th><th className="p-3 text-start">{tr('expectedPosition')}</th></tr></thead><tbody>{currencyKeys.map(cur=>{const net=netCashMap[cur]||0;const expected=expectedPositionMap[cur]||0;return <tr key={cur} role="button" tabIndex={0} onClick={()=>openDashboardReport('currency:'+cur,rtl?'تفاصيل العملة '+cur:'Currency details '+cur)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openDashboardReport('currency:'+cur,rtl?'تفاصيل العملة '+cur:'Currency details '+cur);}}} className="border-t cursor-pointer hover:bg-blue-50"><td className="p-3 font-bold" dir="ltr">{cur}</td><td className="p-3 text-green-700">{cashAmountWithEgpText(actualInMap[cur]||0,cur)}</td><td className="p-3">{cashAmountWithEgpText(actualOutMap[cur]||0,cur,true)}</td><td className="p-3 font-bold">{cashAmountWithEgpText(net,cur)}</td><td className="p-3">{cashAmountWithEgpText(receivablesMap[cur]||0,cur)}</td><td className="p-3">{cashAmountWithEgpText(payablesMap[cur]||0,cur)}</td><td className={`p-3 font-bold ${expected>=0?'text-green-700':'text-red-700'}`}>{cashAmountWithEgpText(expected,cur)}<small className="block text-xs">{expected>=0?tr('surplus'):tr('deficit')}</small></td></tr>})}{currencyKeys.length===0&&<tr><td colSpan="7" className="p-4 text-gray-500">{tr('noData')}</td></tr>}</tbody></table></div></section></div></details>
