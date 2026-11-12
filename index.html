@@ -211,6 +211,19 @@
     .attachment-open-record:hover{color:var(--brand-hover);text-decoration:underline;text-decoration-style:dotted}
     .attachment-editor-tool[aria-pressed="true"]{background:#1d4ed8;color:#fff;border-color:#1d4ed8}
     @media(max-width:767px){.attachment-workspace-docked{margin-inline-end:0;width:100%;flex-basis:100%}.attachment-side-preview{top:auto;inset-inline:0;bottom:0;width:100%;min-width:0;height:var(--attachment-preview-height,52vh);max-height:78vh;border-inline:0;border-top:1px solid #cbd5e1}.attachment-side-resizer{inset-inline:0;top:-6px;bottom:auto;width:auto;height:12px;cursor:row-resize}.attachment-side-resizer span{width:72px;height:4px}.attachment-side-preview .attachment-side-canvas{padding:8px}}
+
+    /* Keep the application chrome visible; the workspace becomes the only vertical scroll area. */
+    .app-root-shell{height:100vh;height:100dvh;min-height:0;overflow:hidden}
+    .app-root-shell>.flex.flex-1.min-h-0{min-height:0;overflow:hidden}
+    .app-root-shell .app-workspace{min-height:0;overscroll-behavior:contain;scrollbar-gutter:stable}
+    .app-root-shell .app-sidebar{max-height:100%;min-height:0}
+    .app-workspace>div>:first-child:has(h2){position:sticky;top:0;z-index:24;isolation:isolate;padding-top:8px;padding-bottom:8px;background:linear-gradient(112deg,rgba(255,255,255,.99),var(--brand-tint-1,#f8fafc));border-bottom:1px solid var(--brand-tint-border,#e2e8f0);box-shadow:0 5px 14px rgba(15,23,42,.07);backdrop-filter:blur(10px)}
+    .app-workspace table thead th{position:sticky;top:0;z-index:12;background:#f8fafc;box-shadow:0 1px 0 #e5e7eb}
+    @media print{
+      .app-root-shell{height:auto!important;min-height:0!important;overflow:visible!important}
+      .app-root-shell>.flex.flex-1.min-h-0{overflow:visible!important}
+      .app-root-shell .app-workspace{overflow:visible!important;height:auto!important}
+    }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -3959,7 +3972,7 @@ function App(){
     </div>;
   }
 
-  return <div className="min-h-screen flex flex-col bg-gray-100" onClickCapture={unlockNotificationAudio}>
+  return <div className="app-root-shell min-h-screen flex flex-col bg-gray-100" onClickCapture={unlockNotificationAudio}>
     <header className="app-shell-header text-white p-3 px-5 flex justify-between items-center gap-3 shadow-lg">
       <div className="flex items-center gap-3">{companyInfo.logo?<img src={companyInfo.logo} alt="Logo" className="h-10 w-10 object-contain bg-white rounded p-1"/>:<i className="fas fa-cubes text-white text-2xl"></i>}<div><h1 className="font-bold">{companyInfo.name || tr('app')}</h1><p className="text-xs text-white/75">{tr('app')}</p></div></div>
       <div className="flex items-center gap-3">
