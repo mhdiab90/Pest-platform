@@ -18,6 +18,20 @@
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet" />
   <style>
     :root{--brand:#2563eb;--brand-hover:#1d4ed8;--brand-soft:#eff6ff}
+    .app-global-announcement{display:flex;align-items:center;gap:12px;margin:10px 14px 0;padding:11px 16px;min-height:58px;color:#fff;border:1px solid rgba(255,255,255,.28);border-radius:13px;box-shadow:0 9px 26px rgba(127,29,29,.28);overflow:hidden;position:relative}
+    .app-global-announcement:before{content:"";position:absolute;inset-inline-start:0;top:0;bottom:0;width:4px;background:#fff;opacity:.8}
+    .app-global-announcement-badge{flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;padding:8px 11px;border-radius:999px;background:rgba(15,23,42,.3);border:1px solid rgba(255,255,255,.3);font-size:11px;font-weight:900;letter-spacing:.04em;white-space:nowrap}
+    .app-global-announcement-badge i{animation:app-announcement-pulse 1.5s ease-in-out infinite}
+    .app-global-announcement-title{flex:0 0 auto;max-width:22%;font-size:13px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .app-global-announcement-track{flex:1;min-width:0;overflow:hidden;white-space:nowrap}
+    .app-global-announcement-track-inner{display:flex;align-items:center;gap:5rem;width:max-content;min-width:200%;animation:app-news-marquee 26s linear infinite}
+    .app-global-announcement-track-inner span{flex:0 0 auto;font-size:14px;font-weight:700;line-height:1.8;white-space:nowrap}
+    .app-global-announcement:hover .app-global-announcement-track-inner{animation-play-state:paused}
+    @keyframes app-news-marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+    @keyframes app-announcement-pulse{0%,100%{opacity:1}50%{opacity:.48}}
+    @media(max-width:640px){.app-global-announcement{margin:8px 8px 0;padding:9px 10px;gap:8px;min-height:52px}.app-global-announcement-badge{font-size:9px;padding:7px 8px}.app-global-announcement-title{max-width:24%;font-size:11px}.app-global-announcement-track-inner span{font-size:12px}}
+    @media(prefers-reduced-motion:reduce){.app-global-announcement-track-inner,.app-global-announcement-badge i{animation:none}.app-global-announcement-track-inner span:nth-child(2){display:none}}
+
     body{font-family:'Cairo',sans-serif}button:disabled{opacity:.55;cursor:not-allowed}input,select,textarea{font:inherit}
     .nav-btn{transition:.15s}.nav-btn:hover{background:#f1f5f9}.nav-btn.active{background:var(--brand-soft);color:var(--brand);font-weight:700}
     .bg-blue-600{background-color:var(--brand)!important}.text-blue-600,.text-blue-700{color:var(--brand)!important}.border-blue-600{border-color:var(--brand)!important}.bg-blue-50{background-color:var(--brand-soft)!important}.hover\:bg-blue-700:hover{background-color:var(--brand-hover)!important}
@@ -343,6 +357,11 @@ function App(){
   const [permissionDraft,setPermissionDraft] = useState({});
   const [permissionBusy,setPermissionBusy] = useState(false);
   const [permissionNotice,setPermissionNotice] = useState('');
+  const [globalAnnouncement,setGlobalAnnouncement] = useState(null);
+  const [announcementForm,setAnnouncementForm] = useState({title:'',message:'',tone:'urgent'});
+  const [announcementBusy,setAnnouncementBusy] = useState(false);
+  const [announcementNotice,setAnnouncementNotice] = useState('');
+  const announcementFormDirtyRef=useRef(false);
   const [clients,setClients] = useState([]);
   const [vendors,setVendors] = useState([]);
   const [quotes,setQuotes] = useState([]);
@@ -648,6 +667,20 @@ function App(){
   useEffect(()=>{
     if(currentUser) setProfileForm({fullName:currentUser.fullName || '',username:currentUser.username || '',jobTitle:currentUser.jobTitle || '',email:currentUser.email || '',whatsapp:currentUser.whatsapp || '',whatsappOptIn:currentUser.whatsappOptIn===true});
   },[currentUser]);
+  useEffect(()=>{
+    const uid=currentUser&&currentUser.uid;
+    if(!uid){setGlobalAnnouncement(null);setAnnouncementForm({title:'',message:'',tone:'urgent'});announcementFormDirtyRef.current=false;return;}
+    announcementFormDirtyRef.current=false;
+    const ref=db.ref('globalAnnouncements/current');
+    const handler=snapshot=>{
+      const next=snapshot.val();
+      setGlobalAnnouncement(next&&typeof next==='object'?next:null);
+      if(!announcementFormDirtyRef.current)setAnnouncementForm({title:String(next?.title||''),message:String(next?.message||''),tone:['urgent','important','info'].includes(next?.tone)?next.tone:'urgent'});
+    };
+    ref.on('value',handler,err=>console.error('Global announcement listener:',err));
+    return ()=>ref.off('value',handler);
+  },[currentUser&&currentUser.uid]);
+
 
   // Authentication is checked first. No database read is attempted before a user signs in.
   useEffect(()=>{
@@ -1015,10 +1048,10 @@ function App(){
   const omarUsername=String(currentUser?.username||'').trim().toLowerCase();
   const omarEmailLocal=String(currentUser?.email||'').split('@')[0].trim().toLowerCase();
   const isOmarProjectUser=omarUsername==='omar'||omarEmailLocal==='omar'||String(currentUser?.fullName||'').trim().toLowerCase()==='omar';
-  const permissionModules=[{id:'dashboard',label:rtl?'لوحة التحكم':'Dashboard'},{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors'},{id:'projects',label:rtl?'المشروعات وملفاتها':'Projects & Project files'},{id:'attachments',label:rtl?'المرفقات':'Attachments'},{id:'statement',label:rtl?'التدفقات النقدية':'Cash flow'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody'},{id:'reports',label:rtl?'التقارير':'Reports'},{id:'messages',label:rtl?'الرسائل وWhatsApp':'Messages & WhatsApp'},{id:'tasks',label:rtl?'المهام':'Tasks'},{id:'aiAgent',label:rtl?'المساعد الذكي (استخدام)':'AI Agent (Use)'},{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data'}];
+  const permissionModules=[{id:'dashboard',label:rtl?'لوحة التحكم':'Dashboard'},{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors'},{id:'projects',label:rtl?'المشروعات وملفاتها':'Projects & Project files'},{id:'attachments',label:rtl?'المرفقات':'Attachments'},{id:'statement',label:rtl?'التدفقات النقدية':'Cash flow'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody'},{id:'reports',label:rtl?'التقارير':'Reports'},{id:'messages',label:rtl?'الرسائل وWhatsApp':'Messages & WhatsApp'},{id:'tasks',label:rtl?'المهام':'Tasks'},{id:'announcements',label:rtl?'الإعلانات العامة':'Global Announcements'},{id:'aiAgent',label:rtl?'المساعد الذكي (استخدام)':'AI Agent (Use)'},{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data'}];
   const permissionActions=[{id:'view',label:rtl?'عرض':'View'},{id:'add',label:rtl?'إضافة':'Add'},{id:'edit',label:rtl?'تعديل':'Edit'},{id:'delete',label:rtl?'حذف':'Delete'},{id:'approve',label:rtl?'اعتماد':'Approve'},{id:'export',label:rtl?'تصدير':'Export'},{id:'manage',label:rtl?'إدارة':'Manage'},{id:'viewOthers',label:rtl?'عرض عهد الآخرين':'View others'}];
   const hasPermission=(moduleId,action='view')=>isAdmin||moduleId==='profile'&&action==='view'||(isOmarProjectUser&&moduleId==='projects'&&['view','add','edit'].includes(action))||moduleId==='cashCustody'&&['view','add','edit'].includes(action)&&currentUser?.permissions?.cashCustody?.[action]!==false||currentUser?.permissions?.[moduleId]?.[action]===true;
-  const canAccessTab=tabId=>['companySettings','aiSettings','userRequests','userPermissions','userManagement'].includes(tabId)?Boolean(isAdmin):hasPermission(tabId==='projectDetail'?'projects':tabId,'view');
+  const canAccessTab=tabId=>tabId==='announcements'?hasPermission('announcements','manage'):['companySettings','aiSettings','userRequests','userPermissions','userManagement'].includes(tabId)?Boolean(isAdmin):hasPermission(tabId==='projectDetail'?'projects':tabId,'view');
   const requirePermission=(moduleId,action)=>{if(hasPermission(moduleId,action))return true;alert(rtl?'ليس لديك صلاحية لتنفيذ هذه العملية. يرجى مراجعة مدير النظام.':'You do not have permission to perform this action. Contact your administrator.');return false;};
   async function attachmentWorkerRequest(path,method='GET',body,extraHeaders={},rawBody=false,asBlob=false){
     const user=window.PEST_FIREBASE_AUTH?.currentUser||auth.currentUser;
@@ -2041,6 +2074,37 @@ function App(){
       setAuthError(firebaseErrorMessage(err,tr));
     }finally{setBusy(false);}
   }
+  async function publishGlobalAnnouncement(event){
+    event.preventDefault();
+    if(!requirePermission('announcements','manage')||announcementBusy)return;
+    const title=String(announcementForm.title||'').trim().slice(0,80)||(rtl?'تنبيه إداري':'Management announcement');
+    const message=String(announcementForm.message||'').trim().slice(0,600);
+    const tone=['urgent','important','info'].includes(announcementForm.tone)?announcementForm.tone:'urgent';
+    if(!message)return alert(rtl?'اكتب نص الإعلان أولاً.':'Enter the announcement message first.');
+    setAnnouncementBusy(true);setAnnouncementNotice('');
+    const before=globalAnnouncement||null,now=Date.now();
+    const payload={id:before?.id||('announcement_'+(window.crypto?.randomUUID?.()||now+'_'+Math.random().toString(36).slice(2))),title,message,tone,active:true,createdAt:Number(before?.createdAt)||now,createdBy:String(before?.createdBy||currentUser.uid),createdByName:String(before?.createdByName||currentUser.fullName||currentUser.username||''),updatedAt:now,updatedBy:String(currentUser.uid),updatedByName:String(currentUser.fullName||currentUser.username||'')};
+    try{
+      await db.ref('globalAnnouncements/current').set(payload);
+      setGlobalAnnouncement(payload);setAnnouncementForm({title,message,tone});announcementFormDirtyRef.current=false;
+      setAnnouncementNotice(rtl?'تم نشر الإعلان لجميع المستخدمين.':'Announcement published to all users.');
+      try{await addLog((before?'تحديث':'نشر')+' الإعلان العام: '+title,currentUser,{entityType:'global-announcement',entityId:payload.id,changes:auditChanges(before,payload)});}catch(logError){console.warn('Announcement audit log failed:',logError);}
+    }catch(err){setAnnouncementNotice(firebaseErrorMessage(err,tr));}
+    finally{setAnnouncementBusy(false);}
+  }
+  async function stopGlobalAnnouncement(){
+    if(!requirePermission('announcements','manage')||announcementBusy||!globalAnnouncement?.active)return;
+    if(!window.confirm(rtl?'هل تريد إيقاف ظهور الإعلان لجميع المستخدمين؟':'Stop showing this announcement to all users?'))return;
+    setAnnouncementBusy(true);setAnnouncementNotice('');
+    const now=Date.now(),next={...globalAnnouncement,active:false,updatedAt:now,updatedBy:String(currentUser.uid),updatedByName:String(currentUser.fullName||currentUser.username||'')};
+    try{
+      await db.ref('globalAnnouncements/current').set(next);setGlobalAnnouncement(next);announcementFormDirtyRef.current=false;
+      setAnnouncementNotice(rtl?'تم إيقاف الإعلان.':'Announcement display has been stopped.');
+      try{await addLog('إيقاف الإعلان العام: '+String(next.title||next.id),currentUser,{entityType:'global-announcement',entityId:next.id,changes:auditChanges(globalAnnouncement,next)});}catch(logError){console.warn('Announcement audit log failed:',logError);}
+    }catch(err){setAnnouncementNotice(firebaseErrorMessage(err,tr));}
+    finally{setAnnouncementBusy(false);}
+  }
+
   async function saveUserPermissions(){
     if(!isAdmin||!permissionUserUid)return;
     if(permissionUserUid===currentUser.uid)return alert(rtl?'لا يمكن تعديل صلاحيات حساب المدير الحالي من هذه الشاشة.':'The current administrator permissions cannot be changed here.');
@@ -3685,17 +3749,25 @@ function App(){
     }finally{setAssistantExecuting(false);}
   }
 
+  const announcementToneMeta={
+    urgent:{label:rtl?'عاجل':'BREAKING',icon:'fa-bullhorn',background:'linear-gradient(105deg,#7f1d1d 0%,#dc2626 48%,#f97316 100%)'},
+    important:{label:rtl?'تنبيه مهم':'IMPORTANT',icon:'fa-triangle-exclamation',background:'linear-gradient(105deg,#78350f 0%,#d97706 52%,#f59e0b 100%)'},
+    info:{label:rtl?'إعلان عام':'NOTICE',icon:'fa-circle-info',background:'linear-gradient(105deg,#312e81 0%,#4f46e5 52%,#7c3aed 100%)'}
+  };
+  const announcementBannerMeta=announcementToneMeta[globalAnnouncement?.tone]||announcementToneMeta.urgent;
+  const announcementPreviewMeta=announcementToneMeta[announcementForm.tone]||announcementToneMeta.urgent;
   const navGroups=[
     {id:'dashboard',label:tr('dashboard'),icon:'fa-gauge',tab:'dashboard'},
     {id:'masterGroup',label:tr('master'),icon:'fa-database',children:[{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors',icon:'fa-address-book'}]},
     {id:'projectsGroup',label:tr('projects'),icon:'fa-diagram-project',children:[{id:'projects',label:rtl?'قائمة المشروعات':'Project list',icon:'fa-list'},...(selectedProjectCode?[{id:'projectDetail',label:rtl?'ملف المشروع الحالي':'Current project file',icon:'fa-folder-open'}]:[])]},
     {id:'financeGroup',label:rtl?'المالية':'Finance',icon:'fa-coins',children:[{id:'statement',label:tr('statement'),icon:'fa-file-invoice-dollar'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody',icon:'fa-wallet'},{id:'reports',label:tr('reportCenter'),icon:'fa-chart-pie'}]},
-    {id:'communicationGroup',label:rtl?'التواصل والمهام':'Communication & Tasks',icon:'fa-comments',children:[{id:'messages',label:tr('messages'),icon:'fa-envelope'},{id:'tasks',label:rtl?'المهام':'Tasks',icon:'fa-list-check'}]},
+    {id:'communicationGroup',label:rtl?'التواصل والمهام':'Communication & Tasks',icon:'fa-comments',children:[{id:'messages',label:tr('messages'),icon:'fa-envelope'},{id:'tasks',label:rtl?'المهام':'Tasks',icon:'fa-list-check'},{id:'announcements',label:rtl?'الإعلانات العامة':'Global Announcements',icon:'fa-bullhorn'}]},
     {id:'settingsGroup',label:tr('settings'),icon:'fa-sliders',children:[{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data',icon:'fa-database'},{id:'attachments',label:rtl?'المرفقات':'Attachments',icon:'fa-paperclip'},{id:'profile',label:tr('profile'),icon:'fa-user-gear'},...(isAdmin?[{id:'companySettings',label:tr('companySettings'),icon:'fa-building'},{id:'aiSettings',label:rtl?'إعدادات AI Agent':'AI Agent Settings',icon:'fa-wand-magic-sparkles'}]:[])]},
     ...(isAdmin?[{id:'adminGroup',label:rtl?'إدارة النظام':'Administration',icon:'fa-user-shield',children:[{id:'userRequests',label:tr('requestsReport'),icon:'fa-user-clock'},{id:'userManagement',label:rtl?'إدارة بيانات المستخدمين':'User Management',icon:'fa-users-gear'},{id:'userPermissions',label:rtl?'صلاحيات المستخدمين':'User Permissions',icon:'fa-user-lock'},{id:'auditLogs',label:rtl?'سجل نشاط المستخدمين':'User Activity Log',icon:'fa-clipboard-list'}]}]:[])
   ];
   useEffect(()=>{if(currentUser) void addLog('فتح الشاشة: '+String(tab||'dashboard'));},[tab,currentUser?.uid]);
-  const navGroupByTab={master:'masterGroup',attachments:'settingsGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',cashCustody:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',aiSettings:'settingsGroup',userRequests:'adminGroup',userManagement:'adminGroup',userPermissions:'adminGroup',auditLogs:'adminGroup'};
+  useEffect(()=>{if(tab==='announcements'&&!hasPermission('announcements','manage'))setTab('dashboard');},[tab,currentUser?.role,currentUser?.permissions?.announcements?.manage]);
+  const navGroupByTab={master:'masterGroup',attachments:'settingsGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',cashCustody:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',announcements:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',aiSettings:'settingsGroup',userRequests:'adminGroup',userManagement:'adminGroup',userPermissions:'adminGroup',auditLogs:'adminGroup'};
   const visibleNavGroups=navGroups.map(group=>group.tab?group:({...group,children:(group.children||[]).filter(item=>canAccessTab(item.id))})).filter(group=>group.tab?canAccessTab(group.tab):(group.children||[]).length>0);
   const navCatalog=visibleNavGroups.flatMap(group=>group.tab?[{id:group.tab,label:group.label,icon:group.icon}]:((group.children||[]).map(item=>({...item}))));
   const navMode=navPreferences.uid===(currentUser&&currentUser.uid)?navPreferences.mode:'side';
@@ -3878,6 +3950,11 @@ function App(){
         <button onClick={logout} title={tr('logout')} className="p-2 rounded-lg hover:bg-black/10 text-white"><i className="fas fa-sign-out-alt text-xl"></i></button>
       </div>
     </header>
+    {globalAnnouncement?.active===true&&String(globalAnnouncement.message||'').trim()&&<section className="app-global-announcement no-print" role="status" aria-live="polite" style={{background:announcementBannerMeta.background}} dir={rtl?'rtl':'ltr'}>
+      <span className="app-global-announcement-badge"><i className="fas fa-satellite-dish"></i>{announcementBannerMeta.label}</span>
+      <strong className="app-global-announcement-title">{globalAnnouncement.title|| (rtl?'تنبيه إداري':'Management announcement')}</strong>
+      <div className="app-global-announcement-track"><div className="app-global-announcement-track-inner"><span>{globalAnnouncement.message}</span><span aria-hidden="true">{globalAnnouncement.message}</span></div></div>
+    </section>}
     <div className={'flex flex-1 min-h-0 '+(navMode==='top'?'flex-col':'flex-col md:flex-row')} style={{'--attachment-preview-width':attachmentPreviewWidth+'px','--attachment-preview-height':attachmentPreviewHeight+'px'}}>
       {navMode==='side'?<aside className="app-sidebar w-full md:w-60 border-gray-200 p-2 md:p-3 space-y-1" style={{'--sidebar-width':sidebarWidth+'px'}}>
         <div className="app-sidebar-nav-scroll">{renderNavigation()}</div>
@@ -4349,6 +4426,27 @@ function App(){
           </div>
         </div>}
 
+        {tab==='announcements'&&hasPermission('announcements','manage')&&<div className="space-y-5 max-w-6xl">
+          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-xl">{rtl?'الشريط الإعلاني العام':'Global Announcement Bulletin'}</h2><p className="text-sm text-gray-500 mt-1">{rtl?'رسالة موحدة تظهر أعلى البرنامج لجميع المستخدمين النشطين فور نشرها.':'A single live message displayed above the application for every active user.'}</p></div><span className={'rounded-full px-3 py-2 text-sm font-bold '+(globalAnnouncement?.active?'bg-emerald-50 text-emerald-700':'bg-slate-100 text-slate-600')}><i className={'fas '+(globalAnnouncement?.active?'fa-broadcast-tower':'fa-circle-pause')+' me-2'}></i>{globalAnnouncement?.active?(rtl?'الإعلان منشور الآن':'Currently published'):(rtl?'لا يوجد إعلان نشط':'No active announcement')}</span></div>
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+            <section className="xl:col-span-3 bg-white border rounded-xl p-4 sm:p-5 space-y-4">
+              <div className="flex items-center justify-between gap-2"><h3 className="font-bold">{globalAnnouncement?.active?(rtl?'تعديل الإعلان المنشور':'Edit published announcement'):(rtl?'إنشاء إعلان جديد':'Create a new announcement')}</h3><span className="text-xs text-gray-400">{rtl?'حتى 600 حرف':'Up to 600 characters'}</span></div>
+              <form onSubmit={publishGlobalAnnouncement} className="space-y-4">
+                <label className="block text-sm font-bold">{rtl?'عنوان الإعلان':'Announcement title'}<input maxLength={80} required value={announcementForm.title} onChange={e=>{announcementFormDirtyRef.current=true;setAnnouncementForm(old=>({...old,title:e.target.value}));}} className="mt-1 w-full border rounded-lg p-3 font-normal" placeholder={rtl?'مثال: تنبيه إداري مهم':'Example: Important management notice'}/></label>
+                <label className="block text-sm font-bold">{rtl?'نص الرسالة التي ستظهر لجميع المستخدمين':'Message shown to all users'}<textarea required rows={5} maxLength={600} value={announcementForm.message} onChange={e=>{announcementFormDirtyRef.current=true;setAnnouncementForm(old=>({...old,message:e.target.value}));}} className="mt-1 w-full border rounded-lg p-3 font-normal resize-y" placeholder={rtl?'اكتب الرسالة أو التنبيه الذي تريد نشره...':'Write the notice or message to publish...'}/><span className="block text-xs text-gray-400 text-end mt-1">{announcementForm.message.length}/600</span></label>
+                <label className="block text-sm font-bold">{rtl?'نوع الإعلان ولونه':'Announcement type and color'}<select value={announcementForm.tone} onChange={e=>{announcementFormDirtyRef.current=true;setAnnouncementForm(old=>({...old,tone:e.target.value}));}} className="mt-1 w-full border rounded-lg p-3 font-normal"><option value="urgent">{rtl?'عاجل – أحمر وبرتقالي':'Breaking – Red / Orange'}</option><option value="important">{rtl?'تنبيه مهم – ذهبي':'Important – Amber'}</option><option value="info">{rtl?'إعلان عام – بنفسجي':'General notice – Purple'}</option></select></label>
+                <div className="flex flex-wrap items-center gap-3"><button type="submit" disabled={announcementBusy||!announcementForm.message.trim()} className="rounded-lg bg-red-600 hover:bg-red-700 text-white px-5 py-3 font-bold disabled:opacity-50"><i className="fas fa-bullhorn me-2"></i>{announcementBusy?(rtl?'جارٍ النشر...':'Publishing...'):(globalAnnouncement?.active?(rtl?'حفظ التعديل ونشره':'Save changes and publish'):(rtl?'نشر الإعلان لجميع المستخدمين':'Publish to all users'))}</button>{globalAnnouncement?.active&&<button type="button" disabled={announcementBusy} onClick={stopGlobalAnnouncement} className="rounded-lg bg-slate-800 hover:bg-slate-900 text-white px-5 py-3 font-bold disabled:opacity-50"><i className="fas fa-stop-circle me-2"></i>{rtl?'إيقاف الإعلان':'Stop announcement'}</button>}</div>
+                {announcementNotice&&<div className={'rounded-lg border p-3 text-sm '+(announcementNotice.includes('تم ')||announcementNotice.includes('successfully')?'border-emerald-200 bg-emerald-50 text-emerald-800':'border-amber-200 bg-amber-50 text-amber-800')}>{announcementNotice}</div>}
+              </form>
+            </section>
+            <section className="xl:col-span-2 bg-white border rounded-xl p-4 sm:p-5 space-y-4"><h3 className="font-bold">{rtl?'معاينة الشريط قبل النشر':'Live preview'}</h3>
+              <div className="rounded-xl p-4 text-white shadow-lg min-h-36 flex flex-col justify-center gap-3" style={{background:announcementPreviewMeta.background}}><div className="flex items-center gap-2 text-xs font-extrabold"><span className="bg-slate-950/25 rounded-full px-3 py-1"><i className="fas fa-satellite-dish me-2"></i>{announcementPreviewMeta.label}</span><span>{announcementForm.title|| (rtl?'عنوان الإعلان':'Announcement title')}</span></div><p className="font-bold leading-8 break-words">{announcementForm.message|| (rtl?'سيظهر نص الإعلان هنا أثناء المعاينة.':'Your announcement message will appear here.')}</p></div>
+              <div className="rounded-lg bg-slate-50 border p-3 text-sm leading-7 text-slate-600"><i className="fas fa-users me-2 text-slate-500"></i>{rtl?'بمجرد النشر سيظهر الشريط أعلى جميع شاشات البرنامج للمستخدمين النشطين، ويتحدث فوراً دون الحاجة إلى تسجيل الخروج أو إعادة فتح البرنامج.':'Once published, the ticker appears above every screen for active users and updates live without signing out or reopening the application.'}</div>
+              {globalAnnouncement?.createdAt&&<p className="text-xs text-gray-400">{rtl?'آخر نشر: ':'Last published: '}{new Date(Number(globalAnnouncement.updatedAt||globalAnnouncement.createdAt)).toLocaleString(rtl?'ar-EG-u-nu-latn':'en-US')}</p>}
+            </section>
+          </div>
+        </div>}
+
         {tab==='userPermissions'&&isAdmin&&<div className="space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-bold text-xl">{rtl?'إدارة صلاحيات المستخدمين':'User Permissions Management'}</h2><span className="text-xs text-gray-500">{rtl?'صلاحيات مستقلة لكل مستخدم':'Independent permissions for each user'}</span></div>
           <section className="bg-white border rounded-xl p-4 space-y-4">
@@ -4359,8 +4457,8 @@ function App(){
               </select>
             </label>
             {permissionUserUid&&<><div className="flex flex-wrap gap-2"><button type="button" onClick={()=>setPermissionDraft(Object.fromEntries(permissionModules.map(m=>[m.id,Object.fromEntries(permissionActions.map(a=>[a.id,true]))])))} className="px-3 py-2 rounded-lg bg-blue-50 text-blue-700 text-sm font-bold">{rtl?'منح جميع الصلاحيات':'Grant all'}</button><button type="button" onClick={()=>setPermissionDraft(Object.fromEntries(permissionModules.map(m=>[m.id,Object.fromEntries(permissionActions.map(a=>[a.id,false]))])))} className="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-bold">{rtl?'إلغاء جميع الصلاحيات':'Clear all'}</button></div>
-              <div className="overflow-x-auto border rounded-lg"><table className="w-full text-sm min-w-[760px]"><thead className="bg-slate-50"><tr><th className="p-3 text-start">{rtl?'الشاشة':'Module'}</th>{permissionActions.map(action=><th key={action.id} className="p-3 text-center">{action.label}</th>)}</tr></thead><tbody>{permissionModules.map(module=><tr key={module.id} className="border-t"><td className="p-3 font-bold">{module.label}</td>{permissionActions.map(action=><td key={action.id} className="p-3 text-center">{(action.id==='viewOthers'&&module.id!=='cashCustody')||(module.id==='aiAgent'&&action.id!=='view')?<span className="text-gray-300">—</span>:<input type="checkbox" aria-label={module.label+' '+(module.id==='aiAgent'&&action.id==='view'?(rtl?'استخدام':'Use'):action.label)} checked={Boolean(permissionDraft[module.id]?.[action.id])} onChange={e=>setPermissionDraft(old=>({...old,[module.id]:{...(old[module.id]||{}),[action.id]:e.target.checked}}))}/>}</td>)}</tr>)}</tbody></table></div>
-              <p className="text-xs text-gray-500">{rtl?'في صف المساعد الذكي، صلاحية «عرض» تعني السماح باستخدام AI Agent. لا تظهر أدوات أي عملية للوكيل إلا إذا كانت صلاحيتها ممنوحة للمستخدم نفسه.':'For the AI Agent row, the View checkbox grants permission to use the agent. The agent only receives tools for operations the user is separately permitted to perform.'}</p>
+              <div className="overflow-x-auto border rounded-lg"><table className="w-full text-sm min-w-[760px]"><thead className="bg-slate-50"><tr><th className="p-3 text-start">{rtl?'الشاشة':'Module'}</th>{permissionActions.map(action=><th key={action.id} className="p-3 text-center">{action.label}</th>)}</tr></thead><tbody>{permissionModules.map(module=><tr key={module.id} className="border-t"><td className="p-3 font-bold">{module.label}</td>{permissionActions.map(action=><td key={action.id} className="p-3 text-center">{(action.id==='viewOthers'&&module.id!=='cashCustody')||(module.id==='announcements'&&action.id!=='manage')||(module.id==='aiAgent'&&action.id!=='view')?<span className="text-gray-300">—</span>:<input type="checkbox" aria-label={module.label+' '+(module.id==='aiAgent'&&action.id==='view'?(rtl?'استخدام':'Use'):action.label)} checked={Boolean(permissionDraft[module.id]?.[action.id])} onChange={e=>setPermissionDraft(old=>({...old,[module.id]:{...(old[module.id]||{}),[action.id]:e.target.checked}}))}/>}</td>)}</tr>)}</tbody></table></div>
+              <p className="text-xs text-gray-500">{rtl?'في صف الإعلانات العامة، صلاحية «إدارة» تسمح بنشر الإعلان وتعديله وإيقافه، بينما يشاهد بقية المستخدمين الإعلان فقط. وفي صف المساعد الذكي، صلاحية «عرض» تعني السماح باستخدام AI Agent.':'For Global Announcements, the Manage checkbox allows publishing, editing and stopping the bulletin; all other users can only view it. For the AI Agent row, View grants use of the agent.'}</p>
               <div className="flex flex-wrap items-center gap-3"><button type="button" disabled={permissionBusy} onClick={saveUserPermissions} className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold disabled:opacity-50">{permissionBusy?(rtl?'جارٍ الحفظ...':'Saving...'):(rtl?'حفظ الصلاحيات':'Save permissions')}</button>{permissionNotice&&<span className={'text-sm '+(permissionNotice.includes('نجاح')||permissionNotice.includes('successfully')?'text-green-700':'text-red-600')}>{permissionNotice}</span>}</div>
             </>}
           </section>
