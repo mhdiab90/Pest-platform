@@ -358,7 +358,9 @@ function App(){
   const [permissionBusy,setPermissionBusy] = useState(false);
   const [permissionNotice,setPermissionNotice] = useState('');
   const [globalAnnouncement,setGlobalAnnouncement] = useState(null);
-  const [announcementForm,setAnnouncementForm] = useState({title:'',message:'',tone:'urgent'});
+  const [announcementForm,setAnnouncementForm] = useState({title:'',message:'',tone:'urgent',scheduleMode:'always',startsAt:'',endsAt:''});
+  const [announcementClock,setAnnouncementClock] = useState(Date.now());
+  const announcementTimestampToInput = value => {const timestamp=Number(value);if(!Number.isFinite(timestamp)||timestamp<=0)return '';const date=new Date(timestamp);return new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);};
   const [announcementBusy,setAnnouncementBusy] = useState(false);
   const [announcementNotice,setAnnouncementNotice] = useState('');
   const announcementFormDirtyRef=useRef(false);
@@ -669,18 +671,31 @@ function App(){
   },[currentUser]);
   useEffect(()=>{
     const uid=currentUser&&currentUser.uid;
-    if(!uid){setGlobalAnnouncement(null);setAnnouncementForm({title:'',message:'',tone:'urgent'});announcementFormDirtyRef.current=false;return;}
+    if(!uid){setGlobalAnnouncement(null);setAnnouncementForm({title:'',message:'',tone:'urgent',scheduleMode:'always',startsAt:'',endsAt:''});announcementFormDirtyRef.current=false;return;}
     announcementFormDirtyRef.current=false;
     const ref=db.ref('globalAnnouncements/current');
     const handler=snapshot=>{
       const next=snapshot.val();
       setGlobalAnnouncement(next&&typeof next==='object'?next:null);
-      if(!announcementFormDirtyRef.current)setAnnouncementForm({title:String(next?.title||''),message:String(next?.message||''),tone:['urgent','important','info'].includes(next?.tone)?next.tone:'urgent'});
+      if(!announcementFormDirtyRef.current)setAnnouncementForm({title:String(next?.title||''),message:String(next?.message||''),tone:['urgent','important','info'].includes(next?.tone)?next.tone:'urgent',scheduleMode:next?.scheduleMode==='scheduled'?'scheduled':'always',startsAt:announcementTimestampToInput(next?.startsAt),endsAt:announcementTimestampToInput(next?.endsAt)});
     };
     ref.on('value',handler,err=>console.error('Global announcement listener:',err));
     return ()=>ref.off('value',handler);
   },[currentUser&&currentUser.uid]);
 
+  // Schedule visibility locally on every connected client; no administrator session or server cron is required.
+  useEffect(()=>{
+    const announcement=globalAnnouncement;
+    if(!announcement?.active||announcement.scheduleMode!=='scheduled')return;
+    const now=Date.now();
+    const boundaries=[Number(announcement.startsAt),Number(announcement.endsAt)].filter(value=>Number.isFinite(value)&&value>now);
+    if(!boundaries.length)return;
+    const nextBoundary=Math.min(...boundaries);
+    const timer=window.setTimeout(()=>setAnnouncementClock(Date.now()),Math.max(25,nextBoundary-now+50));
+    const refreshOnReturn=()=>{if(document.visibilityState==='visible')setAnnouncementClock(Date.now());};
+    document.addEventListener('visibilitychange',refreshOnReturn);
+    return ()=>{window.clearTimeout(timer);document.removeEventListener('visibilitychange',refreshOnReturn);};
+  },[globalAnnouncement?.active,globalAnnouncement?.scheduleMode,globalAnnouncement?.startsAt,globalAnnouncement?.endsAt,announcementClock]);
 
   // Authentication is checked first. No database read is attempted before a user signs in.
   useEffect(()=>{
@@ -2081,12 +2096,20 @@ function App(){
     const message=String(announcementForm.message||'').trim().slice(0,600);
     const tone=['urgent','important','info'].includes(announcementForm.tone)?announcementForm.tone:'urgent';
     if(!message)return alert(rtl?'اكتب نص الإعلان أولاً.':'Enter the announcement message first.');
+    const scheduleMode=announcementForm.scheduleMode==='scheduled'?'scheduled':'always';
+    const now=Date.now();let startsAt=null,endsAt=null;
+    if(scheduleMode==='scheduled'){
+      if(!announcementForm.startsAt||!announcementForm.endsAt)return alert(rtl?'حدد تاريخ ووقت البداية والنهاية.':'Select both start and end date/time.');
+      startsAt=new Date(announcementForm.startsAt).getTime();endsAt=new Date(announcementForm.endsAt).getTime();
+      if(!Number.isFinite(startsAt)||!Number.isFinite(endsAt)||endsAt<=startsAt)return alert(rtl?'وقت النهاية يجب أن يكون بعد وقت البداية.':'The end date/time must be after the start date/time.');
+      if(endsAt<=now)return alert(rtl?'وقت النهاية يجب أن يكون في المستقبل.':'The end date/time must be in the future.');
+    }
     setAnnouncementBusy(true);setAnnouncementNotice('');
-    const before=globalAnnouncement||null,now=Date.now();
-    const payload={id:before?.id||('announcement_'+(window.crypto?.randomUUID?.()||now+'_'+Math.random().toString(36).slice(2))),title,message,tone,active:true,createdAt:Number(before?.createdAt)||now,createdBy:String(before?.createdBy||currentUser.uid),createdByName:String(before?.createdByName||currentUser.fullName||currentUser.username||''),updatedAt:now,updatedBy:String(currentUser.uid),updatedByName:String(currentUser.fullName||currentUser.username||'')};
+    const before=globalAnnouncement||null;
+    const payload={id:before?.id||('announcement_'+(window.crypto?.randomUUID?.()||now+'_'+Math.random().toString(36).slice(2))),title,message,tone,active:true,scheduleMode,...(scheduleMode==='scheduled'?{startsAt,endsAt}:{}),createdAt:Number(before?.createdAt)||now,createdBy:String(before?.createdBy||currentUser.uid),createdByName:String(before?.createdByName||currentUser.fullName||currentUser.username||''),updatedAt:now,updatedBy:String(currentUser.uid),updatedByName:String(currentUser.fullName||currentUser.username||'')};
     try{
       await db.ref('globalAnnouncements/current').set(payload);
-      setGlobalAnnouncement(payload);setAnnouncementForm({title,message,tone});announcementFormDirtyRef.current=false;
+      setGlobalAnnouncement(payload);setAnnouncementClock(Date.now());setAnnouncementForm({title,message,tone,scheduleMode,startsAt:scheduleMode==='scheduled'?announcementForm.startsAt:'',endsAt:scheduleMode==='scheduled'?announcementForm.endsAt:''});announcementFormDirtyRef.current=false;
       setAnnouncementNotice(rtl?'تم نشر الإعلان لجميع المستخدمين.':'Announcement published to all users.');
       try{await addLog((before?'تحديث':'نشر')+' الإعلان العام: '+title,currentUser,{entityType:'global-announcement',entityId:payload.id,changes:auditChanges(before,payload)});}catch(logError){console.warn('Announcement audit log failed:',logError);}
     }catch(err){setAnnouncementNotice(firebaseErrorMessage(err,tr));}
@@ -3756,6 +3779,13 @@ function App(){
   };
   const announcementBannerMeta=announcementToneMeta[globalAnnouncement?.tone]||announcementToneMeta.urgent;
   const announcementPreviewMeta=announcementToneMeta[announcementForm.tone]||announcementToneMeta.urgent;
+  const announcementIsScheduled=globalAnnouncement?.scheduleMode==='scheduled';
+  const announcementStartsAt=Number(globalAnnouncement?.startsAt),announcementEndsAt=Number(globalAnnouncement?.endsAt);
+  const announcementScheduleValid=Number.isFinite(announcementStartsAt)&&announcementStartsAt>0&&Number.isFinite(announcementEndsAt)&&announcementEndsAt>announcementStartsAt;
+  const announcementIsVisible=globalAnnouncement?.active===true&&(!announcementIsScheduled||(announcementScheduleValid&&announcementClock>=announcementStartsAt&&announcementClock<announcementEndsAt))&&String(globalAnnouncement?.message||'').trim().length>0;
+  const announcementStatus=!globalAnnouncement?.active?'stopped':announcementIsScheduled&&!announcementScheduleValid?'invalid':announcementIsScheduled&&announcementClock<announcementStartsAt?'scheduled':announcementIsScheduled&&announcementClock>=announcementEndsAt?'expired':'published';
+  const announcementStatusLabel=announcementStatus==='published'?(rtl?'منشور الآن':'Published now'):announcementStatus==='scheduled'?(rtl?'مجدول':'Scheduled'):announcementStatus==='expired'?(rtl?'انتهى موعد الإعلان':'Schedule ended'):announcementStatus==='invalid'?(rtl?'راجع موعد الإعلان':'Check schedule'):(rtl?'متوقف':'Stopped');
+  const announcementStatusClass=announcementStatus==='published'?'bg-emerald-50 text-emerald-700':announcementStatus==='scheduled'?'bg-blue-50 text-blue-700':announcementStatus==='invalid'?'bg-rose-50 text-rose-700':'bg-slate-100 text-slate-600';
   const navGroups=[
     {id:'dashboard',label:tr('dashboard'),icon:'fa-gauge',tab:'dashboard'},
     {id:'masterGroup',label:tr('master'),icon:'fa-database',children:[{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors',icon:'fa-address-book'}]},
@@ -3951,7 +3981,7 @@ function App(){
         <button onClick={logout} title={tr('logout')} className="p-2 rounded-lg hover:bg-black/10 text-white"><i className="fas fa-sign-out-alt text-xl"></i></button>
       </div>
     </header>
-    {globalAnnouncement?.active===true&&String(globalAnnouncement.message||'').trim()&&<section className="app-global-announcement no-print" role="status" aria-live="polite" style={{background:announcementBannerMeta.background}} dir={rtl?'rtl':'ltr'}>
+    {announcementIsVisible&&<section className="app-global-announcement no-print" role="status" aria-live="polite" style={{background:announcementBannerMeta.background}} dir={rtl?'rtl':'ltr'}>
       <span className="app-global-announcement-badge"><i className="fas fa-satellite-dish"></i>{announcementBannerMeta.label}</span>
       <strong className="app-global-announcement-title">{globalAnnouncement.title|| (rtl?'تنبيه إداري':'Management announcement')}</strong>
       <div className="app-global-announcement-track"><div className="app-global-announcement-track-inner"><span>{globalAnnouncement.message}</span><span aria-hidden="true">{globalAnnouncement.message}</span></div></div>
@@ -4428,7 +4458,7 @@ function App(){
         </div>}
 
         {tab==='announcements'&&hasPermission('announcements','manage')&&<div className="space-y-5 max-w-6xl">
-          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-xl">{rtl?'الشريط الإعلاني العام':'Global Announcement Bulletin'}</h2><p className="text-sm text-gray-500 mt-1">{rtl?'رسالة موحدة تظهر أعلى البرنامج لجميع المستخدمين النشطين فور نشرها.':'A single live message displayed above the application for every active user.'}</p></div><span className={'rounded-full px-3 py-2 text-sm font-bold '+(globalAnnouncement?.active?'bg-emerald-50 text-emerald-700':'bg-slate-100 text-slate-600')}><i className={'fas '+(globalAnnouncement?.active?'fa-broadcast-tower':'fa-circle-pause')+' me-2'}></i>{globalAnnouncement?.active?(rtl?'الإعلان منشور الآن':'Currently published'):(rtl?'لا يوجد إعلان نشط':'No active announcement')}</span></div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-xl">{rtl?'الشريط الإعلاني العام':'Global Announcement Bulletin'}</h2><p className="text-sm text-gray-500 mt-1">{rtl?'حدد مدة ظهور الإعلان أو اتركه مستمراً حتى إيقافه يدوياً.':'Choose a display window or keep the announcement live until manually stopped.'}</p></div><span className={'rounded-full px-3 py-2 text-sm font-bold '+announcementStatusClass}><i className={'fas '+(announcementStatus==='published'?'fa-broadcast-tower':announcementStatus==='scheduled'?'fa-clock':announcementStatus==='expired'?'fa-hourglass-end':'fa-circle-pause')+' me-2'}></i>{announcementStatusLabel}</span></div>
           <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
             <section className="xl:col-span-3 bg-white border rounded-xl p-4 sm:p-5 space-y-4">
               <div className="flex items-center justify-between gap-2"><h3 className="font-bold">{globalAnnouncement?.active?(rtl?'تعديل الإعلان المنشور':'Edit published announcement'):(rtl?'إنشاء إعلان جديد':'Create a new announcement')}</h3><span className="text-xs text-gray-400">{rtl?'حتى 600 حرف':'Up to 600 characters'}</span></div>
@@ -4436,13 +4466,20 @@ function App(){
                 <label className="block text-sm font-bold">{rtl?'عنوان الإعلان':'Announcement title'}<input maxLength={80} value={announcementForm.title} onChange={e=>{announcementFormDirtyRef.current=true;setAnnouncementForm(old=>({...old,title:e.target.value}));}} className="mt-1 w-full border rounded-lg p-3 font-normal" placeholder={rtl?'مثال: تنبيه إداري مهم':'Example: Important management notice'}/></label>
                 <label className="block text-sm font-bold">{rtl?'نص الرسالة التي ستظهر لجميع المستخدمين':'Message shown to all users'}<textarea required rows={5} maxLength={600} value={announcementForm.message} onChange={e=>{announcementFormDirtyRef.current=true;setAnnouncementForm(old=>({...old,message:e.target.value}));}} className="mt-1 w-full border rounded-lg p-3 font-normal resize-y" placeholder={rtl?'اكتب الرسالة أو التنبيه الذي تريد نشره...':'Write the notice or message to publish...'}/><span className="block text-xs text-gray-400 text-end mt-1">{announcementForm.message.length}/600</span></label>
                 <label className="block text-sm font-bold">{rtl?'نوع الإعلان ولونه':'Announcement type and color'}<select value={announcementForm.tone} onChange={e=>{announcementFormDirtyRef.current=true;setAnnouncementForm(old=>({...old,tone:e.target.value}));}} className="mt-1 w-full border rounded-lg p-3 font-normal"><option value="urgent">{rtl?'عاجل – أحمر وبرتقالي':'Breaking – Red / Orange'}</option><option value="important">{rtl?'تنبيه مهم – ذهبي':'Important – Amber'}</option><option value="info">{rtl?'إعلان عام – بنفسجي':'General notice – Purple'}</option></select></label>
+                <label className="block text-sm font-bold">{rtl?'مدة ظهور الإعلان':'Announcement display duration'}<select value={announcementForm.scheduleMode} onChange={e=>{announcementFormDirtyRef.current=true;setAnnouncementForm(old=>({...old,scheduleMode:e.target.value}));}} className="mt-1 w-full border rounded-lg p-3 font-normal"><option value="always">{rtl?'مستمر حتى الإيقاف اليدوي':'Continuous until manually stopped'}</option><option value="scheduled">{rtl?'محدد بموعد من تاريخ/وقت إلى تاريخ/وقت':'Scheduled from date/time to date/time'}</option></select></label>
+                {announcementForm.scheduleMode==='scheduled'&&<div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+                  <label className="block text-sm font-bold">{rtl?'يبدأ الإعلان في':'Start date and time'}<input type="datetime-local" required value={announcementForm.startsAt} onChange={e=>{announcementFormDirtyRef.current=true;setAnnouncementForm(old=>({...old,startsAt:e.target.value}));}} className="mt-1 w-full border rounded-lg p-3 font-normal bg-white"/></label>
+                  <label className="block text-sm font-bold">{rtl?'ينتهي الإعلان في':'End date and time'}<input type="datetime-local" required min={announcementForm.startsAt||undefined} value={announcementForm.endsAt} onChange={e=>{announcementFormDirtyRef.current=true;setAnnouncementForm(old=>({...old,endsAt:e.target.value}));}} className="mt-1 w-full border rounded-lg p-3 font-normal bg-white"/></label>
+                  <p className="sm:col-span-2 text-xs leading-6 text-blue-800">{rtl?'سيبدأ الشريط ويختفي تلقائياً عند المواعيد المحددة لجميع المستخدمين، حتى إذا أغلقت شاشة المدير. المواعيد حسب التوقيت المحلي للجهاز الذي ينشر الإعلان.':'The ticker starts and disappears automatically for all users at the selected times, even when the administrator closes the screen. Times use the publisher device local timezone.'}</p>
+                </div>}
                 <div className="flex flex-wrap items-center gap-3"><button type="submit" disabled={announcementBusy||!announcementForm.message.trim()} className="rounded-lg bg-red-600 hover:bg-red-700 text-white px-5 py-3 font-bold disabled:opacity-50"><i className="fas fa-bullhorn me-2"></i>{announcementBusy?(rtl?'جارٍ النشر...':'Publishing...'):(globalAnnouncement?.active?(rtl?'حفظ التعديل ونشره':'Save changes and publish'):(rtl?'نشر الإعلان لجميع المستخدمين':'Publish to all users'))}</button>{globalAnnouncement?.active&&<button type="button" disabled={announcementBusy} onClick={stopGlobalAnnouncement} className="rounded-lg bg-slate-800 hover:bg-slate-900 text-white px-5 py-3 font-bold disabled:opacity-50"><i className="fas fa-stop-circle me-2"></i>{rtl?'إيقاف الإعلان':'Stop announcement'}</button>}</div>
                 {announcementNotice&&<div className={'rounded-lg border p-3 text-sm '+(announcementNotice.includes('تم ')||announcementNotice.includes('successfully')?'border-emerald-200 bg-emerald-50 text-emerald-800':'border-amber-200 bg-amber-50 text-amber-800')}>{announcementNotice}</div>}
               </form>
             </section>
             <section className="xl:col-span-2 bg-white border rounded-xl p-4 sm:p-5 space-y-4"><h3 className="font-bold">{rtl?'معاينة الشريط قبل النشر':'Live preview'}</h3>
               <div className="rounded-xl p-4 text-white shadow-lg min-h-36 flex flex-col justify-center gap-3" style={{background:announcementPreviewMeta.background}}><div className="flex items-center gap-2 text-xs font-extrabold"><span className="bg-slate-950/25 rounded-full px-3 py-1"><i className="fas fa-satellite-dish me-2"></i>{announcementPreviewMeta.label}</span><span>{announcementForm.title|| (rtl?'عنوان الإعلان':'Announcement title')}</span></div><p className="font-bold leading-8 break-words">{announcementForm.message|| (rtl?'سيظهر نص الإعلان هنا أثناء المعاينة.':'Your announcement message will appear here.')}</p></div>
-              <div className="rounded-lg bg-slate-50 border p-3 text-sm leading-7 text-slate-600"><i className="fas fa-users me-2 text-slate-500"></i>{rtl?'بمجرد النشر سيظهر الشريط أعلى جميع شاشات البرنامج للمستخدمين النشطين، ويتحدث فوراً دون الحاجة إلى تسجيل الخروج أو إعادة فتح البرنامج.':'Once published, the ticker appears above every screen for active users and updates live without signing out or reopening the application.'}</div>
+              <div className="rounded-lg bg-slate-50 border p-3 text-sm leading-7 text-slate-600"><i className="fas fa-calendar-check me-2 text-slate-500"></i>{announcementForm.scheduleMode==='scheduled'?(announcementForm.startsAt&&announcementForm.endsAt?(rtl?'من '+new Date(announcementForm.startsAt).toLocaleString('ar-EG-u-nu-latn')+' إلى '+new Date(announcementForm.endsAt).toLocaleString('ar-EG-u-nu-latn'):'From '+new Date(announcementForm.startsAt).toLocaleString('en-US')+' to '+new Date(announcementForm.endsAt).toLocaleString('en-US')):(rtl?'في انتظار تحديد البداية والنهاية.':'Select the start and end date/time.')):(rtl?'سيظل الإعلان ظاهرًا حتى تضغط على إيقاف الإعلان.':'The announcement remains visible until you manually stop it.')}</div>
+              <div className="rounded-lg bg-slate-50 border p-3 text-sm leading-7 text-slate-600"><i className="fas fa-users me-2 text-slate-500"></i>{rtl?'يظهر الشريط أعلى جميع الشاشات للمستخدمين النشطين ويتحدث فوراً دون إعادة فتح البرنامج.':'The ticker appears above every screen for active users and updates live without reopening the application.'}</div>
               {globalAnnouncement?.createdAt&&<p className="text-xs text-gray-400">{rtl?'آخر نشر: ':'Last published: '}{new Date(Number(globalAnnouncement.updatedAt||globalAnnouncement.createdAt)).toLocaleString(rtl?'ar-EG-u-nu-latn':'en-US')}</p>}
             </section>
           </div>
