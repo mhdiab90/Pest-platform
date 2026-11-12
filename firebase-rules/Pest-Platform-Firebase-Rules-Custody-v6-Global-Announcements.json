@@ -1,0 +1,161 @@
+{
+  "rules": {
+    ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin' && root.child('users').child(auth.uid).child('status').val() === 'active'",
+    ".write": false,
+    "companyInfo": {
+      ".read": true,
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin' && root.child('users').child(auth.uid).child('status').val() === 'active'"
+    },
+    "users": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin' && root.child('users').child(auth.uid).child('status').val() === 'active'",
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || (root.child('users').child(auth.uid).child('role').val() === 'admin' && root.child('users').child(auth.uid).child('status').val() === 'active'))",
+        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin' && root.child('users').child(auth.uid).child('status').val() === 'active'",
+        "uid": {
+          ".write": "auth != null && auth.uid === $uid && root.child('users').child(auth.uid).child('status').val() === 'active' && newData.val() === auth.uid"
+        },
+        "email": {
+          ".write": "auth != null && auth.uid === $uid && root.child('users').child(auth.uid).child('status').val() === 'active' && newData.val() === auth.token.email"
+        },
+        "fullName": {
+          ".write": "auth != null && auth.uid === $uid && root.child('users').child(auth.uid).child('status').val() === 'active' && newData.isString()"
+        },
+        "username": {
+          ".write": "auth != null && auth.uid === $uid && root.child('users').child(auth.uid).child('status').val() === 'active' && newData.isString()"
+        },
+        "jobTitle": {
+          ".write": "auth != null && auth.uid === $uid && root.child('users').child(auth.uid).child('status').val() === 'active' && newData.isString()"
+        },
+        "whatsapp": {
+          ".write": "auth != null && auth.uid === $uid && root.child('users').child(auth.uid).child('status').val() === 'active' && newData.isString()"
+        },
+        "avatar": {
+          ".write": "auth != null && auth.uid === $uid && root.child('users').child(auth.uid).child('status').val() === 'active' && newData.isString()"
+        }
+      }
+    },
+    "userDirectory": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active'",
+      "$uid": {
+        ".write": "auth != null && ((root.child('users').child(auth.uid).child('role').val() === 'admin' && root.child('users').child(auth.uid).child('status').val() === 'active') || (auth.uid === $uid && root.child('users').child(auth.uid).child('status').val() === 'active' && newData.exists() && newData.child('uid').val() === auth.uid))"
+      }
+    },
+    "userRequests": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin' && root.child('users').child(auth.uid).child('status').val() === 'active'",
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || (root.child('users').child(auth.uid).child('role').val() === 'admin' && root.child('users').child(auth.uid).child('status').val() === 'active'))",
+        ".write": "auth != null && ((auth.uid === $uid && !data.exists() && newData.exists() && newData.child('uid').val() === auth.uid && newData.child('email').val() === auth.token.email && newData.child('status').val() === 'pending') || (root.child('users').child(auth.uid).child('role').val() === 'admin' && root.child('users').child(auth.uid).child('status').val() === 'active'))",
+        ".validate": "!newData.exists() || (newData.child('uid').val() === $uid && newData.child('email').isString() && newData.child('username').isString() && newData.child('fullName').isString() && newData.child('jobTitle').isString() && newData.child('status').isString()) || (newData.child('id').val() === $uid && newData.child('username').isString() && newData.child('fullName').isString() && newData.child('status').isString())"
+      },
+      ".indexOn": [
+        "status"
+      ]
+    },
+    "clients": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active'",
+      "$recordId": {
+        ".write": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active' && ((!data.exists() && newData.exists() && ((root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('users').child(auth.uid).child('permissions').child('master').child('add').val() === true)) || (data.exists() && newData.exists() && ((root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('users').child(auth.uid).child('permissions').child('master').child('edit').val() === true)) || (data.exists() && !newData.exists() && ((root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('users').child(auth.uid).child('permissions').child('master').child('delete').val() === true)))"
+      }
+    },
+    "vendors": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active'",
+      "$recordId": {
+        ".write": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active' && ((!data.exists() && newData.exists() && ((root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('users').child(auth.uid).child('permissions').child('master').child('add').val() === true)) || (data.exists() && newData.exists() && ((root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('users').child(auth.uid).child('permissions').child('master').child('edit').val() === true)) || (data.exists() && !newData.exists() && ((root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('users').child(auth.uid).child('permissions').child('master').child('delete').val() === true)))"
+      }
+    },
+    "projects": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active'",
+      "$projectCode": {
+        ".write": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active' && ((!data.exists() && newData.exists() && ((root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('users').child(auth.uid).child('permissions').child('projects').child('add').val() === true || (root.child('users').child(auth.uid).child('username').val() === 'omar' || root.child('users').child(auth.uid).child('fullName').val() === 'Omar' || root.child('users').child(auth.uid).child('fullName').val() === 'omar'))) || (data.exists() && newData.exists() && ((root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('users').child(auth.uid).child('permissions').child('projects').child('edit').val() === true || (root.child('users').child(auth.uid).child('username').val() === 'omar' || root.child('users').child(auth.uid).child('fullName').val() === 'Omar' || root.child('users').child(auth.uid).child('fullName').val() === 'omar'))) || (data.exists() && !newData.exists() && ((root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('users').child(auth.uid).child('permissions').child('projects').child('delete').val() === true)))"
+      }
+    },
+    "quotes": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active'",
+      "$recordId": {
+        ".write": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active' && ((!data.exists() && newData.exists() && ((root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('users').child(auth.uid).child('permissions').child('statement').child('add').val() === true)) || (data.exists() && newData.exists() && ((root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('users').child(auth.uid).child('permissions').child('statement').child('edit').val() === true)) || (data.exists() && !newData.exists() && ((root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('users').child(auth.uid).child('permissions').child('statement').child('delete').val() === true)))"
+      }
+    },
+    "inflows": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active'",
+      "$recordId": {
+        ".write": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active' && ((!data.exists() && newData.exists() && ((root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('users').child(auth.uid).child('permissions').child('statement').child('add').val() === true)) || (data.exists() && newData.exists() && ((root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('users').child(auth.uid).child('permissions').child('statement').child('edit').val() === true)) || (data.exists() && !newData.exists() && ((root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('users').child(auth.uid).child('permissions').child('statement').child('delete').val() === true)))"
+      }
+    },
+    "outflows": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active'",
+      "$recordId": {
+        ".write": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active' && ((!data.exists() && newData.exists() && ((root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('users').child(auth.uid).child('permissions').child('statement').child('add').val() === true)) || (data.exists() && newData.exists() && ((root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('users').child(auth.uid).child('permissions').child('statement').child('edit').val() === true)) || (data.exists() && !newData.exists() && ((root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('users').child(auth.uid).child('permissions').child('statement').child('delete').val() === true)))"
+      }
+    },
+    "logs": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin' && root.child('users').child(auth.uid).child('status').val() === 'active'",
+      "$logId": {
+        ".write": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active' && !data.exists() && newData.exists() && newData.child('uid').val() === auth.uid && newData.child('id').val() === $logId",
+        ".validate": "newData.hasChildren(['id', 'uid', 'action', 'createdAt']) && newData.child('id').val() === $logId && newData.child('uid').val() === auth.uid && newData.child('action').isString() && newData.child('createdAt').isNumber()"
+      },
+      ".indexOn": [
+        "createdAt"
+      ]
+    },
+    "tasks": {
+      "$ownerUid": {
+        ".read": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active' && root.child('users').child($ownerUid).child('status').val() === 'active' && (auth.uid === $ownerUid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        "$taskId": {
+          ".write": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active' && auth.uid === $ownerUid && (( !data.exists() && newData.exists() && newData.child('id').val() === $taskId && newData.child('createdBy').val() === auth.uid && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('permissions').child('tasks').child('add').val() === true)) || (data.exists() && newData.exists() && data.child('createdBy').val() === auth.uid && newData.child('createdBy').val() === auth.uid && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('permissions').child('tasks').child('edit').val() === true)) || (data.exists() && !newData.exists() && data.child('createdBy').val() === auth.uid && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('permissions').child('tasks').child('delete').val() === true)))",
+          ".validate": "!newData.exists() || (newData.hasChildren(['id', 'title', 'description', 'status', 'createdAt', 'createdBy']) && newData.child('id').val() === $taskId && newData.child('createdBy').val() === $ownerUid && newData.child('title').isString() && newData.child('status').isString() && newData.child('createdAt').isNumber())"
+        }
+      }
+    },
+    "cashCustodies": {
+      "$ownerUid": {
+        ".read": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active' && ((auth.uid === $ownerUid && root.child('users').child(auth.uid).child('permissions').child('cashCustody').child('view').val() !== false) || (root.child('users').child(auth.uid).child('role').val() === 'admin') || (root.child('users').child(auth.uid).child('permissions').child('cashCustody').child('view').val() !== false && root.child('users').child(auth.uid).child('permissions').child('cashCustody').child('viewOthers').val() === true))",
+        "transactions": {
+          "$transactionId": {
+            ".write": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active' && root.child('users').child($ownerUid).child('status').val() === 'active' && ((!data.exists() && newData.exists() && newData.child('id').val() === $transactionId && newData.child('ownerUid').val() === $ownerUid && newData.child('createdBy').val() === auth.uid && ((auth.uid === $ownerUid && root.child('users').child(auth.uid).child('permissions').child('cashCustody').child('add').val() !== false && newData.child('status').val() === 'pending') || (root.child('users').child(auth.uid).child('role').val() === 'admin' && newData.child('status').val() === 'approved'))) || (auth.uid === $ownerUid && data.exists() && newData.exists() && data.child('status').val() === 'pending' && newData.child('status').val() === 'pending' && root.child('users').child(auth.uid).child('permissions').child('cashCustody').child('edit').val() !== false && newData.child('id').val() === data.child('id').val() && newData.child('ownerUid').val() === data.child('ownerUid').val() && newData.child('createdBy').val() === data.child('createdBy').val() && newData.child('createdAt').val() === data.child('createdAt').val() && newData.child('updatedBy').val() === auth.uid) || (data.exists() && !newData.exists() && ((auth.uid === $ownerUid && data.child('status').val() === 'pending' && root.child('users').child(auth.uid).child('permissions').child('cashCustody').child('delete').val() === true) || (root.child('users').child(auth.uid).child('role').val() === 'admin'))) || (data.exists() && newData.exists() && data.child('status').val() === 'pending' && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('permissions').child('cashCustody').child('approve').val() === true) && (auth.uid !== $ownerUid || root.child('users').child(auth.uid).child('role').val() === 'admin') && newData.child('status').val() !== 'pending' && (newData.child('status').val() === 'approved' || newData.child('status').val() === 'rejected') && newData.child('reviewedBy').val() === auth.uid && newData.child('id').val() === data.child('id').val() && newData.child('ownerUid').val() === data.child('ownerUid').val() && newData.child('createdBy').val() === data.child('createdBy').val() && newData.child('createdByName').val() === data.child('createdByName').val() && newData.child('createdAt').val() === data.child('createdAt').val() && newData.child('type').val() === data.child('type').val() && newData.child('amount').val() === data.child('amount').val() && newData.child('currency').val() === data.child('currency').val() && newData.child('date').val() === data.child('date').val() && newData.child('counterparty').val() === data.child('counterparty').val() && newData.child('projectCode').val() === data.child('projectCode').val() && newData.child('reference').val() === data.child('reference').val() && newData.child('description').val() === data.child('description').val()) || (!data.exists() && newData.exists() && auth.uid !== $ownerUid && newData.child('id').val() === $transactionId && newData.child('ownerUid').val() === $ownerUid && newData.child('createdBy').val() === auth.uid && newData.child('pairRole').val() === 'counterparty' && ((newData.child('counterpartyType').val() === 'user' && newData.child('counterpartyUid').val() === auth.uid) || (newData.child('counterpartyType').val() === 'company' && !newData.child('counterpartyUid').exists() && root.child('users').child(auth.uid).child('role').val() === 'admin' && root.child('cashCustodies').child(auth.uid).child('transactions').child(newData.child('pairGroupId').val()).child('bookScope').val() === 'company')) && newData.child('linkedOwnerUid').val() === auth.uid && newData.child('linkedTransactionId').isString() && newData.child('pairGroupId').isString() && (newData.child('status').val() === 'pending' || (root.child('users').child(auth.uid).child('role').val() === 'admin' && newData.child('status').val() === 'approved')) && (newData.child('type').val() === 'receipt' || newData.child('type').val() === 'expense')) || (data.exists() && newData.exists() && auth.uid !== $ownerUid && data.child('pairRole').val() === 'counterparty' && data.child('createdBy').val() === auth.uid && data.child('counterpartyType').val() === 'user' && data.child('counterpartyUid').val() === auth.uid && data.child('status').val() === 'pending' && newData.child('status').val() === 'pending' && newData.child('id').val() === data.child('id').val() && newData.child('ownerUid').val() === data.child('ownerUid').val() && newData.child('createdBy').val() === data.child('createdBy').val() && newData.child('pairGroupId').val() === data.child('pairGroupId').val() && newData.child('linkedOwnerUid').val() === data.child('linkedOwnerUid').val() && newData.child('linkedTransactionId').val() === data.child('linkedTransactionId').val() && newData.child('updatedBy').val() === auth.uid) || (data.exists() && !newData.exists() && auth.uid !== $ownerUid && data.child('pairRole').val() === 'counterparty' && data.child('createdBy').val() === auth.uid && data.child('counterpartyType').val() === 'user' && data.child('counterpartyUid').val() === auth.uid && data.child('status').val() === 'pending')) || (data.exists() && newData.exists() && auth.uid !== $ownerUid && root.child('users').child(auth.uid).child('role').val() === 'admin' && data.child('pairRole').val() === 'counterparty' && newData.child('pairRole').val() === data.child('pairRole').val() && newData.child('id').val() === data.child('id').val() && newData.child('ownerUid').val() === data.child('ownerUid').val() && newData.child('createdBy').val() === data.child('createdBy').val() && newData.child('createdAt').val() === data.child('createdAt').val() && newData.child('pairGroupId').val() === data.child('pairGroupId').val() && newData.child('linkedOwnerUid').val() === data.child('linkedOwnerUid').val() && newData.child('linkedTransactionId').val() === data.child('linkedTransactionId').val() && newData.child('status').val() === data.child('status').val() && newData.child('updatedBy').val() === auth.uid) || (data.exists() && newData.exists() && root.child('users').child(auth.uid).child('role').val() === 'admin' && newData.child('id').val() === data.child('id').val() && newData.child('ownerUid').val() === $ownerUid && newData.child('createdBy').val() === data.child('createdBy').val() && newData.child('createdAt').val() === data.child('createdAt').val() && newData.child('status').val() === data.child('status').val() && newData.child('updatedBy').val() === auth.uid)",
+            ".validate": "newData.hasChildren(['id', 'ownerUid', 'type', 'amount', 'currency', 'date', 'description', 'status', 'createdBy', 'createdByName', 'createdAt']) && newData.child('id').val() === $transactionId && newData.child('ownerUid').val() === $ownerUid && newData.child('type').isString() && newData.child('amount').isNumber() && newData.child('amount').val() > 0 && newData.child('currency').isString() && newData.child('date').isString() && newData.child('description').isString() && newData.child('status').isString() && newData.child('createdBy').isString() && newData.child('createdByName').isString() && newData.child('createdAt').isNumber()"
+          }
+        }
+      }
+    },
+    "messages": {
+      "$mailboxUid": {
+        ".read": "auth != null && auth.uid === $mailboxUid && root.child('users').child(auth.uid).child('status').val() === 'active'",
+        "$messageId": {
+          ".write": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active' && root.child('users').child($mailboxUid).child('status').val() === 'active' && (((root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('permissions').child('messages').child('add').val() === true) && !data.exists() && newData.exists() && newData.child('id').val() === $messageId && newData.child('senderUid').val() === auth.uid && newData.child('recipientUid').val() !== auth.uid && ((auth.uid !== $mailboxUid && newData.child('recipientUid').val() === $mailboxUid && newData.child('mailboxUid').val() === $mailboxUid && newData.child('read').val() === false && !newData.child('copyType').exists()) || (auth.uid === $mailboxUid && newData.child('mailboxUid').val() === $mailboxUid && newData.child('copyType').val() === 'sent' && newData.child('read').val() === true && root.child('users').child(newData.child('recipientUid').val()).child('status').val() === 'active'))) || (auth.uid === $mailboxUid && data.exists() && newData.exists() && data.child('copyType').val() !== 'sent' && data.child('recipientUid').val() === $mailboxUid && newData.child('id').val() === data.child('id').val() && newData.child('recipientUid').val() === data.child('recipientUid').val() && newData.child('senderUid').val() === data.child('senderUid').val() && newData.child('senderName').val() === data.child('senderName').val() && newData.child('senderAvatar').val() === data.child('senderAvatar').val() && newData.child('subject').val() === data.child('subject').val() && newData.child('body').val() === data.child('body').val() && newData.child('date').val() === data.child('date').val() && newData.child('createdAt').val() === data.child('createdAt').val() && newData.child('mailboxUid').val() === data.child('mailboxUid').val() && newData.child('copyType').val() === data.child('copyType').val() && newData.child('read').val() === true) || (data.exists() && newData.exists() && auth.uid === data.child('senderUid').val() && newData.child('id').val() === data.child('id').val() && newData.child('mailboxUid').val() === data.child('mailboxUid').val() && newData.child('recipientUid').val() === data.child('recipientUid').val() && newData.child('senderUid').val() === data.child('senderUid').val() && newData.child('senderName').val() === data.child('senderName').val() && newData.child('senderAvatar').val() === data.child('senderAvatar').val() && newData.child('date').val() === data.child('date').val() && newData.child('createdAt').val() === data.child('createdAt').val() && newData.child('copyType').val() === data.child('copyType').val() && newData.child('read').val() === data.child('read').val() && newData.child('recipientUids').val() === data.child('recipientUids').val() && newData.child('recipientNames').val() === data.child('recipientNames').val() && newData.child('visibility').val() === data.child('visibility').val() && newData.child('subject').isString() && newData.child('body').isString() && newData.child('updatedBy').val() === auth.uid && newData.child('updatedAt').isNumber()) || (auth.uid === $mailboxUid && data.exists() && !newData.exists() && ((data.child('copyType').val() === 'sent' && data.child('senderUid').val() === auth.uid) || (!data.child('copyType').exists() && data.child('recipientUid').val() === auth.uid))))",
+          ".validate": "newData.hasChildren(['id', 'mailboxUid', 'recipientUid', 'senderUid', 'senderName', 'subject', 'body', 'date', 'read']) && newData.child('id').val() === $messageId && newData.child('mailboxUid').val() === $mailboxUid && newData.child('recipientUid').isString() && newData.child('senderUid').isString() && newData.child('senderName').isString() && newData.child('subject').isString() && newData.child('body').isString() && newData.child('date').isString() && newData.child('read').isBoolean() && (!newData.child('copyType').exists() || newData.child('copyType').val() === 'sent')"
+        },
+        ".indexOn": [
+          "read"
+        ]
+      }
+    },
+    "messageReactions": {
+      "$messageId": {
+        ".read": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active' && root.child('messages').child(auth.uid).child($messageId).exists() && (root.child('messages').child(auth.uid).child($messageId).child('senderUid').val() === auth.uid || root.child('messages').child(auth.uid).child($messageId).child('recipientUid').val() === auth.uid)",
+        "$emoji": {
+          ".validate": "$emoji === '👍' || $emoji === '❤️' || $emoji === '😂' || $emoji === '😮' || $emoji === '😢' || $emoji === '🙏'",
+          "$reactorUid": {
+            ".write": "auth != null && auth.uid === $reactorUid && root.child('users').child(auth.uid).child('status').val() === 'active' && root.child('messages').child(auth.uid).child($messageId).exists() && (root.child('messages').child(auth.uid).child($messageId).child('senderUid').val() === auth.uid || root.child('messages').child(auth.uid).child($messageId).child('recipientUid').val() === auth.uid) && (newData.val() === true || !newData.exists())",
+            ".validate": "newData.val() === true"
+          }
+        }
+      }
+    },
+    "cashCustodyNotifications": {
+      "$recipientUid": {
+        ".read": "auth != null && auth.uid === $recipientUid && root.child('users').child(auth.uid).child('status').val() === 'active'",
+        "$notificationId": {
+          ".write": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active' && ((!data.exists() && newData.exists() && auth.uid !== $recipientUid && newData.child('id').val() === $notificationId && newData.child('recipientUid').val() === $recipientUid && newData.child('senderUid').val() === auth.uid && newData.child('read').val() === false && newData.child('transactionId').isString() && newData.child('pairGroupId').isString() && root.child('cashCustodies').child($recipientUid).child('transactions').child(newData.child('transactionId').val()).exists() && root.child('cashCustodies').child($recipientUid).child('transactions').child(newData.child('transactionId').val()).child('ownerUid').val() === $recipientUid && root.child('cashCustodies').child($recipientUid).child('transactions').child(newData.child('transactionId').val()).child('pairRole').val() === 'counterparty' && root.child('cashCustodies').child($recipientUid).child('transactions').child(newData.child('transactionId').val()).child('createdBy').val() === auth.uid && ((root.child('cashCustodies').child($recipientUid).child('transactions').child(newData.child('transactionId').val()).child('counterpartyType').val() === 'user' && root.child('cashCustodies').child($recipientUid).child('transactions').child(newData.child('transactionId').val()).child('counterpartyUid').val() === auth.uid) || (root.child('cashCustodies').child($recipientUid).child('transactions').child(newData.child('transactionId').val()).child('counterpartyType').val() === 'company' && !root.child('cashCustodies').child($recipientUid).child('transactions').child(newData.child('transactionId').val()).child('counterpartyUid').exists() && root.child('users').child(auth.uid).child('role').val() === 'admin' && root.child('cashCustodies').child(auth.uid).child('transactions').child(newData.child('pairGroupId').val()).child('bookScope').val() === 'company')) && root.child('cashCustodies').child($recipientUid).child('transactions').child(newData.child('transactionId').val()).child('pairGroupId').val() === newData.child('pairGroupId').val() && root.child('cashCustodies').child($recipientUid).child('transactions').child(newData.child('transactionId').val()).child('amount').val() === newData.child('amount').val() && root.child('cashCustodies').child($recipientUid).child('transactions').child(newData.child('transactionId').val()).child('currency').val() === newData.child('currency').val() && root.child('cashCustodies').child(auth.uid).child('transactions').child(newData.child('pairGroupId').val()).child('linkedOwnerUid').val() === $recipientUid && root.child('cashCustodies').child(auth.uid).child('transactions').child(newData.child('pairGroupId').val()).child('linkedTransactionId').val() === newData.child('transactionId').val()) || (auth.uid === $recipientUid && data.exists() && newData.exists() && newData.child('id').val() === data.child('id').val() && newData.child('recipientUid').val() === data.child('recipientUid').val() && newData.child('senderUid').val() === data.child('senderUid').val() && newData.child('senderName').val() === data.child('senderName').val() && newData.child('amount').val() === data.child('amount').val() && newData.child('currency').val() === data.child('currency').val() && newData.child('date').val() === data.child('date').val() && newData.child('description').val() === data.child('description').val() && newData.child('transactionId').val() === data.child('transactionId').val() && newData.child('pairGroupId').val() === data.child('pairGroupId').val() && newData.child('createdAt').val() === data.child('createdAt').val() && newData.child('read').val() === true))",
+          ".validate": "!newData.exists() || (newData.hasChildren(['id','recipientUid','senderUid','senderName','amount','currency','date','description','transactionId','pairGroupId','createdAt','read']) && newData.child('id').val() === $notificationId && newData.child('recipientUid').val() === $recipientUid && newData.child('senderUid').isString() && newData.child('senderName').isString() && newData.child('amount').isNumber() && newData.child('amount').val() > 0 && newData.child('currency').isString() && newData.child('date').isString() && newData.child('description').isString() && newData.child('transactionId').isString() && newData.child('pairGroupId').isString() && newData.child('createdAt').isNumber() && newData.child('read').isBoolean())"
+        }
+      }
+    },
+    "globalAnnouncements": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active'",
+      "current": {
+        ".write": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active' && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('permissions').child('announcements').child('manage').val() === true)",
+        ".validate": "!newData.exists() || (newData.hasChildren(['id','title','message','tone','active','createdAt','createdBy','createdByName','updatedAt','updatedBy','updatedByName']) && newData.child('id').isString() && newData.child('title').isString() && newData.child('title').val().length <= 80 && newData.child('message').isString() && newData.child('message').val().length > 0 && newData.child('message').val().length <= 600 && (newData.child('tone').val() === 'urgent' || newData.child('tone').val() === 'important' || newData.child('tone').val() === 'info') && newData.child('active').isBoolean() && newData.child('createdAt').isNumber() && newData.child('createdBy').isString() && newData.child('createdByName').isString() && newData.child('updatedAt').isNumber() && newData.child('updatedBy').val() === auth.uid && newData.child('updatedByName').isString())"
+      }
+    }
+  }
+}
