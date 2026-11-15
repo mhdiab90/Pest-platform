@@ -227,7 +227,9 @@
     }
 
     /* Keep the chosen palette swatches exact throughout key interface accents. */
-    .app-shell-header{border-bottom:2px solid var(--brand)!important}
+    .app-shell-header{background:var(--brand)!important;color:#fff!important;border-bottom:2px solid var(--brand)!important}
+    .app-shell-header .text-white,.app-shell-header [class*="text-white/"]{color:#fff!important}
+    .app-shell-header button{color:#fff!important}
     .app-sidebar .app-nav-child.active,
     .app-sidebar .nav-btn.active,
     .app-nav-grid-top .app-nav-group.has-active>.app-nav-parent,
