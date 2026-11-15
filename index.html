@@ -448,7 +448,7 @@
       .app-report-toolbar .report-toolbar-caption small{font-size:9px}
       .app-report-toolbar .report-toolbar-actions{gap:5px}
       .app-report-toolbar button{min-height:34px;padding:6px 8px;font-size:10px}
-      .app-workspace>div>:first-child:has(h2){top:62px}
+      .app-workspace>div>:first-child:has(h2){top:var(--report-toolbar-offset,0px)}
     }
   </style>
 </head>
@@ -4155,6 +4155,8 @@ function App(){
   function canExportCurrentScreen(){
     if(!currentUser)return false;
     if(['companySettings','aiSettings','userRequests','userManagement','userPermissions','auditLogs'].includes(tab))return isAdmin;
+    if(tab==='profile')return hasPermission('profile','view');
+    if(tab==='announcements'&&hasPermission('announcements','manage'))return true;
     return hasPermission(currentReportPermissionModule(),'export');
   }
   function currentScreenReportTitle(){
@@ -4596,7 +4598,7 @@ function App(){
       const esc=escapeReportHtml;
       const logo=companyInfo.logo?'<img class="logo" src="'+esc(companyInfo.logo)+'" alt="Logo">':'';
       const metricsHtml=metrics.map(metric=>'<div class="metric"><span>'+esc(metric.label)+'</span><b>'+esc(metric.value)+'</b></div>').join('');
-      const filterHtml=report.filters.length?'<div class="filters">'+report.filters.map(filter=>'<span><b>'+esc(filter.label)+':</b> '+esc(filter.value)+'</span>').join(''):'<span>'+(rtl?'بدون فلاتر إضافية':'No additional filters')+'</span>'+'</div>';
+      const filterHtml=report.filters.length?'<div class="filters">'+report.filters.map(filter=>'<span><b>'+esc(filter.label)+':</b> '+esc(filter.value)+'</span>').join('')+'</div>':'<div class="filters"><span>'+(rtl?'بدون فلاتر إضافية':'No additional filters')+'</span></div>';
       const detailsHtml=datasets.map(dataset=>{
         const columns=[];dataset.rows.forEach(row=>Object.keys(row).forEach(key=>{if(!columns.includes(key))columns.push(key);}));
         const tableHeader=columns.length?'<thead><tr>'+columns.map(column=>'<th>'+esc(column)+'</th>').join('')+'</tr></thead>':'';
