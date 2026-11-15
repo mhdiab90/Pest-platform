@@ -240,6 +240,200 @@
     }
     .app-user-identity .app-user-fallback,
     .app-header-identity>.app-user-fallback{background:var(--brand)!important}
+
+    /* Mobile-only layout: keep desktop/tablet presentation unchanged. */
+    @media(max-width:767px){
+      html,body,#root{width:100%;max-width:100%;min-width:0;overflow-x:hidden}
+      body{overscroll-behavior-x:none}
+      .app-root-shell{height:100vh;height:100dvh;min-height:0;max-height:100dvh;overflow:hidden}
+      .app-shell-header{
+        display:grid!important;
+        grid-template-columns:minmax(0,1fr);
+        gap:6px!important;
+        padding:8px 10px!important;
+        flex:0 0 auto;
+      }
+      .app-shell-brand{width:100%;min-width:0;gap:9px!important}
+      .app-shell-brand>img{width:34px;height:34px;flex:0 0 34px}
+      .app-shell-brand>div{min-width:0;flex:1}
+      .app-shell-brand h1{font-size:.92rem;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+      .app-shell-brand p{font-size:.68rem;line-height:1.2;margin-top:2px}
+      .app-shell-actions{width:100%;min-width:0;display:flex!important;align-items:center;justify-content:space-between;gap:4px!important;flex-wrap:nowrap}
+      .app-shell-actions>button,.app-shell-actions>div>button{min-width:36px;min-height:38px;padding:6px 8px!important;display:inline-flex;align-items:center;justify-content:center}
+      .app-shell-actions>button:first-child{font-size:.74rem;white-space:nowrap;min-width:62px}
+      .app-shell-actions .app-header-identity{gap:0}
+      .app-shell-actions .app-layout-toggle{width:36px;height:36px}
+      .app-shell-actions .relative{flex:0 0 auto}
+      .app-shell-actions .fa-bell,.app-shell-actions .fa-palette,.app-shell-actions .fa-cog,.app-shell-actions .fa-sign-out-alt{font-size:1.05rem}
+      .app-global-announcement{margin:7px 8px 0!important;padding:8px 9px!important;min-height:46px!important;gap:7px!important;border-radius:10px!important}
+      .app-global-announcement-badge{font-size:9px!important;padding:6px 7px!important}
+      .app-global-announcement-title{max-width:28%!important;font-size:10px!important}
+      .app-global-announcement-track-inner span{font-size:11px!important}
+      .app-root-shell>.flex.flex-1.min-h-0{min-height:0!important;overflow:visible!important;position:relative}
+      .app-sidebar{
+        position:relative;
+        z-index:55;
+        flex:0 0 auto!important;
+        width:100%!important;
+        max-height:none!important;
+        min-height:0!important;
+        overflow:visible!important;
+        padding:7px 8px!important;
+        gap:5px!important;
+        border-radius:0 0 14px 14px!important;
+      }
+      .app-sidebar-nav-scroll{width:100%;min-height:0;flex:0 0 auto!important;overflow:visible!important}
+      .app-sidebar .app-nav-grid{
+        display:grid!important;
+        grid-template-columns:repeat(3,minmax(0,1fr));
+        align-items:start;
+        gap:5px;
+        width:100%;
+      }
+      .app-sidebar .app-nav-group{position:relative;min-width:0;margin:0!important}
+      .app-sidebar .app-nav-parent,
+      .app-sidebar .nav-btn{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:5px;
+        width:100%;
+        min-width:0;
+        min-height:39px;
+        height:100%;
+        padding:7px 7px!important;
+        border:1px solid rgba(100,116,139,.15);
+        border-radius:9px;
+        font-size:.73rem;
+        line-height:1.25;
+        text-align:start;
+        background:rgba(255,255,255,.72);
+      }
+      .app-sidebar .app-nav-parent>span{min-width:0;gap:5px!important}
+      .app-sidebar .app-nav-parent>span>i,
+      .app-sidebar .nav-btn>i{flex:0 0 15px;width:15px!important;text-align:center}
+      .app-sidebar .app-nav-parent>span>span,
+      .app-sidebar .nav-btn>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+      .app-sidebar .app-nav-parent>i{font-size:9px;flex:0 0 auto}
+      .app-sidebar .app-nav-children{
+        position:absolute!important;
+        top:calc(100% + 4px)!important;
+        inset-inline-start:0!important;
+        inset-inline-end:auto!important;
+        z-index:220!important;
+        width:min(88vw,320px);
+        max-width:calc(100vw - 24px)!important;
+        max-height:min(56dvh,420px)!important;
+        overflow-y:auto!important;
+        overflow-x:hidden!important;
+        margin:0!important;
+        padding:6px!important;
+        border:1px solid rgba(100,116,139,.22)!important;
+        border-radius:11px!important;
+        background:#fff!important;
+        box-shadow:0 14px 34px rgba(15,23,42,.2)!important;
+      }
+      .app-sidebar .app-nav-child{min-height:40px;padding:9px 10px!important;font-size:.82rem}
+      .app-sidebar .app-nav-child span{white-space:normal;overflow-wrap:anywhere}
+      .app-sidebar .app-sidebar-resizer,.app-sidebar .app-recent-screens{display:none!important}
+      .app-root-shell .app-top-navigation{position:relative;z-index:55;width:100%;padding:7px 8px!important}
+      .app-top-navigation .app-nav-grid-top{
+        display:grid!important;
+        grid-template-columns:repeat(3,minmax(0,1fr));
+        gap:5px!important;
+      }
+      .app-top-navigation .app-nav-group{min-width:0}
+      .app-top-navigation .app-nav-parent,.app-top-navigation .nav-btn{
+        min-width:0;
+        min-height:39px!important;
+        height:100%;
+        padding:7px!important;
+        font-size:.73rem!important;
+        white-space:normal!important;
+        text-align:start;
+      }
+      .app-top-navigation .app-nav-children{
+        inset-inline-start:0!important;
+        inset-inline-end:auto!important;
+        max-width:calc(100vw - 24px)!important;
+        max-height:min(56dvh,420px)!important;
+      }
+      .app-top-navigation .app-recent-screens.is-top{display:none!important}
+      .app-root-shell main.app-workspace{
+        flex:1 1 0%!important;
+        width:100%!important;
+        max-width:100%!important;
+        min-width:0!important;
+        min-height:0!important;
+        padding:10px!important;
+        overflow-x:hidden!important;
+        overflow-y:auto!important;
+        -webkit-overflow-scrolling:touch;
+        overscroll-behavior:contain;
+      }
+      .app-workspace>div{min-width:0;max-width:100%}
+      .app-workspace h2{font-size:1.05rem;line-height:1.4}
+      .app-workspace h3{font-size:.96rem;line-height:1.4}
+      .app-workspace .app-collapsible-body{padding:0 10px 12px}
+      .app-workspace .app-collapsible>summary{padding:11px 12px;font-size:.88rem}
+      .app-workspace section,.app-workspace article,.app-workspace form{min-width:0;max-width:100%}
+      .app-workspace input,.app-workspace select,.app-workspace textarea{
+        width:100%;
+        min-width:0!important;
+        max-width:100%;
+        font-size:16px!important;
+      }
+      .app-workspace button{min-height:36px;max-width:100%;touch-action:manipulation}
+      .app-workspace label{min-width:0;max-width:100%;font-size:.84rem}
+      .app-workspace .grid{min-width:0}
+      .app-workspace .grid>*{min-width:0}
+      .app-workspace .flex{min-width:0}
+      .app-workspace .flex>*{min-width:0}
+      .app-workspace .rounded-xl{border-radius:11px}
+      .app-workspace .p-5{padding:12px!important}
+      .app-workspace .p-4{padding:11px!important}
+      .app-workspace .gap-5{gap:11px!important}
+      .app-workspace .gap-4{gap:9px!important}
+      .app-workspace .app-table-scroll{
+        width:100%;
+        max-height:none!important;
+        min-height:0!important;
+        height:auto!important;
+        overflow-x:auto!important;
+        overflow-y:hidden!important;
+        -webkit-overflow-scrolling:touch;
+        overscroll-behavior-x:contain;
+        scrollbar-width:thin;
+      }
+      .app-workspace .app-table-scroll table{
+        width:max-content!important;
+        min-width:720px!important;
+        max-width:none!important;
+      }
+      .app-workspace .app-table-scroll th,
+      .app-workspace .app-table-scroll td{padding:9px 10px!important;font-size:.78rem}
+      .app-workspace .app-list-scroll{max-height:min(42dvh,320px)!important}
+      .app-workspace .app-messages-scroll{height:54dvh;min-height:220px;max-height:580px;padding:7px}
+      .app-workspace .app-contact-picker{max-height:38dvh}
+      .app-workspace .overflow-x-auto{-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+      .app-workspace .text-xl{font-size:1.12rem}
+      .app-workspace .text-2xl{font-size:1.35rem}
+      .app-workspace .text-3xl{font-size:1.55rem}
+      .app-workspace .whitespace-pre-wrap{overflow-wrap:anywhere}
+      .app-workspace [class*="min-w-"]{max-width:100%}
+      .app-workspace .app-workspace-title{position:sticky;top:0;z-index:24}
+      .attachment-workspace-docked{margin-inline-end:0!important;width:100%!important;flex-basis:100%!important}
+    }
+    @media(max-width:420px){
+      .app-shell-header{padding:7px 8px!important}
+      .app-shell-actions>button,.app-shell-actions>div>button{min-width:33px;min-height:36px;padding:5px 6px!important}
+      .app-shell-actions>button:first-child{min-width:56px;font-size:.7rem}
+      .app-sidebar .app-nav-grid,.app-top-navigation .app-nav-grid-top{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .app-sidebar .app-nav-parent,.app-sidebar .nav-btn,.app-top-navigation .app-nav-parent,.app-top-navigation .nav-btn{font-size:.76rem!important}
+      .app-workspace{padding:8px!important}
+      .app-workspace .p-4{padding:9px!important}
+      .app-workspace .grid-cols-2{grid-template-columns:minmax(0,1fr)!important}
+    }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -4092,8 +4286,8 @@ function App(){
 
   return <div className="app-root-shell min-h-screen flex flex-col bg-gray-100" onClickCapture={unlockNotificationAudio}>
     <header className="app-shell-header text-white p-3 px-5 flex justify-between items-center gap-3 shadow-lg">
-      <div className="flex items-center gap-3">{companyInfo.logo?<img src={companyInfo.logo} alt="Logo" className="h-10 w-10 object-contain bg-white rounded p-1"/>:<i className="fas fa-cubes text-white text-2xl"></i>}<div><h1 className="font-bold">{companyInfo.name || tr('app')}</h1><p className="text-xs text-white/75">{tr('app')}</p></div></div>
-      <div className="flex items-center gap-3">
+      <div className="app-shell-brand flex items-center gap-3">{companyInfo.logo?<img src={companyInfo.logo} alt="Logo" className="h-10 w-10 object-contain bg-white rounded p-1"/>:<i className="fas fa-cubes text-white text-2xl"></i>}<div><h1 className="font-bold">{companyInfo.name || tr('app')}</h1><p className="text-xs text-white/75">{tr('app')}</p></div></div>
+      <div className="app-shell-actions flex items-center gap-3">
         <button onClick={()=>setLang(rtl?'en':'ar')} className="bg-black/20 px-3 py-2 rounded-lg text-sm">{tr('language')}</button><input value={globalSearch} onChange={e=>setGlobalSearch(e.target.value)} placeholder={tr('searchAll')} className="hidden lg:block rounded-lg px-3 py-2 text-slate-900 text-sm w-56" />
         <div className="relative">
           <button type="button" aria-expanded={notificationOpen} onClick={()=>setNotificationOpen(old=>!old)} className="relative p-2 rounded-lg hover:bg-black/10" title={rtl?'التنبيهات':'Notifications'}><i className="fas fa-bell text-xl"></i>{notificationItems.length>0&&<span className="absolute -top-1 -right-1 rounded-full bg-red-600 text-xs min-w-5 px-1.5 text-center">{notificationItems.length}</span>}</button>
