@@ -225,6 +225,19 @@
       .app-root-shell>.flex.flex-1.min-h-0{overflow:visible!important}
       .app-root-shell .app-workspace{overflow:visible!important;height:auto!important}
     }
+
+    /* Keep the chosen palette swatches exact throughout key interface accents. */
+    .app-shell-header{border-bottom:2px solid var(--brand)!important}
+    .app-sidebar .app-nav-child.active,
+    .app-sidebar .nav-btn.active,
+    .app-nav-grid-top .app-nav-group.has-active>.app-nav-parent,
+    .app-recent-item.active,
+    .app-recent-screens.is-top .app-recent-item.active{
+      color:var(--brand)!important;
+      border-color:var(--brand)!important;
+    }
+    .app-user-identity .app-user-fallback,
+    .app-header-identity>.app-user-fallback{background:var(--brand)!important}
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
