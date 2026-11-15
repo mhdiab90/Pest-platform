@@ -450,6 +450,36 @@
       .app-report-toolbar button{min-height:34px;padding:6px 8px;font-size:10px}
       .app-workspace>div>:first-child:has(h2){top:var(--report-toolbar-offset,0px)}
     }
+
+    /* Extra mobile viewport controls: independently compact the header and collapse navigation. */
+    .app-mobile-only-control{display:none}
+    @media(max-width:767px){
+      .app-mobile-only-control{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;gap:3px;min-width:33px;min-height:36px;padding:5px 6px;color:#fff!important;background:rgba(15,23,42,.16);border:1px solid rgba(255,255,255,.25);border-radius:8px;font-size:11px;font-weight:800;white-space:nowrap}
+      .app-mobile-only-control i{font-size:13px}
+      .app-mobile-nav-toggle{width:34px}
+      .app-mobile-nav-hidden{display:none!important}
+      .app-root-shell.app-mobile-header-compact .app-shell-header{gap:3px!important;padding:5px 8px!important}
+      .app-root-shell.app-mobile-header-compact .app-shell-brand{gap:6px!important}
+      .app-root-shell.app-mobile-header-compact .app-shell-brand>img{width:27px;height:27px;flex-basis:27px}
+      .app-root-shell.app-mobile-header-compact .app-shell-brand>i{font-size:1.15rem!important}
+      .app-root-shell.app-mobile-header-compact .app-shell-brand h1{font-size:.76rem;line-height:1.15}
+      .app-root-shell.app-mobile-header-compact .app-shell-brand p{font-size:.56rem;line-height:1.1;margin-top:1px}
+      .app-root-shell.app-mobile-header-compact .app-shell-actions{gap:2px!important}
+      .app-root-shell.app-mobile-header-compact .app-shell-actions>button,
+      .app-root-shell.app-mobile-header-compact .app-shell-actions>div>button{min-width:31px;min-height:32px;padding:4px 5px!important}
+      .app-root-shell.app-mobile-header-compact .app-shell-actions>button:first-child{min-width:51px;font-size:.66rem}
+      .app-root-shell.app-mobile-header-compact .app-shell-actions .app-layout-toggle{width:31px;height:32px}
+      .app-root-shell.app-mobile-header-compact .app-mobile-only-control{min-width:30px;min-height:32px;padding:4px}
+      .app-root-shell.app-mobile-header-compact .app-mobile-size-toggle span{font-size:9px}
+      .app-root-shell.app-mobile-header-compact .app-shell-actions .fa-bell,
+      .app-root-shell.app-mobile-header-compact .app-shell-actions .fa-palette,
+      .app-root-shell.app-mobile-header-compact .app-shell-actions .fa-cog,
+      .app-root-shell.app-mobile-header-compact .app-shell-actions .fa-sign-out-alt{font-size:.9rem}
+    }
+    @media(max-width:420px){
+      .app-mobile-only-control{min-width:30px;min-height:33px;padding:4px}
+      .app-mobile-size-toggle span{display:none}
+    }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -679,6 +709,7 @@ function App(){
   const attachmentMarkupHistoryRef=useRef([]);
   const [tab,setTab] = useState('dashboard');
   const [navPreferences,setNavPreferences] = useState({uid:'',mode:'side',recent:[]});
+  const [mobileUi,setMobileUi] = useState({uid:'',compactHeader:false,navHidden:false});
   const [sidebarWidth,setSidebarWidth] = useState(()=>{const saved=Number(localStorage.getItem('pestSidebarWidth'));return Number.isFinite(saved)&&saved>=210&&saved<=440?saved:260;});
   const [expandedNavGroup,setExpandedNavGroup] = useState('');
   const [notificationOpen,setNotificationOpen] = useState(false);
@@ -4623,6 +4654,19 @@ function App(){
 
   useEffect(()=>{
     const uid=currentUser&&currentUser.uid;
+    if(!uid){setMobileUi({uid:'',compactHeader:false,navHidden:false});return;}
+    try{
+      const saved=JSON.parse(localStorage.getItem('pestMobileUi:'+uid)||'{}');
+      setMobileUi({uid,compactHeader:!!saved.compactHeader,navHidden:!!saved.navHidden});
+    }catch(_){setMobileUi({uid,compactHeader:false,navHidden:false});}
+  },[currentUser&&currentUser.uid]);
+  useEffect(()=>{
+    const uid=currentUser&&currentUser.uid;
+    if(!uid||mobileUi.uid!==uid)return;
+    try{localStorage.setItem('pestMobileUi:'+uid,JSON.stringify({compactHeader:mobileUi.compactHeader,navHidden:mobileUi.navHidden}));}catch(_){}
+  },[mobileUi,currentUser&&currentUser.uid]);
+  useEffect(()=>{
+    const uid=currentUser&&currentUser.uid;
     if(!uid){setNavPreferences({uid:'',mode:'side',recent:[]});return;}
     try{
       const saved=JSON.parse(localStorage.getItem('pestNavigation:'+uid)||'{}');
@@ -4720,6 +4764,18 @@ function App(){
     setNavPreferences(old=>({uid,mode:(old.uid===uid?old.mode:'side')==='side'?'top':'side',recent:old.uid===uid?old.recent:[]}));
     setExpandedNavGroup('');setShowUserMenu(false);
   }
+  function updateMobileUi(key,value){
+    const uid=currentUser&&currentUser.uid;if(!uid)return;
+    setMobileUi(old=>({...((old.uid===uid)?old:{uid,compactHeader:false,navHidden:false}),[key]:value,uid}));
+  }
+  function toggleMobileNavigation(){
+    const hidden=mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden;
+    updateMobileUi('navHidden',!hidden);setExpandedNavGroup('');
+  }
+  function toggleMobileHeaderSize(){
+    const compact=mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader;
+    updateMobileUi('compactHeader',!compact);
+  }
   const renderNavigation=()=> <div className={'app-nav-grid '+(navMode==='top'?'app-nav-grid-top':'')} aria-label={rtl?'قائمة التنقل':'Main navigation'}>
     {visibleNavGroups.map(group=><div className={'app-nav-group'+(group.children&&group.children.some(item=>item.id===tab)?' has-active':'')} key={group.id}>
       {group.tab?<button type="button" onClick={()=>navigateToTab(group.tab)} className={'nav-btn '+(tab===group.tab?'active':'')+' w-full text-start p-3 rounded-lg flex items-center gap-3'}><i className={'fas '+group.icon+' w-5'}></i><span className="truncate">{group.label}</span></button>:
@@ -4777,7 +4833,7 @@ function App(){
   }
 
   return <div className="app-root-shell min-h-screen flex flex-col bg-gray-100" onClickCapture={unlockNotificationAudio}>
-    <header className="app-shell-header text-white p-3 px-5 flex justify-between items-center gap-3 shadow-lg">
+    <header className={'app-shell-header text-white p-3 px-5 flex justify-between items-center gap-3 shadow-lg '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?'app-mobile-header-compact':'')}>
       <div className="app-shell-brand flex items-center gap-3">{companyInfo.logo?<img src={companyInfo.logo} alt="Logo" className="h-10 w-10 object-contain bg-white rounded p-1"/>:<i className="fas fa-cubes text-white text-2xl"></i>}<div><h1 className="font-bold">{companyInfo.name || tr('app')}</h1><p className="text-xs text-white/75">{tr('app')}</p></div></div>
       <div className="app-shell-actions flex items-center gap-3">
         <button onClick={()=>setLang(rtl?'en':'ar')} className="bg-black/20 px-3 py-2 rounded-lg text-sm">{tr('language')}</button><input value={globalSearch} onChange={e=>setGlobalSearch(e.target.value)} placeholder={tr('searchAll')} className="hidden lg:block rounded-lg px-3 py-2 text-slate-900 text-sm w-56" />
@@ -4792,6 +4848,8 @@ function App(){
           {showThemeMenu&&<div className="absolute top-10 right-0 z-50 w-56 max-h-[70vh] overflow-y-auto bg-white text-slate-800 rounded-xl shadow-xl border border-slate-100 p-3"><p className="font-bold text-sm mb-2">{tr('chooseTheme')}</p>{Object.keys(themeOptions).map(k=><button key={k} onClick={()=>{setTheme(k);setShowThemeMenu(false);}} className={`w-full flex items-center gap-3 px-2 py-2 rounded-xl text-sm text-slate-700 hover:bg-slate-50 transition-colors ${theme===k?'bg-slate-100':''}`}><span className="w-6 h-6 shrink-0 rounded-full shadow-sm grid place-items-center" style={{background:themeOptions[k].main}}>{theme===k&&<i className="fas fa-check text-white text-xs"></i>}</span><span className="flex-1 text-start">{tr(themeNames[k])}</span>{k==='red'&&<span className="text-[11px] font-semibold bg-slate-900 text-white rounded-md px-2 py-1">{tr('themeDefault')}</span>}</button>)}</div>}
         </div>
         <button type="button" onClick={toggleNavigationMode} title={navMode==='side'?(rtl?'تحويل القائمة إلى علوية':'Switch to top navigation'):(rtl?'تحويل القائمة إلى جانبية':'Switch to sidebar navigation')} aria-label={navMode==='side'?(rtl?'تحويل القائمة إلى علوية':'Switch to top navigation'):(rtl?'تحويل القائمة إلى جانبية':'Switch to sidebar navigation')} className="app-layout-toggle p-2 rounded-lg hover:bg-black/10"><i className={'fas '+(navMode==='side'?'fa-bars-staggered':'fa-table-columns')+' text-lg'}></i></button>
+        <button type="button" onClick={toggleMobileHeaderSize} aria-label={mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?(rtl?'تكبير عنوان البرنامج':'Use normal header size'):(rtl?'تصغير عنوان البرنامج':'Use compact header size')} title={mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?(rtl?'حجم الرأس العادي':'Normal header size'):(rtl?'تصغير رأس البرنامج':'Compact header size')} className="app-mobile-only-control app-mobile-size-toggle rounded-lg"><i className={'fas '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?'fa-expand-alt':'fa-compress-alt')}></i><span>{mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?(rtl?'عادي':'Normal'):(rtl?'مصغر':'Small')}</span></button>
+        <button type="button" onClick={toggleMobileNavigation} aria-expanded={!(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden)} aria-label={mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden?(rtl?'إظهار القائمة':'Show navigation'):(rtl?'إخفاء القائمة':'Hide navigation')} title={mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden?(rtl?'إظهار القائمة':'Show navigation'):(rtl?'إخفاء القائمة':'Hide navigation')} className="app-mobile-only-control app-mobile-nav-toggle rounded-lg"><i className={'fas '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden?'fa-bars':'fa-eye-slash')}></i></button>
         <div className="relative"><button onClick={()=>{setShowUserMenu(!showUserMenu);setShowThemeMenu(false);}} className="flex items-center gap-2 p-1 rounded-lg hover:bg-black/10"><span className="app-header-identity">{currentUser.avatar?<img src={currentUser.avatar} alt=""/>:<span className="app-user-fallback">{(currentUser.fullName||'?').charAt(0)}</span>}<span className="hidden sm:block text-end"><b className="block text-sm">{currentUser.fullName}</b><small className="text-white/75">{currentUser.jobTitle}</small></span></span><i className="fas fa-cog text-xl"></i></button>
           {showUserMenu&&<div className="absolute top-11 end-0 z-50 w-72 bg-white text-slate-800 rounded-xl shadow-xl border p-3"><div className="flex items-center gap-3 border-b pb-3 mb-2">{currentUser.avatar?<img src={currentUser.avatar} alt="Profile" className="w-12 h-12 rounded-full object-cover"/>:<div className="w-12 h-12 rounded-full bg-blue-600 text-white grid place-items-center font-bold">{(currentUser.fullName||'?').charAt(0)}</div>}<div className="min-w-0"><b className="block truncate">{currentUser.fullName}</b><small className="block text-gray-500 truncate">{currentUser.email}</small><small className="block text-gray-500 truncate">@{currentUser.username} · {currentUser.jobTitle}</small></div></div><p className="text-xs font-bold text-gray-400 px-2 py-1">{tr('accountDetails')}</p><button className="menu-item" onClick={()=>{setTab('profile');setProfileSection('personal');setShowUserMenu(false);}}><i className="fas fa-user ml-2"></i>{tr('personalDetails')}</button><button className="menu-item" onClick={()=>{setTab('profile');setProfileSection('security');setShowUserMenu(false);}}><i className="fas fa-key ml-2"></i>{tr('savePassword')}</button><button className="menu-item" onClick={()=>{setTab('profile');setProfileSection('photo');setShowUserMenu(false);}}><i className="fas fa-image ml-2"></i>{tr('changePhoto')}</button><button className="menu-item" onClick={()=>{setTab('messages');setShowUserMenu(false);}}><i className="fas fa-envelope ml-2"></i>{tr('messages')}</button></div>}
         </div>
@@ -4804,11 +4862,11 @@ function App(){
       <div className="app-global-announcement-track"><div className="app-global-announcement-track-inner"><span>{globalAnnouncement.message}</span><span aria-hidden="true">{globalAnnouncement.message}</span></div></div>
     </section>}
     <div className={'flex flex-1 min-h-0 '+(navMode==='top'?'flex-col':'flex-col md:flex-row')} style={{'--attachment-preview-width':attachmentPreviewWidth+'px','--attachment-preview-height':attachmentPreviewHeight+'px'}}>
-      {navMode==='side'?<aside className="app-sidebar w-full md:w-60 border-gray-200 p-2 md:p-3 space-y-1" style={{'--sidebar-width':sidebarWidth+'px'}}>
+      {navMode==='side'?<aside className={'app-sidebar w-full md:w-60 border-gray-200 p-2 md:p-3 space-y-1 '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden?'app-mobile-nav-hidden':'')} style={{'--sidebar-width':sidebarWidth+'px'}}>
         <div className="app-sidebar-nav-scroll">{renderNavigation()}</div>
         {renderRecentScreens()}
         <div className="app-sidebar-resizer no-print" role="separator" aria-label={rtl?'تغيير عرض القائمة الجانبية':'Resize sidebar'} aria-orientation="vertical" aria-valuemin={210} aria-valuemax={440} aria-valuenow={sidebarWidth} tabIndex={0} onPointerDown={beginSidebarResize} onKeyDown={resizeSidebarByKeyboard} onDoubleClick={()=>setSidebarWidth(260)} title={rtl?'اسحب لزيادة أو تقليل عرض القائمة – انقر مرتين لإعادة الحجم الافتراضي':'Drag to resize the sidebar – double-click to reset'}><span></span></div>
-      </aside>:<div className="app-top-navigation">
+      </aside>:<div className={'app-top-navigation '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden?'app-mobile-nav-hidden':'')}>
         <div className="app-top-navigation-main">{renderNavigation()}</div>
         {renderRecentScreens()}
       </div>}
