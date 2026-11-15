@@ -3901,6 +3901,7 @@ function App(){
   const custodyStatementOwnerName=custodyStatementOwner.fullName||custodyStatementOwner.username||custodyStatementOwner.email||custodyStatementTargetUid;
   const custodyStatementIsCompany=isAdmin&&custodyStatementTargetUid===currentUser?.uid&&custodyStatementBookScope==='company';
   const custodyStatementCurrencyList=['EGP',...new Set(custodyStatementRows.filter(t=>(t.bookScope||'personal')===(custodyStatementIsCompany?'company':'personal')).map(t=>String(t.currency||'EGP').toUpperCase()))].filter((value,index,array)=>array.indexOf(value)===index);
+  useEffect(()=>{const available=custodyStatementCurrencyList;if(available.length&&!available.includes(String(custodyStatementCurrency||'').toUpperCase()))setCustodyStatementCurrency(available.includes('EGP')?'EGP':available[0]);},[custodyStatementRows,custodyStatementTargetUid,custodyStatementBookScope,custodyStatementCurrency]);
   const custodyStatementHistory=custodyStatementRows.filter(t=>(t.bookScope||'personal')===(custodyStatementIsCompany?'company':'personal')&&String(t.currency||'EGP').toUpperCase()===String(custodyStatementCurrency||'EGP').toUpperCase()).slice().sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))||Number(a.createdAt||0)-Number(b.createdAt||0));
   const custodyStatementOpening=custodyStatementFrom?custodyStatementHistory.filter(t=>String(t.date||'')<custodyStatementFrom&&t.status==='approved').reduce((sum,t)=>sum+cashCustodySign(t.type)*Number(t.amount||0),0):0;
   const custodyStatementPeriod=custodyStatementHistory.filter(t=>(!custodyStatementFrom||String(t.date||'')>=custodyStatementFrom)&&(!custodyStatementTo||String(t.date||'')<=custodyStatementTo));
@@ -3910,10 +3911,10 @@ function App(){
   const custodyStatementRejected=custodyStatementPeriod.filter(t=>t.status==='rejected').length;
   const custodyStatementClosing=custodyStatementOpening+custodyStatementTotalIn-custodyStatementTotalOut;
   let custodyStatementRunning=custodyStatementOpening;
-  const custodyStatementDisplayRows=custodyStatementPeriod.filter(t=>!custodyStatementSearch.trim()||includesText([t.date,t.type,t.description,t.reference,t.projectCode,t.counterparty,t.counterpartyName,t.createdByName].join(' '),custodyStatementSearch.trim())).map(t=>{
+  const custodyStatementDisplayRows=custodyStatementPeriod.map(t=>{
     if(t.status==='approved')custodyStatementRunning+=cashCustodySign(t.type)*Number(t.amount||0);
     return {...t,runningBalance:custodyStatementRunning};
-  });
+  }).filter(t=>!custodyStatementSearch.trim()||includesText([t.date,t.type,t.description,t.reference,t.projectCode,t.counterparty,t.counterpartyName,t.createdByName].join(' '),custodyStatementSearch.trim()));
   const custodyStatementStatusLabel=status=>status==='approved'?(rtl?'معتمدة':'Approved'):status==='rejected'?(rtl?'مرفوضة':'Rejected'):(rtl?'معلقة':'Pending');
   const navGroups=[
     {id:'dashboard',label:tr('dashboard'),icon:'fa-gauge',tab:'dashboard'},
