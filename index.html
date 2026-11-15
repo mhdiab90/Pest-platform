@@ -480,6 +480,20 @@
       .app-mobile-only-control{min-width:30px;min-height:33px;padding:4px}
       .app-mobile-size-toggle span{display:none}
     }
+
+    /* Desktop navigation collapse: free the full workspace and keep a clear restore handle. */
+    .app-desktop-nav-toggle,.app-desktop-nav-restore{display:none}
+    @media(min-width:768px){
+      .app-desktop-nav-hidden{display:none!important}
+      .app-desktop-nav-toggle{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:38px;padding:7px 11px;color:#fff!important;background:rgba(15,23,42,.16);border:1px solid rgba(255,255,255,.24);border-radius:9px;font-size:11px;font-weight:800;white-space:nowrap;transition:background .18s,transform .18s}
+      .app-desktop-nav-toggle:hover{background:rgba(15,23,42,.27);transform:translateY(-1px)}
+      .app-desktop-nav-toggle i{font-size:14px}
+      .app-desktop-nav-restore{position:fixed;inset-inline-start:12px;top:104px;z-index:70;display:flex;align-items:center;justify-content:center;gap:7px;min-width:46px;height:48px;padding:0 12px;color:#fff;background:var(--brand);border:1px solid rgba(255,255,255,.55);border-radius:13px;box-shadow:0 8px 24px color-mix(in srgb,var(--brand) 32%,transparent);cursor:pointer;transition:transform .18s,box-shadow .18s,filter .18s}
+      .app-desktop-nav-restore:hover{transform:translateX(-2px);filter:brightness(1.06);box-shadow:0 12px 28px color-mix(in srgb,var(--brand) 38%,transparent)}
+      .app-desktop-nav-restore i{font-size:17px}
+      .app-desktop-nav-restore span{font-family:'Cairo',sans-serif;font-size:11px;font-weight:800}
+      .app-desktop-nav-restore:focus-visible,.app-desktop-nav-toggle:focus-visible{outline:3px solid color-mix(in srgb,var(--brand) 35%,white);outline-offset:3px}
+    }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -710,6 +724,7 @@ function App(){
   const [tab,setTab] = useState('dashboard');
   const [navPreferences,setNavPreferences] = useState({uid:'',mode:'side',recent:[]});
   const [mobileUi,setMobileUi] = useState({uid:'',compactHeader:false,navHidden:false});
+  const [desktopNavState,setDesktopNavState] = useState({uid:'',hidden:false});
   const [sidebarWidth,setSidebarWidth] = useState(()=>{const saved=Number(localStorage.getItem('pestSidebarWidth'));return Number.isFinite(saved)&&saved>=210&&saved<=440?saved:260;});
   const [expandedNavGroup,setExpandedNavGroup] = useState('');
   const [notificationOpen,setNotificationOpen] = useState(false);
@@ -4675,6 +4690,19 @@ function App(){
   },[currentUser&&currentUser.uid]);
   useEffect(()=>{
     const uid=currentUser&&currentUser.uid;
+    if(!uid){setDesktopNavState({uid:'',hidden:false});return;}
+    try{
+      const saved=JSON.parse(localStorage.getItem('pestDesktopNav:'+uid)||'{}');
+      setDesktopNavState({uid,hidden:!!saved.hidden});
+    }catch(_){setDesktopNavState({uid,hidden:false});}
+  },[currentUser&&currentUser.uid]);
+  useEffect(()=>{
+    const uid=currentUser&&currentUser.uid;
+    if(!uid||desktopNavState.uid!==uid)return;
+    try{localStorage.setItem('pestDesktopNav:'+uid,JSON.stringify({hidden:desktopNavState.hidden}));}catch(_){}
+  },[desktopNavState,currentUser&&currentUser.uid]);
+  useEffect(()=>{
+    const uid=currentUser&&currentUser.uid;
     if(!uid||navPreferences.uid!==uid)return;
     try{localStorage.setItem('pestNavigation:'+uid,JSON.stringify({mode:navPreferences.mode,recent:navPreferences.recent}));}catch(_){}
   },[navPreferences,currentUser&&currentUser.uid]);
@@ -4764,6 +4792,10 @@ function App(){
     setNavPreferences(old=>({uid,mode:(old.uid===uid?old.mode:'side')==='side'?'top':'side',recent:old.uid===uid?old.recent:[]}));
     setExpandedNavGroup('');setShowUserMenu(false);
   }
+  function toggleDesktopNavigation(){
+    const uid=currentUser&&currentUser.uid;if(!uid)return;
+    setDesktopNavState(old=>({uid,hidden:!(old.uid===uid&&old.hidden)}));
+  }
   function updateMobileUi(key,value){
     const uid=currentUser&&currentUser.uid;if(!uid)return;
     setMobileUi(old=>({...((old.uid===uid)?old:{uid,compactHeader:false,navHidden:false}),[key]:value,uid}));
@@ -4848,6 +4880,7 @@ function App(){
           {showThemeMenu&&<div className="absolute top-10 right-0 z-50 w-56 max-h-[70vh] overflow-y-auto bg-white text-slate-800 rounded-xl shadow-xl border border-slate-100 p-3"><p className="font-bold text-sm mb-2">{tr('chooseTheme')}</p>{Object.keys(themeOptions).map(k=><button key={k} onClick={()=>{setTheme(k);setShowThemeMenu(false);}} className={`w-full flex items-center gap-3 px-2 py-2 rounded-xl text-sm text-slate-700 hover:bg-slate-50 transition-colors ${theme===k?'bg-slate-100':''}`}><span className="w-6 h-6 shrink-0 rounded-full shadow-sm grid place-items-center" style={{background:themeOptions[k].main}}>{theme===k&&<i className="fas fa-check text-white text-xs"></i>}</span><span className="flex-1 text-start">{tr(themeNames[k])}</span>{k==='red'&&<span className="text-[11px] font-semibold bg-slate-900 text-white rounded-md px-2 py-1">{tr('themeDefault')}</span>}</button>)}</div>}
         </div>
         <button type="button" onClick={toggleNavigationMode} title={navMode==='side'?(rtl?'تحويل القائمة إلى علوية':'Switch to top navigation'):(rtl?'تحويل القائمة إلى جانبية':'Switch to sidebar navigation')} aria-label={navMode==='side'?(rtl?'تحويل القائمة إلى علوية':'Switch to top navigation'):(rtl?'تحويل القائمة إلى جانبية':'Switch to sidebar navigation')} className="app-layout-toggle p-2 rounded-lg hover:bg-black/10"><i className={'fas '+(navMode==='side'?'fa-bars-staggered':'fa-table-columns')+' text-lg'}></i></button>
+        <button type="button" onClick={toggleDesktopNavigation} aria-expanded={!(desktopNavState.uid===(currentUser&&currentUser.uid)&&desktopNavState.hidden)} aria-label={desktopNavState.uid===(currentUser&&currentUser.uid)&&desktopNavState.hidden?(rtl?'إظهار القائمة':'Show navigation'):(rtl?'إخفاء القائمة':'Hide navigation')} title={desktopNavState.uid===(currentUser&&currentUser.uid)&&desktopNavState.hidden?(rtl?'إظهار القائمة':'Show navigation'):(rtl?'طي القائمة لتوسيع مساحة العمل':'Collapse navigation to expand workspace')} className="app-desktop-nav-toggle rounded-lg"><i className={'fas '+(desktopNavState.uid===(currentUser&&currentUser.uid)&&desktopNavState.hidden?'fa-bars':'fa-angles-left')}></i><span>{desktopNavState.uid===(currentUser&&currentUser.uid)&&desktopNavState.hidden?(rtl?'إظهار القائمة':'Show menu'):(rtl?'طي القائمة':'Collapse menu')}</span></button>
         <button type="button" onClick={toggleMobileHeaderSize} aria-label={mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?(rtl?'تكبير عنوان البرنامج':'Use normal header size'):(rtl?'تصغير عنوان البرنامج':'Use compact header size')} title={mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?(rtl?'حجم الرأس العادي':'Normal header size'):(rtl?'تصغير رأس البرنامج':'Compact header size')} className="app-mobile-only-control app-mobile-size-toggle rounded-lg"><i className={'fas '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?'fa-expand-alt':'fa-compress-alt')}></i><span>{mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?(rtl?'عادي':'Normal'):(rtl?'مصغر':'Small')}</span></button>
         <button type="button" onClick={toggleMobileNavigation} aria-expanded={!(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden)} aria-label={mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden?(rtl?'إظهار القائمة':'Show navigation'):(rtl?'إخفاء القائمة':'Hide navigation')} title={mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden?(rtl?'إظهار القائمة':'Show navigation'):(rtl?'إخفاء القائمة':'Hide navigation')} className="app-mobile-only-control app-mobile-nav-toggle rounded-lg"><i className={'fas '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden?'fa-bars':'fa-eye-slash')}></i></button>
         <div className="relative"><button onClick={()=>{setShowUserMenu(!showUserMenu);setShowThemeMenu(false);}} className="flex items-center gap-2 p-1 rounded-lg hover:bg-black/10"><span className="app-header-identity">{currentUser.avatar?<img src={currentUser.avatar} alt=""/>:<span className="app-user-fallback">{(currentUser.fullName||'?').charAt(0)}</span>}<span className="hidden sm:block text-end"><b className="block text-sm">{currentUser.fullName}</b><small className="text-white/75">{currentUser.jobTitle}</small></span></span><i className="fas fa-cog text-xl"></i></button>
@@ -4862,11 +4895,12 @@ function App(){
       <div className="app-global-announcement-track"><div className="app-global-announcement-track-inner"><span>{globalAnnouncement.message}</span><span aria-hidden="true">{globalAnnouncement.message}</span></div></div>
     </section>}
     <div className={'flex flex-1 min-h-0 '+(navMode==='top'?'flex-col':'flex-col md:flex-row')} style={{'--attachment-preview-width':attachmentPreviewWidth+'px','--attachment-preview-height':attachmentPreviewHeight+'px'}}>
-      {navMode==='side'?<aside className={'app-sidebar w-full md:w-60 border-gray-200 p-2 md:p-3 space-y-1 '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden?'app-mobile-nav-hidden':'')} style={{'--sidebar-width':sidebarWidth+'px'}}>
+      {desktopNavState.uid===(currentUser&&currentUser.uid)&&desktopNavState.hidden&&<button type="button" className="app-desktop-nav-restore no-print" onClick={toggleDesktopNavigation} aria-label={rtl?'إظهار قائمة التنقل':'Show navigation menu'} title={rtl?'إظهار القائمة':'Show navigation'}><i className="fas fa-bars"></i><span>{rtl?'القائمة':'Menu'}</span></button>}
+      {navMode==='side'?<aside className={'app-sidebar w-full md:w-60 border-gray-200 p-2 md:p-3 space-y-1 '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden?'app-mobile-nav-hidden ':'')+(desktopNavState.uid===(currentUser&&currentUser.uid)&&desktopNavState.hidden?'app-desktop-nav-hidden':'')} style={{'--sidebar-width':sidebarWidth+'px'}}>
         <div className="app-sidebar-nav-scroll">{renderNavigation()}</div>
         {renderRecentScreens()}
         <div className="app-sidebar-resizer no-print" role="separator" aria-label={rtl?'تغيير عرض القائمة الجانبية':'Resize sidebar'} aria-orientation="vertical" aria-valuemin={210} aria-valuemax={440} aria-valuenow={sidebarWidth} tabIndex={0} onPointerDown={beginSidebarResize} onKeyDown={resizeSidebarByKeyboard} onDoubleClick={()=>setSidebarWidth(260)} title={rtl?'اسحب لزيادة أو تقليل عرض القائمة – انقر مرتين لإعادة الحجم الافتراضي':'Drag to resize the sidebar – double-click to reset'}><span></span></div>
-      </aside>:<div className={'app-top-navigation '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden?'app-mobile-nav-hidden':'')}>
+      </aside>:<div className={'app-top-navigation '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden?'app-mobile-nav-hidden ':'')+(desktopNavState.uid===(currentUser&&currentUser.uid)&&desktopNavState.hidden?'app-desktop-nav-hidden':'')}>
         <div className="app-top-navigation-main">{renderNavigation()}</div>
         {renderRecentScreens()}
       </div>}
