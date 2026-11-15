@@ -84,8 +84,7 @@
     .app-recent-item.active{background:var(--brand-soft);color:var(--brand-hover);border-color:color-mix(in srgb,var(--brand) 18%,white);font-weight:700}
     .app-nav-icon-rail{display:none}
     /* Odoo-style app launcher: navigation moves to the application grid and back/home controls. */
-    .app-root-shell .app-sidebar,.app-root-shell .app-top-navigation{display:none!important}
-    .app-root-shell .app-layout-toggle,.app-root-shell .app-desktop-nav-toggle,.app-root-shell .app-mobile-nav-toggle{display:none!important}
+    .app-root-shell.app-is-launcher .app-layout-toggle,.app-root-shell.app-is-launcher .app-desktop-nav-toggle,.app-root-shell.app-is-launcher .app-mobile-nav-toggle{display:none!important}
     .app-screen-navigation{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0 0 14px;padding:10px 12px;border:1px solid #e2e8f0;border-inline-start:4px solid var(--brand);border-radius:12px;background:rgba(255,255,255,.96);box-shadow:0 3px 12px rgba(15,23,42,.045)}
     .app-screen-navigation-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto}
     .app-screen-navigation button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:38px;padding:7px 12px;border:1px solid #dbe3ed;border-radius:9px;background:#fff;color:#334155;font-size:12px;font-weight:800;transition:background .15s,border-color .15s,color .15s}
@@ -162,6 +161,31 @@
       .app-launcher-tile-copy strong{font-size:10px}
       .app-screen-navigation button{padding:5px 7px}
       .app-screen-current strong{max-width:30vw}
+    }
+    /* Compact Odoo-style home: only primary sections appear here. */
+    .app-launcher{width:100%;max-width:none;margin:0 auto;padding:2px 0 12px}
+    .app-launcher-heading{display:flex;align-items:center;gap:9px;margin:0 0 9px;padding:0 2px;color:#334155}
+    .app-launcher-heading strong{font-size:14px;font-weight:900}
+    .app-launcher-heading span{font-size:10px;color:#94a3b8}
+    .app-launcher-app-grid{display:flex;align-items:stretch;flex-wrap:wrap;justify-content:flex-start;gap:7px}
+    .app-launcher-app{display:flex;flex:0 0 132px;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-width:0;min-height:86px;padding:9px 7px;border:1px solid #e2e8f0;border-radius:11px;background:rgba(255,255,255,.96);color:#334155;text-align:center;cursor:pointer;transition:background .15s,border-color .15s,transform .15s}
+    .app-launcher-app:hover{background:#fff;border-color:var(--launcher-accent);transform:translateY(-2px)}
+    .app-launcher-app:focus-visible{outline:2px solid var(--launcher-accent);outline-offset:2px}
+    .app-launcher-app-icon{display:grid;place-items:center;width:39px;height:39px;flex:0 0 39px;border-radius:11px;background:color-mix(in srgb,var(--launcher-accent) 12%,white);color:var(--launcher-accent)}
+    .app-launcher-app-icon i{font-size:19px}
+    .app-launcher-app-name{display:block;max-width:100%;font-size:11px;font-weight:900;line-height:1.35;color:#334155;overflow-wrap:anywhere}
+    @media(max-width:767px){
+      .app-launcher{padding:0 0 10px}
+      .app-launcher-heading{margin-bottom:7px}
+      .app-launcher-heading strong{font-size:12px}
+      .app-launcher-app-grid{gap:6px}
+      .app-launcher-app{flex:0 0 calc(25% - 5px);min-height:76px;padding:7px 4px;gap:5px;border-radius:10px}
+      .app-launcher-app-icon{width:34px;height:34px;flex-basis:34px;border-radius:9px}
+      .app-launcher-app-icon i{font-size:17px}
+      .app-launcher-app-name{font-size:9px;line-height:1.3}
+    }
+    @media(max-width:360px){
+      .app-launcher-app{flex-basis:calc(33.333% - 5px);min-height:73px}
     }
     .app-top-navigation{position:relative;z-index:35;flex:0 0 auto;width:100%;padding:10px 14px 8px;background:rgba(255,255,255,.76);border-bottom:1px solid rgba(100,116,139,.13);box-shadow:0 5px 16px rgba(15,23,42,.035);backdrop-filter:blur(10px)}
     .app-top-navigation-main{overflow:visible}
@@ -4853,8 +4877,8 @@ function App(){
       return recent.join('|')===old.recent.join('|')?old:{...old,recent};
     });
   },[tab,currentUser&&currentUser.uid,navPreferences.uid]);
-  useEffect(()=>{if(navMode==='top')setExpandedNavGroup('');else if(navGroupByTab[tab])setExpandedNavGroup(navGroupByTab[tab]);},[tab,navMode]);
-  function navigateToTab(nextTab){if(nextTab==='appLauncher'){goHomeScreen();return;}if(!canAccessTab(nextTab)){alert(rtl?'ليس لديك صلاحية لفتح هذه الشاشة.':'You do not have permission to open this screen.');return;}setTab(nextTab);setExpandedNavGroup(navMode==='top'?'':(navGroupByTab[nextTab]||''));setNotificationOpen(false);}
+  useEffect(()=>{setExpandedNavGroup(navGroupByTab[tab]||'');},[tab,navMode]);
+  function navigateToTab(nextTab){if(nextTab==='appLauncher'){goHomeScreen();return;}if(!canAccessTab(nextTab)){alert(rtl?'ليس لديك صلاحية لفتح هذه الشاشة.':'You do not have permission to open this screen.');return;}setTab(nextTab);setExpandedNavGroup(navGroupByTab[nextTab]||'');setNotificationOpen(false);}
   function beginAttachmentPreviewResize(event){
     if(event.pointerType==='mouse'&&event.button!==0)return;
     event.preventDefault();
@@ -5007,7 +5031,7 @@ function App(){
     </div>;
   }
 
-  return <div className={'app-root-shell min-h-screen flex flex-col bg-gray-100 '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?'app-mobile-header-compact':'')} onClickCapture={unlockNotificationAudio}>
+  return <div className={'app-root-shell min-h-screen flex flex-col bg-gray-100 '+(tab==='appLauncher'?'app-is-launcher ':'')+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?'app-mobile-header-compact':'')} onClickCapture={unlockNotificationAudio}>
     <header className={'app-shell-header text-white p-3 px-5 flex justify-between items-center gap-3 shadow-lg '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?'app-mobile-header-compact':'')}>
       <div className="app-shell-brand flex items-center gap-3">{companyInfo.logo?<img src={companyInfo.logo} alt="Logo" className="h-10 w-10 object-contain bg-white rounded p-1"/>:<i className="fas fa-cubes text-white text-2xl"></i>}<div><h1 className="font-bold">{companyInfo.name || tr('app')}</h1><p className="text-xs text-white/75">{tr('app')}</p></div></div>
       <div className="app-shell-actions flex items-center gap-3">
@@ -5038,7 +5062,7 @@ function App(){
       <div className="app-global-announcement-track"><div className="app-global-announcement-track-inner"><span>{globalAnnouncement.message}</span><span aria-hidden="true">{globalAnnouncement.message}</span></div></div>
     </section>}
     <div className={'flex flex-1 min-h-0 '+(navMode==='top'?'flex-col':'flex-col md:flex-row')} style={{'--attachment-preview-width':attachmentPreviewWidth+'px','--attachment-preview-height':attachmentPreviewHeight+'px'}}>
-      {navMode==='side'?<aside className={'app-sidebar w-full md:w-60 border-gray-200 p-2 md:p-3 space-y-1 '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden?'app-mobile-nav-hidden ':'')+(desktopNavState.uid===(currentUser&&currentUser.uid)&&desktopNavState.hidden?'app-desktop-nav-collapsed':'')} style={{'--sidebar-width':sidebarWidth+'px'}}>
+      {tab==='appLauncher'?null:navMode==='side'?<aside className={'app-sidebar w-full md:w-60 border-gray-200 p-2 md:p-3 space-y-1 '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden?'app-mobile-nav-hidden ':'')+(desktopNavState.uid===(currentUser&&currentUser.uid)&&desktopNavState.hidden?'app-desktop-nav-collapsed':'')} style={{'--sidebar-width':sidebarWidth+'px'}}>
         <div className="app-sidebar-nav-scroll">{renderNavigation()}</div>
         {renderRecentScreens()}
         <div className="app-sidebar-resizer no-print" role="separator" aria-label={rtl?'تغيير عرض القائمة الجانبية':'Resize sidebar'} aria-orientation="vertical" aria-valuemin={210} aria-valuemax={440} aria-valuenow={sidebarWidth} tabIndex={0} onPointerDown={beginSidebarResize} onKeyDown={resizeSidebarByKeyboard} onDoubleClick={()=>setSidebarWidth(260)} title={rtl?'اسحب لزيادة أو تقليل عرض القائمة – انقر مرتين لإعادة الحجم الافتراضي':'Drag to resize the sidebar – double-click to reset'}><span></span></div>
@@ -5056,27 +5080,15 @@ function App(){
         </div>}
         {tab!=='appLauncher'&&canExportCurrentScreen()&&<div className="app-report-toolbar no-print"><div className="report-toolbar-caption"><strong><i className="fas fa-file-invoice me-2 text-slate-500"></i>{rtl?'تقرير الشاشة الحالية':'Current screen report'}</strong><small>{rtl?'ملخص تنفيذي + تفاصيل في Excel و PDF':'Executive summary + detailed sheets in Excel and PDF'}</small></div><div className="report-toolbar-actions"><button type="button" onClick={exportCurrentScreenExcel} className="bg-emerald-600 text-white hover:bg-emerald-700"><i className="fas fa-file-excel"></i>{rtl?'تصدير Excel':'Excel'}</button><button type="button" onClick={exportCurrentScreenPdf} className="bg-slate-800 text-white hover:bg-slate-900"><i className="fas fa-file-pdf"></i>{rtl?'تصدير PDF':'PDF'}</button></div></div>}
         {tab==='appLauncher'&&<div className="app-launcher">
-          <div className="app-launcher-welcome">
-            <div className="app-launcher-welcome-mark"><i className="fas fa-layer-group"></i></div>
-            <div className="app-launcher-welcome-copy">
-              <span className="app-launcher-eyebrow">{rtl?'مساحة العمل':'WORKSPACE'}</span>
-              <h1>{rtl?'التطبيقات':'Applications'}</h1>
-              <p>{rtl?'اختر الشاشة التي تريد العمل عليها. تظهر هنا الشاشات المتاحة حسب صلاحيات حسابك.':'Choose a workspace. Only screens available to your account are shown here.'}</p>
-            </div>
-            <div className="app-launcher-count"><strong>{navCatalog.length}</strong><span>{rtl?'شاشة متاحة':'available screens'}</span></div>
-          </div>
-          {navCatalog.length===0?<div className="app-launcher-empty"><i className="fas fa-lock"></i><b>{rtl?'لا توجد شاشات متاحة لحسابك حالياً':'No screens are currently available for your account'}</b><span>{rtl?'يرجى مراجعة مدير النظام لمنحك الصلاحيات المناسبة.':'Contact your administrator to review your access permissions.'}</span></div>:
-          <div className="app-launcher-groups">
-            {visibleNavGroups.map(group=>{
-              const items=group.tab?[{id:group.tab,label:group.label,icon:group.icon}]:group.children||[];
-              return items.length?<section className="app-launcher-group" key={group.id}>
-                <div className="app-launcher-group-heading"><span className="app-launcher-group-icon"><i className={'fas '+(group.icon||'fa-grid-2')}></i></span><h2>{group.label}</h2><span className="app-launcher-group-count">{items.length}</span></div>
-                <div className="app-launcher-grid">{items.map((item,index)=><button type="button" key={item.id} onClick={()=>navigateToTab(item.id)} className="app-launcher-card" style={{'--launcher-accent':['#2563eb','#0d9488','#7c3aed','#059669','#ea580c','#475569'][index%6]}}>
-                  <span className="app-launcher-tile-icon"><i className={'fas '+(item.icon||'fa-circle')}></i></span>
-                  <span className="app-launcher-tile-copy"><strong>{item.label}</strong><small>{rtl?'فتح الشاشة':'Open screen'}</small></span>
-                  <i className={'fas '+(rtl?'fa-arrow-left':'fa-arrow-right')+' app-launcher-arrow'}></i>
-                </button>)}</div>
-              </section>:null;
+          <div className="app-launcher-heading"><strong>{rtl?'التطبيقات':'Applications'}</strong><span>{rtl?'اختر القسم لعرض شاشاته':'Choose a section to view its screens'}</span></div>
+          {visibleNavGroups.length===0?<div className="app-launcher-empty"><i className="fas fa-lock"></i><b>{rtl?'لا توجد أقسام متاحة لحسابك حالياً':'No sections are currently available for your account'}</b><span>{rtl?'يرجى مراجعة مدير النظام لمنحك الصلاحيات المناسبة.':'Contact your administrator to review your access permissions.'}</span></div>:
+          <div className="app-launcher-app-grid">
+            {visibleNavGroups.map((group,index)=>{
+              const firstScreen=group.tab||((group.children||[])[0]&&(group.children||[])[0].id);
+              return firstScreen?<button type="button" key={group.id} title={group.label} aria-label={group.label} onClick={()=>navigateToTab(firstScreen)} className="app-launcher-app" style={{'--launcher-accent':['#2563eb','#0d9488','#7c3aed','#059669','#ea580c','#475569','#0891b2'][index%7]}}>
+                <span className="app-launcher-app-icon"><i className={'fas '+(group.icon||'fa-layer-group')}></i></span>
+                <span className="app-launcher-app-name">{group.label}</span>
+              </button>:null;
             })}
           </div>}
         </div>}
