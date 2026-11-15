@@ -4832,7 +4832,7 @@ function App(){
     </div>;
   }
 
-  return <div className="app-root-shell min-h-screen flex flex-col bg-gray-100" onClickCapture={unlockNotificationAudio}>
+  return <div className={'app-root-shell min-h-screen flex flex-col bg-gray-100 '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?'app-mobile-header-compact':'')} onClickCapture={unlockNotificationAudio}>
     <header className={'app-shell-header text-white p-3 px-5 flex justify-between items-center gap-3 shadow-lg '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?'app-mobile-header-compact':'')}>
       <div className="app-shell-brand flex items-center gap-3">{companyInfo.logo?<img src={companyInfo.logo} alt="Logo" className="h-10 w-10 object-contain bg-white rounded p-1"/>:<i className="fas fa-cubes text-white text-2xl"></i>}<div><h1 className="font-bold">{companyInfo.name || tr('app')}</h1><p className="text-xs text-white/75">{tr('app')}</p></div></div>
       <div className="app-shell-actions flex items-center gap-3">
