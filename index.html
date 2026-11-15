@@ -83,6 +83,86 @@
     .app-recent-item:hover{background:rgba(255,255,255,.7);border-color:rgba(100,116,139,.13)}
     .app-recent-item.active{background:var(--brand-soft);color:var(--brand-hover);border-color:color-mix(in srgb,var(--brand) 18%,white);font-weight:700}
     .app-nav-icon-rail{display:none}
+    /* Odoo-style app launcher: navigation moves to the application grid and back/home controls. */
+    .app-root-shell .app-sidebar,.app-root-shell .app-top-navigation{display:none!important}
+    .app-root-shell .app-layout-toggle,.app-root-shell .app-desktop-nav-toggle,.app-root-shell .app-mobile-nav-toggle{display:none!important}
+    .app-screen-navigation{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0 0 14px;padding:10px 12px;border:1px solid #e2e8f0;border-inline-start:4px solid var(--brand);border-radius:12px;background:rgba(255,255,255,.96);box-shadow:0 3px 12px rgba(15,23,42,.045)}
+    .app-screen-navigation-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+    .app-screen-navigation button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:38px;padding:7px 12px;border:1px solid #dbe3ed;border-radius:9px;background:#fff;color:#334155;font-size:12px;font-weight:800;transition:background .15s,border-color .15s,color .15s}
+    .app-screen-navigation button:hover{background:var(--brand-soft);border-color:var(--brand);color:var(--brand)}
+    .app-screen-navigation .app-screen-back{background:var(--brand);color:#fff;border-color:var(--brand)}
+    .app-screen-navigation .app-screen-back:hover{background:var(--brand-hover);color:#fff}
+    .app-screen-current{display:flex;flex-direction:column;align-items:flex-end;min-width:0;gap:1px}
+    .app-screen-current small{font-size:9px;font-weight:900;letter-spacing:.1em;color:#94a3b8}
+    .app-screen-current strong{font-size:13px;color:#1e293b;max-width:min(50vw,440px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .app-launcher{width:100%;max-width:1420px;margin:0 auto;padding:4px 2px 24px}
+    .app-launcher-welcome{display:flex;align-items:center;gap:18px;padding:24px 26px;margin-bottom:23px;border:1px solid color-mix(in srgb,var(--brand) 18%,white);border-radius:20px;background:linear-gradient(120deg,color-mix(in srgb,var(--brand) 8%,white),rgba(255,255,255,.97) 64%);box-shadow:0 10px 28px rgba(15,23,42,.045)}
+    .app-launcher-welcome-mark{display:grid;place-items:center;width:66px;height:66px;flex:0 0 66px;border-radius:19px;background:linear-gradient(145deg,var(--brand),var(--brand-hover));color:#fff;box-shadow:0 9px 20px color-mix(in srgb,var(--brand) 24%,transparent)}
+    .app-launcher-welcome-mark i{font-size:27px}
+    .app-launcher-welcome-copy{min-width:0;flex:1}
+    .app-launcher-eyebrow{font-size:10px;font-weight:900;letter-spacing:.14em;color:var(--brand);text-transform:uppercase}
+    .app-launcher-welcome h1{margin:3px 0 2px;font-size:26px;line-height:1.25;font-weight:900;color:#172554}
+    .app-launcher-welcome p{margin:0;color:#64748b;font-size:12px;line-height:1.7}
+    .app-launcher-count{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:86px;padding:10px 14px;border-inline-start:1px solid #dbe3ed;color:#64748b}
+    .app-launcher-count strong{font-size:26px;line-height:1.1;color:var(--brand);font-weight:900}
+    .app-launcher-count span{font-size:10px;white-space:nowrap}
+    .app-launcher-groups{display:flex;flex-direction:column;gap:22px}
+    .app-launcher-group{min-width:0}
+    .app-launcher-group-heading{display:flex;align-items:center;gap:9px;margin:0 0 11px;padding:0 2px}
+    .app-launcher-group-icon{display:grid;place-items:center;width:31px;height:31px;border-radius:9px;background:var(--brand-soft);color:var(--brand);font-size:13px}
+    .app-launcher-group-heading h2{margin:0;color:#334155;font-size:15px;font-weight:900}
+    .app-launcher-group-count{display:grid;place-items:center;min-width:22px;height:22px;padding:0 6px;margin-inline-start:2px;border-radius:999px;background:#e2e8f0;color:#64748b;font-size:10px;font-weight:800}
+    .app-launcher-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:12px}
+    .app-launcher-card{display:flex;align-items:center;gap:12px;min-width:0;min-height:88px;padding:14px 15px;border:1px solid #e2e8f0;border-radius:15px;background:#fff;text-align:start;box-shadow:0 4px 13px rgba(15,23,42,.035);transition:transform .16s,border-color .16s,box-shadow .16s;cursor:pointer}
+    .app-launcher-card:hover{transform:translateY(-3px);border-color:color-mix(in srgb,var(--launcher-accent) 42%,white);box-shadow:0 12px 25px rgba(15,23,42,.09)}
+    .app-launcher-tile-icon{display:grid;place-items:center;width:49px;height:49px;flex:0 0 49px;border-radius:14px;background:color-mix(in srgb,var(--launcher-accent) 11%,white);color:var(--launcher-accent)}
+    .app-launcher-tile-icon i{font-size:21px}
+    .app-launcher-tile-copy{display:flex;flex:1;min-width:0;flex-direction:column;gap:4px}
+    .app-launcher-tile-copy strong{font-size:13px;line-height:1.45;color:#1e293b;font-weight:900}
+    .app-launcher-tile-copy small{font-size:10px;color:#94a3b8}
+    .app-launcher-arrow{flex:0 0 auto;color:#94a3b8;font-size:11px}
+    .app-launcher-card:hover .app-launcher-arrow{color:var(--launcher-accent)}
+    .app-launcher-empty{display:flex;flex-direction:column;align-items:center;gap:9px;padding:50px 20px;border:1px dashed #cbd5e1;border-radius:16px;background:#fff;color:#64748b;text-align:center}
+    .app-launcher-empty i{font-size:27px;color:#94a3b8}
+    .app-launcher-empty b{color:#334155}
+    @media(max-width:767px){
+      .app-root-shell .app-workspace{padding:10px!important}
+      .app-launcher{padding:0 0 18px}
+      .app-launcher-welcome{gap:11px;padding:15px 13px;margin-bottom:17px;border-radius:15px}
+      .app-launcher-welcome-mark{width:48px;height:48px;flex-basis:48px;border-radius:14px}
+      .app-launcher-welcome-mark i{font-size:20px}
+      .app-launcher-eyebrow{font-size:8px}
+      .app-launcher-welcome h1{font-size:20px}
+      .app-launcher-welcome p{font-size:10px;line-height:1.55}
+      .app-launcher-count{min-width:53px;padding:6px 7px}
+      .app-launcher-count strong{font-size:21px}
+      .app-launcher-count span{max-width:57px;white-space:normal;text-align:center;font-size:8px;line-height:1.3}
+      .app-launcher-groups{gap:17px}
+      .app-launcher-group-heading{margin-bottom:8px}
+      .app-launcher-group-heading h2{font-size:13px}
+      .app-launcher-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+      .app-launcher-card{min-height:82px;gap:8px;padding:10px 9px;border-radius:12px}
+      .app-launcher-tile-icon{width:39px;height:39px;flex-basis:39px;border-radius:11px}
+      .app-launcher-tile-icon i{font-size:17px}
+      .app-launcher-tile-copy strong{font-size:11px}
+      .app-launcher-tile-copy small{font-size:9px}
+      .app-launcher-arrow{font-size:9px}
+      .app-screen-navigation{margin-bottom:10px;padding:8px;gap:7px;border-radius:10px}
+      .app-screen-navigation-actions{gap:5px}
+      .app-screen-navigation button{min-height:34px;padding:6px 9px;font-size:10px;gap:5px}
+      .app-screen-current small{font-size:8px}
+      .app-screen-current strong{font-size:11px;max-width:36vw}
+    }
+    @media(max-width:380px){
+      .app-launcher-welcome{gap:8px;padding:12px 9px}
+      .app-launcher-welcome-mark{width:41px;height:41px;flex-basis:41px}
+      .app-launcher-count{min-width:46px;padding:4px}
+      .app-launcher-card{min-height:76px;padding:8px 7px;gap:6px}
+      .app-launcher-tile-icon{width:34px;height:34px;flex-basis:34px}
+      .app-launcher-tile-copy strong{font-size:10px}
+      .app-screen-navigation button{padding:5px 7px}
+      .app-screen-current strong{max-width:30vw}
+    }
     .app-top-navigation{position:relative;z-index:35;flex:0 0 auto;width:100%;padding:10px 14px 8px;background:rgba(255,255,255,.76);border-bottom:1px solid rgba(100,116,139,.13);box-shadow:0 5px 16px rgba(15,23,42,.035);backdrop-filter:blur(10px)}
     .app-top-navigation-main{overflow:visible}
     .app-nav-grid-top{display:flex;flex-wrap:wrap;align-items:center;gap:7px}
@@ -754,7 +834,10 @@ function App(){
   const attachmentDrawingRef=useRef(false);
   const attachmentDrawingStartRef=useRef(null);
   const attachmentMarkupHistoryRef=useRef([]);
-  const [tab,setTab] = useState('dashboard');
+  const [tab,setTab] = useState('appLauncher');
+  const [screenHistory,setScreenHistory] = useState([]);
+  const previousTabRef=useRef('appLauncher');
+  const skipNavigationHistoryRef=useRef(false);
   const [navPreferences,setNavPreferences] = useState({uid:'',mode:'side',recent:[]});
   const [mobileUi,setMobileUi] = useState({uid:'',compactHeader:false,navHidden:false});
   const [desktopNavState,setDesktopNavState] = useState({uid:'',hidden:false});
@@ -1396,7 +1479,7 @@ function App(){
   const permissionModules=[{id:'dashboard',label:rtl?'لوحة التحكم':'Dashboard'},{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors'},{id:'projects',label:rtl?'المشروعات وملفاتها':'Projects & Project files'},{id:'attachments',label:rtl?'المرفقات':'Attachments'},{id:'statement',label:rtl?'التدفقات النقدية':'Cash flow'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody'},{id:'reports',label:rtl?'التقارير':'Reports'},{id:'messages',label:rtl?'الرسائل وWhatsApp':'Messages & WhatsApp'},{id:'tasks',label:rtl?'المهام':'Tasks'},{id:'announcements',label:rtl?'الإعلانات العامة':'Global Announcements'},{id:'aiAgent',label:rtl?'المساعد الذكي (استخدام)':'AI Agent (Use)'},{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data'}];
   const permissionActions=[{id:'view',label:rtl?'عرض':'View'},{id:'add',label:rtl?'إضافة':'Add'},{id:'edit',label:rtl?'تعديل':'Edit'},{id:'delete',label:rtl?'حذف':'Delete'},{id:'approve',label:rtl?'اعتماد':'Approve'},{id:'export',label:rtl?'تصدير':'Export'},{id:'manage',label:rtl?'إدارة':'Manage'},{id:'viewOthers',label:rtl?'عرض عهد الآخرين':'View others'}];
   const hasPermission=(moduleId,action='view')=>isAdmin||moduleId==='profile'&&action==='view'||(isOmarProjectUser&&moduleId==='projects'&&['view','add','edit'].includes(action))||moduleId==='cashCustody'&&['view','add','edit'].includes(action)&&currentUser?.permissions?.cashCustody?.[action]!==false||currentUser?.permissions?.[moduleId]?.[action]===true;
-  const canAccessTab=tabId=>['companySettings','aiSettings','userRequests','userPermissions','userManagement','auditLogs'].includes(tabId)?Boolean(isAdmin):tabId==='announcements'?hasPermission('announcements','manage'):tabId==='custodyStatement'?hasPermission('cashCustody','view'):hasPermission(tabId==='projectDetail'?'projects':tabId,'view');
+  const canAccessTab=tabId=>tabId==='appLauncher'?true:['companySettings','aiSettings','userRequests','userPermissions','userManagement','auditLogs'].includes(tabId)?Boolean(isAdmin):tabId==='announcements'?hasPermission('announcements','manage'):tabId==='custodyStatement'?hasPermission('cashCustody','view'):hasPermission(tabId==='projectDetail'?'projects':tabId,'view');
   const requirePermission=(moduleId,action)=>{if(hasPermission(moduleId,action))return true;alert(rtl?'ليس لديك صلاحية لتنفيذ هذه العملية. يرجى مراجعة مدير النظام.':'You do not have permission to perform this action. Contact your administrator.');return false;};
   async function attachmentWorkerRequest(path,method='GET',body,extraHeaders={},rawBody=false,asBlob=false){
     const user=window.PEST_FIREBASE_AUTH?.currentUser||auth.currentUser;
@@ -2412,7 +2495,7 @@ function App(){
     try{
       await auth.signOut();
       setCurrentUser(null);setMessages([]);setUserRequests([]);setPendingNotificationRequests([]);setUnreadNotificationMessages([]);setActiveUsers([]);
-      setTab('dashboard');setView('login');setAuthError('');setAuthSuccess('');
+      setTab('appLauncher');setScreenHistory([]);setView('login');setAuthError('');setAuthSuccess('');
       setAuthReady(true);registrationUid.current=null;
     }catch(err){
       console.error('Firebase signOut error:',err);
@@ -4215,15 +4298,37 @@ function App(){
     ...(isAdmin?[{id:'adminGroup',label:rtl?'إدارة النظام':'Administration',icon:'fa-user-shield',children:[{id:'userRequests',label:tr('requestsReport'),icon:'fa-user-clock'},{id:'userManagement',label:rtl?'إدارة بيانات المستخدمين':'User Management',icon:'fa-users-gear'},{id:'userPermissions',label:rtl?'صلاحيات المستخدمين':'User Permissions',icon:'fa-user-lock'},{id:'auditLogs',label:rtl?'سجل نشاط المستخدمين':'User Activity Log',icon:'fa-clipboard-list'}]}]:[])
   ];
   useEffect(()=>{if(currentUser) void addLog('فتح الشاشة: '+String(tab||'dashboard'));},[tab,currentUser?.uid]);
-  useEffect(()=>{if(tab==='auditLogs'&&!isAdmin)setTab('dashboard');},[tab,isAdmin]);
-  useEffect(()=>{if(tab==='announcements'&&!hasPermission('announcements','manage'))setTab('dashboard');},[tab,currentUser?.role,currentUser?.permissions?.announcements?.manage]);
-  useEffect(()=>{if(tab==='custodyStatement'&&!hasPermission('cashCustody','view'))setTab('dashboard');},[tab,currentUser?.role,currentUser?.permissions?.cashCustody?.view]);
+  useEffect(()=>{if(tab==='auditLogs'&&!isAdmin)setTab('appLauncher');},[tab,isAdmin]);
+  useEffect(()=>{if(tab==='announcements'&&!hasPermission('announcements','manage'))setTab('appLauncher');},[tab,currentUser?.role,currentUser?.permissions?.announcements?.manage]);
+  useEffect(()=>{if(tab==='custodyStatement'&&!hasPermission('cashCustody','view'))setTab('appLauncher');},[tab,currentUser?.role,currentUser?.permissions?.cashCustody?.view]);
   const navGroupByTab={master:'masterGroup',attachments:'settingsGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',cashCustody:'financeGroup',custodyStatement:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',announcements:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',aiSettings:'settingsGroup',userRequests:'adminGroup',userManagement:'adminGroup',userPermissions:'adminGroup',auditLogs:'adminGroup'};
   const visibleNavGroups=navGroups.map(group=>group.tab?group:({...group,children:(group.children||[]).filter(item=>canAccessTab(item.id))})).filter(group=>group.tab?canAccessTab(group.tab):(group.children||[]).length>0);
   const navCatalog=visibleNavGroups.flatMap(group=>group.tab?[{id:group.tab,label:group.label,icon:group.icon}]:((group.children||[]).map(item=>({...item}))));
   const navMode=navPreferences.uid===(currentUser&&currentUser.uid)?navPreferences.mode:'side';
   const recentNavItems=(navPreferences.uid===(currentUser&&currentUser.uid)?navPreferences.recent:[]).map(id=>navCatalog.find(item=>item.id===id)).filter(Boolean).slice(0,5);
   const activeNavItem=navCatalog.find(item=>item.id===tab);
+  useEffect(()=>{
+    const previous=previousTabRef.current;
+    if(previous===tab)return;
+    if(tab==='appLauncher')setScreenHistory([]);
+    else if(!skipNavigationHistoryRef.current&&previous!=='appLauncher')setScreenHistory(old=>[...old,previous].slice(-25));
+    previousTabRef.current=tab;
+    skipNavigationHistoryRef.current=false;
+  },[tab]);
+  function goHomeScreen(){
+    skipNavigationHistoryRef.current=true;
+    setScreenHistory([]);
+    setTab('appLauncher');
+    setExpandedNavGroup('');
+    setNotificationOpen(false);
+  }
+  function goBackScreen(){
+    const previous=screenHistory.length?screenHistory[screenHistory.length-1]:'appLauncher';
+    skipNavigationHistoryRef.current=true;
+    setScreenHistory(old=>old.slice(0,-1));
+    setTab(previous);
+    setExpandedNavGroup('');
+  }
 
   function currentReportPermissionModule(){
     if(tab==='projectDetail')return 'projects';
@@ -4749,7 +4854,7 @@ function App(){
     });
   },[tab,currentUser&&currentUser.uid,navPreferences.uid]);
   useEffect(()=>{if(navMode==='top')setExpandedNavGroup('');else if(navGroupByTab[tab])setExpandedNavGroup(navGroupByTab[tab]);},[tab,navMode]);
-  function navigateToTab(nextTab){if(!canAccessTab(nextTab)){alert(rtl?'ليس لديك صلاحية لفتح هذه الشاشة.':'You do not have permission to open this screen.');return;}setTab(nextTab);setExpandedNavGroup(navMode==='top'?'':(navGroupByTab[nextTab]||''));setNotificationOpen(false);}
+  function navigateToTab(nextTab){if(nextTab==='appLauncher'){goHomeScreen();return;}if(!canAccessTab(nextTab)){alert(rtl?'ليس لديك صلاحية لفتح هذه الشاشة.':'You do not have permission to open this screen.');return;}setTab(nextTab);setExpandedNavGroup(navMode==='top'?'':(navGroupByTab[nextTab]||''));setNotificationOpen(false);}
   function beginAttachmentPreviewResize(event){
     if(event.pointerType==='mouse'&&event.button!==0)return;
     event.preventDefault();
@@ -4941,8 +5046,40 @@ function App(){
         <div className="app-top-navigation-main">{renderNavigation()}</div>
         {renderRecentScreens()}
       </div>}
-      <main className={'flex-1 overflow-auto app-workspace '+(attachmentPreview?.layout==='side'?'attachment-workspace-docked':'')} style={{'--company-watermark':companyInfo.logo?'url("'+companyInfo.logo+'")':'none','--report-toolbar-offset':canExportCurrentScreen()?'58px':'0px'}}>
-        {canExportCurrentScreen()&&<div className="app-report-toolbar no-print"><div className="report-toolbar-caption"><strong><i className="fas fa-file-invoice me-2 text-slate-500"></i>{rtl?'تقرير الشاشة الحالية':'Current screen report'}</strong><small>{rtl?'ملخص تنفيذي + تفاصيل في Excel و PDF':'Executive summary + detailed sheets in Excel and PDF'}</small></div><div className="report-toolbar-actions"><button type="button" onClick={exportCurrentScreenExcel} className="bg-emerald-600 text-white hover:bg-emerald-700"><i className="fas fa-file-excel"></i>{rtl?'تصدير Excel':'Excel'}</button><button type="button" onClick={exportCurrentScreenPdf} className="bg-slate-800 text-white hover:bg-slate-900"><i className="fas fa-file-pdf"></i>{rtl?'تصدير PDF':'PDF'}</button></div></div>}
+      <main className={'flex-1 overflow-auto app-workspace '+(attachmentPreview?.layout==='side'?'attachment-workspace-docked':'')} style={{'--company-watermark':companyInfo.logo?'url("'+companyInfo.logo+'")':'none','--report-toolbar-offset':canExportCurrentScreen()&&tab!=='appLauncher'?'58px':'0px'}}>
+        {tab!=='appLauncher'&&<div className="app-screen-navigation no-print">
+          <div className="app-screen-navigation-actions">
+            <button type="button" onClick={goBackScreen} className="app-screen-back"><i className={'fas '+(rtl?'fa-arrow-right':'fa-arrow-left')}></i><span>{rtl?'رجوع':'Back'}</span></button>
+            <button type="button" onClick={goHomeScreen} className="app-screen-home"><i className="fas fa-house"></i><span>{rtl?'الرئيسية':'Home'}</span></button>
+          </div>
+          <div className="app-screen-current"><small>{rtl?'مساحة العمل':'WORKSPACE'}</small><strong>{activeNavItem?.label||(tab==='projectDetail'?(rtl?'ملف المشروع':'Project file'):String(tab||''))}</strong></div>
+        </div>}
+        {tab!=='appLauncher'&&canExportCurrentScreen()&&<div className="app-report-toolbar no-print"><div className="report-toolbar-caption"><strong><i className="fas fa-file-invoice me-2 text-slate-500"></i>{rtl?'تقرير الشاشة الحالية':'Current screen report'}</strong><small>{rtl?'ملخص تنفيذي + تفاصيل في Excel و PDF':'Executive summary + detailed sheets in Excel and PDF'}</small></div><div className="report-toolbar-actions"><button type="button" onClick={exportCurrentScreenExcel} className="bg-emerald-600 text-white hover:bg-emerald-700"><i className="fas fa-file-excel"></i>{rtl?'تصدير Excel':'Excel'}</button><button type="button" onClick={exportCurrentScreenPdf} className="bg-slate-800 text-white hover:bg-slate-900"><i className="fas fa-file-pdf"></i>{rtl?'تصدير PDF':'PDF'}</button></div></div>}
+        {tab==='appLauncher'&&<div className="app-launcher">
+          <div className="app-launcher-welcome">
+            <div className="app-launcher-welcome-mark"><i className="fas fa-layer-group"></i></div>
+            <div className="app-launcher-welcome-copy">
+              <span className="app-launcher-eyebrow">{rtl?'مساحة العمل':'WORKSPACE'}</span>
+              <h1>{rtl?'التطبيقات':'Applications'}</h1>
+              <p>{rtl?'اختر الشاشة التي تريد العمل عليها. تظهر هنا الشاشات المتاحة حسب صلاحيات حسابك.':'Choose a workspace. Only screens available to your account are shown here.'}</p>
+            </div>
+            <div className="app-launcher-count"><strong>{navCatalog.length}</strong><span>{rtl?'شاشة متاحة':'available screens'}</span></div>
+          </div>
+          {navCatalog.length===0?<div className="app-launcher-empty"><i className="fas fa-lock"></i><b>{rtl?'لا توجد شاشات متاحة لحسابك حالياً':'No screens are currently available for your account'}</b><span>{rtl?'يرجى مراجعة مدير النظام لمنحك الصلاحيات المناسبة.':'Contact your administrator to review your access permissions.'}</span></div>:
+          <div className="app-launcher-groups">
+            {visibleNavGroups.map(group=>{
+              const items=group.tab?[{id:group.tab,label:group.label,icon:group.icon}]:group.children||[];
+              return items.length?<section className="app-launcher-group" key={group.id}>
+                <div className="app-launcher-group-heading"><span className="app-launcher-group-icon"><i className={'fas '+(group.icon||'fa-grid-2')}></i></span><h2>{group.label}</h2><span className="app-launcher-group-count">{items.length}</span></div>
+                <div className="app-launcher-grid">{items.map((item,index)=><button type="button" key={item.id} onClick={()=>navigateToTab(item.id)} className="app-launcher-card" style={{'--launcher-accent':['#2563eb','#0d9488','#7c3aed','#059669','#ea580c','#475569'][index%6]}}>
+                  <span className="app-launcher-tile-icon"><i className={'fas '+(item.icon||'fa-circle')}></i></span>
+                  <span className="app-launcher-tile-copy"><strong>{item.label}</strong><small>{rtl?'فتح الشاشة':'Open screen'}</small></span>
+                  <i className={'fas '+(rtl?'fa-arrow-left':'fa-arrow-right')+' app-launcher-arrow'}></i>
+                </button>)}</div>
+              </section>:null;
+            })}
+          </div>}
+        </div>}
         {tab==='dashboard'&&<div className="space-y-5 print-area">
           <div className="flex flex-wrap justify-between items-center gap-3 no-print"><h2 className="font-bold text-xl">{tr('dashboard')} · {tr('cashFlow')}</h2><div className="flex gap-2 no-print"><button onClick={()=>setTab('reports')} className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-bold">{tr('reportCenter')}</button><button onClick={()=>window.print()} className="bg-gray-800 text-white rounded-lg px-4 py-2 text-sm">{tr('printPdf')}</button></div></div>
           <details open className="app-collapsible"><summary><span>{rtl?'فلاتر التدفق النقدي':'Cash flow filters'}</span></summary><div className="app-collapsible-body"><section className="bg-white p-4 rounded-xl border shadow-sm grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 no-print">
