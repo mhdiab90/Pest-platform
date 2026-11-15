@@ -217,7 +217,7 @@
     .app-root-shell>.flex.flex-1.min-h-0{min-height:0;overflow:hidden}
     .app-root-shell .app-workspace{min-height:0;overscroll-behavior:contain;scrollbar-gutter:stable}
     .app-root-shell .app-sidebar{max-height:100%;min-height:0}
-    .app-workspace>div>:first-child:has(h2){position:sticky;top:0;z-index:24;isolation:isolate;padding-top:8px;padding-bottom:8px;background:linear-gradient(112deg,rgba(255,255,255,.99),var(--brand-tint-1,#f8fafc));border-bottom:1px solid var(--brand-tint-border,#e2e8f0);box-shadow:0 5px 14px rgba(15,23,42,.07);backdrop-filter:blur(10px)}
+    .app-workspace>div>:first-child:has(h2){position:sticky;top:var(--report-toolbar-offset,0px);z-index:24;isolation:isolate;padding-top:8px;padding-bottom:8px;background:linear-gradient(112deg,rgba(255,255,255,.99),var(--brand-tint-1,#f8fafc));border-bottom:1px solid var(--brand-tint-border,#e2e8f0);box-shadow:0 5px 14px rgba(15,23,42,.07);backdrop-filter:blur(10px)}
     .app-workspace table thead th{position:sticky;top:0;z-index:12;background:#f8fafc;box-shadow:0 1px 0 #e5e7eb}
     @media(max-width:767px){.app-root-shell .app-sidebar{max-height:min(36vh,300px);overflow-y:auto}}
     @media print{
@@ -433,6 +433,22 @@
       .app-workspace{padding:8px!important}
       .app-workspace .p-4{padding:9px!important}
       .app-workspace .grid-cols-2{grid-template-columns:minmax(0,1fr)!important}
+    }
+
+    .app-report-toolbar{position:sticky;top:0;z-index:32;display:flex;align-items:center;justify-content:space-between;gap:12px;margin:-2px -2px 12px;padding:9px 12px;background:rgba(255,255,255,.97);border:1px solid #dbe3ed;border-inline-start:4px solid var(--brand);border-radius:11px;box-shadow:0 5px 15px rgba(15,23,42,.075);backdrop-filter:blur(12px)}
+    .app-report-toolbar .report-toolbar-caption{min-width:0;display:flex;flex-direction:column;gap:2px}
+    .app-report-toolbar .report-toolbar-caption strong{font-size:12px;color:#243447;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .app-report-toolbar .report-toolbar-caption small{font-size:10px;color:#64748b}
+    .app-report-toolbar .report-toolbar-actions{display:flex;align-items:center;gap:7px;flex:0 0 auto}
+    .app-report-toolbar button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:35px;padding:7px 12px;border-radius:8px;font-size:11px;font-weight:800;white-space:nowrap;transition:filter .15s,transform .15s}
+    .app-report-toolbar button:hover{filter:brightness(.96);transform:translateY(-1px)}
+    @media(max-width:767px){
+      .app-report-toolbar{margin:0 0 9px;padding:7px 8px;gap:7px;top:0}
+      .app-report-toolbar .report-toolbar-caption strong{font-size:10px}
+      .app-report-toolbar .report-toolbar-caption small{font-size:9px}
+      .app-report-toolbar .report-toolbar-actions{gap:5px}
+      .app-report-toolbar button{min-height:34px;padding:6px 8px;font-size:10px}
+      .app-workspace>div>:first-child:has(h2){top:62px}
     }
   </style>
 </head>
@@ -4129,6 +4145,478 @@ function App(){
   const navMode=navPreferences.uid===(currentUser&&currentUser.uid)?navPreferences.mode:'side';
   const recentNavItems=(navPreferences.uid===(currentUser&&currentUser.uid)?navPreferences.recent:[]).map(id=>navCatalog.find(item=>item.id===id)).filter(Boolean).slice(0,5);
   const activeNavItem=navCatalog.find(item=>item.id===tab);
+
+  function currentReportPermissionModule(){
+    if(tab==='projectDetail')return 'projects';
+    if(tab==='custodyStatement')return 'cashCustody';
+    if(['companySettings','aiSettings','profile','settings','userRequests','userManagement','userPermissions','auditLogs'].includes(tab))return 'settings';
+    return tab;
+  }
+  function canExportCurrentScreen(){
+    if(!currentUser)return false;
+    if(['companySettings','aiSettings','userRequests','userManagement','userPermissions','auditLogs'].includes(tab))return isAdmin;
+    return hasPermission(currentReportPermissionModule(),'export');
+  }
+  function currentScreenReportTitle(){
+    const labels={
+      dashboard:rtl?'لوحة التحكم والتدفقات النقدية':'Dashboard & Cash Flow',
+      master:rtl?'تقرير العملاء والموردين':'Clients & Vendors Report',
+      projects:rtl?'تقرير المشروعات':'Projects Report',
+      projectDetail:rtl?'تقرير ملف المشروع':'Project File Report',
+      statement:rtl?'كشف حساب العميل / المورد':'Customer / Supplier Statement',
+      reports:currentReportTitle||tr('reportCenter'),
+      cashCustody:rtl?'تقرير إدارة العهد الشخصية':'Personal Cash Custody Report',
+      custodyStatement:rtl?'كشف حساب العهد':'Custody Account Statement',
+      messages:rtl?'تقرير الرسائل والمراسلات':'Messages Report',
+      tasks:rtl?'تقرير المهام':'Tasks Report',
+      attachments:rtl?'تقرير المرفقات':'Attachments Report',
+      announcements:rtl?'تقرير الإعلانات العامة':'Announcements Report',
+      auditLogs:rtl?'تقرير سجل العمليات':'User Activity Log Report',
+      userManagement:rtl?'تقرير المستخدمين':'User Management Report',
+      userPermissions:rtl?'تقرير صلاحيات المستخدمين':'User Permissions Report',
+      userRequests:rtl?'تقرير طلبات المستخدمين':'User Requests Report',
+      profile:rtl?'تقرير الملف الشخصي':'Profile Report',
+      companySettings:rtl?'تقرير بيانات الشركة':'Company Information Report',
+      aiSettings:rtl?'تقرير إعدادات المساعد الذكي':'AI Agent Settings Report',
+      settings:rtl?'تقرير إعدادات النظام':'System Settings Report'
+    };
+    return labels[tab]||((rtl?'تقرير الشاشة: ':'Screen report: ')+String(tab||''));
+  }
+  function buildCurrentScreenReport(){
+    const datasets=[],metrics=[],filters=[];
+    const addData=(name,rows)=>datasets.push({name,rows:Array.isArray(rows)?rows:[]});
+    const addMetric=(label,value)=>metrics.push({label,value:value===undefined||value===null?'—':value});
+    const addFilter=(label,value)=>{if(value!==undefined&&value!==null&&String(value).trim()!=='')filters.push({label,value:String(value)});};
+    const enrichEvents=rows=>(rows||[]).map(event=>({...event,reportMovementName:event.actionName||eventLabel(event.type),reportPartyName:event.partyCode?nameOfParty(event.partyType,event.partyCode):''}));
+    const mapAmountText=map=>Object.entries(map||{}).filter(([,value])=>Math.abs(Number(value||0))>0.000001).sort(([a],[b])=>a.localeCompare(b)).map(([currency,value])=>money(value)+' '+currency).join(' + ')||'0.00 EGP';
+    const reportTitle=currentScreenReportTitle();
+    let subtitle=rtl?'ملخص تنفيذي وتفاصيل البيانات الظاهرة في الشاشة':'Executive summary and details of the data available on this screen';
+    switch(tab){
+      case 'dashboard':{
+        addMetric(rtl?'عدد المشروعات':'Projects',selectedProjectsForCash.length);
+        addMetric(rtl?'مشروعات نشطة':'Active projects',activeProjectCount);
+        addMetric(rtl?'مشروعات مكتملة':'Completed projects',completedProjectCount);
+        addMetric(rtl?'مشروعات متأخرة':'Overdue projects',delayedProjectCount);
+        addMetric(rtl?'إجمالي التحصيلات':'Collections',mapAmountText(actualInMap));
+        addMetric(rtl?'إجمالي المدفوعات':'Payments',mapAmountText(actualOutMap));
+        addMetric(rtl?'مستحقات العملاء':'Customer receivables',mapAmountText(receivablesMap));
+        addMetric(rtl?'التزامات الموردين':'Supplier payables',mapAmountText(payablesMap));
+        addData(rtl?'المشروعات':'Projects',selectedProjectsForCash);
+        addData(rtl?'الحركات النقدية':'Cash movements',enrichEvents([...cashAmountRows(cashEventsPeriod),...legacyReceiptsPeriod,...legacyPaymentsPeriod]));
+        addData(rtl?'مستحقات العملاء':'Customer receivables',enrichEvents(projectReceivableEvents));
+        addData(rtl?'التزامات الموردين':'Supplier commitments',enrichEvents(projectPayableEvents));
+        addData(rtl?'عروض الأسعار':'Quotations',quoteRowsWithoutActionDuplicates);
+        addFilter(rtl?'المشروع':'Project',cashProjectFilter==='all'?(rtl?'كل المشروعات':'All projects'):cashProjectFilter);
+        addFilter(tr('fromDate'),cashFrom);addFilter(tr('toDate'),cashTo);
+        subtitle=rtl?'ملخص المشروعات والتدفقات النقدية والمستحقات والالتزامات':'Overview of projects, cash flow, receivables and payables';
+        break;
+      }
+      case 'master':
+        addMetric(rtl?'عدد العملاء':'Customers',filteredClients.length);
+        addMetric(rtl?'عدد الموردين':'Suppliers',filteredVendors.length);
+        addData(rtl?'العملاء':'Customers',filteredClients);
+        addData(rtl?'الموردون':'Suppliers',filteredVendors);
+        addFilter(rtl?'بحث':'Search',masterFilter||globalSearch);
+        break;
+      case 'projects':{
+        const projectCodes=new Set(filteredProjects.map(project=>String(project.code||'')));
+        const events=filteredProjects.flatMap(project=>projectEvents(project).map(event=>({...event,projectCode:project.code,projectName:project.name})));
+        addMetric(rtl?'عدد المشروعات':'Projects',filteredProjects.length);
+        addMetric(rtl?'المشروعات المكتملة':'Completed',filteredProjects.filter(isProjectCompleted).length);
+        addMetric(rtl?'المشروعات الجارية':'In progress',filteredProjects.filter(project=>!isProjectCompleted(project)).length);
+        addMetric(rtl?'عدد الأحداث':'Project events',events.length);
+        addData(rtl?'بيانات المشروعات':'Projects',filteredProjects);
+        addData(rtl?'أحداث المشروعات':'Project events',enrichEvents(events));
+        addFilter(rtl?'بحث':'Search',projectFilter||globalSearch);
+        break;
+      }
+      case 'projectDetail':{
+        const selected=projects.find(project=>String(project.code||'')===String(selectedProjectCode||''));
+        const events=selected?projectEvents(selected).map(event=>({...event,projectCode:selected.code,projectName:selected.name})):[];
+        addMetric(rtl?'عدد الأحداث':'Events',events.length);
+        addMetric(rtl?'عدد العملاء':'Customers',selected?(selected.clientCodes|| (selected.clientCode?[selected.clientCode]:[])).length:0);
+        addMetric(rtl?'عدد الموردين':'Suppliers',selected?(selected.vendorCodes||[]).length:0);
+        addData(rtl?'بيانات المشروع':'Project details',selected?[selected]:[]);
+        addData(rtl?'الأحداث والحركات':'Events and movements',enrichEvents(events));
+        addFilter(rtl?'كود المشروع':'Project code',selectedProjectCode);
+        break;
+      }
+      case 'statement':{
+        addMetric(tr('due'),totalDue);
+        addMetric(tr('paid'),totalPaid);
+        addMetric(tr('remaining'),remainingDue);
+        addMetric(rtl?'عدد الأحداث المرتبطة':'Related events',accountFinancialEvents.length);
+        addData(rtl?'بيانات الجهة':'Account details',chosen?[chosen]:[]);
+        addData(rtl?'الحركات المالية':'Financial movements',enrichEvents(accountFinancialEvents));
+        addData(rtl?'عروض الأسعار':'Quotations',accountQuotes);
+        const legacyRows=account.type==='client'?inflows.filter(row=>String(row.clientCode||'')===String(account.code||'')):outflows.filter(row=>String(row.vendorCode||'')===String(account.code||''));
+        addData(rtl?'المعاملات المسجلة السابقة':'Legacy transactions',legacyRows);
+        addFilter(rtl?'نوع الحساب':'Account type',account.type==='client'?tr('client'):tr('vendor'));
+        addFilter(rtl?'الحساب المحدد':'Selected account',chosen?(chosen.name||chosen.code):'');
+        break;
+      }
+      case 'reports':{
+        const paymentMap={},collectionMap={};
+        reportRows.forEach(row=>{
+          const currency=String(row.currency||'EGP').toUpperCase(),amount=cashEventAmount(row);
+          if(row.type==='supplier_payment')paymentMap[currency]=(paymentMap[currency]||0)+amount;
+          if(row.type==='customer_collection')collectionMap[currency]=(collectionMap[currency]||0)+amount;
+        });
+        addMetric(rtl?'عدد السجلات':'Records',reportRows.length);
+        addMetric(rtl?'إجمالي المدفوعات':'Payments',mapAmountText(paymentMap));
+        addMetric(rtl?'إجمالي التحصيلات':'Collections',mapAmountText(collectionMap));
+        addData(rtl?'تفاصيل التقرير':'Report details',enrichEvents(reportRows));
+        addFilter(rtl?'نوع التقرير':'Report type',currentReportTitle);
+        addFilter(rtl?'الجهة / المشروع':'Entity / Project',reportEntity|| (rtl?'الكل':'All'));
+        addFilter(tr('reportSearch'),reportSearch);
+        addFilter(tr('fromDate'),reportFrom);addFilter(tr('toDate'),reportTo);
+        addFilter(rtl?'الحالة':'Status',reportStatus);
+        break;
+      }
+      case 'cashCustody':{
+        const rows=cashCustodyFiltered.slice().sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))||Number(a.createdAt||0)-Number(b.createdAt||0)).map(row=>({...row,movementName:cashCustodyTypeLabels[row.type]||row.type,direction:cashCustodySign(row.type)>0?(rtl?'له / وارد':'Received / In'):(rtl?'عليه / منصرف':'Spent / Out'),received:cashCustodySign(row.type)>0?Number(row.amount||0):0,spent:cashCustodySign(row.type)<0?Number(row.amount||0):0,balanceAfter:row.status==='approved'?Number(cashCustodyRunningBalanceById[row.id]||0):''}));
+        addMetric(rtl?'إجمالي الوارد المعتمد':'Approved received',cashCustodyInTotal);
+        addMetric(rtl?'إجمالي المنصرف المعتمد':'Approved spent',cashCustodyOutTotal);
+        addMetric(rtl?'الرصيد الحالي':'Current balance',cashCustodyBalance);
+        addMetric(rtl?'الحركات المعلقة':'Pending movements',cashCustodyPendingCount);
+        addMetric(rtl?'عدد الحركات':'Movements',cashCustodyRows.length);
+        addData(rtl?'حركات العهدة':'Custody movements',rows);
+        addFilter(rtl?'صاحب العهدة':'Custody owner',cashCustodyTarget===currentUser.uid?(currentUser.fullName||currentUser.username):((userDirectory.find(user=>user.uid===cashCustodyTarget)||{}).fullName||cashCustodyTarget));
+        addFilter(rtl?'نوع الدفتر':'Ledger',cashCustodySelectedBookScope==='company'?(rtl?'الشركة':'Company'):(rtl?'شخصي':'Personal'));
+        addFilter(rtl?'العملة':'Currency',cashCustodyCurrencyFilter);
+        addFilter(rtl?'البحث':'Search',cashCustodySearch);
+        break;
+      }
+      case 'custodyStatement':
+        addMetric(rtl?'الرصيد الافتتاحي':'Opening balance',custodyStatementOpening);
+        addMetric(rtl?'إجمالي ما له':'Total received',custodyStatementTotalIn);
+        addMetric(rtl?'إجمالي ما عليه':'Total spent',custodyStatementTotalOut);
+        addMetric(rtl?'الرصيد الختامي':'Closing balance',custodyStatementClosing);
+        addMetric(rtl?'حركات معلقة':'Pending',custodyStatementPending);
+        addMetric(rtl?'حركات مرفوضة':'Rejected',custodyStatementRejected);
+        addData(rtl?'تفاصيل كشف الحساب':'Statement details',custodyStatementDisplayRows.map(row=>({...row,movementName:cashCustodyTypeLabels[row.type]||row.type,direction:cashCustodySign(row.type)>0?(rtl?'له':'Received'):(rtl?'عليه':'Spent'),received:cashCustodySign(row.type)>0?Number(row.amount||0):0,spent:cashCustodySign(row.type)<0?Number(row.amount||0):0})));
+        addFilter(rtl?'الموظف':'Employee',custodyStatementOwnerName);
+        addFilter(rtl?'نوع الدفتر':'Ledger',custodyStatementIsCompany?(rtl?'الشركة':'Company'):(rtl?'شخصي':'Personal'));
+        addFilter(rtl?'العملة':'Currency',custodyStatementCurrency);
+        addFilter(tr('fromDate'),custodyStatementFrom);addFilter(tr('toDate'),custodyStatementTo);
+        break;
+      case 'messages':{
+        const rows=myMessages.map(message=>({...message,direction:(message.copyType==='sent'||message.senderUid===currentUser.uid)?(rtl?'مرسلة':'Sent'):(rtl?'واردة':'Received'),recipientsText:Array.isArray(message.recipientNames)?message.recipientNames.join('، '):String(message.recipientNames||'')}));
+        addMetric(rtl?'عدد الرسائل':'Messages',rows.length);
+        addMetric(rtl?'الرسائل المرسلة':'Sent',rows.filter(row=>row.direction===(rtl?'مرسلة':'Sent')).length);
+        addMetric(rtl?'الرسائل الواردة':'Received',rows.filter(row=>row.direction===(rtl?'واردة':'Received')).length);
+        addMetric(rtl?'غير المقروءة':'Unread',rows.filter(row=>row.read!==true).length);
+        addData(rtl?'الرسائل':'Messages',rows);
+        addFilter(rtl?'اتجاه الرسالة':'Direction',messageDirectionFilter);
+        addFilter(rtl?'البحث':'Search',messageFilter||globalSearch);
+        break;
+      }
+      case 'tasks':
+        addMetric(rtl?'إجمالي المهام':'Total tasks',tasks.length);
+        addMetric(rtl?'مهام مفتوحة':'Open tasks',tasks.filter(task=>task.status!=='completed').length);
+        addMetric(rtl?'مهام مكتملة':'Completed tasks',tasks.filter(task=>task.status==='completed').length);
+        addData(rtl?'قائمة المهام':'Tasks',tasks);
+        break;
+      case 'attachments':
+        addMetric(rtl?'عدد المرفقات':'Attachments',attachmentsList.length);
+        addMetric(rtl?'المساحة المستخدمة':'Storage used',money(Number(driveConnectionStatus.storage?.usedBytes||0)/1048576)+' MB');
+        addData(rtl?'قائمة المرفقات':'Attachments',attachmentsList);
+        addFilter(rtl?'نوع السجل':'Entity type',attachmentEntityType);
+        addFilter(rtl?'معرف السجل':'Entity ID',attachmentEntityId);
+        break;
+      case 'announcements':
+        addMetric(rtl?'حالة الإعلان':'Announcement status',globalAnnouncement?.active?(rtl?'نشط':'Active'):(rtl?'متوقف':'Stopped'));
+        addMetric(rtl?'نوع الإعلان':'Announcement type',globalAnnouncement?.tone||'—');
+        addData(rtl?'بيانات الإعلان':'Announcement details',globalAnnouncement?[globalAnnouncement]:[]);
+        break;
+      case 'auditLogs':
+        addMetric(rtl?'عدد العمليات':'Operations',filteredAuditLogs.length);
+        addMetric(rtl?'المستخدمون الظاهرون':'Users represented',new Set(filteredAuditLogs.map(row=>row.uid).filter(Boolean)).size);
+        addData(rtl?'سجل العمليات':'Activity log',filteredAuditLogs.slice(0,1000));
+        addFilter(rtl?'بحث':'Search',auditSearch);
+        addFilter(rtl?'المستخدم':'User',auditUserFilter==='all'?(rtl?'الكل':'All'):auditUserFilter);
+        addFilter(rtl?'نوع العملية':'Action type',auditActionFilter);
+        addFilter(tr('fromDate'),auditFrom);addFilter(tr('toDate'),auditTo);
+        break;
+      case 'userManagement':
+        addMetric(rtl?'إجمالي المستخدمين':'Users',activeUsers.length);
+        addMetric(rtl?'المستخدمون النشطون':'Active users',activeUsers.filter(user=>user.status==='active').length);
+        addMetric(rtl?'المستخدمون غير النشطين':'Inactive users',activeUsers.filter(user=>user.status!=='active').length);
+        addData(rtl?'بيانات المستخدمين':'User directory',activeUsers);
+        break;
+      case 'userPermissions':{
+        const selectedUser=userDirectory.find(user=>user.uid===permissionUserUid)||{};
+        const permissions=permissionDraft&&Object.keys(permissionDraft).length?permissionDraft:(selectedUser.permissions||{});
+        const permissionRows=Object.entries(permissions||{}).map(([module,actions])=>({module,...(actions&&typeof actions==='object'?actions:{enabled:actions})}));
+        addMetric(rtl?'المستخدم المحدد':'Selected user',selectedUser.fullName||selectedUser.username||permissionUserUid||'—');
+        addMetric(rtl?'عدد الوحدات':'Permission modules',permissionRows.length);
+        addData(rtl?'تفاصيل الصلاحيات':'Permission details',permissionRows);
+        break;
+      }
+      case 'userRequests':
+        addMetric(rtl?'إجمالي الطلبات':'Requests',filteredRequests.length);
+        addMetric(rtl?'طلبات معلقة':'Pending',filteredRequests.filter(row=>requestStatusValue(row.status)==='pending').length);
+        addMetric(rtl?'طلبات مقبولة':'Approved',filteredRequests.filter(row=>requestStatusValue(row.status)==='approved').length);
+        addMetric(rtl?'طلبات مرفوضة':'Rejected',filteredRequests.filter(row=>requestStatusValue(row.status)==='rejected').length);
+        addData(rtl?'طلبات المستخدمين':'User requests',filteredRequests);
+        addFilter(rtl?'حالة الطلب':'Request status',requestFilter);
+        break;
+      case 'profile':
+        addMetric(rtl?'اسم المستخدم':'User',profileForm.fullName||currentUser.fullName||'—');
+        addData(rtl?'بيانات الملف الشخصي':'Profile details',[profileForm]);
+        break;
+      case 'companySettings':
+        addMetric(rtl?'اسم الشركة':'Company',companyInfo.name||'—');
+        addMetric(rtl?'الرقم الضريبي':'Tax number',companyInfo.taxNumber||'—');
+        addData(rtl?'بيانات الشركة':'Company details',[companyInfo]);
+        break;
+      case 'aiSettings':
+        addMetric(rtl?'مزود الذكاء الاصطناعي':'AI provider',companyInfo.aiAgent?.provider||'—');
+        addMetric(rtl?'النموذج':'Model',companyInfo.aiAgent?.model||'—');
+        addData(rtl?'إعدادات المساعد الذكي':'AI Agent settings',companyInfo.aiAgent?[companyInfo.aiAgent]:[]);
+        break;
+      case 'settings':
+        addMetric(rtl?'حالة آخر عملية':'Latest operation',backupMessage||'—');
+        addData(rtl?'بيانات الشركة':'Company details',[companyInfo]);
+        break;
+      default:
+        addMetric(rtl?'عدد السجلات':'Records',0);
+        addData(rtl?'بيانات الشاشة':'Screen data',[]);
+    }
+    if(!metrics.length)addMetric(rtl?'عدد السجلات':'Records',datasets.reduce((sum,dataset)=>sum+dataset.rows.length,0));
+    if(!datasets.length)addData(rtl?'تفاصيل الشاشة':'Screen details',[]);
+    const filterText=filters.length?filters.map(filter=>filter.label+': '+filter.value).join(' | '):(rtl?'لا توجد فلاتر إضافية':'No additional filters');
+    return {title:reportTitle,subtitle,company:companyInfo.name||tr('app'),generatedAt:new Date(),generatedBy:currentUser.fullName||currentUser.username||currentUser.email||'',filters,filterText,metrics,datasets};
+  }
+  function reportFieldLabel(key){
+    const labels={
+      id:rtl?'المعرف':'ID',uid:rtl?'معرف المستخدم':'User ID',code:rtl?'الكود':'Code',name:rtl?'الاسم':'Name',englishName:rtl?'الاسم بالإنجليزية':'English name',
+      fullName:rtl?'الاسم الكامل':'Full name',username:rtl?'اسم المستخدم':'Username',email:rtl?'البريد الإلكتروني':'Email',phone:rtl?'الهاتف':'Phone',mobile:rtl?'الموبايل':'Mobile',whatsapp:'WhatsApp',
+      taxNumber:rtl?'الرقم الضريبي':'Tax number',commercialRegister:rtl?'السجل التجاري':'Commercial register',contactPerson:rtl?'مسؤول الاتصال':'Contact person',contactTitle:rtl?'صفة مسؤول الاتصال':'Contact title',
+      address:rtl?'العنوان':'Address',city:rtl?'المدينة':'City',country:rtl?'الدولة':'Country',postalCode:rtl?'الرمز البريدي':'Postal code',website:rtl?'الموقع الإلكتروني':'Website',
+      paymentTerms:rtl?'شروط السداد':'Payment terms',creditLimit:rtl?'حد الائتمان':'Credit limit',currency:rtl?'العملة':'Currency',bankName:rtl?'اسم البنك':'Bank name',bankAccount:rtl?'الحساب البنكي':'Bank account',iban:'IBAN',
+      projectCode:rtl?'كود المشروع':'Project code',projectName:rtl?'اسم المشروع':'Project name',contractNo:rtl?'رقم العقد':'Contract no.',purchaseOrderNo:rtl?'رقم أمر الشراء':'Purchase order no.',projectType:rtl?'نوع المشروع':'Project type',
+      amount:rtl?'المبلغ':'Amount',costBudget:rtl?'التكلفة التقديرية':'Cost budget',status:rtl?'الحالة':'Status',date:rtl?'التاريخ':'Date',dueDate:rtl?'تاريخ الاستحقاق':'Due date',
+      reference:rtl?'رقم المستند':'Reference',referenceNo:rtl?'رقم المستند':'Reference no.',quantity:rtl?'الكمية':'Quantity',unit:rtl?'الوحدة':'Unit',type:rtl?'النوع':'Type',
+      actionName:rtl?'نوع الحركة':'Movement type',reportMovementName:rtl?'نوع الحركة':'Movement type',movementName:rtl?'نوع الحركة':'Movement type',direction:rtl?'الاتجاه':'Direction',
+      partyType:rtl?'نوع الطرف':'Party type',partyCode:rtl?'كود الطرف':'Party code',partyName:rtl?'اسم الطرف':'Party name',reportPartyName:rtl?'الطرف المقابل':'Counterparty',
+      counterparty:rtl?'الطرف المقابل':'Counterparty',counterpartyName:rtl?'اسم الطرف المقابل':'Counterparty name',projectManager:rtl?'مدير المشروع':'Project manager',
+      startDate:rtl?'تاريخ البداية':'Start date',expectedEndDate:rtl?'تاريخ الانتهاء المتوقع':'Expected end date',actualEndDate:rtl?'تاريخ الانتهاء الفعلي':'Actual end date',
+      location:rtl?'الموقع':'Location',deliveryAddress:rtl?'عنوان التسليم':'Delivery address',description:rtl?'البيان / الوصف':'Description',note:rtl?'ملاحظات':'Note',notes:rtl?'ملاحظات':'Notes',
+      responsible:rtl?'المسؤول':'Responsible',paymentMethod:rtl?'وسيلة الدفع':'Payment method',settledAmount:rtl?'المبلغ المسدد':'Settled amount',remainingAmount:rtl?'المتبقي':'Remaining',
+      createdAt:rtl?'تاريخ الإنشاء':'Created at',updatedAt:rtl?'تاريخ آخر تعديل':'Last updated',reviewedAt:rtl?'تاريخ المراجعة':'Reviewed at',
+      createdBy:rtl?'أنشأ بواسطة':'Created by',createdByName:rtl?'اسم المنشئ':'Created by name',updatedBy:rtl?'عدل بواسطة':'Updated by',
+      title:rtl?'العنوان':'Title',subject:rtl?'الموضوع':'Subject',body:rtl?'نص الرسالة':'Message body',senderName:rtl?'المرسل':'Sender',
+      recipientName:rtl?'المستلم':'Recipient',recipientNames:rtl?'المستلمون':'Recipients',recipientsText:rtl?'المستلمون':'Recipients',direction:rtl?'الاتجاه':'Direction',
+      read:rtl?'مقروءة':'Read',visibility:rtl?'نطاق الرسالة':'Visibility',jobTitle:rtl?'الوظيفة':'Job title',department:rtl?'القسم':'Department',role:rtl?'الدور':'Role',
+      user:rtl?'المستخدم':'User',action:rtl?'العملية':'Action',actionType:rtl?'نوع العملية':'Action type',screen:rtl?'الشاشة':'Screen',device:rtl?'الجهاز':'Device',
+      entityType:rtl?'نوع السجل':'Entity type',entityId:rtl?'معرف السجل':'Entity ID',fileName:rtl?'اسم الملف':'File name',mimeType:rtl?'نوع الملف':'File type',fileSize:rtl?'حجم الملف':'File size',
+      ownerUid:rtl?'صاحب السجل':'Record owner',bookScope:rtl?'نوع الدفتر':'Ledger type',statusLabel:rtl?'حالة العملية':'Operation status',movementLabel:rtl?'نوع الحركة':'Movement',
+      received:rtl?'له / وارد':'Received / In',spent:rtl?'عليه / منصرف':'Spent / Out',balanceAfter:rtl?'الرصيد بعد الحركة':'Balance after',runningBalance:rtl?'الرصيد المتحرك':'Running balance',
+      reviewedByName:rtl?'تمت المراجعة بواسطة':'Reviewed by',counterpartyUid:rtl?'معرف الطرف المقابل':'Counterparty UID',counterpartyCode:rtl?'كود الطرف المقابل':'Counterparty code',
+      reportType:rtl?'نوع الحركة':'Movement type',reportPartyName:rtl?'الطرف':'Party',timestamp:rtl?'التوقيت':'Timestamp',time:rtl?'التوقيت':'Time',
+      status:rtl?'الحالة':'Status',department:rtl?'القسم':'Department',active:rtl?'نشط':'Active'
+    };
+    return labels[key]||String(key).replace(/([a-z0-9])([A-Z])/g,'$1 $2').replace(/_/g,' ').replace(/^./,letter=>letter.toUpperCase());
+  }
+  function reportSafeCell(value,key=''){
+    if(/password|token|secret|api.?key|authorization|refresh.?token|access.?token|avatar|photo|image|base64|dataurl|binary|download.?url|preview.?url|signed.?url|file.?url|logo/i.test(String(key||'')))return undefined;
+    if(value===undefined)return undefined;
+    if(value===null)return '';
+    if(typeof value==='number'&&/(?:At|timestamp)$/i.test(String(key||''))&&value>1000000000000){
+      const date=new Date(value);return Number.isNaN(date.getTime())?value:date.toLocaleString(rtl?'ar-EG-u-nu-latn':'en-US');
+    }
+    if(Array.isArray(value)){
+      return value.map(item=>{
+        if(item===null||item===undefined)return '';
+        if(typeof item==='object')return item.name||item.fullName||item.username||item.title||item.code||item.fileName||JSON.stringify(item);
+        return String(item);
+      }).filter(Boolean).join('، ');
+    }
+    if(typeof value==='object'){
+      const safe={};
+      Object.entries(value).forEach(([childKey,childValue])=>{
+        const child=reportSafeCell(childValue,childKey);
+        if(child!==undefined&&child!=='')safe[childKey]=child;
+      });
+      try{return JSON.stringify(safe);}catch(_){return '';}
+    }
+    if(typeof value==='string'){
+      const clean=value.replace(/\u0000/g,'');
+      return clean.length>3500?clean.slice(0,3500)+'…':clean;
+    }
+    return value;
+  }
+  function normalizeReportRows(rows){
+    return (Array.isArray(rows)?rows:[]).map(row=>{
+      const source=row&&typeof row==='object'&&!Array.isArray(row)?row:{detail:row};
+      const output={};
+      Object.entries(source).forEach(([key,value])=>{
+        const safe=reportSafeCell(value,key);
+        if(safe!==undefined)output[reportFieldLabel(key)]=safe;
+      });
+      return output;
+    });
+  }
+  function escapeReportHtml(value){
+    return String(value===undefined||value===null?'':value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+  function reportSafeFilePart(value){
+    return String(value||'Report').replace(/[\\/:*?"<>|]+/g,'_').replace(/\s+/g,'_').slice(0,70)||'Report';
+  }
+  function exportCurrentScreenExcel(){
+    if(!canExportCurrentScreen())return requirePermission(currentReportPermissionModule(),'export');
+    // The personal-custody workbook is the reference design: keep its existing
+    // advanced summary, movement analysis, and detail sheets unchanged.
+    if(tab==='cashCustody')return exportCashCustody();
+    const Excel=window.XLSX;
+    if(!Excel?.utils?.book_new||!Excel?.utils?.aoa_to_sheet||!Excel.writeFile)return alert(rtl?'تعذر تحميل مكتبة Excel. حدّث الصفحة وحاول مرة أخرى.':'Excel library is unavailable. Refresh the page and try again.');
+    try{
+      const report=buildCurrentScreenReport(),normalized=report.datasets.map(dataset=>({...dataset,rows:normalizeReportRows(dataset.rows)}));
+      const workbook=Excel.utils.book_new();
+      workbook.Props={Title:report.title,Subject:report.subtitle,Author:report.generatedBy||report.company,CreatedDate:report.generatedAt};
+      const navy='17365D',blue='1F4E78',teal='0F766E',lightBlue='EAF2F8',pale='F4F7FB',green='E2F0D9',amber='FFF2CC',white='FFFFFF',ink='243447',muted='64748B',line='D7E0EA';
+      const edge={style:'thin',color:{rgb:line}};
+      const boxBorder={top:edge,bottom:edge,left:edge,right:edge};
+      const font=(color,bold,size)=>({name:'Arial',sz:size||10,bold:!!bold,color:{rgb:color||ink}});
+      const fill=color=>({patternType:'solid',fgColor:{rgb:color}});
+      const applyRange=(sheet,range,style)=>{
+        const decoded=Excel.utils.decode_range(range);
+        for(let row=decoded.s.r;row<=decoded.e.r;row++){
+          for(let col=decoded.s.c;col<=decoded.e.c;col++){
+            const address=Excel.utils.encode_cell({r:row,c:col});
+            if(!sheet[address])sheet[address]={t:'s',v:''};
+            sheet[address].s=JSON.parse(JSON.stringify(style));
+          }
+        }
+      };
+      const merge=(sheet,range)=>{sheet['!merges']=sheet['!merges']||[];sheet['!merges'].push(Excel.utils.decode_range(range));};
+      const colName=index=>{let n=index+1,name='';while(n){const rem=(n-1)%26;name=String.fromCharCode(65+rem)+name;n=Math.floor((n-1)/26);}return name;};
+      const summaryRows=[
+        [report.company],
+        [report.title],
+        [report.subtitle],
+        [rtl?'تاريخ إعداد التقرير':'Report date',report.generatedAt.toLocaleString(rtl?'ar-EG-u-nu-latn':'en-US'),rtl?'إعداد':'Prepared by',report.generatedBy,rtl?'عدد أوراق التفاصيل':'Detail sheets',normalized.length],
+        [rtl?'نطاق الفلاتر':'Applied filters',report.filterText],
+        [],
+        [rtl?'ملخص التقرير':'REPORT SUMMARY'],
+        [rtl?'المؤشر':'Metric',rtl?'القيمة':'Value',rtl?'المؤشر':'Metric',rtl?'القيمة':'Value',rtl?'المؤشر':'Metric',rtl?'القيمة':'Value',rtl?'المؤشر':'Metric',rtl?'القيمة':'Value']
+      ];
+      const metrics=report.metrics.length?report.metrics:[{label:rtl?'عدد السجلات':'Records',value:normalized.reduce((sum,item)=>sum+item.rows.length,0)}];
+      for(let index=0;index<metrics.length;index+=4){
+        const row=[];
+        for(let slot=0;slot<4;slot++){
+          const metric=metrics[index+slot];
+          row.push(metric?metric.label:'',metric?metric.value:'');
+        }
+        summaryRows.push(row);
+      }
+      summaryRows.push([]);
+      const datasetTitleRow=summaryRows.length;
+      summaryRows.push([rtl?'محتويات التقرير':'REPORT CONTENTS']);
+      const datasetHeaderRow=summaryRows.length;
+      summaryRows.push([rtl?'ورقة التفاصيل':'Detail sheet',rtl?'عدد السجلات':'Records',rtl?'الوصف':'Description']);
+      normalized.forEach(dataset=>summaryRows.push([dataset.name,dataset.rows.length,rtl?'تفاصيل السجلات المتاحة حسب صلاحيات الشاشة':'Records available within this screen and its permissions']));
+      const summary=Excel.utils.aoa_to_sheet(summaryRows);
+      summary['!cols']=[{wch:23},{wch:22},{wch:23},{wch:22},{wch:23},{wch:22},{wch:23},{wch:22}];
+      summary['!rows']=[{hpt:32},{hpt:27},{hpt:22},{hpt:28},{hpt:36},{hpt:9},{hpt:25},{hpt:30},...metrics.map(()=>({hpt:27})),{hpt:9},{hpt:25},{hpt:28},...normalized.map(()=>({hpt:26}))];
+      summary['!pageSetup']={orientation:'landscape',fitToWidth:1,fitToHeight:1};
+      summary['!freeze']={xSplit:0,ySplit:8,topLeftCell:'A9',activePane:'bottomLeft',state:'frozen'};
+      merge(summary,'A1:H1');merge(summary,'A2:H2');merge(summary,'A3:H3');merge(summary,'A5:H5');merge(summary,'A7:H7');
+      merge(summary,'A'+(datasetTitleRow+1)+':H'+(datasetTitleRow+1));
+      applyRange(summary,'A1:H1',{font:font(white,true,18),fill:fill(navy),alignment:{horizontal:'center',vertical:'center'},border:boxBorder});
+      applyRange(summary,'A2:H2',{font:font(white,true,14),fill:fill(blue),alignment:{horizontal:'center',vertical:'center'},border:boxBorder});
+      applyRange(summary,'A3:H3',{font:font(muted,false,10),fill:fill(pale),alignment:{horizontal:'center',vertical:'center',wrapText:true},border:boxBorder});
+      applyRange(summary,'A4:H5',{font:font(ink,false,10),fill:fill('F8FAFC'),alignment:{horizontal:rtl?'right':'left',vertical:'center',wrapText:true},border:boxBorder});
+      applyRange(summary,'A7:H7',{font:font(white,true,12),fill:fill(teal),alignment:{horizontal:'center',vertical:'center'},border:boxBorder});
+      applyRange(summary,'A8:H8',{font:font(white,true,10),fill:fill(blue),alignment:{horizontal:'center',vertical:'center',wrapText:true},border:boxBorder});
+      for(let row=8;row<8+Math.ceil(metrics.length/4);row++){
+        for(let slot=0;slot<4;slot++){
+          const col=slot*2;
+          applyRange(summary,Excel.utils.encode_range({s:{r:row,c:col},e:{r:row,c:col}}),{font:font(white,true,9),fill:fill(blue),alignment:{horizontal:'center',vertical:'center',wrapText:true},border:boxBorder});
+          applyRange(summary,Excel.utils.encode_range({s:{r:row,c:col+1},e:{r:row,c:col+1}}),{font:font(ink,true,11),fill:fill(row%2?lightBlue:'F8FAFC'),alignment:{horizontal:'center',vertical:'center',wrapText:true},border:boxBorder});
+        }
+      }
+      applyRange(summary,Excel.utils.encode_range({s:{r:datasetTitleRow,c:0},e:{r:datasetTitleRow,c:7}}),{font:font(white,true,12),fill:fill(teal),alignment:{horizontal:'center',vertical:'center'},border:boxBorder});
+      applyRange(summary,Excel.utils.encode_range({s:{r:datasetHeaderRow,c:0},e:{r:datasetHeaderRow,c:2}}),{font:font(white,true,10),fill:fill(blue),alignment:{horizontal:'center',vertical:'center'},border:boxBorder});
+      if(normalized.length)applyRange(summary,Excel.utils.encode_range({s:{r:datasetHeaderRow+1,c:0},e:{r:datasetHeaderRow+normalized.length,c:2}}),{font:font(ink,false,10),fill:fill('FFFFFF'),alignment:{horizontal:rtl?'right':'left',vertical:'center',wrapText:true},border:boxBorder});
+      Excel.utils.book_append_sheet(workbook,summary,rtl?'ملخص التقرير':'Summary');
+      const usedNames=new Set([rtl?'ملخص التقرير':'Summary']);
+      normalized.forEach((dataset,datasetIndex)=>{
+        const columns=[];
+        dataset.rows.forEach(row=>Object.keys(row).forEach(key=>{if(!columns.includes(key))columns.push(key);}));
+        if(!columns.length)columns.push(rtl?'بيان':'Details');
+        const matrix=[columns,...dataset.rows.map(row=>columns.map(key=>row[key]===undefined?'':row[key]))];
+        if(!dataset.rows.length)matrix.push([rtl?'لا توجد سجلات ضمن نطاق التقرير':'No records within the report scope']);
+        const sheet=Excel.utils.aoa_to_sheet(matrix);
+        const lastCol=colName(columns.length-1),lastRow=matrix.length;
+        const widths=columns.map((column,columnIndex)=>{
+          const sample=matrix.slice(1,Math.min(matrix.length,61)).map(row=>String(row[columnIndex]===undefined?'':row[columnIndex]));
+          return {wch:Math.max(13,Math.min(48,Math.max(String(column).length,...sample.map(value=>Math.min(48,value.length)))+2))};
+        });
+        sheet['!cols']=widths;
+        sheet['!autofilter']={ref:'A1:'+lastCol+Math.max(1,dataset.rows.length+1)};
+        sheet['!freeze']={xSplit:0,ySplit:1,topLeftCell:'A2',activePane:'bottomLeft',state:'frozen'};
+        sheet['!pageSetup']={orientation:'landscape',fitToWidth:1,fitToHeight:0};
+        const decoded=Excel.utils.decode_range(sheet['!ref']||'A1:A1');
+        for(let row=decoded.s.r;row<=decoded.e.r;row++){
+          for(let col=decoded.s.c;col<=decoded.e.c;col++){
+            const address=Excel.utils.encode_cell({r:row,c:col});
+            if(!sheet[address])sheet[address]={t:'s',v:''};
+            const cell=sheet[address],header=row===0;
+            cell.s={
+              font:header?font(white,true,10):font(ink,false,9),
+              fill:fill(header?blue:(row%2===0?'F4F7FB':white)),
+              alignment:{horizontal:typeof cell.v==='number'?'right':(rtl?'right':'left'),vertical:'center',wrapText:true},
+              border:boxBorder
+            };
+            if(!header&&typeof cell.v==='number'&&/(amount|received|spent|balance|cost|settled|quantity|limit|value|المبلغ|الرصيد|له|عليه|الكمية|التكلفة)/i.test(columns[col]))cell.s.numFmt='#,##0.00;[Red](#,##0.00);-';
+          }
+        }
+        const rawName=String(dataset.name||('Details '+(datasetIndex+1))).replace(/[\\/?*\[\]:]/g,' ').trim().slice(0,31)||('Details '+(datasetIndex+1));
+        let sheetName=rawName,serial=2;
+        while(usedNames.has(sheetName)){const suffix=' '+serial++;sheetName=rawName.slice(0,31-suffix.length)+suffix;}
+        usedNames.add(sheetName);
+        Excel.utils.book_append_sheet(workbook,sheet,sheetName);
+      });
+      const stamp=report.generatedAt.toISOString().slice(0,10).replace(/-/g,'');
+      Excel.writeFile(workbook,'Pest_'+reportSafeFilePart(report.title)+'_'+stamp+'.xlsx');
+      void addLog('تصدير تقرير Excel: '+report.title,currentUser,{entityType:'report',entityId:tab,metadata:{sheets:normalized.length+1,records:normalized.reduce((sum,item)=>sum+item.rows.length,0)}});
+    }catch(error){
+      console.error('Report Excel export:',error);
+      alert((rtl?'تعذر إنشاء تقرير Excel: ':'Could not create Excel report: ')+String(error.message||error));
+    }
+  }
+  function exportCurrentScreenPdf(){
+    if(!canExportCurrentScreen())return requirePermission(currentReportPermissionModule(),'export');
+    try{
+      const report=buildCurrentScreenReport();
+      const datasets=report.datasets.map(dataset=>({...dataset,rows:normalizeReportRows(dataset.rows)}));
+      const metrics=report.metrics.length?report.metrics:[{label:rtl?'عدد السجلات':'Records',value:datasets.reduce((sum,item)=>sum+item.rows.length,0)}];
+      const esc=escapeReportHtml;
+      const logo=companyInfo.logo?'<img class="logo" src="'+esc(companyInfo.logo)+'" alt="Logo">':'';
+      const metricsHtml=metrics.map(metric=>'<div class="metric"><span>'+esc(metric.label)+'</span><b>'+esc(metric.value)+'</b></div>').join('');
+      const filterHtml=report.filters.length?'<div class="filters">'+report.filters.map(filter=>'<span><b>'+esc(filter.label)+':</b> '+esc(filter.value)+'</span>').join(''):'<span>'+(rtl?'بدون فلاتر إضافية':'No additional filters')+'</span>'+'</div>';
+      const detailsHtml=datasets.map(dataset=>{
+        const columns=[];dataset.rows.forEach(row=>Object.keys(row).forEach(key=>{if(!columns.includes(key))columns.push(key);}));
+        const tableHeader=columns.length?'<thead><tr>'+columns.map(column=>'<th>'+esc(column)+'</th>').join('')+'</tr></thead>':'';
+        const tableBody=dataset.rows.length?'<tbody>'+dataset.rows.map(row=>'<tr>'+columns.map(column=>'<td>'+esc(row[column]===undefined?'':row[column])+'</td>').join('')+'</tr>').join('')+'</tbody>':'<tbody><tr><td colspan="'+Math.max(1,columns.length)+'" class="empty">'+(rtl?'لا توجد سجلات ضمن نطاق التقرير':'No records within the report scope')+'</td></tr></tbody>';
+        return '<section class="detail-section"><div class="section-title"><h2>'+esc(dataset.name)+'</h2><span>'+dataset.rows.length+' '+(rtl?'سجل':'records')+'</span></div><div class="table-wrap"><table>'+tableHeader+tableBody+'</table></div></section>';
+      }).join('');
+      const generated=report.generatedAt.toLocaleString(rtl?'ar-EG-u-nu-latn':'en-US');
+      const html='<!DOCTYPE html><html lang="'+(rtl?'ar':'en')+'" dir="'+(rtl?'rtl':'ltr')+'"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'+esc(report.title)+'</title><style>'+
+        '@page{size:A4 landscape;margin:12mm}*{box-sizing:border-box}body{font-family:Arial,"Cairo",sans-serif;color:#243447;margin:0;background:#fff;font-size:10px;line-height:1.55}.report-head{display:flex;align-items:center;justify-content:space-between;gap:18px;border-bottom:3px solid #17365D;padding:0 0 13px;margin-bottom:14px}.brand{display:flex;align-items:center;gap:12px;min-width:0}.logo{width:58px;height:58px;object-fit:contain}.company{font-size:17px;font-weight:800;color:#17365D}.subtitle{font-size:10px;color:#64748B;margin-top:3px}.report-title{text-align:end;max-width:45%}.report-title h1{font-size:20px;color:#17365D;margin:0 0 4px}.report-title p{margin:0;color:#64748B;font-size:9px}.meta{display:flex;flex-wrap:wrap;gap:7px 18px;background:#F4F7FB;border:1px solid #D7E0EA;border-radius:7px;padding:8px 10px;margin-bottom:12px}.meta span{font-size:9px}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:10px 0 15px}.metric{border:1px solid #D7E0EA;border-top:3px solid #0F766E;border-radius:7px;padding:8px 10px;background:#F8FAFC;min-width:0;break-inside:avoid}.metric span{display:block;font-size:9px;color:#64748B;margin-bottom:4px}.metric b{display:block;font-size:13px;color:#17365D;overflow-wrap:anywhere}.filters{display:flex;flex-wrap:wrap;gap:6px 16px;border-bottom:1px solid #D7E0EA;padding:0 0 10px;margin-bottom:12px}.filters span{font-size:9px;color:#475569}.detail-section{margin:14px 0 18px;break-inside:auto}.section-title{display:flex;justify-content:space-between;align-items:center;background:#17365D;color:#fff;padding:7px 10px;border-radius:6px 6px 0 0}.section-title h2{font-size:12px;margin:0}.section-title span{font-size:9px}.table-wrap{width:100%;overflow:visible}table{border-collapse:collapse;width:100%;font-size:8.5px;table-layout:auto}thead{display:table-header-group}th{background:#1F4E78;color:#fff;font-weight:700;padding:6px 7px;border:1px solid #D7E0EA;text-align:start}td{padding:5px 7px;border:1px solid #D7E0EA;vertical-align:top;overflow-wrap:anywhere}tbody tr:nth-child(even){background:#F4F7FB}.empty{text-align:center;color:#64748B;padding:14px}footer{border-top:2px solid #D7E0EA;margin-top:18px;padding-top:8px;color:#64748B;font-size:8px;display:flex;justify-content:space-between}.page-note{color:#64748B;font-size:8px;margin-top:7px}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.detail-section{break-inside:auto}tr{break-inside:avoid;page-break-inside:avoid}thead{display:table-header-group}}@media screen{body{padding:18px;background:#e2e8f0}.page{max-width:1400px;margin:auto;background:white;padding:24px;box-shadow:0 8px 32px rgba(15,23,42,.12)}}'+
+        '</style></head><body><div class="page"><header class="report-head"><div class="brand">'+logo+'<div><div class="company">'+esc(report.company)+'</div><div class="subtitle">'+esc(report.subtitle)+'</div></div></div><div class="report-title"><h1>'+esc(report.title)+'</h1><p>'+(rtl?'تقرير تفصيلي صادر من Pest Platform':'Detailed report generated by Pest Platform')+'</p></div></header><div class="meta"><span><b>'+(rtl?'تاريخ الإصدار: ':'Issued: ')+'</b>'+esc(generated)+'</span><span><b>'+(rtl?'إعداد: ':'Prepared by: ')+'</b>'+esc(report.generatedBy)+'</span><span><b>'+(rtl?'عدد السجلات: ':'Records: ')+'</b>'+datasets.reduce((sum,item)=>sum+item.rows.length,0)+'</span></div><section><div class="section-title"><h2>'+(rtl?'ملخص التقرير':'REPORT SUMMARY')+'</h2></div><div class="metrics">'+metricsHtml+'</div></section><section><div class="section-title"><h2>'+(rtl?'نطاق التقرير والفلاتر':'REPORT SCOPE & FILTERS')+'</h2></div>'+filterHtml+'</section>'+detailsHtml+'<footer><span>'+esc(report.company)+' · Pest Platform</span><span>'+(rtl?'تم إنشاء هذا التقرير آليًا':'Generated automatically by Pest Platform')+'</span></footer></div><script>window.addEventListener("load",function(){setTimeout(function(){window.focus();window.print();},450);});window.addEventListener("afterprint",function(){window.close();});</script></body></html>';
+      const printWindow=window.open('','_blank');
+      if(!printWindow)return alert(rtl?'المتصفح منع فتح نافذة التقرير. اسمح بالنوافذ المنبثقة ثم حاول مرة أخرى.':'The browser blocked the report window. Allow pop-ups and try again.');
+      printWindow.document.open();printWindow.document.write(html);printWindow.document.close();
+      void addLog('تصدير تقرير PDF: '+report.title,currentUser,{entityType:'report',entityId:tab,metadata:{datasets:datasets.length,records:datasets.reduce((sum,item)=>sum+item.rows.length,0)}});
+    }catch(error){
+      console.error('Report PDF export:',error);
+      alert((rtl?'تعذر تجهيز تقرير PDF: ':'Could not prepare PDF report: ')+String(error.message||error));
+    }
+  }
+
   useEffect(()=>{
     const uid=currentUser&&currentUser.uid;
     if(!uid){setNavPreferences({uid:'',mode:'side',recent:[]});return;}
@@ -4320,7 +4808,8 @@ function App(){
         <div className="app-top-navigation-main">{renderNavigation()}</div>
         {renderRecentScreens()}
       </div>}
-      <main className={'flex-1 overflow-auto app-workspace '+(attachmentPreview?.layout==='side'?'attachment-workspace-docked':'')} style={{'--company-watermark':companyInfo.logo?'url("'+companyInfo.logo+'")':'none'}}>
+      <main className={'flex-1 overflow-auto app-workspace '+(attachmentPreview?.layout==='side'?'attachment-workspace-docked':'')} style={{'--company-watermark':companyInfo.logo?'url("'+companyInfo.logo+'")':'none','--report-toolbar-offset':canExportCurrentScreen()?'58px':'0px'}}>
+        {canExportCurrentScreen()&&<div className="app-report-toolbar no-print"><div className="report-toolbar-caption"><strong><i className="fas fa-file-invoice me-2 text-slate-500"></i>{rtl?'تقرير الشاشة الحالية':'Current screen report'}</strong><small>{rtl?'ملخص تنفيذي + تفاصيل في Excel و PDF':'Executive summary + detailed sheets in Excel and PDF'}</small></div><div className="report-toolbar-actions"><button type="button" onClick={exportCurrentScreenExcel} className="bg-emerald-600 text-white hover:bg-emerald-700"><i className="fas fa-file-excel"></i>{rtl?'تصدير Excel':'Excel'}</button><button type="button" onClick={exportCurrentScreenPdf} className="bg-slate-800 text-white hover:bg-slate-900"><i className="fas fa-file-pdf"></i>{rtl?'تصدير PDF':'PDF'}</button></div></div>}
         {tab==='dashboard'&&<div className="space-y-5 print-area">
           <div className="flex flex-wrap justify-between items-center gap-3 no-print"><h2 className="font-bold text-xl">{tr('dashboard')} · {tr('cashFlow')}</h2><div className="flex gap-2 no-print"><button onClick={()=>setTab('reports')} className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-bold">{tr('reportCenter')}</button><button onClick={()=>window.print()} className="bg-gray-800 text-white rounded-lg px-4 py-2 text-sm">{tr('printPdf')}</button></div></div>
           <details open className="app-collapsible"><summary><span>{rtl?'فلاتر التدفق النقدي':'Cash flow filters'}</span></summary><div className="app-collapsible-body"><section className="bg-white p-4 rounded-xl border shadow-sm grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 no-print">
@@ -4664,7 +5153,7 @@ function App(){
         {tab==='tasks'&&<div className="space-y-5"><div className="flex items-center justify-between gap-3"><h2 className="font-bold text-xl">{rtl?'المهام من الرسائل':'Tasks from messages'}</h2><span className="text-sm text-gray-500">{tasks.filter(t=>t.status!=='completed').length} {rtl?'مفتوحة':'open'}</span></div>{taskEditingId&&<form onSubmit={saveTaskRecord} className="bg-white border rounded-xl p-4 space-y-3"><b>{rtl?'تعديل المهمة':'Edit task'}</b><input required className="w-full border rounded-lg p-3" value={taskEditDraft.title} onChange={e=>setTaskEditDraft(old=>({...old,title:e.target.value}))} placeholder={rtl?'عنوان المهمة':'Task title'}/><textarea rows="3" className="w-full border rounded-lg p-3" value={taskEditDraft.description} onChange={e=>setTaskEditDraft(old=>({...old,description:e.target.value}))} placeholder={rtl?'تفاصيل المهمة':'Task description'}/><div className="flex flex-wrap gap-2"><button disabled={taskEditBusy} className="rounded-lg bg-blue-600 text-white px-4 py-2 font-bold">{taskEditBusy?(rtl?'جارٍ الحفظ...':'Saving...'):(rtl?'حفظ':'Save')}</button><button type="button" onClick={()=>setTaskEditingId('')} className="rounded-lg bg-slate-100 px-4 py-2">{rtl?'إلغاء':'Cancel'}</button></div>{taskEditNotice&&<p className="text-sm text-slate-600">{taskEditNotice}</p>}</form>}<details open className="app-collapsible"><summary><span>{rtl?'قائمة المهام':'Task list'}</span></summary><div className="app-collapsible-body"><div className="app-list-scroll">{tasks.length===0?<p className="text-sm text-gray-500">{rtl?'لا توجد مهام بعد. حوّل أي رسالة إلى مهمة من شاشة المراسلات.':'No tasks yet. Convert a message into a task from Messages.'}</p>:tasks.slice().sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0)).map(task=><article key={task.id} className="border rounded-xl p-4 flex flex-col md:flex-row md:items-start gap-3"><div className="flex-1"><button type="button" className="attachment-open-record font-bold text-start" title={rtl?'اضغط لفتح مرفقات المهمة':'Click to open task attachments'} onClick={()=>void openRecordAttachmentPreview('task',task.id)}>{task.title}</button><button type="button" className="attachment-open-record block text-sm whitespace-pre-wrap text-gray-600 mt-2" title={rtl?'اضغط لفتح مرفقات المهمة':'Click to open task attachments'} onClick={()=>void openRecordAttachmentPreview('task',task.id)}>{task.description}</button><div className="mt-2">{task.sourceSenderName?userIdentity(task.sourceSenderUid,task.sourceSenderName,true):null}</div>{renderRecordAttachments('task',task.id)}</div><div className="flex flex-wrap gap-2"><button onClick={()=>updateTaskStatus(task,task.status==='completed'?'open':'completed')} className={'rounded-lg px-4 py-2 text-sm font-bold '+(task.status==='completed'?'bg-gray-100 text-gray-600':'bg-green-600 text-white')}>{task.status==='completed'?(rtl?'إعادة فتح':'Reopen'):(rtl?'إنهاء المهمة':'Complete')}</button>{hasPermission('tasks','edit')&&<button type="button" onClick={()=>editTaskRecord(task)} className="rounded-lg px-4 py-2 text-sm font-bold bg-blue-50 text-blue-700">{rtl?'تعديل':'Edit'}</button>}{hasPermission('tasks','delete')&&<button type="button" onClick={()=>void deleteTaskRecord(task)} className="rounded-lg px-4 py-2 text-sm font-bold bg-rose-50 text-rose-700">{rtl?'حذف':'Delete'}</button>}</div></article>)}</div></div></details></div>}
 
         {tab==='cashCustody'&&hasPermission('cashCustody','view')&&<div className="print-area space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-xl">{rtl?'إدارة النقدية الشخصية – العهدة':'Personal Cash Custody'}</h2><p className="text-sm text-gray-500">{rtl?'كشف حساب لكل مستخدم، والرصيد يحتسب من الحركات المعتمدة فقط.':'A separate ledger for each user. The cash balance includes approved movements only.'}</p></div><div className="flex flex-wrap gap-2 no-print"><button type="button" onClick={exportCashCustody} className="rounded-lg bg-emerald-600 text-white px-4 py-2 font-bold"><i className="fas fa-file-excel me-2"></i>{rtl?'تصدير Excel':'Export Excel'}</button><button type="button" onClick={()=>window.print()} className="rounded-lg bg-slate-700 text-white px-4 py-2 font-bold"><i className="fas fa-print me-2"></i>{rtl?'طباعة':'Print'}</button></div></div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-xl">{rtl?'إدارة النقدية الشخصية – العهدة':'Personal Cash Custody'}</h2><p className="text-sm text-gray-500">{rtl?'كشف حساب لكل مستخدم، والرصيد يحتسب من الحركات المعتمدة فقط.':'A separate ledger for each user. The cash balance includes approved movements only.'}</p></div><div className="flex flex-wrap gap-2 no-print"><button type="button" onClick={exportCurrentScreenExcel} className="rounded-lg bg-emerald-600 text-white px-4 py-2 font-bold"><i className="fas fa-file-excel me-2"></i>{rtl?'تصدير Excel':'Export Excel'}</button><button type="button" onClick={()=>window.print()} className="rounded-lg bg-slate-700 text-white px-4 py-2 font-bold"><i className="fas fa-print me-2"></i>{rtl?'طباعة':'Print'}</button></div></div>
           {isAdmin&&cashCustodyTarget===currentUser.uid&&<section className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 no-print"><label className="block text-sm font-bold">{rtl?'تسجيل / عرض العهدة باسم':'Record / view custody as'}<select disabled={Boolean(cashCustodyEditingId)} className="block w-full md:max-w-xl border rounded-lg p-3 mt-1 font-normal bg-white" value={cashCustodyBookScope} onChange={e=>{setCashCustodyBookScope(e.target.value==='company'?'company':'personal');setCashCustodyTargetUid(currentUser.uid);}}><option value="personal">{rtl?'باسمي الشخصي':'My personal capacity'}</option><option value="company">{rtl?'باسم الشركة':'On behalf of the company'}</option></select></label><p className="text-xs text-indigo-800 mt-2">{rtl?'هذا الاختيار متاح لحساب مدير النظام فقط، ولكل اختيار كشف مستقل ورصيد مستقل.':'Only the system administrator can switch this view. Personal and company custody are maintained as separate ledgers.'}</p></section>}
            {hasPermission('cashCustody','viewOthers')&&<section className="bg-white border rounded-xl p-4 no-print"><label className="block text-sm font-bold">{rtl?'عرض كشف عهدة المستخدم':'View user custody ledger'}<select disabled={Boolean(cashCustodyEditingId)} className="block w-full md:max-w-xl border rounded-lg p-3 mt-1 font-normal" value={cashCustodyTarget} onChange={e=>loadCashCustodyTarget(e.target.value)}><option value={currentUser.uid}>{rtl?'عهدي الشخصية':'My custody'}</option>{userDirectory.filter(u=>u.uid&&u.uid!==currentUser.uid&&u.status==='active').map(u=><option key={u.uid} value={u.uid}>{u.fullName||u.username||u.email||u.uid}</option>)}</select></label></section>}
           <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
@@ -4709,7 +5198,7 @@ function App(){
         </div>}
 
         {tab==='custodyStatement'&&hasPermission('cashCustody','view')&&<div className="print-area space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-xl">{rtl?'كشف حساب العهد':'Custody Account Statement'}</h2><p className="text-sm text-gray-500 mt-1">{rtl?'اختر الموظف لعرض جميع حركات العهدة: ما استلمه وما صرفه أو رده والرصيد المتبقي.':'Select an employee to review all custody received, spent or returned, and the remaining balance.'}</p></div><div className="flex flex-wrap gap-2 no-print"><button type="button" onClick={()=>void loadCustodyStatement()} disabled={custodyStatementBusy||!custodyStatementTargetUid} className="rounded-lg bg-slate-700 text-white px-4 py-2 font-bold disabled:opacity-50"><i className={'fas fa-rotate me-2 '+(custodyStatementBusy?'fa-spin':'')}></i>{rtl?'تحديث الكشف':'Refresh statement'}</button><button type="button" onClick={exportCustodyStatement} disabled={custodyStatementBusy||!hasPermission('cashCustody','export')} className="rounded-lg bg-emerald-600 text-white px-4 py-2 font-bold disabled:opacity-50"><i className="fas fa-file-excel me-2"></i>{rtl?'تصدير Excel':'Export Excel'}</button><button type="button" onClick={()=>window.print()} className="rounded-lg bg-slate-700 text-white px-4 py-2 font-bold no-print"><i className="fas fa-print me-2"></i>{rtl?'طباعة':'Print'}</button></div></div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-xl">{rtl?'كشف حساب العهد':'Custody Account Statement'}</h2><p className="text-sm text-gray-500 mt-1">{rtl?'اختر الموظف لعرض جميع حركات العهدة: ما استلمه وما صرفه أو رده والرصيد المتبقي.':'Select an employee to review all custody received, spent or returned, and the remaining balance.'}</p></div><div className="flex flex-wrap gap-2 no-print"><button type="button" onClick={()=>void loadCustodyStatement()} disabled={custodyStatementBusy||!custodyStatementTargetUid} className="rounded-lg bg-slate-700 text-white px-4 py-2 font-bold disabled:opacity-50"><i className={'fas fa-rotate me-2 '+(custodyStatementBusy?'fa-spin':'')}></i>{rtl?'تحديث الكشف':'Refresh statement'}</button><button type="button" onClick={exportCurrentScreenExcel} disabled={custodyStatementBusy||!hasPermission('cashCustody','export')} className="rounded-lg bg-emerald-600 text-white px-4 py-2 font-bold disabled:opacity-50"><i className="fas fa-file-excel me-2"></i>{rtl?'تصدير Excel':'Export Excel'}</button><button type="button" onClick={()=>window.print()} className="rounded-lg bg-slate-700 text-white px-4 py-2 font-bold no-print"><i className="fas fa-print me-2"></i>{rtl?'طباعة':'Print'}</button></div></div>
           <section className="bg-white border rounded-xl p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3 no-print">
             <label className="text-sm font-bold md:col-span-2">{rtl?'اختيار الموظف / صاحب العهدة':'Select employee / custody owner'}{hasPermission('cashCustody','viewOthers')?<select className="block w-full border rounded-lg p-3 mt-1 font-normal" value={custodyStatementTargetUid} onChange={e=>{setCustodyStatementTargetUid(e.target.value);setCustodyStatementBookScope('personal');setCustodyStatementFrom('');setCustodyStatementTo('');setCustodyStatementSearch('');}}><option value={currentUser.uid}>{rtl?'عهدتي الشخصية':'My personal custody'}</option>{userDirectory.filter(u=>u.uid&&u.uid!==currentUser.uid&&u.status==='active').slice().sort((a,b)=>String(a.fullName||a.username||'').localeCompare(String(b.fullName||b.username||''))).map(u=><option key={u.uid} value={u.uid}>{u.fullName||u.username||u.email||u.uid}{u.jobTitle?' — '+u.jobTitle:''}</option>)}</select>:<div className="mt-1 rounded-lg border bg-slate-50 p-3 font-normal">{currentUser.fullName||currentUser.username||currentUser.email}</div>}</label>
             {isAdmin&&custodyStatementTargetUid===currentUser.uid&&<label className="text-sm font-bold">{rtl?'نوع كشف العهدة':'Custody ledger'}<select className="block w-full border rounded-lg p-3 mt-1 font-normal" value={custodyStatementBookScope} onChange={e=>setCustodyStatementBookScope(e.target.value==='company'?'company':'personal')}><option value="personal">{rtl?'العهدة الشخصية':'Personal custody'}</option><option value="company">{rtl?'عهدة الشركة':'Company custody'}</option></select></label>}
@@ -4735,7 +5224,7 @@ function App(){
         </div>}
 
         {tab==='reports'&&<div className="space-y-5">
-          <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="font-bold text-xl">{tr('reportCenter')}</h2><div className="flex gap-2 no-print"><button onClick={()=>window.print()} className="bg-gray-800 text-white px-4 py-2 rounded-lg"><i className="fas fa-file-pdf me-2"></i>{tr('printPdf')}</button><button onClick={reportAsMessage} className="bg-blue-600 text-white px-4 py-2 rounded-lg"><i className="fas fa-paper-plane me-2"></i>{tr('sendReport')}</button></div></div>
+          <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="font-bold text-xl">{tr('reportCenter')}</h2><div className="flex gap-2 no-print"><button onClick={exportCurrentScreenPdf} className="bg-gray-800 text-white px-4 py-2 rounded-lg"><i className="fas fa-file-pdf me-2"></i>{tr('printPdf')}</button><button onClick={reportAsMessage} className="bg-blue-600 text-white px-4 py-2 rounded-lg"><i className="fas fa-paper-plane me-2"></i>{tr('sendReport')}</button></div></div>
           <details open className="app-collapsible no-print"><summary><span>{rtl?'فلاتر التقرير':'Report filters'}</span></summary><div className="app-collapsible-body"><section className="bg-white p-4 rounded-xl border grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3 no-print"><select className="border rounded-lg p-3" value={reportType} onChange={e=>{setReportType(e.target.value);setReportEntity('');}}><option value="project">{tr('projectReport')}</option><option value="client">{tr('clientReport')}</option><option value="vendor">{tr('vendorReport')}</option><option value="cash">{tr('cashReport')}</option></select>{reportType==='project'?<select className="border rounded-lg p-3" value={reportEntity} onChange={e=>setReportEntity(e.target.value)}><option value="">{tr('allProjects')}</option>{projects.map(p=><option key={p.code} value={p.code}>{p.name} ({p.code})</option>)}</select>:reportType==='client'?<select className="border rounded-lg p-3" value={reportEntity} onChange={e=>setReportEntity(e.target.value)}><option value="">{tr('choose')}</option>{clients.map(c=><option key={c.code} value={c.code}>{c.name} ({c.code})</option>)}</select>:reportType==='vendor'?<select className="border rounded-lg p-3" value={reportEntity} onChange={e=>setReportEntity(e.target.value)}><option value="">{tr('choose')}</option>{vendors.map(v=><option key={v.code} value={v.code}>{v.name} ({v.code})</option>)}</select>:<span className="text-sm text-gray-500 self-center">{tr('supplierPayments')} / {tr('customerCollections')}</span>}<input className="border rounded-lg p-3" placeholder={tr('reportSearch')} value={reportSearch} onChange={e=>setReportSearch(e.target.value)}/><select className="border rounded-lg p-3" value={reportStatus} onChange={e=>setReportStatus(e.target.value)}><option value="all">{tr('allStatuses')}</option><option value="open">{tr('open')}</option><option value="partial">{tr('partial')}</option><option value="full">{tr('full')}</option><option value="completed">{tr('completed')}</option><option value="notPaid">{tr('notPaid')}</option></select><label className="text-sm">{tr('fromDate')}<input type="date" className="block border rounded-lg p-2 w-full" value={reportFrom} onChange={e=>setReportFrom(e.target.value)}/></label><label className="text-sm">{tr('toDate')}<input type="date" className="block border rounded-lg p-2 w-full" value={reportTo} onChange={e=>setReportTo(e.target.value)}/></label><button onClick={()=>{setReportSearch('');setReportFrom('');setReportTo('');setReportStatus('all');}} className="bg-gray-100 rounded-lg p-3">{tr('clear')}</button></section>
 </div></details>
           <details open className="app-collapsible"><summary><span>{tr('reportCenter')}</span></summary><div className="app-collapsible-body"><section className="print-area bg-white rounded-xl border shadow-sm p-5 space-y-4"><div className="flex justify-between items-start gap-4 border-b pb-3"> <div>{companyInfo.logo&&<img src={companyInfo.logo} alt="Company" className="h-12 max-w-40 object-contain mb-2"/>}<h1 className="text-xl font-bold">{companyInfo.name||tr('app')}</h1><p className="text-sm text-gray-500">{companyInfo.taxNumber?tr('taxNumber')+': '+companyInfo.taxNumber:''}</p></div><div className="text-end"><h2 className="font-bold text-lg">{currentReportTitle}</h2><small className="text-gray-500">{new Date().toLocaleDateString(rtl?'ar-EG-u-nu-latn':'en-US')}</small></div></div>
