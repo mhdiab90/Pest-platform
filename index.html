@@ -382,6 +382,16 @@ function App(){
   const [cashCustodyBusy,setCashCustodyBusy] = useState(false);
   const [cashCustodyEditingId,setCashCustodyEditingId] = useState('');
   const [cashCustodyNotice,setCashCustodyNotice] = useState('');
+  const [custodyStatementTargetUid,setCustodyStatementTargetUid] = useState('');
+  const [custodyStatementBookScope,setCustodyStatementBookScope] = useState('personal');
+  const [custodyStatementRows,setCustodyStatementRows] = useState([]);
+  const [custodyStatementBusy,setCustodyStatementBusy] = useState(false);
+  const [custodyStatementError,setCustodyStatementError] = useState('');
+  const [custodyStatementCurrency,setCustodyStatementCurrency] = useState('EGP');
+  const [custodyStatementFrom,setCustodyStatementFrom] = useState('');
+  const [custodyStatementTo,setCustodyStatementTo] = useState('');
+  const [custodyStatementSearch,setCustodyStatementSearch] = useState('');
+  const custodyStatementLoadRef=useRef(0);
   const [permissionUserUid,setPermissionUserUid] = useState('');
   const [permissionDraft,setPermissionDraft] = useState({});
   const [permissionBusy,setPermissionBusy] = useState(false);
@@ -909,6 +919,8 @@ function App(){
     }else if(tab==='cashCustody'){
       needMaster();needProjects();needDirectory();
       watchArray('cashCustody:'+uid,'cashCustodies/'+uid+'/transactions',rows=>setCashCustodyByUid(old=>({...old,[uid]:rows})));
+    }else if(tab==='custodyStatement'){
+      needDirectory();
     }else if(tab==='messages'){
       needDirectory();needMaster();needProjects();needTasks();needMessages();
     }else if(tab==='tasks'){
@@ -1095,7 +1107,7 @@ function App(){
   const permissionModules=[{id:'dashboard',label:rtl?'لوحة التحكم':'Dashboard'},{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors'},{id:'projects',label:rtl?'المشروعات وملفاتها':'Projects & Project files'},{id:'attachments',label:rtl?'المرفقات':'Attachments'},{id:'statement',label:rtl?'التدفقات النقدية':'Cash flow'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody'},{id:'reports',label:rtl?'التقارير':'Reports'},{id:'messages',label:rtl?'الرسائل وWhatsApp':'Messages & WhatsApp'},{id:'tasks',label:rtl?'المهام':'Tasks'},{id:'announcements',label:rtl?'الإعلانات العامة':'Global Announcements'},{id:'aiAgent',label:rtl?'المساعد الذكي (استخدام)':'AI Agent (Use)'},{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data'}];
   const permissionActions=[{id:'view',label:rtl?'عرض':'View'},{id:'add',label:rtl?'إضافة':'Add'},{id:'edit',label:rtl?'تعديل':'Edit'},{id:'delete',label:rtl?'حذف':'Delete'},{id:'approve',label:rtl?'اعتماد':'Approve'},{id:'export',label:rtl?'تصدير':'Export'},{id:'manage',label:rtl?'إدارة':'Manage'},{id:'viewOthers',label:rtl?'عرض عهد الآخرين':'View others'}];
   const hasPermission=(moduleId,action='view')=>isAdmin||moduleId==='profile'&&action==='view'||(isOmarProjectUser&&moduleId==='projects'&&['view','add','edit'].includes(action))||moduleId==='cashCustody'&&['view','add','edit'].includes(action)&&currentUser?.permissions?.cashCustody?.[action]!==false||currentUser?.permissions?.[moduleId]?.[action]===true;
-  const canAccessTab=tabId=>['companySettings','aiSettings','userRequests','userPermissions','userManagement','auditLogs'].includes(tabId)?Boolean(isAdmin):tabId==='announcements'?hasPermission('announcements','manage'):hasPermission(tabId==='projectDetail'?'projects':tabId,'view');
+  const canAccessTab=tabId=>['companySettings','aiSettings','userRequests','userPermissions','userManagement','auditLogs'].includes(tabId)?Boolean(isAdmin):tabId==='announcements'?hasPermission('announcements','manage'):tabId==='custodyStatement'?hasPermission('cashCustody','view'):hasPermission(tabId==='projectDetail'?'projects':tabId,'view');
   const requirePermission=(moduleId,action)=>{if(hasPermission(moduleId,action))return true;alert(rtl?'ليس لديك صلاحية لتنفيذ هذه العملية. يرجى مراجعة مدير النظام.':'You do not have permission to perform this action. Contact your administrator.');return false;};
   async function attachmentWorkerRequest(path,method='GET',body,extraHeaders={},rawBody=false,asBlob=false){
     const user=window.PEST_FIREBASE_AUTH?.currentUser||auth.currentUser;
@@ -2276,6 +2288,39 @@ function App(){
     }
   }
 
+  async function loadCustodyStatement(uid=custodyStatementTargetUid,scope=custodyStatementBookScope){
+    if(!currentUser?.uid)return;
+    const target=uid===currentUser.uid||hasPermission('cashCustody','viewOthers')?uid:currentUser.uid;
+    if(!target)return;
+    const selectedScope=isAdmin&&target===currentUser.uid&&scope==='company'?'company':'personal';
+    const requestId=++custodyStatementLoadRef.current;
+    setCustodyStatementBusy(true);setCustodyStatementError('');
+    try{
+      const snapshot=await db.ref('cashCustodies/'+target+'/transactions').once('value');
+      if(requestId!==custodyStatementLoadRef.current)return;
+      const rows=Object.entries(snapshot.val()||{}).map(([id,value])=>({...value,id:value&&value.id?value.id:id}));
+      setCustodyStatementRows(rows);
+    }catch(error){
+      if(requestId===custodyStatementLoadRef.current){setCustodyStatementRows([]);setCustodyStatementError(firebaseErrorMessage(error,tr));}
+    }finally{
+      if(requestId===custodyStatementLoadRef.current)setCustodyStatementBusy(false);
+    }
+  }
+  useEffect(()=>{
+    if(!currentUser?.uid)return;
+    setCustodyStatementTargetUid(currentUser.uid);
+    setCustodyStatementBookScope('personal');
+    setCustodyStatementFrom('');setCustodyStatementTo('');setCustodyStatementSearch('');
+  },[currentUser?.uid]);
+  useEffect(()=>{
+    if(tab!=='custodyStatement'||!currentUser?.uid||!custodyStatementTargetUid)return;
+    if(custodyStatementTargetUid!==currentUser.uid&&!hasPermission('cashCustody','viewOthers')){
+      setCustodyStatementTargetUid(currentUser.uid);return;
+    }
+    void loadCustodyStatement(custodyStatementTargetUid,custodyStatementBookScope);
+    return ()=>{custodyStatementLoadRef.current++;};
+  },[tab,currentUser?.uid,custodyStatementTargetUid,custodyStatementBookScope]);
+
   const cashCustodyIncomingTypes=['receipt','topup','refund','opening_balance','adjustment_in','transfer_in'];
   const cashCustodyTypeLabels={
     receipt:rtl?'استلام عهدة':'Cash received',
@@ -2472,6 +2517,42 @@ function App(){
       await db.ref().update(updates);
       await addLog('حذف حركة عهدة '+transaction.id,currentUser,{entityType:'cash-custody',entityId:ownerUid+'/'+transaction.id,changes:auditChanges(transaction,null),metadata:{pairedDeleted:Boolean(transaction.linkedTransactionId),partyEventDeleted:Boolean(transaction.linkedProjectEventId)}});
     }catch(err){alert(firebaseErrorMessage(err,tr));}
+  }
+
+  function exportCustodyStatement(){
+    if(!requirePermission('cashCustody','export'))return;
+    const Excel=window.XLSX;
+    if(!Excel?.utils?.book_new||!Excel?.utils?.aoa_to_sheet||!Excel.writeFile)return alert(rtl?'تعذر تحميل مكتبة Excel. حدّث الصفحة وحاول مرة أخرى.':'Excel library is unavailable. Refresh the page and try again.');
+    try{
+      const ownerName=custodyStatementOwnerName||custodyStatementTargetUid;
+      const currency=String(custodyStatementCurrency||'EGP').toUpperCase();
+      const reportRows=custodyStatementDisplayRows;
+      const rows=[
+        [rtl?'كشف حساب العهد':'CUSTODY STATEMENT'],
+        [rtl?'الموظف':'Employee',ownerName,rtl?'نوع الدفتر':'Ledger',custodyStatementIsCompany?(rtl?'عهدة الشركة':'Company custody'):(rtl?'عهدة شخصية':'Personal custody'),rtl?'العملة':'Currency',currency],
+        [rtl?'من تاريخ':'From date',custodyStatementFrom||'—',rtl?'إلى تاريخ':'To date',custodyStatementTo||'—',rtl?'تاريخ التصدير':'Exported at',new Date().toLocaleString(rtl?'ar-EG-u-nu-latn':'en-US')],
+        [],
+        [rtl?'الرصيد الافتتاحي المعتمد':'Approved opening balance',custodyStatementOpening,rtl?'إجمالي له المعتمد':'Approved received',custodyStatementTotalIn,rtl?'إجمالي عليه المعتمد':'Approved spent',custodyStatementTotalOut,rtl?'الرصيد الختامي':'Closing balance',custodyStatementClosing],
+        [rtl?'عدد الحركات المعلقة':'Pending movements',custodyStatementPending,rtl?'عدد الحركات المرفوضة':'Rejected movements',custodyStatementRejected],
+        [],
+        [rtl?'التاريخ':'Date',rtl?'نوع الحركة':'Movement type',rtl?'البيان':'Description',rtl?'رقم المستند':'Reference',rtl?'المشروع':'Project',rtl?'الطرف المقابل':'Counterparty',rtl?'له':'Received / In',rtl?'عليه':'Spent / Out',rtl?'الحالة':'Status',rtl?'الرصيد بعد الحركة':'Running balance'],
+        ...reportRows.map(t=>[
+          t.date||'',cashCustodyTypeLabels[t.type]||t.type||'',t.description||'',t.reference||'',t.projectCode||'',t.counterpartyName||t.counterparty||'',
+          cashCustodySign(t.type)>0?Number(t.amount||0):'',cashCustodySign(t.type)<0?Number(t.amount||0):'',custodyStatementStatusLabel(t.status),Number(t.runningBalance||0)
+        ])
+      ];
+      const workbook=Excel.utils.book_new();
+      workbook.Props={Title:rtl?'كشف حساب العهد':'Custody Statement',Subject:rtl?'كشف تفصيلي بما للموظف وما عليه':'Employee custody received and spent ledger',Author:ownerName,CreatedDate:new Date()};
+      const sheet=Excel.utils.aoa_to_sheet(rows);
+      sheet['!cols']=[{wch:14},{wch:22},{wch:42},{wch:20},{wch:18},{wch:25},{wch:18},{wch:18},{wch:16},{wch:20}];
+      sheet['!autofilter']={ref:'A8:J'+Math.max(8,rows.length)};
+      sheet['!freeze']={xSplit:0,ySplit:8,topLeftCell:'A9',activePane:'bottomLeft',state:'frozen'};
+      Excel.utils.book_append_sheet(workbook,sheet,rtl?'كشف حساب العهد':'Custody Statement');
+      const safeName=String(ownerName).replace(/[\\/:*?"<>|]/g,'_').slice(0,60)||'Employee';
+      const dateStamp=new Date().toISOString().slice(0,10).replace(/-/g,'');
+      Excel.writeFile(workbook,'Pest_Custody_Statement_'+safeName+'_'+currency+'_'+dateStamp+'.xlsx');
+      void addLog('تصدير كشف حساب عهدة: '+ownerName,currentUser,{entityType:'cash-custody-statement',entityId:custodyStatementTargetUid,metadata:{currency,bookScope:custodyStatementIsCompany?'company':'personal',from:custodyStatementFrom,to:custodyStatementTo,rows:reportRows.length}});
+    }catch(error){alert((rtl?'تعذر تصدير كشف حساب العهد: ':'Could not export custody statement: ')+String(error.message||error));}
   }
 
   function exportCashCustody(){
@@ -3816,11 +3897,29 @@ function App(){
   const announcementStatus=!globalAnnouncement?.active?'stopped':announcementIsScheduled&&!announcementScheduleValid?'invalid':announcementIsScheduled&&announcementClock<announcementStartsAt?'scheduled':announcementIsScheduled&&announcementClock>=announcementEndsAt?'expired':'published';
   const announcementStatusLabel=announcementStatus==='published'?(rtl?'منشور الآن':'Published now'):announcementStatus==='scheduled'?(rtl?'مجدول':'Scheduled'):announcementStatus==='expired'?(rtl?'انتهى موعد الإعلان':'Schedule ended'):announcementStatus==='invalid'?(rtl?'راجع موعد الإعلان':'Check schedule'):(rtl?'متوقف':'Stopped');
   const announcementStatusClass=announcementStatus==='published'?'bg-emerald-50 text-emerald-700':announcementStatus==='scheduled'?'bg-blue-50 text-blue-700':announcementStatus==='invalid'?'bg-rose-50 text-rose-700':'bg-slate-100 text-slate-600';
+  const custodyStatementOwner=custodyStatementTargetUid===currentUser?.uid?currentUser:(userDirectory.find(u=>u.uid===custodyStatementTargetUid)||activeUsers.find(u=>u.uid===custodyStatementTargetUid)||{});
+  const custodyStatementOwnerName=custodyStatementOwner.fullName||custodyStatementOwner.username||custodyStatementOwner.email||custodyStatementTargetUid;
+  const custodyStatementIsCompany=isAdmin&&custodyStatementTargetUid===currentUser?.uid&&custodyStatementBookScope==='company';
+  const custodyStatementCurrencyList=['EGP',...new Set(custodyStatementRows.filter(t=>(t.bookScope||'personal')===(custodyStatementIsCompany?'company':'personal')).map(t=>String(t.currency||'EGP').toUpperCase()))].filter((value,index,array)=>array.indexOf(value)===index);
+  const custodyStatementHistory=custodyStatementRows.filter(t=>(t.bookScope||'personal')===(custodyStatementIsCompany?'company':'personal')&&String(t.currency||'EGP').toUpperCase()===String(custodyStatementCurrency||'EGP').toUpperCase()).slice().sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))||Number(a.createdAt||0)-Number(b.createdAt||0));
+  const custodyStatementOpening=custodyStatementFrom?custodyStatementHistory.filter(t=>String(t.date||'')<custodyStatementFrom&&t.status==='approved').reduce((sum,t)=>sum+cashCustodySign(t.type)*Number(t.amount||0),0):0;
+  const custodyStatementPeriod=custodyStatementHistory.filter(t=>(!custodyStatementFrom||String(t.date||'')>=custodyStatementFrom)&&(!custodyStatementTo||String(t.date||'')<=custodyStatementTo));
+  const custodyStatementTotalIn=custodyStatementPeriod.filter(t=>t.status==='approved'&&cashCustodySign(t.type)>0).reduce((sum,t)=>sum+Number(t.amount||0),0);
+  const custodyStatementTotalOut=custodyStatementPeriod.filter(t=>t.status==='approved'&&cashCustodySign(t.type)<0).reduce((sum,t)=>sum+Number(t.amount||0),0);
+  const custodyStatementPending=custodyStatementPeriod.filter(t=>t.status==='pending').length;
+  const custodyStatementRejected=custodyStatementPeriod.filter(t=>t.status==='rejected').length;
+  const custodyStatementClosing=custodyStatementOpening+custodyStatementTotalIn-custodyStatementTotalOut;
+  let custodyStatementRunning=custodyStatementOpening;
+  const custodyStatementDisplayRows=custodyStatementPeriod.filter(t=>!custodyStatementSearch.trim()||includesText([t.date,t.type,t.description,t.reference,t.projectCode,t.counterparty,t.counterpartyName,t.createdByName].join(' '),custodyStatementSearch.trim())).map(t=>{
+    if(t.status==='approved')custodyStatementRunning+=cashCustodySign(t.type)*Number(t.amount||0);
+    return {...t,runningBalance:custodyStatementRunning};
+  });
+  const custodyStatementStatusLabel=status=>status==='approved'?(rtl?'معتمدة':'Approved'):status==='rejected'?(rtl?'مرفوضة':'Rejected'):(rtl?'معلقة':'Pending');
   const navGroups=[
     {id:'dashboard',label:tr('dashboard'),icon:'fa-gauge',tab:'dashboard'},
     {id:'masterGroup',label:tr('master'),icon:'fa-database',children:[{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors',icon:'fa-address-book'}]},
     {id:'projectsGroup',label:tr('projects'),icon:'fa-diagram-project',children:[{id:'projects',label:rtl?'قائمة المشروعات':'Project list',icon:'fa-list'},...(selectedProjectCode?[{id:'projectDetail',label:rtl?'ملف المشروع الحالي':'Current project file',icon:'fa-folder-open'}]:[])]},
-    {id:'financeGroup',label:rtl?'المالية':'Finance',icon:'fa-coins',children:[{id:'statement',label:tr('statement'),icon:'fa-file-invoice-dollar'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody',icon:'fa-wallet'},{id:'reports',label:tr('reportCenter'),icon:'fa-chart-pie'}]},
+    {id:'financeGroup',label:rtl?'المالية':'Finance',icon:'fa-coins',children:[{id:'statement',label:tr('statement'),icon:'fa-file-invoice-dollar'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody',icon:'fa-wallet'},{id:'custodyStatement',label:rtl?'كشف حساب العهد':'Custody Statement',icon:'fa-book-open'},{id:'reports',label:tr('reportCenter'),icon:'fa-chart-pie'}]},
     {id:'communicationGroup',label:rtl?'التواصل والمهام':'Communication & Tasks',icon:'fa-comments',children:[{id:'messages',label:tr('messages'),icon:'fa-envelope'},{id:'tasks',label:rtl?'المهام':'Tasks',icon:'fa-list-check'},{id:'announcements',label:rtl?'الإعلانات العامة':'Global Announcements',icon:'fa-bullhorn'}]},
     {id:'settingsGroup',label:tr('settings'),icon:'fa-sliders',children:[{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data',icon:'fa-database'},{id:'attachments',label:rtl?'المرفقات':'Attachments',icon:'fa-paperclip'},{id:'profile',label:tr('profile'),icon:'fa-user-gear'},...(isAdmin?[{id:'companySettings',label:tr('companySettings'),icon:'fa-building'},{id:'aiSettings',label:rtl?'إعدادات AI Agent':'AI Agent Settings',icon:'fa-wand-magic-sparkles'}]:[])]},
     ...(isAdmin?[{id:'adminGroup',label:rtl?'إدارة النظام':'Administration',icon:'fa-user-shield',children:[{id:'userRequests',label:tr('requestsReport'),icon:'fa-user-clock'},{id:'userManagement',label:rtl?'إدارة بيانات المستخدمين':'User Management',icon:'fa-users-gear'},{id:'userPermissions',label:rtl?'صلاحيات المستخدمين':'User Permissions',icon:'fa-user-lock'},{id:'auditLogs',label:rtl?'سجل نشاط المستخدمين':'User Activity Log',icon:'fa-clipboard-list'}]}]:[])
@@ -3828,7 +3927,8 @@ function App(){
   useEffect(()=>{if(currentUser) void addLog('فتح الشاشة: '+String(tab||'dashboard'));},[tab,currentUser?.uid]);
   useEffect(()=>{if(tab==='auditLogs'&&!isAdmin)setTab('dashboard');},[tab,isAdmin]);
   useEffect(()=>{if(tab==='announcements'&&!hasPermission('announcements','manage'))setTab('dashboard');},[tab,currentUser?.role,currentUser?.permissions?.announcements?.manage]);
-  const navGroupByTab={master:'masterGroup',attachments:'settingsGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',cashCustody:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',announcements:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',aiSettings:'settingsGroup',userRequests:'adminGroup',userManagement:'adminGroup',userPermissions:'adminGroup',auditLogs:'adminGroup'};
+  useEffect(()=>{if(tab==='custodyStatement'&&!hasPermission('cashCustody','view'))setTab('dashboard');},[tab,currentUser?.role,currentUser?.permissions?.cashCustody?.view]);
+  const navGroupByTab={master:'masterGroup',attachments:'settingsGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',cashCustody:'financeGroup',custodyStatement:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',announcements:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',aiSettings:'settingsGroup',userRequests:'adminGroup',userManagement:'adminGroup',userPermissions:'adminGroup',auditLogs:'adminGroup'};
   const visibleNavGroups=navGroups.map(group=>group.tab?group:({...group,children:(group.children||[]).filter(item=>canAccessTab(item.id))})).filter(group=>group.tab?canAccessTab(group.tab):(group.children||[]).length>0);
   const navCatalog=visibleNavGroups.flatMap(group=>group.tab?[{id:group.tab,label:group.label,icon:group.icon}]:((group.children||[]).map(item=>({...item}))));
   const navMode=navPreferences.uid===(currentUser&&currentUser.uid)?navPreferences.mode:'side';
@@ -4410,6 +4510,32 @@ function App(){
             <div className="app-table-scroll"><table className="w-full text-sm min-w-[1140px]"><thead className="bg-slate-50"><tr><th className="p-3 text-start">{rtl?'التاريخ':'Date'}</th><th className="p-3 text-start">{rtl?'نوع الحركة':'Type'}</th><th className="p-3 text-start">{rtl?'البيان':'Description'}</th><th className="p-3 text-start">{rtl?'من / إلى':'Counterparty'}</th><th className="p-3 text-start">{rtl?'المشروع / المستند':'Project / Ref.'}</th><th className="p-3 text-end">{rtl?'وارد':'In'}</th><th className="p-3 text-end">{rtl?'منصرف':'Out'}</th><th className="p-3 text-end">{rtl?'الرصيد بعد الحركة':'Balance after'}</th><th className="p-3 text-start">{rtl?'الحالة':'Status'}</th><th className="p-3 text-start">{rtl?'الإجراءات':'Actions'}</th></tr></thead><tbody>{cashCustodyFiltered.map(t=><tr key={t.id} className="border-t align-top"><td className="p-3 whitespace-nowrap">{t.date||'—'}</td><td className="p-3 whitespace-nowrap">{cashCustodyTypeLabels[t.type]||t.type}</td><td className="p-3 min-w-56"><button type="button" className="attachment-open-record text-start" title={rtl?'اضغط لعرض مرفق الحركة بجانب الشاشة':'Click to show this movement attachment beside the screen'} onClick={()=>void openRecordAttachmentPreview('cashCustody',(cashCustodyTarget||currentUser.uid)+'--'+t.id)}>{t.description||'—'}</button><small className="block text-gray-400">{t.reference||''}</small>{renderRecordAttachments('cashCustody',(cashCustodyTarget||currentUser.uid)+'--'+t.id)}</td><td className="p-3">{t.counterparty||'—'}</td><td className="p-3">{t.projectCode||'—'}</td><td className="p-3 text-end text-emerald-700">{cashCustodySign(t.type)>0?money(t.amount):'—'}</td><td className="p-3 text-end text-rose-700">{cashCustodySign(t.type)<0?money(t.amount):'—'}</td><td className="p-3 text-end font-bold">{t.status==='approved'?money(cashCustodyRunningBalanceById[t.id]||0)+' '+(t.currency||'EGP'):'—'}</td><td className="p-3"><span className={'rounded-full px-2 py-1 text-xs '+(t.status==='approved'?'bg-green-50 text-green-700':t.status==='rejected'?'bg-red-50 text-red-700':'bg-amber-50 text-amber-700')}>{t.status==='approved'?(rtl?'معتمدة':'Approved'):t.status==='rejected'?(rtl?'مرفوضة':'Rejected'):(rtl?'معلقة':'Pending')}</span></td><td className="p-3"><div className="flex flex-wrap gap-2">{t.pairRole==='counterparty'&&<span className="text-xs rounded bg-indigo-50 text-indigo-700 px-2 py-1">{rtl?'حركة مقابلة مرتبطة':'Linked counterpart'}</span>}{t.status==='pending'&&hasPermission('cashCustody','approve')&&(cashCustodyTarget!==currentUser.uid||isAdmin)&&<><button type="button" onClick={()=>reviewCashCustodyTransaction(cashCustodyTarget,t,'approved')} className="text-xs rounded bg-green-600 text-white px-2 py-1">{rtl?'اعتماد':'Approve'}</button><button type="button" onClick={()=>reviewCashCustodyTransaction(cashCustodyTarget,t,'rejected')} className="text-xs rounded bg-red-600 text-white px-2 py-1">{rtl?'رفض':'Reject'}</button></>}{t.pairRole!=='counterparty'&&(cashCustodyTarget===currentUser.uid||(isAdmin&&hasPermission('cashCustody','viewOthers')))&&hasPermission('cashCustody','edit')&&(t.status!=='approved'||isAdmin)&&<button type="button" onClick={()=>editCashCustodyDraft(t)} className="text-xs rounded bg-blue-50 text-blue-700 px-2 py-1">{rtl?'تعديل':'Edit'}</button>}{t.pairRole!=='counterparty'&&(cashCustodyTarget===currentUser.uid||(isAdmin&&hasPermission('cashCustody','viewOthers')))&&hasPermission('cashCustody','delete')&&(t.status!=='approved'||isAdmin)&&<button type="button" onClick={()=>deleteCashCustodyDraft(t)} className="text-xs rounded bg-gray-100 px-2 py-1">{rtl?'حذف':'Delete'}</button>}</div></td></tr>)}</tbody></table></div>
             {cashCustodyFiltered.length===0&&<p className="p-6 text-center text-gray-500">{rtl?'لا توجد حركات بهذه التصفية.':'No movements match these filters.'}</p>}
             <p className="text-xs text-gray-500">{rtl?'الرصيد المعروض مبني على الحركات المعتمدة فقط. العملات تُحسب كلٌ على حدة. الحركات المعلقة لا تغيّر الرصيد حتى اعتمادها.':'The displayed balance uses approved movements only. Currencies are calculated separately. Pending movements do not affect the balance until approved.'}</p><p className="text-xs text-gray-500 mt-1">{rtl?'يمكن تعديل أو حذف الحركات المعتمدة بواسطة مدير النظام فقط، وتُسجل كل التعديلات وعمليات الحذف في سجل النشاط.':'Only a system administrator can edit or delete approved movements. Every change and deletion is recorded in the activity log.'}</p>
+          </section>
+        </div>}
+
+        {tab==='custodyStatement'&&hasPermission('cashCustody','view')&&<div className="print-area space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-xl">{rtl?'كشف حساب العهد':'Custody Account Statement'}</h2><p className="text-sm text-gray-500 mt-1">{rtl?'اختر الموظف لعرض جميع حركات العهدة: ما استلمه وما صرفه أو رده والرصيد المتبقي.':'Select an employee to review all custody received, spent or returned, and the remaining balance.'}</p></div><div className="flex flex-wrap gap-2 no-print"><button type="button" onClick={()=>void loadCustodyStatement()} disabled={custodyStatementBusy||!custodyStatementTargetUid} className="rounded-lg bg-slate-700 text-white px-4 py-2 font-bold disabled:opacity-50"><i className={'fas fa-rotate me-2 '+(custodyStatementBusy?'fa-spin':'')}></i>{rtl?'تحديث الكشف':'Refresh statement'}</button><button type="button" onClick={exportCustodyStatement} disabled={custodyStatementBusy||!hasPermission('cashCustody','export')} className="rounded-lg bg-emerald-600 text-white px-4 py-2 font-bold disabled:opacity-50"><i className="fas fa-file-excel me-2"></i>{rtl?'تصدير Excel':'Export Excel'}</button><button type="button" onClick={()=>window.print()} className="rounded-lg bg-slate-700 text-white px-4 py-2 font-bold no-print"><i className="fas fa-print me-2"></i>{rtl?'طباعة':'Print'}</button></div></div>
+          <section className="bg-white border rounded-xl p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3 no-print">
+            <label className="text-sm font-bold md:col-span-2">{rtl?'اختيار الموظف / صاحب العهدة':'Select employee / custody owner'}{hasPermission('cashCustody','viewOthers')?<select className="block w-full border rounded-lg p-3 mt-1 font-normal" value={custodyStatementTargetUid} onChange={e=>{setCustodyStatementTargetUid(e.target.value);setCustodyStatementBookScope('personal');setCustodyStatementFrom('');setCustodyStatementTo('');setCustodyStatementSearch('');}}><option value={currentUser.uid}>{rtl?'عهدتي الشخصية':'My personal custody'}</option>{userDirectory.filter(u=>u.uid&&u.uid!==currentUser.uid&&u.status==='active').slice().sort((a,b)=>String(a.fullName||a.username||'').localeCompare(String(b.fullName||b.username||''))).map(u=><option key={u.uid} value={u.uid}>{u.fullName||u.username||u.email||u.uid}{u.jobTitle?' — '+u.jobTitle:''}</option>)}</select>:<div className="mt-1 rounded-lg border bg-slate-50 p-3 font-normal">{currentUser.fullName||currentUser.username||currentUser.email}</div>}</label>
+            {isAdmin&&custodyStatementTargetUid===currentUser.uid&&<label className="text-sm font-bold">{rtl?'نوع كشف العهدة':'Custody ledger'}<select className="block w-full border rounded-lg p-3 mt-1 font-normal" value={custodyStatementBookScope} onChange={e=>setCustodyStatementBookScope(e.target.value==='company'?'company':'personal')}><option value="personal">{rtl?'العهدة الشخصية':'Personal custody'}</option><option value="company">{rtl?'عهدة الشركة':'Company custody'}</option></select></label>}
+            <label className="text-sm font-bold">{rtl?'العملة':'Currency'}<select className="block w-full border rounded-lg p-3 mt-1 font-normal" value={custodyStatementCurrency} onChange={e=>setCustodyStatementCurrency(e.target.value)}>{custodyStatementCurrencyList.map(currency=><option key={currency} value={currency}>{currency}</option>)}</select></label>
+            <label className="text-sm font-bold">{rtl?'من تاريخ':'From date'}<input type="date" className="block w-full border rounded-lg p-3 mt-1 font-normal" value={custodyStatementFrom} onChange={e=>setCustodyStatementFrom(e.target.value)}/></label>
+            <label className="text-sm font-bold">{rtl?'إلى تاريخ':'To date'}<input type="date" min={custodyStatementFrom||undefined} className="block w-full border rounded-lg p-3 mt-1 font-normal" value={custodyStatementTo} onChange={e=>setCustodyStatementTo(e.target.value)}/></label>
+            <label className="text-sm font-bold xl:col-span-2">{rtl?'بحث في الحركات':'Search movements'}<input className="block w-full border rounded-lg p-3 mt-1 font-normal" placeholder={rtl?'البيان أو المستند أو المشروع أو الطرف المقابل':'Description, reference, project or counterparty'} value={custodyStatementSearch} onChange={e=>setCustodyStatementSearch(e.target.value)}/></label>
+            <div className="flex items-end"><button type="button" onClick={()=>{setCustodyStatementFrom('');setCustodyStatementTo('');setCustodyStatementSearch('');setCustodyStatementCurrency('EGP');}} className="w-full rounded-lg bg-slate-100 px-4 py-3 font-bold">{rtl?'مسح الفلاتر':'Clear filters'}</button></div>
+          </section>
+          {custodyStatementError&&<div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{custodyStatementError}</div>}
+          <div className="flex flex-wrap items-center justify-between gap-2"><div className="font-bold text-slate-800">{custodyStatementOwnerName}</div><div className="text-xs text-slate-500">{custodyStatementIsCompany?(rtl?'دفتر عهدة الشركة':'Company custody ledger'):(rtl?'دفتر العهدة الشخصية':'Personal custody ledger')} · {custodyStatementCurrency}</div></div>
+          <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs text-emerald-800">{rtl?'إجمالي ما له (وارد معتمد)':'Total received / in (approved)'}</p><b className="block text-xl text-emerald-800 mt-1">{money(custodyStatementTotalIn)} {custodyStatementCurrency}</b></div>
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-4"><p className="text-xs text-rose-800">{rtl?'إجمالي ما عليه (منصرف معتمد)':'Total spent / out (approved)'}</p><b className="block text-xl text-rose-800 mt-1">{money(custodyStatementTotalOut)} {custodyStatementCurrency}</b></div>
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4"><p className="text-xs text-blue-800">{rtl?'الرصيد المتبقي بالعهدة':'Remaining custody balance'}</p><b className="block text-2xl text-blue-800 mt-1">{money(custodyStatementClosing)} {custodyStatementCurrency}</b><small className="block text-blue-700 mt-1">{rtl?'يشمل الرصيد الافتتاحي':'Includes opening balance'}: {money(custodyStatementOpening)}</small></div>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-xs text-amber-800">{rtl?'حركات غير معتمدة':'Unapproved movements'}</p><b className="block text-xl text-amber-800 mt-1">{custodyStatementPending+custodyStatementRejected}</b><small className="block text-amber-700 mt-1">{rtl?'معلقة':'Pending'}: {custodyStatementPending} · {rtl?'مرفوضة':'Rejected'}: {custodyStatementRejected}</small></div>
+          </section>
+          <section className="bg-white border rounded-xl p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold">{rtl?'تفاصيل كشف الحساب':'Statement details'}</h3><span className="text-xs text-gray-500">{custodyStatementDisplayRows.length} {rtl?'حركة':'movements'}</span></div>
+            {custodyStatementBusy?<div className="py-12 text-center text-slate-500"><i className="fas fa-spinner fa-spin me-2"></i>{rtl?'جارٍ تحميل كشف الحساب...':'Loading statement...'}</div>:custodyStatementDisplayRows.length===0?<div className="py-12 text-center text-slate-500"><i className="fas fa-file-circle-xmark text-3xl block mb-3 text-slate-300"></i>{rtl?'لا توجد حركات عهدة في الفترة المحددة.':'No custody movements found for the selected period.'}</div>:<div className="app-table-scroll"><table className="w-full min-w-[1250px] text-sm"><thead className="bg-slate-50"><tr><th className="p-3 text-start">{rtl?'التاريخ':'Date'}</th><th className="p-3 text-start">{rtl?'نوع الحركة':'Movement type'}</th><th className="p-3 text-start">{rtl?'البيان':'Description'}</th><th className="p-3 text-start">{rtl?'رقم المستند':'Reference'}</th><th className="p-3 text-start">{rtl?'المشروع':'Project'}</th><th className="p-3 text-start">{rtl?'الطرف المقابل':'Counterparty'}</th><th className="p-3 text-end text-emerald-700">{rtl?'له':'Received'}</th><th className="p-3 text-end text-rose-700">{rtl?'عليه':'Spent'}</th><th className="p-3 text-end">{rtl?'الرصيد بعد الحركة':'Running balance'}</th><th className="p-3 text-start">{rtl?'الحالة':'Status'}</th></tr></thead><tbody>{custodyStatementDisplayRows.map((t,index)=><tr key={t.id||index} className="border-t align-top"><td className="p-3 whitespace-nowrap">{t.date||'—'}</td><td className="p-3 whitespace-nowrap">{cashCustodyTypeLabels[t.type]||t.type||'—'}</td><td className="p-3 min-w-64"><b>{t.description||'—'}</b>{t.notes&&<small className="block text-gray-500 mt-1">{t.notes}</small>}</td><td className="p-3 whitespace-nowrap">{t.reference||'—'}</td><td className="p-3 whitespace-nowrap">{t.projectCode||'—'}</td><td className="p-3">{t.counterpartyName||t.counterparty||'—'}</td><td className="p-3 text-end text-emerald-700 font-semibold">{cashCustodySign(t.type)>0?money(t.amount):'—'}</td><td className="p-3 text-end text-rose-700 font-semibold">{cashCustodySign(t.type)<0?money(t.amount):'—'}</td><td className="p-3 text-end font-bold">{t.status==='approved'?money(t.runningBalance)+' '+custodyStatementCurrency:'—'}</td><td className="p-3"><span className={'rounded-full px-2 py-1 text-xs '+(t.status==='approved'?'bg-emerald-50 text-emerald-700':t.status==='rejected'?'bg-rose-50 text-rose-700':'bg-amber-50 text-amber-700')}>{custodyStatementStatusLabel(t.status)}</span></td></tr>)}</tbody></table></div>}
+            <p className="text-xs text-gray-500">{rtl?'الرصيد يشمل الحركات المعتمدة فقط. الحركات المعلقة والمرفوضة تظهر للتوضيح ولا تؤثر على الرصيد. عند تحديد فترة، يظهر رصيد ما قبل الفترة كرصيد افتتاحي.':'The balance includes approved movements only. Pending and rejected movements are visible for reference but do not affect the balance. When a date range is selected, the pre-period balance is shown as the opening balance.'}</p>
           </section>
         </div>}
 
