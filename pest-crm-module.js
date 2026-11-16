@@ -6,7 +6,7 @@
   const asArray = value => Array.isArray(value) ? value : [];
   const rowsFrom = value => value ? Object.keys(value).map(key => Object.assign({id:key}, value[key] || {})) : [];
   const today = () => new Date().toISOString().slice(0,10);
-  const dateMs = value => { const n=Date.parse(String(value||'')); return Number.isFinite(n)?n:0; };
+  const dateMs = value => { if(typeof value==='number'&&Number.isFinite(value))return value; if(typeof value==='string'&&/^\d{12,}$/.test(value))return Number(value); const n=Date.parse(String(value||'')); return Number.isFinite(n)?n:0; };
   const norm = value => clean(value).toLowerCase().replace(/[\s\u064B-\u065F\u0640]+/g,'');
   const fmt = (value,currency) => new Intl.NumberFormat('en-US',{minimumFractionDigits:0,maximumFractionDigits:2}).format(Number(value)||0)+' '+(currency||'EGP');
   const download = (name, content, mime) => {
@@ -159,7 +159,7 @@
     function mayDelete(record){return canDelete&&(isAdmin||can('pestCrm','manage')||record.createdBy===uid||record.ownerUid===uid);}
     async function writeRecord(path,form,old,idField){
       const now=Date.now();
-      const record=Object.assign({},form,{id:old&&old.id||form.id,createdAt:old&&old.createdAt||now,createdBy:old&&old.createdBy||uid,createdByName:old&&old.createdByName||user.fullName||user.username||user.email||uid,updatedAt:now,updatedBy:uid});
+      const record=Object.assign({},form,{id:old&&old.id||idField||form.id,createdAt:old&&old.createdAt||now,createdBy:old&&old.createdBy||uid,createdByName:old&&old.createdByName||user.fullName||user.username||user.email||uid,updatedAt:now,updatedBy:uid});
       await db.ref(path+'/'+record.id).set(record);
       return record;
     }
