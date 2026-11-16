@@ -687,6 +687,30 @@
       .app-desktop-nav-restore:focus-visible,.app-desktop-nav-toggle:focus-visible{outline:3px solid color-mix(in srgb,var(--brand) 35%,white);outline-offset:3px}
     }
   </style>
+<style>
+.app-quick-chat-composer,.app-online-chat-composer{display:flex;align-items:center;gap:7px;padding:9px;border-top:1px solid #e2e8f0;background:#fff;direction:inherit}
+.app-chat-compose-input-wrap{position:relative;flex:1 1 auto;min-width:0}
+.app-chat-compose-input{display:block;width:100%;min-width:0;min-height:42px;max-height:112px;resize:vertical;padding:9px 11px;border:1px solid #cbd5e1;border-radius:11px;background:#fff;color:#0f172a;font-size:13px;line-height:1.5;outline:none}
+.app-chat-compose-input:focus{border-color:var(--brand);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 13%,transparent)}
+.app-chat-attach-button,.app-chat-send-button{display:inline-flex;align-items:center;justify-content:center;gap:5px;flex:0 0 auto;min-height:34px;padding:6px 9px;border:1px solid #dbe3ee;border-radius:9px;background:#f8fafc;color:#334155;font-size:11px;font-weight:800;white-space:nowrap;cursor:pointer}
+.app-chat-attach-button i,.app-chat-send-button i{font-size:12px}
+.app-chat-attach-button b{display:inline-grid;place-items:center;min-width:17px;height:17px;padding:0 4px;border-radius:99px;background:#dbeafe;color:#1d4ed8;font-size:9px}
+.app-chat-send-button{background:var(--brand);border-color:var(--brand);color:#fff}
+.app-chat-send-button:disabled{opacity:.45;cursor:not-allowed}
+.app-online-chat-composer{flex:0 0 auto}
+.app-online-chat-composer .app-chat-compose-input{flex:1 1 auto}
+.app-online-chat-files{display:grid;grid-template-columns:repeat(auto-fill,minmax(116px,1fr));gap:7px;margin-top:8px;max-width:100%}
+.app-online-chat-file{display:flex;flex-direction:column;align-items:stretch;gap:4px;min-width:0;max-width:180px;padding:5px;border:1px solid rgba(148,163,184,.35);border-radius:9px;background:rgba(255,255,255,.82);cursor:pointer;text-align:start;overflow:hidden}
+.app-online-chat-file img,.app-chat-pdf-preview{width:100%;height:96px;object-fit:cover;border-radius:6px;background:#e2e8f0}
+.app-online-chat-file img{object-fit:cover}
+.app-chat-pdf-preview{overflow:hidden}
+.app-chat-pdf-preview iframe{width:100%;height:100%;border:0;pointer-events:none;background:#fff}
+.app-chat-file-icon{display:grid;place-items:center;width:100%;height:96px;border-radius:6px;background:#f1f5f9;color:#64748b;font-size:27px}
+.app-online-chat-file .file-name{display:block;max-width:100%;font-size:10px;line-height:1.35;color:#475569;overflow-wrap:anywhere}
+.app-message-inline-file[role="button"]{cursor:pointer}
+.app-message-inline-file[role="button"]:focus,.app-online-chat-file:focus{outline:2px solid var(--brand);outline-offset:2px}
+@media(max-width:520px){.app-quick-chat-composer,.app-online-chat-composer{gap:5px;padding:7px}.app-chat-attach-button,.app-chat-send-button{min-height:33px;padding:6px 7px;font-size:10px;gap:4px}.app-chat-compose-input{font-size:12px;padding:8px}.app-online-chat-files{grid-template-columns:repeat(auto-fill,minmax(94px,1fr))}.app-online-chat-file img,.app-chat-pdf-preview,.app-chat-file-icon{height:82px}}
+</style>
 </head>
 <body class="bg-gray-100 min-h-screen">
   <div id="root"><div class="min-h-screen grid place-items-center text-slate-600">Loading…</div></div>
@@ -814,6 +838,9 @@ function App(){
   const [onlineUsersOpen,setOnlineUsersOpen] = useState(false);
   const [onlineChatUid,setOnlineChatUid] = useState('');
   const [onlineChatDraft,setOnlineChatDraft] = useState('');
+  const [onlineChatPendingAttachments,setOnlineChatPendingAttachments] = useState([]);
+  const [messageAttachmentPreviewUrls,setMessageAttachmentPreviewUrls] = useState({});
+  const messageAttachmentPreviewCacheRef=useRef({});
   const [onlineChatSending,setOnlineChatSending] = useState(false);
   const onlineChatScrollRef=useRef(null);
   const [userAdminSearch,setUserAdminSearch] = useState('');
@@ -3785,6 +3812,18 @@ function App(){
     return latinDigits(body).split(/(@[^\s@#&]+|#[^\s@#&]+|&\[[^\]]+\])/g).map((part,index)=>{const tokenClass=contextTokenClass(part);return tokenClass?<span key={index} className={tokenClass}>{part}</span>:part;});
   }
 
+  function renderMessageAttachmentItems(messageId,compact=false){
+    const files=recordAttachmentPanels[recordAttachmentKey('message',messageId)]?.attachments||[];
+    if(!files.length)return null;
+    return <div className={compact?'app-online-chat-files':'app-message-inline-files'}>{files.map(file=>{
+      const mime=String(file.mimeType||'').toLowerCase(),cacheKey=String(messageId)+'::'+String(file.id||''),previewUrl=file.thumbnailUrl||messageAttachmentPreviewUrls[cacheKey]||'';
+      const icon=mime.includes('pdf')?'fa-file-pdf':mime.includes('spreadsheet')||mime.includes('excel')?'fa-file-excel':mime.includes('word')?'fa-file-word':mime.startsWith('image/')?'fa-file-image':'fa-file-lines';
+      return <div key={file.id||cacheKey} role="button" tabIndex={0} className={compact?'app-online-chat-file':'app-message-inline-file'} title={rtl?'اضغط لفتح المرفق بالحجم الكامل':'Click to open the full attachment'} onClick={()=>void openAttachmentFile(file,false,'message',messageId,'side')} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();void openAttachmentFile(file,false,'message',messageId,'side');}}}>
+        {mime.startsWith('image/')&&previewUrl?<img src={previewUrl} alt={file.fileName||'attachment'}/>:mime==='application/pdf'&&previewUrl?<div className="app-chat-pdf-preview"><iframe src={previewUrl+'#toolbar=0&navpanes=0&scrollbar=0'} title={file.fileName||'PDF preview'} tabIndex={-1}/></div>:<span className="app-chat-file-icon"><i className={'fas '+icon}></i></span>}
+        <span className="file-name">{file.fileName||(rtl?'مرفق':'Attachment')}</span>
+      </div>;
+    })}</div>;
+  }
   function toggleMessageExpansion(id){setExpandedMessageIds(old=>({...old,[id]:!old[id]}));}
   function startMessageReply(original){
     setReplyPendingAttachments([]);
@@ -3915,6 +3954,18 @@ function App(){
     }
   }
 
+  function selectChatAttachments(event,setFiles){
+    const input=event.target,selected=Array.from(input.files||[]);
+    if(!selected.length)return;
+    if(!hasPermission('attachments','add')){input.value='';return alert(rtl?'ليس لديك صلاحية إضافة المرفقات.':'You do not have permission to attach files.');}
+    const allowed=new Set(['pdf','jpg','jpeg','png','webp','doc','docx','xls','xlsx','csv','txt']);
+    const valid=selected.filter(file=>file.size<=20*1024*1024&&allowed.has(String(file.name||'').split('.').pop().toLowerCase()));
+    const rejected=selected.filter(file=>!valid.includes(file));
+    if(rejected.length)alert((rtl?'تم تجاهل ملفات غير مدعومة أو أكبر من 20 MB: ':'Skipped unsupported files or files larger than 20 MB: ')+rejected.map(file=>file.name).join('، '));
+    setFiles(old=>[...old,...valid.filter(file=>!old.some(existing=>existing.name===file.name&&existing.size===file.size&&existing.lastModified===file.lastModified))]);
+    input.value='';
+  }
+
   function openOnlineChat(uid){
     if(!hasPermission('messages','view'))return alert(rtl?'ليس لديك صلاحية عرض الرسائل.':'You do not have permission to view messages.');
     const target=userDirectory.find(u=>u.uid===uid&&u.status==='active');
@@ -3922,6 +3973,7 @@ function App(){
     setOnlineUsersOpen(false);
     setMessageShortcutOpen(false);
     setOnlineChatDraft('');
+    setOnlineChatPendingAttachments([]);
     setOnlineChatUid(uid);
     setTab('messages');
   }
@@ -3946,6 +3998,15 @@ function App(){
       updates['messages/'+currentUser.uid+'/'+messageId]={...base,id:messageId,recipientUid:target.uid,mailboxUid:currentUser.uid,read:true,copyType:'sent'};
       await db.ref().update(updates);
       setOnlineChatDraft('');
+      if(onlineChatPendingAttachments.length){
+        try{
+          await uploadInlineAttachments(onlineChatPendingAttachments,'message',messageId,setOnlineChatPendingAttachments);
+          await refreshRecordAttachmentPanel('message',messageId);
+        }catch(attachmentError){
+          setOnlineChatPendingAttachments([]);
+          alert((rtl?'تم إرسال الرسالة، لكن تعذر رفع أحد المرفقات: ':'Message sent, but one or more attachments could not be uploaded: ')+String(attachmentError.message||attachmentError));
+        }
+      }
     }catch(error){alert(firebaseErrorMessage(error,tr));}
     finally{setOnlineChatSending(false);}
   }
@@ -4200,6 +4261,35 @@ function App(){
     if(recipientIds.length!==1)return false;
     return (m.senderUid===currentUser.uid&&recipientIds[0]===onlineChatUid)||(m.senderUid===onlineChatUid&&recipientIds[0]===currentUser.uid);
   }).slice().sort((a,b)=>Number(a.createdAt||0)-Number(b.createdAt||0)):[];
+  useEffect(()=>{
+    if(!onlineChatUid||!hasPermission('attachments','view'))return;
+    onlineChatMessages.slice(-30).forEach(item=>{
+      const messageId=item.id||item.messageId;if(!messageId)return;
+      const key=recordAttachmentKey('message',messageId),panel=recordAttachmentPanels[key];
+      if(!panel?.loaded&&!panel?.loading)void refreshRecordAttachmentPanel('message',messageId);
+    });
+  },[onlineChatUid,onlineChatMessages.length,currentUser?.uid]);
+  useEffect(()=>{
+    if(!onlineChatUid||!hasPermission('attachments','view'))return;
+    onlineChatMessages.slice(-30).forEach(item=>{
+      const messageId=item.id||item.messageId;if(!messageId)return;
+      const files=recordAttachmentPanels[recordAttachmentKey('message',messageId)]?.attachments||[];
+      files.forEach(file=>{
+        const mime=String(file.mimeType||'').toLowerCase();
+        if(!(mime.startsWith('image/')||mime==='application/pdf'))return;
+        const cacheKey=String(messageId)+'::'+String(file.id||'');
+        if(messageAttachmentPreviewCacheRef.current[cacheKey])return;
+        messageAttachmentPreviewCacheRef.current[cacheKey]='loading';
+        const path='/attachments/file?entityType=message&entityId='+encodeURIComponent(messageId)+'&id='+encodeURIComponent(file.id);
+        void attachmentWorkerRequest(path,'GET',undefined,{},false,true).then(blob=>{
+          const url=URL.createObjectURL(blob);
+          messageAttachmentPreviewCacheRef.current[cacheKey]=url;
+          setMessageAttachmentPreviewUrls(old=>({...old,[cacheKey]:url}));
+        }).catch(error=>{messageAttachmentPreviewCacheRef.current[cacheKey]='error';console.warn('Message attachment thumbnail could not be loaded:',error);});
+      });
+    });
+  },[onlineChatUid,onlineChatMessages.length,recordAttachmentPanels,currentUser?.uid]);
+  useEffect(()=>()=>{Object.values(messageAttachmentPreviewCacheRef.current).forEach(url=>{if(typeof url==='string'&&url.startsWith('blob:'))URL.revokeObjectURL(url);});},[]);
   useEffect(()=>{
     if(!onlineChatUid||!currentUser?.uid)return;
     onlineChatMessages.forEach(m=>{
@@ -5560,7 +5650,7 @@ function App(){
 <div className="flex flex-wrap gap-2 mt-2"><span className="text-xs rounded-full bg-white/80 border px-2 py-1">{m.visibility==='public'?(rtl?'رسالة عامة':'Public'):(rtl?'رسالة خاصة':'Private')}</span><span className="text-xs rounded-full bg-white/80 border px-2 py-1">{outgoing?(rtl?'مرسلة':'Sent'):(m.read===true?(rtl?'مقروءة':'Read'):(rtl?'غير مقروءة':'Unread'))}</span></div>
 {m.replyTo&&<div className="app-message-reply-quote mt-3 rounded-lg border-s-4 p-3 bg-white/75"><div className="flex items-center gap-2 text-xs font-bold text-gray-500"><i className="fas fa-reply"></i><span>{rtl?'ردًا على رسالة':'Replying to'}</span></div><b className="block text-xs mt-1">{m.replyTo.senderName||(rtl?'الرسالة الأصلية':'Original message')}</b><p className="text-sm mt-1 whitespace-pre-wrap break-words text-gray-700">{renderMessageBody(m.replyTo.body)}</p></div>}
 <div className="app-message-subject font-bold mt-2">{m.subject||''}</div><div className="app-message-body whitespace-pre-wrap mt-1">{expandedMessageIds[m.id||m.messageId]||String(m.body||'').length<=420?renderMessageBody(m.body):<>{renderMessageBody(String(m.body||'').slice(0,420).replace(/\s+\S*$/,''))}…</>} </div>{String(m.body||'').length>420&&<button type="button" className="app-message-more" onClick={()=>toggleMessageExpansion(m.id||m.messageId)}>{expandedMessageIds[m.id||m.messageId]?(rtl?'عرض أقل':'See less'):(rtl?'المزيد':'See more')}</button>}{renderMessageReactions(m)}
-{(()=>{const files=recordAttachmentPanels[recordAttachmentKey('message',m.id||m.messageId)]?.attachments||[];return files.length>0?<div className="app-message-inline-files">{files.map(file=><button type="button" key={file.id} className="app-message-inline-file text-start" onClick={()=>void openAttachmentFile(file,false,'message',m.id||m.messageId,'side')}>{['image/jpeg','image/png','image/webp'].includes(String(file.mimeType||'').toLowerCase())&&file.thumbnailUrl?<img src={file.thumbnailUrl} alt={file.fileName||'attachment'}/>:<i className={'fas '+(String(file.mimeType||'').includes('pdf')?'fa-file-pdf':'fa-paperclip')+' text-lg text-blue-600'}></i>}<span className="file-name">{file.fileName|| (rtl?'مرفق':'Attachment')}</span></button>)}</div>:null;})()}
+{renderMessageAttachmentItems(m.id||m.messageId,false)}
 {((m.linkedProjects&&m.linkedProjects.length)||(m.linkedTasks&&m.linkedTasks.length))&&<div className="flex flex-wrap gap-2 mt-3">{(m.linkedProjects||[]).map((ref,index)=><button type="button" key={'project-'+(ref.code||index)} onClick={()=>{if(ref.code){setSelectedProjectCode(ref.code);setTab('projectDetail');}}} className="rounded-full bg-blue-50 border border-blue-200 text-blue-800 px-3 py-1 text-xs font-bold"><i className="fas fa-hashtag me-1"></i>{ref.name||ref.code}</button>)}{(m.linkedTasks||[]).map((ref,index)=><button type="button" key={'task-'+(ref.id||index)} onClick={()=>{setTab('tasks');}} className="rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 px-3 py-1 text-xs font-bold"><i className="fas fa-list-check me-1"></i>{ref.title||ref.id}</button>)}</div>}
 <div className="app-message-actions flex flex-wrap gap-2 mt-3"><button type="button" onClick={()=>startMessageReply(m)} className="text-xs px-3 py-1 rounded-lg bg-indigo-50 text-indigo-700 font-bold"><i className="fas fa-reply me-1"></i>{rtl?'رد':'Reply'}</button><button type="button" onClick={()=>forwardMessage(m)} className="text-xs px-3 py-1 rounded-lg bg-gray-100">{rtl?'إعادة توجيه':'Forward'}</button>{m.senderUid===currentUser.uid&&m.copyType==='sent'&&hasPermission('messages','edit')&&<button type="button" onClick={()=>editInternalMessage(m)} className="text-xs px-3 py-1 rounded-lg bg-amber-50 text-amber-800">{rtl?'تعديل':'Edit'}</button>}{hasPermission('messages','delete')&&<button type="button" onClick={()=>void deleteInternalMessage(m)} className="text-xs px-3 py-1 rounded-lg bg-rose-50 text-rose-700">{rtl?'حذف':'Delete'}</button>}{renderTaskAttachmentPicker(m.id)}<button type="button" onClick={()=>convertMessageToTask(m)} className="text-xs px-3 py-1 rounded-lg bg-blue-50 text-blue-700">{rtl?'تحويل إلى مهمة':'Convert to task'}</button></div>
 {replyingToMessage&&replyingToMessage.id===m.id&&<form onSubmit={sendMessageReply} className="app-message-reply-composer mt-4 rounded-xl border-2 border-indigo-300 bg-white p-3 space-y-3">
@@ -5574,12 +5664,13 @@ function App(){
 </article>;})}</div>
             <section className="rounded-2xl border border-teal-200 bg-white p-3 md:p-4 space-y-3 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-2"><div><b className="text-sm text-teal-800">{rtl?'محادثة سريعة':'Quick chat'}</b><p className="text-xs text-gray-500 mt-1">{rtl?'اكتب الرسالة مباشرة هنا دون فتح نموذج إنشاء الرسالة التقليدي.':'Write directly here without opening the classic compose form.'}</p></div><span className="text-xs rounded-full bg-teal-50 text-teal-700 px-3 py-1">{rtl?'محادثة مباشرة':'Direct chat'}</span></div>
-              <form onSubmit={sendQuickChatMessage} className="space-y-2">
-                <div className="relative"><textarea rows="3" className="w-full border rounded-xl p-3 focus:ring-2 focus:ring-teal-200" placeholder={rtl?'ابدأ بـ @ لاختيار المستلم، ثم # لاختيار مشروع، و& لاختيار مهمة...':'Start with @ for a person, # for a project, and & for a task...'} value={chatDraft} onChange={e=>setChatDraft(e.target.value)} onKeyDown={handleMessageComposerKeyDown}></textarea>
+              <form onSubmit={sendQuickChatMessage} className="app-quick-chat-composer">
+                <div className="app-chat-compose-input-wrap">
+                  <textarea rows="1" className="app-chat-compose-input" placeholder={rtl?'اكتب الرسالة واستخدم @ لاختيار المستلم':'Write a message and use @ to choose recipients'} value={chatDraft} onChange={e=>setChatDraft(e.target.value)} onKeyDown={handleMessageComposerKeyDown}></textarea>
                   {chatMentionSuggestions.length>0&&<div className="absolute z-40 top-full inset-x-0 max-h-60 overflow-y-auto bg-white border rounded-xl shadow-xl">{chatMentionSuggestions.map(item=><button type="button" key={item.type+':'+item.id} onClick={()=>insertChatMention(item)} className="w-full flex items-center justify-between gap-3 p-3 text-start hover:bg-teal-50 border-b last:border-0"><span className="min-w-0"><b className="block truncate">{item.label}</b><small className="block text-gray-500">{item.detail}</small></span><span className={'rounded-lg px-2 py-1 text-xs font-bold '+(item.type==='user'?'bg-violet-50 text-violet-700':item.type==='project'?'bg-blue-50 text-blue-700':'bg-emerald-50 text-emerald-700')}>{item.type==='user'?'@':item.type==='project'?'#':'&'}</span></button>)}</div>}
                 </div>
-                {renderInlineAttachmentPicker(chatPendingAttachments,setChatPendingAttachments,'')}
-                <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-gray-500">{rtl?'@ يحدد مستلمًا (ويمكن أكثر من شخص)، # يربط الرسالة بمشروع جارٍ، و& يربطها بإحدى مهامك.':'@ selects one or more recipients, # links a current project, and & links one of your tasks.'}</p><button type="submit" disabled={chatSending||!chatDraft.trim()} className="shrink-0 rounded-xl bg-teal-600 text-white px-5 py-2.5 font-bold disabled:opacity-50"><i className="fas fa-paper-plane me-2"></i>{chatSending?(rtl?'جارٍ الإرسال...':'Sending...'):(rtl?'إرسال':'Send')}</button></div>
+                {hasPermission('attachments','add')&&<label className="app-chat-attach-button" title={rtl?'إرفاق صورة أو ملف':'Attach an image or file'}><i className="fas fa-paperclip"></i><span>{rtl?'مرفق':'Attached'}</span>{chatPendingAttachments.length>0&&<b>{chatPendingAttachments.length}</b>}<input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt" className="hidden" onChange={e=>selectChatAttachments(e,setChatPendingAttachments)}/></label>}
+                <button type="submit" disabled={chatSending||!chatDraft.trim()} className="app-chat-send-button"><i className={'fas '+(chatSending?'fa-spinner fa-spin':'fa-paper-plane')}></i><span>{chatSending?(rtl?'جارٍ الإرسال...':'Sending...'):(rtl?'إرسال':'Send')}</span></button>
               </form>
             </section>
           </div></section>
@@ -5955,9 +6046,13 @@ function App(){
           <section className="app-online-chat-window">
             <header className="app-online-chat-header"><div className="flex items-center gap-3 min-w-0"><span className="app-online-avatar">{String(onlineChatUser.fullName||onlineChatUser.username||'?').trim().slice(0,1)}</span><div className="min-w-0"><b className="block truncate">{onlineChatUser.fullName||onlineChatUser.username}</b><small className="flex items-center gap-1 text-white/80"><span className="app-online-led is-online"></span>{rtl?'متصل الآن':'Online now'}</small></div></div><button type="button" onClick={()=>setOnlineChatUid('')} title={rtl?'إغلاق المحادثة':'Close chat'}><i className="fas fa-times"></i></button></header>
             <div ref={onlineChatScrollRef} className="app-online-chat-history">
-              {onlineChatMessages.length===0?<p className="text-center text-sm text-gray-500 py-8">{rtl?'ابدأ محادثة خاصة مع ':'Start a private conversation with '}{onlineChatUser.fullName||onlineChatUser.username}</p>:onlineChatMessages.map(item=>{const outgoing=item.senderUid===currentUser.uid;return <div key={item.id} className={'app-online-chat-bubble '+(outgoing?'is-outgoing':'is-incoming')}><p>{item.body}</p><small>{item.date||''}</small></div>;})}
+              {onlineChatMessages.length===0?<p className="text-center text-sm text-gray-500 py-8">{rtl?'ابدأ محادثة خاصة مع ':'Start a private conversation with '}{onlineChatUser.fullName||onlineChatUser.username}</p>:onlineChatMessages.map(item=>{const outgoing=item.senderUid===currentUser.uid,messageId=item.id||item.messageId;return <div key={messageId} className={'app-online-chat-bubble '+(outgoing?'is-outgoing':'is-incoming')}><p>{item.body}</p>{renderMessageAttachmentItems(messageId,true)}<small>{item.date||''}</small></div>;})}
             </div>
-            <form onSubmit={sendOnlineChatMessage} className="app-online-chat-composer"><textarea rows="2" value={onlineChatDraft} onChange={e=>setOnlineChatDraft(e.target.value)} onKeyDown={handleMessageComposerKeyDown} placeholder={rtl?'اكتب رسالة خاصة...':'Write a private message...'}></textarea><button type="submit" disabled={onlineChatSending||!onlineChatDraft.trim()||!hasPermission('messages','add')} title={rtl?'إرسال للطرف الآخر فقط':'Send only to this person'}><i className={'fas '+(onlineChatSending?'fa-spinner fa-spin':'fa-paper-plane')}></i></button></form>
+            <form onSubmit={sendOnlineChatMessage} className="app-online-chat-composer">
+              <textarea rows="1" className="app-chat-compose-input" value={onlineChatDraft} onChange={e=>setOnlineChatDraft(e.target.value)} onKeyDown={handleMessageComposerKeyDown} placeholder={rtl?'اكتب رسالة خاصة...':'Write a private message...'}></textarea>
+              {hasPermission('attachments','add')&&<label className="app-chat-attach-button" title={rtl?'إرفاق صورة أو ملف':'Attach an image or file'}><i className="fas fa-paperclip"></i><span>{rtl?'مرفق':'Attached'}</span>{onlineChatPendingAttachments.length>0&&<b>{onlineChatPendingAttachments.length}</b>}<input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt" className="hidden" onChange={e=>selectChatAttachments(e,setOnlineChatPendingAttachments)}/></label>}
+              <button type="submit" className="app-chat-send-button" disabled={onlineChatSending||(!onlineChatDraft.trim()&&!onlineChatPendingAttachments.length)||!hasPermission('messages','add')} title={rtl?'إرسال للطرف الآخر فقط':'Send only to this person'}><i className={'fas '+(onlineChatSending?'fa-spinner fa-spin':'fa-paper-plane')}></i><span>{onlineChatSending?(rtl?'جارٍ الإرسال...':'Sending...'):(rtl?'إرسال':'Send')}</span></button>
+            </form>
             <div className="app-online-chat-footnote">{rtl?'هذه المحادثة خاصة بينك وبين هذا المستخدم فقط.':'This conversation is private between you and this user only.'}</div>
           </section>
         </div>}
