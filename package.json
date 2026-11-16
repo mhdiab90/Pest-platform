@@ -1,0 +1,22 @@
+{
+  "name": "pest-platform",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Pest Platform web application and Android wrapper",
+  "scripts": {
+    "build:mobile": "node scripts/build-mobile.mjs",
+    "check:crm": "node --check pest-crm-module.js",
+    "check:bridge": "node --check capacitor-bridge.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/filesystem": "^8.0.0",
+    "@capacitor/local-notifications": "^8.0.0",
+    "@capacitor/share": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
+    "esbuild": "^0.25.0"
+  }
+}
