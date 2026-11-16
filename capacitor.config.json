@@ -1,0 +1,9 @@
+{
+  "appId": "com.mhdiab90.pestplatform",
+  "appName": "Pest Platform",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "android": {
+    "allowMixedContent": false
+  }
+}
