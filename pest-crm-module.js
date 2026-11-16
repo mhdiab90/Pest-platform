@@ -259,7 +259,7 @@
     const bounds=range();
     const inPeriod=value=>{const stamp=dateMs(value);return stamp>0&&stamp>=bounds[0]&&stamp<=bounds[1];};
     const toEgp=(amount,currency)=>String(currency||'EGP').toUpperCase()==='USD'?(Number(amount)||0)*(Number(usdRate)||0):(Number(amount)||0);
-    const displayAmount=(amount,currency)=>reportCurrency==='EGP'?fmt(toEgp(amount,currency),'EGP'):fmt(amount,currency||'EGP');
+    const displayAmount=(amount)=>reportCurrency==='USD'?fmt((Number(amount)||0)/Math.max(0.000001,Number(usdRate)||0.000001),'USD'):fmt(Number(amount)||0,'EGP');
     const sectors=Array.from(new Set(scopedCustomers.map(x=>clean(x.sector)).filter(Boolean))).sort();
     const filteredCustomers=scopedCustomers.filter(c=>{
       const hay=[c.companyName,c.contactPerson,c.phone,c.email,c.sector,asArray(c.tags).join(' ')].join(' ').toLowerCase();
@@ -393,8 +393,8 @@
         metric(t('عملاء جدد بالفترة','New customers in period'),periodCustomers.length),
         metric(t('زيارات بالفترة','Visits in period'),periodVisits.length),
         metric(t('العروض بالفترة','Offers in period'),periodOffers.length),
-        metric(t('قيمة العروض','Offer value'),displayAmount(totalValue,'EGP')),
-        metric(t('قيمة الصفقات المحولة','Converted deal value'),displayAmount(wonValue,'EGP')),
+        metric(t('قيمة العروض','Offer value'),displayAmount(totalValue)),
+        metric(t('قيمة الصفقات المحولة','Converted deal value'),displayAmount(wonValue)),
         metric(t('معدل الفوز','Win rate'),winRate.toFixed(1)+'%'),
         metric(t('عروض تحتاج متابعة','Stale offers'),staleOffers.length)
       ),
