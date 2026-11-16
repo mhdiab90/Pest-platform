@@ -51,6 +51,7 @@ jobs:
         run: |
           node --check pest-crm-module.js
           node --check capacitor-bridge.mjs
+          node .github/scripts/check-app-babel.mjs
 
       - name: Prepare local web assets
         run: npm run build:mobile
