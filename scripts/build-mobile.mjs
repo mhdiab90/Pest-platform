@@ -1,5 +1,5 @@
-import { mkdir, copyFile, access } from 'node:fs/promises';
-import { build } from 'esbuild';
+import { mkdir, copyFile, access, readFile, writeFile } from 'node:fs/promises';
+import { build, transform } from 'esbuild';
 
 const required = ['index.html', 'pest-crm-module.js', 'capacitor-bridge.js', 'capacitor-bridge.mjs'];
 for (const file of required) {
@@ -12,15 +12,24 @@ await copyFile('index.html', 'www/index.html');
 await copyFile('pest-crm-module.js', 'www/pest-crm-module.js');
 await copyFile('capacitor-bridge.js', 'www/capacitor-bridge.js');
 
-await build({
-  entryPoints: ['capacitor-bridge.mjs'],
-  bundle: true,
-  platform: 'browser',
-  format: 'iife',
-  target: ['es2020'],
-  outfile: 'www/capacitor-bridge.js',
-  sourcemap: false,
-  minify: true
+let html = await readFile('www/index.html', 'utf8');
+const babelScript = html.match(/<script type="text\\/babel">([\\s\\S]*?)<\\/script>/i);
+if (!babelScript) throw new Error('Could not locate the main Babel application script in index.html.');
+const compiled = await transform(babelScript[1], {
+  loader: 'jsx', target: 'es2020', minify: true, legalComments: 'none'
 });
+html = html.replace(babelScript[0], '<script>' + compiled.code + '</script>');
+html = html.replace(/\\s*<script[^>]+babel-standalone[^>]*><\\/script>/i, '');
+for (const url of ['xlsx-js-style', 'pdf.js/3.11.174/pdf.min.js', 'pdf-lib/1.17.1/pdf-lib.min.js']) {
+  const escaped = url.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
+  const re = new RegExp('(<script[^>]+src="[^"]*' + escaped + '[^"]*"[^>]*)(>)', 'i');
+  html = html.replace(re, (match, start, end) => /\\sdefer\\b/i.test(start) ? match : start + ' defer' + end);
+}
+await writeFile('www/index.html', html, 'utf8');
 
-console.log('Prepared www/ assets and bundled the native Capacitor bridge.');
+await build({
+  entryPoints: ['capacitor-bridge.mjs'], bundle: true, platform: 'browser',
+  format: 'iife', target: ['es2020'], outfile: 'www/capacitor-bridge.js',
+  sourcemap: false, minify: true
+});
+console.log('Optimized mobile assets: JSX precompiled, Babel runtime removed, reports libraries deferred.');
