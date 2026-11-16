@@ -1018,6 +1018,10 @@ function App(){
   const [cashProjectFilter,setCashProjectFilter] = useState('all');
   const [cashFrom,setCashFrom] = useState('');
   const [cashTo,setCashTo] = useState('');
+  const [dashboardCurrencyFilter,setDashboardCurrencyFilter] = useState('EGP');
+  const [dashboardTrendGrouping,setDashboardTrendGrouping] = useState('month');
+  const [dashboardChartHidden,setDashboardChartHidden] = useState({});
+  const [dashboardChartHover,setDashboardChartHover] = useState('');
   const [dashboardReportKey,setDashboardReportKey] = useState('');
   const [dashboardReportTitle,setDashboardReportTitle] = useState('');
   const [dashboardReportSearch,setDashboardReportSearch] = useState('');
@@ -2417,6 +2421,66 @@ function App(){
   const completedProjectCount=selectedProjectsForCash.filter(isProjectCompleted).length;
   const delayedProjectCount=selectedProjectsForCash.filter(p=>!isProjectCompleted(p) && p.expectedEndDate && String(p.expectedEndDate)<todayKey).length;
   const activeProjectCount=selectedProjectsForCash.length-completedProjectCount;
+
+  // Dashboard analytics are derived from the same project/date filters shown above.
+  // Monetary charts always use one selected currency; currencies are never silently added together.
+  const dashboardSelectedCurrency=currencyKeys.includes(dashboardCurrencyFilter)?dashboardCurrencyFilter:(currencyKeys[0]||'EGP');
+  const dashboardCollectionsRows=[...cashAmountRows(cashEventsPeriod.filter(e=>e.type==='customer_collection')),...legacyReceiptsPeriod].filter(row=>String(row.currency||'EGP').toUpperCase()===dashboardSelectedCurrency);
+  const dashboardPaymentsRows=[...cashAmountRows(cashEventsPeriod.filter(e=>e.type==='supplier_payment')),...legacyPaymentsPeriod].filter(row=>String(row.currency||'EGP').toUpperCase()===dashboardSelectedCurrency);
+  const dashboardCollectionsTotal=dashboardCollectionsRows.reduce((sum,row)=>sum+Number(row.amount||0),0);
+  const dashboardPaymentsTotal=dashboardPaymentsRows.reduce((sum,row)=>sum+Number(row.amount||0),0);
+  const dashboardNetCash=dashboardCollectionsTotal-dashboardPaymentsTotal;
+  const dashboardReceivableOpen=Number(receivablesMap[dashboardSelectedCurrency]||0);
+  const dashboardPayableOpen=Number(payablesMap[dashboardSelectedCurrency]||0);
+  const dashboardTrendSource=[...dashboardCollectionsRows.map(row=>({...row,_dashboardSeries:'in'})),...dashboardPaymentsRows.map(row=>({...row,_dashboardSeries:'out'}))];
+  const dashboardTrendMap={};
+  dashboardTrendSource.forEach(row=>{
+    const dayKey=rowDateKey(row);if(!dayKey)return;
+    const date=new Date(dayKey+'T12:00:00');
+    let key=dayKey,label=dayKey;
+    if(dashboardTrendGrouping==='week'){
+      const monday=new Date(date);monday.setDate(monday.getDate()-((monday.getDay()+6)%7));
+      key=monday.getFullYear()+'-'+String(monday.getMonth()+1).padStart(2,'0')+'-'+String(monday.getDate()).padStart(2,'0');
+      label=(rtl?'أسبوع ':'Week ')+monday.toLocaleDateString(rtl?'ar-EG':'en-GB',{day:'2-digit',month:'short'});
+    }else if(dashboardTrendGrouping==='month'){
+      key=dayKey.slice(0,7);label=date.toLocaleDateString(rtl?'ar-EG':'en-US',{month:'short',year:'2-digit'});
+    }else if(dashboardTrendGrouping==='quarter'){
+      const quarter=Math.floor(date.getMonth()/3)+1;key=date.getFullYear()+'-Q'+quarter;label=(rtl?'الربع ':'Q')+quarter+' '+date.getFullYear();
+    }else{
+      key=String(date.getFullYear());label=key;
+    }
+    if(!dashboardTrendMap[key])dashboardTrendMap[key]={key,label,in:0,out:0};
+    dashboardTrendMap[key][row._dashboardSeries]+=Number(row.amount||0);
+  });
+  const dashboardTrendRows=Object.values(dashboardTrendMap).sort((a,b)=>a.key.localeCompare(b.key)).slice(-12);
+  const dashboardTrendMax=Math.max(1,...dashboardTrendRows.flatMap(row=>[row.in,row.out]));
+  const dashboardTrendPoints=dashboardTrendRows.map((row,index)=>{
+    const x=58+(dashboardTrendRows.length<=1?0:index*(548/(dashboardTrendRows.length-1)));
+    const yIn=202-(row.in/dashboardTrendMax)*158,yOut=202-(row.out/dashboardTrendMax)*158;
+    return {...row,x,yIn,yOut};
+  });
+  const dashboardTrendInPath=dashboardTrendPoints.map(point=>point.x+','+point.yIn).join(' ');
+  const dashboardTrendOutPath=dashboardTrendPoints.map(point=>point.x+','+point.yOut).join(' ');
+  const dashboardProjectChartRows=selectedProjectsForCash.filter(project=>String(project.currency||'EGP').toUpperCase()===dashboardSelectedCurrency).slice().sort((a,b)=>Number(b.amount||0)-Number(a.amount||0)).slice(0,8);
+  const dashboardProjectChartMax=Math.max(1,...dashboardProjectChartRows.flatMap(project=>[Number(project.amount||0),Number(project.costBudget||0)]));
+  const dashboardCompletedCount=selectedProjectsForCash.filter(isProjectCompleted).length;
+  const dashboardDelayedCount=selectedProjectsForCash.filter(project=>!isProjectCompleted(project)&&project.expectedEndDate&&String(project.expectedEndDate)<todayKey).length;
+  const dashboardNormalActiveCount=Math.max(0,selectedProjectsForCash.length-dashboardCompletedCount-dashboardDelayedCount);
+  const dashboardStatusTotal=selectedProjectsForCash.length||1;
+  const dashboardMixSegments=[
+    {key:'in',label:rtl?'التحصيلات':'Collections',value:dashboardCollectionsTotal,color:'#0f9f79',report:'actualCashIn'},
+    {key:'out',label:rtl?'المدفوعات':'Payments',value:dashboardPaymentsTotal,color:'#e35d6a',report:'actualCashOut'},
+    {key:'receivable',label:rtl?'مستحقات العملاء':'Receivables',value:dashboardReceivableOpen,color:'#3897d3',report:'receivables'},
+    {key:'payable',label:rtl?'التزامات الموردين':'Payables',value:dashboardPayableOpen,color:'#e6a23c',report:'payables'}
+  ].filter(item=>item.value>0);
+  const dashboardMixTotal=dashboardMixSegments.reduce((sum,item)=>sum+item.value,0);
+  const dashboardMixCircumference=2*Math.PI*68;
+  let dashboardMixOffset=0;
+  const dashboardMixArcs=dashboardMixSegments.map(item=>{
+    const length=dashboardMixTotal?item.value/dashboardMixTotal*dashboardMixCircumference:0;
+    const arc={...item,length,offset:dashboardMixOffset};dashboardMixOffset+=length;return arc;
+  });
+  const toggleDashboardChartSeries=key=>setDashboardChartHidden(old=>({...old,[key]:!old[key]}));
   function openDashboardReport(key,title){if(key==='users'&&isAdmin){navigateToTab('userManagement');return;}if(key==='clients'||key==='vendors'){navigateToTab('master');return;}setDashboardReportKey(key);setDashboardReportTitle(title||tr('reportSummary'));setDashboardReportSearch('');}
   const dashboardReportRows=(()=>{
     if(!dashboardReportKey)return [];
