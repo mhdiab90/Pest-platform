@@ -220,17 +220,6 @@
             ".validate": "!newData.exists() || (newData.hasChildren(['id','customerId','visitDate','createdBy','createdAt']) && newData.child('id').val() === $visitId && newData.child('customerId').val() === $customerId && newData.child('createdBy').isString() && newData.child('createdAt').isNumber())"
           }
         }
-      },
-      "auditLogs": {
-        "$logId": {
-          ".write": "auth != null && root.child('users').child(auth.uid).child('status').val() === 'active' && !data.exists() && newData.exists() && newData.child('id').val() === $logId && newData.child('uid').val() === auth.uid && newData.child('action').isString() && newData.child('createdAt').isNumber()",
-          ".validate": "!newData.exists() || (newData.hasChildren(['id','uid','action','createdAt']) && newData.child('id').val() === $logId && newData.child('uid').val() === auth.uid)"
-        },
-        ".indexOn": [
-          "createdAt",
-          "uid",
-          "entityType"
-        ]
       }
     }
   }
