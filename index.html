@@ -5038,11 +5038,31 @@ function App(){
       const logo=companyInfo.logo?'<img class="logo" src="'+esc(companyInfo.logo)+'" alt="Logo">':'';
       const metricsHtml=metrics.map(metric=>'<div class="metric"><span>'+esc(metric.label)+'</span><b>'+esc(metric.value)+'</b></div>').join('');
       const filterHtml=report.filters.length?'<div class="filters">'+report.filters.map(filter=>'<span><b>'+esc(filter.label)+':</b> '+esc(filter.value)+'</span>').join('')+'</div>':'<div class="filters"><span>'+(rtl?'بدون فلاتر إضافية':'No additional filters')+'</span></div>';
-      const detailsHtml=datasets.map(dataset=>{
+
+      const detailsHtml=datasets.map((dataset,datasetIndex)=>{
         const columns=[];dataset.rows.forEach(row=>Object.keys(row).forEach(key=>{if(!columns.includes(key))columns.push(key);}));
-        const tableHeader=columns.length?'<thead><tr>'+columns.map(column=>'<th>'+esc(column)+'</th>').join('')+'</tr></thead>':'';
-        const tableBody=dataset.rows.length?'<tbody>'+dataset.rows.map(row=>'<tr>'+columns.map(column=>'<td>'+esc(row[column]===undefined?'':row[column])+'</td>').join('')+'</tr>').join('')+'</tbody>':'<tbody><tr><td colspan="'+Math.max(1,columns.length)+'" class="empty">'+(rtl?'لا توجد سجلات ضمن نطاق التقرير':'No records within the report scope')+'</td></tr></tbody>';
-        return '<section class="detail-section"><div class="section-title"><h2>'+esc(dataset.name)+'</h2><span>'+dataset.rows.length+' '+(rtl?'سجل':'records')+'</span></div><div class="table-wrap"><table>'+tableHeader+tableBody+'</table></div></section>';
+        const emptyMessage='<div class="empty-state">'+(rtl?'لا توجد سجلات ضمن نطاق التقرير':'No records within the selected report scope')+'</div>';
+        let content=emptyMessage;
+        if(dataset.rows.length&&columns.length<=7){
+          const weight=column=>/description|details|body|note|address|subject|remarks|الوصف|البيان|ملاحظات|العنوان|تفاصيل|نص الرسالة/i.test(column)?2.5:/amount|balance|quantity|date|status|currency|المبلغ|الرصيد|الكمية|التاريخ|الحالة|العملة/i.test(column)?0.9:1.2;
+          const weights=columns.map(weight),totalWeight=weights.reduce((sum,value)=>sum+value,0);
+          const colgroup='<colgroup>'+weights.map(value=>'<col style="width:'+((value/totalWeight)*100).toFixed(2)+'%">').join('')+'</colgroup>';
+          const header='<thead><tr>'+columns.map(column=>'<th>'+esc(column)+'</th>').join('')+'</tr></thead>';
+          const body='<tbody>'+dataset.rows.map(row=>'<tr>'+columns.map(column=>'<td class="'+(/amount|balance|quantity|المبلغ|الرصيد|الكمية/i.test(column)?'numeric':'')+'">'+(row[column]===undefined||row[column]===''?'<span class="muted">—</span>':esc(row[column]))+'</td>').join('')+'</tr>').join('')+'</tbody>';
+          content='<div class="table-wrap"><table class="data-table">'+colgroup+header+body+'</table></div>';
+        }else if(dataset.rows.length){
+          const identityColumn=columns.find(column=>/^(ID|Code|الكود|المعرف|رقم المستند|Reference|الاسم|Name|Full name|الاسم الكامل|العنوان|Title|الموضوع)$/i.test(column))||columns[0];
+          content='<div class="record-list">'+dataset.rows.map((row,rowIndex)=>{
+            const identity=row[identityColumn]!==undefined&&row[identityColumn]!==''?row[identityColumn]:((rtl?'سجل':'Record')+' '+(rowIndex+1));
+            const fields=columns.map(column=>{
+              const value=row[column];if(value===undefined||value==='')return '';
+              const wide=/description|details|body|note|notes|address|subject|remarks|الوصف|البيان|ملاحظات|العنوان|تفاصيل|نص الرسالة/i.test(column);
+              return '<div class="record-field'+(wide?' is-wide':'')+'"><span class="field-label">'+esc(column)+'</span><div class="field-value">'+esc(value)+'</div></div>';
+            }).filter(Boolean).join('');
+            return '<article class="record-card"><div class="record-card-heading"><b>'+esc(identity)+'</b><span>'+(rtl?'سجل ':'Record ')+(rowIndex+1)+'</span></div><div class="record-fields">'+fields+'</div></article>';
+          }).join('')+'</div>';
+        }
+        return '<section class="detail-section"><div class="section-title"><h2>'+esc(dataset.name)+'</h2><span>'+dataset.rows.length+' '+(rtl?'سجل':'records')+(columns.length>7?' · '+(rtl?'عرض تفصيلي':'Detailed layout'):'')+'</span></div>'+content+'</section>';
       }).join('');
       const generated=report.generatedAt.toLocaleString(rtl?'ar-EG-u-nu-latn':'en-US');
       const html='<!DOCTYPE html><html lang="'+(rtl?'ar':'en')+'" dir="'+(rtl?'rtl':'ltr')+'"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'+esc(report.title)+'</title><style>'+
