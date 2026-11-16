@@ -19,12 +19,13 @@ const compiled = await transform(babelScript[1], {
   loader: 'jsx', target: 'es2020', minify: true, legalComments: 'none'
 });
 html = html.replace(babelScript[0], '<script>' + compiled.code + '</script>');
-html = html.replace(/\\s*<script[^>]+babel-standalone[^>]*><\\/script>/i, '');
-for (const url of ['xlsx-js-style', 'pdf.js/3.11.174/pdf.min.js', 'pdf-lib/1.17.1/pdf-lib.min.js']) {
-  const escaped = url.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
-  const re = new RegExp('(<script[^>]+src="[^"]*' + escaped + '[^"]*"[^>]*)(>)', 'i');
-  html = html.replace(re, (match, start, end) => /\\sdefer\\b/i.test(start) ? match : start + ' defer' + end);
-}
+html = html.replace(/<script([^>]+)src="([^"]+)"([^>]*)><\\/script>/gi, (all, before, src, after) => {
+  if (/xlsx-js-style|pdf\\.js\\/3\\.11\\.174\\/pdf\\.min\\.js|pdf-lib\\/1\\.17\\.1\\/pdf-lib\\.min\\.js/i.test(src) && !/\\bdefer\\b/i.test(after)) {
+    return '<script' + before + 'src="' + src + '"' + after + ' defer></script>';
+  }
+  return all;
+});
+html = html.replace(/<script[^>]+babel-standalone[^>]*><\\/script>/i, '');
 await writeFile('www/index.html', html, 'utf8');
 
 await build({
