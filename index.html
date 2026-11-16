@@ -3983,7 +3983,7 @@ function App(){
     if(!onlineChatUid||!requirePermission('messages','add'))return;
     const target=userDirectory.find(u=>u.uid===onlineChatUid&&u.status==='active');
     const body=String(onlineChatDraft||'').trim();
-    if(!target||!body)return;
+    if(!target||(!body&&!onlineChatPendingAttachments.length))return;
     setOnlineChatSending(true);
     try{
       const messageId=db.ref('messages').push().key;
@@ -3992,7 +3992,7 @@ function App(){
       const recipientName=target.fullName||target.username||target.uid;
       const date=new Date().toLocaleString(rtl?'ar-EG-u-nu-latn':'en-US');
       const pair=[currentUser.uid,target.uid].sort().join('_');
-      const base={messageId,senderUid:currentUser.uid,senderName,senderAvatar:currentUser.avatar||'',subject:rtl?'محادثة مباشرة':'Direct chat',body,date,createdAt:firebase.database.ServerValue.TIMESTAMP,visibility:'private',recipientUids:[target.uid],recipientNames:[recipientName],mentions:[],linkedProjects:[],linkedTasks:[],threadId:'direct_'+pair};
+      const base={messageId,senderUid:currentUser.uid,senderName,senderAvatar:currentUser.avatar||'',subject:rtl?'محادثة مباشرة':'Direct chat',body:body||(rtl?'مرفق':'Attachment'),date,createdAt:firebase.database.ServerValue.TIMESTAMP,visibility:'private',recipientUids:[target.uid],recipientNames:[recipientName],mentions:[],linkedProjects:[],linkedTasks:[],threadId:'direct_'+pair};
       const updates={};
       updates['messages/'+target.uid+'/'+messageId]={...base,id:messageId,recipientUid:target.uid,mailboxUid:target.uid,read:false};
       updates['messages/'+currentUser.uid+'/'+messageId]={...base,id:messageId,recipientUid:target.uid,mailboxUid:currentUser.uid,read:true,copyType:'sent'};
