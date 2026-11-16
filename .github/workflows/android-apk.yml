@@ -3,7 +3,8 @@ name: Build Pest Platform Android APK
 on:
   push:
     branches:
-      - feature/pest-crm-capacitor
+      - main
+      - feature/mobile-startup-optimization
     paths:
       - "index.html"
       - "pest-crm-module.js"
@@ -53,7 +54,7 @@ jobs:
           node --check capacitor-bridge.mjs
           node .github/scripts/check-app-babel.mjs
 
-      - name: Prepare local web assets
+      - name: Prepare optimized local web assets
         run: npm run build:mobile
 
       - name: Add Android project and sync plugins
