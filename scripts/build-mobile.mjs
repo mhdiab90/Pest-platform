@@ -24,6 +24,9 @@ html = html.replace(babelScripts[0][0], '<script defer src="./app.js"></script>'
 
 // Defer external scripts while preserving their document order.
 html = html.replace(/<script\b([^>]*?)src="([^"]+)"([^>]*)><\/script>/gi, (all, before, src, after) => {
+  if (/\b(?:xlsx-js-style|pdf\.js\/3\.11\.174\/pdf\.min\.js|pdf-lib\/1\.17\.1\/pdf-lib\.min\.js)/i.test(src)) {
+    return '<script' + before + 'src="' + src + '"' + after.replace(/\s+defer\b/i, '') + ' async></script>';
+  }
   if (/\bdefer\b/i.test(before + ' ' + after)) return all;
   return '<script' + before + 'src="' + src + '"' + after + ' defer></script>';
 });
