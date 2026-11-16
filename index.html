@@ -764,6 +764,12 @@ function App(){
   const [pendingNotificationRequests,setPendingNotificationRequests] = useState([]);
   const [unreadNotificationMessages,setUnreadNotificationMessages] = useState([]);
   const [activeUsers,setActiveUsers] = useState([]);
+  const [onlinePresenceByUid,setOnlinePresenceByUid] = useState({});
+  const [onlineUsersOpen,setOnlineUsersOpen] = useState(false);
+  const [onlineChatUid,setOnlineChatUid] = useState('');
+  const [onlineChatDraft,setOnlineChatDraft] = useState('');
+  const [onlineChatSending,setOnlineChatSending] = useState(false);
+  const onlineChatScrollRef=useRef(null);
   const [userAdminSearch,setUserAdminSearch] = useState('');
   const [adminUserSelectedUid,setAdminUserSelectedUid] = useState('');
   const [adminUserForm,setAdminUserForm] = useState({fullName:'',username:'',jobTitle:'',department:'',phone:'',whatsapp:'',email:'',status:'active'});
@@ -1093,11 +1099,14 @@ function App(){
     const activeTheme=themeOptions[theme]?theme:(legacyThemeMap[theme]||'red');
     if(activeTheme!==theme) setTheme(activeTheme);
     const chosen=themeOptions[activeTheme];
+    const solidTheme=['red','blue','green','teal','purple','orange'].includes(activeTheme);
+    document.documentElement.dataset.themeMode=solidTheme?'solid':'gradient';
+    document.documentElement.style.setProperty('--shell-text',solidTheme?'#ffffff':'#334155');
     document.documentElement.style.setProperty('--brand',chosen.main);
     document.documentElement.style.setProperty('--brand-hover',chosen.hover);
     document.documentElement.style.setProperty('--brand-soft',chosen.soft);
-    document.documentElement.style.setProperty('--brand-gradient',chosen.gradient);
-    document.documentElement.style.setProperty('--sidebar-gradient',chosen.sidebar);
+    document.documentElement.style.setProperty('--brand-gradient',solidTheme?chosen.main:chosen.gradient);
+    document.documentElement.style.setProperty('--sidebar-gradient',solidTheme?chosen.main:chosen.sidebar);
     document.documentElement.style.setProperty('--brand-mix-1',chosen.mix1||'5%');
     document.documentElement.style.setProperty('--brand-mix-2',chosen.mix2||'10%');
     document.documentElement.style.setProperty('--brand-mix-3',chosen.mix3||'16%');
@@ -1191,6 +1200,26 @@ function App(){
     });
     return ()=>{mounted=false;unsubscribe();};
   },[]);
+
+  useEffect(()=>{
+    const uid=currentUser?.uid||'';
+    if(!uid){setOnlinePresenceByUid({});setOnlineUsersOpen(false);setOnlineChatUid('');return;}
+    const presenceRef=db.ref('presence');
+    const presenceHandler=snapshot=>setOnlinePresenceByUid(snapshot.val()||{});
+    presenceRef.on('value',presenceHandler,error=>console.error('Online presence listener:',error));
+    const connectionRef=db.ref('.info/connected');
+    const ownPresenceRef=db.ref('presence/'+uid);
+    const connectionHandler=snapshot=>{
+      if(snapshot.val()!==true)return;
+      ownPresenceRef.onDisconnect().remove().then(()=>ownPresenceRef.set({state:'online',lastChanged:firebase.database.ServerValue.TIMESTAMP})).catch(error=>console.error('Online presence registration:',error));
+    };
+    connectionRef.on('value',connectionHandler,error=>console.error('Firebase connection listener:',error));
+    return ()=>{
+      presenceRef.off('value',presenceHandler);
+      connectionRef.off('value',connectionHandler);
+      ownPresenceRef.remove().catch(()=>{});
+    };
+  },[currentUser?.uid]);
 
   // Subscribe to shared data only when a screen needs it. Each dataset is loaded
   // at most once per signed-in session; subscriptions remain cached for live updates
@@ -1292,6 +1321,7 @@ function App(){
       watchArray('outflows','outflows',setOutflows);
     };
     const needDirectory=()=>watchArray('userDirectory','userDirectory',setUserDirectory);
+    needDirectory();
     const needTasks=()=>watchArray('tasks:'+uid,'tasks/'+uid,setTasks);
     const needMessages=()=>{
       watchArray('messages:'+uid,'messages/'+uid,setMessages,(eventType,message)=>{
@@ -3839,6 +3869,41 @@ function App(){
     }
   }
 
+  function openOnlineChat(uid){
+    if(!hasPermission('messages','view'))return alert(rtl?'ليس لديك صلاحية عرض الرسائل.':'You do not have permission to view messages.');
+    const target=userDirectory.find(u=>u.uid===uid&&u.status==='active');
+    if(!target)return;
+    setOnlineUsersOpen(false);
+    setMessageShortcutOpen(false);
+    setOnlineChatDraft('');
+    setOnlineChatUid(uid);
+    setTab('messages');
+  }
+
+  async function sendOnlineChatMessage(e){
+    e.preventDefault();
+    if(!onlineChatUid||!requirePermission('messages','add'))return;
+    const target=userDirectory.find(u=>u.uid===onlineChatUid&&u.status==='active');
+    const body=String(onlineChatDraft||'').trim();
+    if(!target||!body)return;
+    setOnlineChatSending(true);
+    try{
+      const messageId=db.ref('messages').push().key;
+      if(!messageId)throw new Error('Could not create a message ID.');
+      const senderName=currentUser.fullName||currentUser.username||currentUser.email||currentUser.uid;
+      const recipientName=target.fullName||target.username||target.uid;
+      const date=new Date().toLocaleString(rtl?'ar-EG-u-nu-latn':'en-US');
+      const pair=[currentUser.uid,target.uid].sort().join('_');
+      const base={messageId,senderUid:currentUser.uid,senderName,senderAvatar:currentUser.avatar||'',subject:rtl?'محادثة مباشرة':'Direct chat',body,date,createdAt:firebase.database.ServerValue.TIMESTAMP,visibility:'private',recipientUids:[target.uid],recipientNames:[recipientName],mentions:[],linkedProjects:[],linkedTasks:[],threadId:'direct_'+pair};
+      const updates={};
+      updates['messages/'+target.uid+'/'+messageId]={...base,id:messageId,recipientUid:target.uid,mailboxUid:target.uid,read:false};
+      updates['messages/'+currentUser.uid+'/'+messageId]={...base,id:messageId,recipientUid:target.uid,mailboxUid:currentUser.uid,read:true,copyType:'sent'};
+      await db.ref().update(updates);
+      setOnlineChatDraft('');
+    }catch(error){alert(firebaseErrorMessage(error,tr));}
+    finally{setOnlineChatSending(false);}
+  }
+
   async function sendMessage(e){
     e.preventDefault();
     if(messageEditingId){if(!requirePermission('messages','edit'))return;const existing=messages.find(m=>(m.messageId||m.id)===messageEditingId&&m.senderUid===currentUser.uid&&m.copyType==='sent');if(!existing)return alert(rtl?'تعذر العثور على الرسالة المرسلة التي تريد تعديلها.':'Could not find the sent message to edit.');const subject=String(message.subject||'').trim(),body=String(message.body||'').trim();if(!subject||!body)return alert(tr('noData'));const recipientUids=Array.isArray(existing.recipientUids)?existing.recipientUids:(existing.recipientUid&&existing.recipientUid!=='*'?[existing.recipientUid]:[]);const refs=messageContextReferences(body),updates={},mailboxes=[...new Set([...recipientUids,currentUser.uid])];mailboxes.forEach(uid=>{const base='messages/'+uid+'/'+messageEditingId+'/';updates[base+'subject']=subject;updates[base+'body']=body;updates[base+'linkedProjects']=refs.linkedProjects;updates[base+'linkedTasks']=refs.linkedTasks;updates[base+'updatedAt']=firebase.database.ServerValue.TIMESTAMP;updates[base+'updatedBy']=currentUser.uid;});try{await db.ref().update(updates);await addLog('تعديل رسالة مرسلة: '+subject,currentUser,{entityType:'message',entityId:messageEditingId,changes:auditChanges({subject:existing.subject,body:existing.body},{subject,body})});setMessageEditingId('');setMessage({recipients:'',subject:'',body:''});setSelectedMessageRecipients([]);alert(rtl?'تم تحديث الرسالة لدى المرسل والمستلمين.':'Message updated in sender and recipient mailboxes.');}catch(err){alert(firebaseErrorMessage(err,tr));}return;}
@@ -4081,6 +4146,23 @@ function App(){
   const requestStatusLabel=v=>{const x=requestStatusValue(v);return x==='approved'?tr('approvedLabel'):x==='rejected'?tr('rejectedLabel'):tr('pendingLabel');};
   const filteredRequests=userRequests.filter(r=>(requestFilter==='all'||requestStatusValue(r.status)===requestFilter) && includesText([r.fullName,r.email,r.username,r.jobTitle,r.uid].join(' '),globalSearch));
   const themeNames={red:'themeRed',blue:'themeBlue',green:'themeGreen',teal:'themeTeal',purple:'themePurple',orange:'themeOrange',charcoal:'themeCharcoal',sky:'themeSky',rose:'themeRose',amber:'themeAmber',indigo:'themeIndigo',navy:'themeNavy'};
+  const onlinePeople=userDirectory.filter(u=>u.uid&&u.uid!==currentUser?.uid&&u.status==='active'&&onlinePresenceByUid[u.uid]?.state==='online').sort((a,b)=>String(a.fullName||a.username||'').localeCompare(String(b.fullName||b.username||'')));
+  const onlineChatUser=userDirectory.find(u=>u.uid===onlineChatUid&&u.status==='active')||null;
+  const onlineChatMessages=onlineChatUid&&currentUser?.uid?messages.filter(m=>{
+    if(!m||m.visibility==='public')return false;
+    const recipientIds=Array.isArray(m.recipientUids)?m.recipientUids:(m.recipientUid?[m.recipientUid]:[]);
+    if(recipientIds.length!==1)return false;
+    return (m.senderUid===currentUser.uid&&recipientIds[0]===onlineChatUid)||(m.senderUid===onlineChatUid&&recipientIds[0]===currentUser.uid);
+  }).slice().sort((a,b)=>Number(a.createdAt||0)-Number(b.createdAt||0)):[];
+  useEffect(()=>{
+    if(!onlineChatUid||!currentUser?.uid)return;
+    onlineChatMessages.forEach(m=>{
+      if(m.senderUid===onlineChatUid&&m.read!==true)db.ref('messages/'+currentUser.uid+'/'+m.id+'/read').set(true).catch(error=>console.warn('Could not mark private chat message as read:',error));
+    });
+  },[onlineChatUid,onlineChatMessages.length,currentUser?.uid]);
+  useEffect(()=>{
+    if(onlineChatUid&&onlineChatScrollRef.current)onlineChatScrollRef.current.scrollTop=onlineChatScrollRef.current.scrollHeight;
+  },[onlineChatUid,onlineChatMessages.length]);
   const selectedItems=(account.type==='client'?clients:vendors).filter(x=>includesText([x.code,x.name,x.taxNumber,x.phone,x.email].join(' '),globalSearch));
   const chosen=selectedItems.find(x=>x.code===account.code);
   const accountFinancialEvents=allTimeline.filter(e=>e.partyType===account.type&&String(e.partyCode||'')===String(account.code||''));
@@ -4829,7 +4911,53 @@ function App(){
       const generated=report.generatedAt.toLocaleString(rtl?'ar-EG-u-nu-latn':'en-US');
       const html='<!DOCTYPE html><html lang="'+(rtl?'ar':'en')+'" dir="'+(rtl?'rtl':'ltr')+'"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'+esc(report.title)+'</title><style>'+
         '@page{size:A4 landscape;margin:12mm}*{box-sizing:border-box}body{font-family:Arial,"Cairo",sans-serif;color:#243447;margin:0;background:#fff;font-size:10px;line-height:1.55}.report-head{display:flex;align-items:center;justify-content:space-between;gap:18px;border-bottom:3px solid #17365D;padding:0 0 13px;margin-bottom:14px}.brand{display:flex;align-items:center;gap:12px;min-width:0}.logo{width:58px;height:58px;object-fit:contain}.company{font-size:17px;font-weight:800;color:#17365D}.subtitle{font-size:10px;color:#64748B;margin-top:3px}.report-title{text-align:end;max-width:45%}.report-title h1{font-size:20px;color:#17365D;margin:0 0 4px}.report-title p{margin:0;color:#64748B;font-size:9px}.meta{display:flex;flex-wrap:wrap;gap:7px 18px;background:#F4F7FB;border:1px solid #D7E0EA;border-radius:7px;padding:8px 10px;margin-bottom:12px}.meta span{font-size:9px}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:10px 0 15px}.metric{border:1px solid #D7E0EA;border-top:3px solid #0F766E;border-radius:7px;padding:8px 10px;background:#F8FAFC;min-width:0;break-inside:avoid}.metric span{display:block;font-size:9px;color:#64748B;margin-bottom:4px}.metric b{display:block;font-size:13px;color:#17365D;overflow-wrap:anywhere}.filters{display:flex;flex-wrap:wrap;gap:6px 16px;border-bottom:1px solid #D7E0EA;padding:0 0 10px;margin-bottom:12px}.filters span{font-size:9px;color:#475569}.detail-section{margin:14px 0 18px;break-inside:auto}.section-title{display:flex;justify-content:space-between;align-items:center;background:#17365D;color:#fff;padding:7px 10px;border-radius:6px 6px 0 0}.section-title h2{font-size:12px;margin:0}.section-title span{font-size:9px}.table-wrap{width:100%;overflow:visible}table{border-collapse:collapse;width:100%;font-size:8.5px;table-layout:auto}thead{display:table-header-group}th{background:#1F4E78;color:#fff;font-weight:700;padding:6px 7px;border:1px solid #D7E0EA;text-align:start}td{padding:5px 7px;border:1px solid #D7E0EA;vertical-align:top;overflow-wrap:anywhere}tbody tr:nth-child(even){background:#F4F7FB}.empty{text-align:center;color:#64748B;padding:14px}footer{border-top:2px solid #D7E0EA;margin-top:18px;padding-top:8px;color:#64748B;font-size:8px;display:flex;justify-content:space-between}.page-note{color:#64748B;font-size:8px;margin-top:7px}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.detail-section{break-inside:auto}tr{break-inside:avoid;page-break-inside:avoid}thead{display:table-header-group}}@media screen{body{padding:18px;background:#e2e8f0}.page{max-width:1400px;margin:auto;background:white;padding:24px;box-shadow:0 8px 32px rgba(15,23,42,.12)}}'+
-        '</style></head><body><div class="page"><header class="report-head"><div class="brand">'+logo+'<div><div class="company">'+esc(report.company)+'</div><div class="subtitle">'+esc(report.subtitle)+'</div></div></div><div class="report-title"><h1>'+esc(report.title)+'</h1><p>'+(rtl?'تقرير تفصيلي صادر من Pest Platform':'Detailed report generated by Pest Platform')+'</p></div></header><div class="meta"><span><b>'+(rtl?'تاريخ الإصدار: ':'Issued: ')+'</b>'+esc(generated)+'</span><span><b>'+(rtl?'إعداد: ':'Prepared by: ')+'</b>'+esc(report.generatedBy)+'</span><span><b>'+(rtl?'عدد السجلات: ':'Records: ')+'</b>'+datasets.reduce((sum,item)=>sum+item.rows.length,0)+'</span></div><section><div class="section-title"><h2>'+(rtl?'ملخص التقرير':'REPORT SUMMARY')+'</h2></div><div class="metrics">'+metricsHtml+'</div></section><section><div class="section-title"><h2>'+(rtl?'نطاق التقرير والفلاتر':'REPORT SCOPE & FILTERS')+'</h2></div>'+filterHtml+'</section>'+detailsHtml+'<footer><span>'+esc(report.company)+' · Pest Platform</span><span>'+(rtl?'تم إنشاء هذا التقرير آليًا':'Generated automatically by Pest Platform')+'</span></footer></div></body></html>';
+        '
+/* Real-time presence and private one-to-one chat */
+.app-online-presence{display:flex;align-items:center;position:relative;z-index:95}
+.app-online-presence-trigger{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:6px 9px;border-radius:10px;color:inherit;background:rgba(255,255,255,.2);border:1px solid rgba(148,163,184,.22)}
+.app-online-presence-trigger:hover{background:rgba(255,255,255,.32)}
+.app-online-led{display:inline-block;width:9px;height:9px;flex:0 0 9px;border-radius:50%;background:#94a3b8;box-shadow:0 0 0 2px rgba(148,163,184,.18)}
+.app-online-led.is-online{background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.16),0 0 10px rgba(34,197,94,.55);animation:app-online-pulse 1.8s ease-in-out infinite}
+.app-online-led.is-idle{background:#94a3b8}
+@keyframes app-online-pulse{0%,100%{box-shadow:0 0 0 2px rgba(34,197,94,.15),0 0 5px rgba(34,197,94,.35)}50%{box-shadow:0 0 0 5px rgba(34,197,94,.08),0 0 12px rgba(34,197,94,.6)}}
+.app-online-count{font-size:11px;font-weight:900;min-width:11px;text-align:center}
+.app-online-presence-popover{position:absolute;top:calc(100% + 9px);inset-inline-end:0;width:min(90vw,310px);max-height:min(60vh,420px);overflow-y:auto;z-index:180;background:#fff;color:#1e293b;border:1px solid #e2e8f0;border-radius:13px;box-shadow:0 16px 38px rgba(15,23,42,.2)}
+.app-online-user-row{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;text-align:start;border-bottom:1px solid #f1f5f9}
+.app-online-user-row:hover{background:#f8fafc}
+.app-online-avatar{display:grid;place-items:center;width:36px;height:36px;flex:0 0 36px;border-radius:50%;background:var(--brand);color:#fff;font-size:14px;font-weight:900}
+.app-online-chat-overlay{position:fixed;inset:0;z-index:210;display:flex;align-items:flex-end;justify-content:flex-end;padding:18px;background:rgba(15,23,42,.22);backdrop-filter:blur(2px)}
+.app-online-chat-window{display:flex;flex-direction:column;width:min(440px,calc(100vw - 24px));height:min(650px,calc(100dvh - 36px));min-height:300px;overflow:hidden;background:#fff;border:1px solid #dbe3ee;border-radius:17px;box-shadow:0 22px 60px rgba(15,23,42,.28)}
+.app-online-chat-header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;background:var(--brand);color:#fff}
+.app-online-chat-header>button{width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.15);color:#fff}
+.app-online-chat-history{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:14px;background:#f8fafc;display:flex;flex-direction:column;gap:9px}
+.app-online-chat-bubble{max-width:86%;padding:9px 11px;border-radius:13px;overflow-wrap:anywhere;white-space:pre-wrap;box-shadow:0 1px 2px rgba(15,23,42,.06)}
+.app-online-chat-bubble p{font-size:13px;line-height:1.55;color:#1e293b}
+.app-online-chat-bubble small{display:block;margin-top:5px;font-size:10px;color:#64748b;text-align:end}
+.app-online-chat-bubble.is-outgoing{align-self:flex-end;background:#e0f2fe;border:1px solid #bae6fd;border-bottom-right-radius:4px}
+.app-online-chat-bubble.is-incoming{align-self:flex-start;background:#fff;border:1px solid #e2e8f0;border-bottom-left-radius:4px}
+.app-online-chat-composer{display:flex;align-items:flex-end;gap:8px;padding:10px;border-top:1px solid #e2e8f0;background:#fff}
+.app-online-chat-composer textarea{flex:1;min-width:0;resize:vertical;min-height:42px;max-height:130px;padding:9px 10px;border:1px solid #cbd5e1;border-radius:10px;color:#0f172a;font-size:13px}
+.app-online-chat-composer>button{width:42px;height:42px;flex:0 0 42px;border-radius:10px;background:var(--brand);color:#fff}
+.app-online-chat-composer>button:disabled{opacity:.45;cursor:not-allowed}
+.app-online-chat-footnote{padding:0 10px 9px;text-align:center;font-size:10px;color:#94a3b8;background:#fff}
+/* Solid palettes: the header and navigation use the exact same solid swatch. */
+.app-shell-header{background:var(--brand-gradient)!important;color:var(--shell-text,#334155)!important;border-bottom:2px solid var(--brand)!important}
+.app-shell-header .text-white,.app-shell-header [class*="text-white/"]{color:var(--shell-text,#334155)!important}
+.app-shell-header button{color:var(--shell-text,#334155)!important}
+.app-sidebar{background:var(--sidebar-gradient)!important}
+:root[data-theme-mode="solid"] .app-sidebar:before{background:none!important}
+:root[data-theme-mode="solid"] .app-sidebar .app-nav-parent,
+:root[data-theme-mode="solid"] .app-sidebar .app-nav-child,
+:root[data-theme-mode="solid"] .app-sidebar .nav-btn{color:#fff!important}
+:root[data-theme-mode="solid"] .app-sidebar .app-nav-parent{background:rgba(255,255,255,.12)!important;border-color:rgba(255,255,255,.25)!important}
+:root[data-theme-mode="solid"] .app-sidebar .app-nav-parent:hover,
+:root[data-theme-mode="solid"] .app-sidebar .nav-btn:hover,
+:root[data-theme-mode="solid"] .app-sidebar .app-nav-child:hover{background:rgba(255,255,255,.2)!important;color:#fff!important}
+:root[data-theme-mode="solid"] .app-sidebar .app-nav-child.active,
+:root[data-theme-mode="solid"] .app-sidebar .nav-btn.active{background:rgba(255,255,255,.94)!important;color:var(--brand-hover)!important;border-color:rgba(255,255,255,.95)!important}
+:root[data-theme-mode="solid"] .app-sidebar .app-nav-children{border-color:rgba(255,255,255,.4)!important}
+@media(max-width:767px){.app-online-presence-trigger{min-height:34px;padding:5px 7px;gap:5px}.app-online-chat-overlay{align-items:flex-end;justify-content:center;padding:8px}.app-online-chat-window{width:100%;height:min(78dvh,650px);border-radius:16px}.app-online-presence-popover{inset-inline-end:-45px;width:min(88vw,300px)}}
+</style></head><body><div class="page"><header class="report-head"><div class="brand">'+logo+'<div><div class="company">'+esc(report.company)+'</div><div class="subtitle">'+esc(report.subtitle)+'</div></div></div><div class="report-title"><h1>'+esc(report.title)+'</h1><p>'+(rtl?'تقرير تفصيلي صادر من Pest Platform':'Detailed report generated by Pest Platform')+'</p></div></header><div class="meta"><span><b>'+(rtl?'تاريخ الإصدار: ':'Issued: ')+'</b>'+esc(generated)+'</span><span><b>'+(rtl?'إعداد: ':'Prepared by: ')+'</b>'+esc(report.generatedBy)+'</span><span><b>'+(rtl?'عدد السجلات: ':'Records: ')+'</b>'+datasets.reduce((sum,item)=>sum+item.rows.length,0)+'</span></div><section><div class="section-title"><h2>'+(rtl?'ملخص التقرير':'REPORT SUMMARY')+'</h2></div><div class="metrics">'+metricsHtml+'</div></section><section><div class="section-title"><h2>'+(rtl?'نطاق التقرير والفلاتر':'REPORT SCOPE & FILTERS')+'</h2></div>'+filterHtml+'</section>'+detailsHtml+'<footer><span>'+esc(report.company)+' · Pest Platform</span><span>'+(rtl?'تم إنشاء هذا التقرير آليًا':'Generated automatically by Pest Platform')+'</span></footer></div></body></html>';
       const printWindow=window.open('','_blank');
       if(!printWindow)return alert(rtl?'المتصفح منع فتح نافذة التقرير. اسمح بالنوافذ المنبثقة ثم حاول مرة أخرى.':'The browser blocked the report window. Allow pop-ups and try again.');
       printWindow.onafterprint=()=>printWindow.close();
@@ -5054,6 +5182,17 @@ function App(){
           {notificationOpen&&<div className="absolute end-0 top-12 z-[80] w-[min(92vw,370px)] max-h-[70vh] overflow-y-auto bg-white text-slate-800 rounded-xl shadow-2xl border">
             <div className="p-3 border-b flex items-center justify-between"><b>{rtl?'مركز التنبيهات':'Notification center'}</b><span className="text-xs text-gray-500">{notificationItems.length} {rtl?'غير مقروء':'unread'}</span></div>
             {notificationItems.length===0?<p className="p-5 text-sm text-gray-500 text-center">{rtl?'لا توجد تنبيهات جديدة.':'No new notifications.'}</p>:notificationItems.map(item=><button key={item.id} type="button" onClick={()=>openNotification(item)} className="w-full text-start p-3 border-b hover:bg-slate-50 flex items-start gap-3"><span className={'w-9 h-9 shrink-0 rounded-full grid place-items-center '+(item.type==='cashCustody'?'bg-emerald-50 text-emerald-700':item.type==='message'?'bg-blue-50 text-blue-700':'bg-amber-50 text-amber-700')}><i className={'fas '+(item.type==='cashCustody'?'fa-money-bill-transfer':item.type==='message'?'fa-envelope':'fa-user-plus')}></i></span><span className="min-w-0 flex-1"><b className="block text-sm">{item.title}</b><span className="block text-xs text-gray-500 mt-1 truncate">{item.description}</span><span className="block text-[11px] text-gray-400 mt-1">{item.type==='message'?(rtl?'اضغط لفتح الرسالة واعتبارها مقروءة': 'Open and mark as read'):item.type==='cashCustody'?(rtl?'اضغط لفتح حركة العهدة':'Open the linked custody movement'):(rtl?'اضغط لفتح طلب المستخدم واعتباره تمت مراجعته':'Open and mark request as seen')}</span></span><i className="fas fa-chevron-left text-xs text-gray-400 mt-2"></i></button>)}
+          </div>}
+        </div>
+        <div className="relative app-online-presence" onMouseEnter={()=>setOnlineUsersOpen(true)} onMouseLeave={()=>setOnlineUsersOpen(false)}>
+          <button type="button" onClick={()=>setOnlineUsersOpen(true)} aria-expanded={onlineUsersOpen} className="app-online-presence-trigger" title={rtl?'المستخدمون المتصلون الآن':'Users online now'}>
+            <span className={'app-online-led '+(onlinePeople.length?'is-online':'is-idle')}></span>
+            <i className="fas fa-users"></i>
+            <span className="app-online-count">{onlinePeople.length}</span>
+          </button>
+          {onlineUsersOpen&&<div className="app-online-presence-popover">
+            <div className="flex items-center justify-between gap-2 px-3 py-2 border-b"><b className="text-sm">{rtl?'المستخدمون المتصلون':'Online users'} ({onlinePeople.length})</b><button type="button" className="text-gray-400 hover:text-gray-700" onClick={()=>setOnlineUsersOpen(false)} aria-label={rtl?'إغلاق':'Close'}><i className="fas fa-times"></i></button></div>
+            {onlinePeople.length===0?<p className="p-4 text-xs text-gray-500 text-center">{rtl?'لا يوجد مستخدمون آخرون متصلون حاليًا.':'No other users are online right now.'}</p>:onlinePeople.map(user=><button type="button" key={user.uid} onClick={()=>openOnlineChat(user.uid)} className="app-online-user-row"><span className="app-online-avatar">{String(user.fullName||user.username||'?').trim().slice(0,1)}</span><span className="min-w-0 flex-1 text-start"><b className="block text-sm truncate">{user.fullName||user.username||user.uid}</b><small className="block text-xs text-gray-500 truncate">{user.jobTitle||user.username||''}</small></span><span className="app-online-led is-online"></span></button>)}
           </div>}
         </div>
         <div className="relative"><button onClick={()=>{setShowThemeMenu(!showThemeMenu);setShowUserMenu(false);}} className="p-2" title={tr('theme')}><i className="fas fa-palette text-xl"></i></button>
@@ -5812,6 +5951,16 @@ function App(){
             <div className="flex items-center justify-between gap-2"><small className="text-[10px] text-gray-500">{rtl?'استخدم @ لتحديد المستلم':'Use @ to choose recipients'}</small><button type="submit" disabled={chatSending||!chatDraft.trim()} className="rounded-lg bg-teal-600 text-white px-4 py-2 text-sm font-bold disabled:opacity-50"><i className="fas fa-paper-plane me-1"></i>{rtl?'إرسال':'Send'}</button></div>
           </form>
         </section>}
+        {onlineChatUid&&onlineChatUser&&<div className="app-online-chat-overlay" role="dialog" aria-modal="true" aria-label={rtl?'محادثة خاصة':'Private chat'}>
+          <section className="app-online-chat-window">
+            <header className="app-online-chat-header"><div className="flex items-center gap-3 min-w-0"><span className="app-online-avatar">{String(onlineChatUser.fullName||onlineChatUser.username||'?').trim().slice(0,1)}</span><div className="min-w-0"><b className="block truncate">{onlineChatUser.fullName||onlineChatUser.username}</b><small className="flex items-center gap-1 text-white/80"><span className="app-online-led is-online"></span>{rtl?'متصل الآن':'Online now'}</small></div></div><button type="button" onClick={()=>setOnlineChatUid('')} title={rtl?'إغلاق المحادثة':'Close chat'}><i className="fas fa-times"></i></button></header>
+            <div ref={onlineChatScrollRef} className="app-online-chat-history">
+              {onlineChatMessages.length===0?<p className="text-center text-sm text-gray-500 py-8">{rtl?'ابدأ محادثة خاصة مع ':'Start a private conversation with '}{onlineChatUser.fullName||onlineChatUser.username}</p>:onlineChatMessages.map(item=>{const outgoing=item.senderUid===currentUser.uid;return <div key={item.id} className={'app-online-chat-bubble '+(outgoing?'is-outgoing':'is-incoming')}><p>{item.body}</p><small>{item.date||''}</small></div>;})}
+            </div>
+            <form onSubmit={sendOnlineChatMessage} className="app-online-chat-composer"><textarea rows="2" value={onlineChatDraft} onChange={e=>setOnlineChatDraft(e.target.value)} onKeyDown={handleMessageComposerKeyDown} placeholder={rtl?'اكتب رسالة خاصة...':'Write a private message...'}></textarea><button type="submit" disabled={onlineChatSending||!onlineChatDraft.trim()||!hasPermission('messages','add')} title={rtl?'إرسال للطرف الآخر فقط':'Send only to this person'}><i className={'fas '+(onlineChatSending?'fa-spinner fa-spin':'fa-paper-plane')}></i></button></form>
+            <div className="app-online-chat-footnote">{rtl?'هذه المحادثة خاصة بينك وبين هذا المستخدم فقط.':'This conversation is private between you and this user only.'}</div>
+          </section>
+        </div>}
         <div className="app-floating-actions">
           <button type="button" className="app-messages-launcher" onClick={()=>{setAssistantOpen(false);setMessageShortcutOpen(old=>!old);}} aria-label={rtl?'فتح الرسائل':'Open messages'}><i className="fas fa-comments text-lg"></i><span>{rtl?'الرسائل':'Messages'}</span>{shortcutUnreadCount>0&&<b>{shortcutUnreadCount>99?'99+':shortcutUnreadCount}</b>}</button>
           {hasPermission('aiAgent','view')&&<button type="button" className="app-ai-launcher" onClick={()=>{setMessageShortcutOpen(false);setAssistantOpen(old=>!old);}} aria-label={rtl?'فتح المساعد الذكي':'Open AI assistant'}><i className="fas fa-wand-magic-sparkles text-lg"></i><span>{rtl?'اسأل المساعد':'Ask AI'}</span></button>}
