@@ -1,0 +1,76 @@
+name: Build Pest Platform Android APK
+
+on:
+  push:
+    branches:
+      - feature/pest-crm-capacitor
+    paths:
+      - "index.html"
+      - "pest-crm-module.js"
+      - "capacitor-bridge.js"
+      - "capacitor-bridge.mjs"
+      - "capacitor.config.json"
+      - "package.json"
+      - "scripts/build-mobile.mjs"
+      - ".github/workflows/android-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
+
+      - name: Install Android 16 SDK platform
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Install Capacitor dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Check application modules
+        run: |
+          node --check pest-crm-module.js
+          node --check capacitor-bridge.mjs
+          node .github/scripts/check-app-babel.mjs
+
+      - name: Prepare local web assets
+        run: npm run build:mobile
+
+      - name: Add Android project and sync plugins
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: Build installable debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pest-platform-android-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30

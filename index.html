@@ -867,6 +867,8 @@
 <body class="bg-gray-100 min-h-screen">
   <div id="root"><div class="min-h-screen grid place-items-center text-slate-600">Loading…</div></div>
 
+<script src="./capacitor-bridge.js"></script>
+<script src="./pest-crm-module.js"></script>
 <script type="text/babel">
 const firebaseConfig = {
   apiKey: "AIzaSyBPrzHFEIM3AOFclTzJ1SpG_Nq6BKHgrSo",
@@ -962,6 +964,8 @@ const words = {
     cashFlow:'Cash flow', actualCashIn:'Actual collections', actualCashOut:'Actual payments', netCashFlow:'Net cash flow', receivables:'Customer receivables', payables:'Supplier payables', expectedNet:'Net position (receivables - payables)', surplus:'Surplus', deficit:'Deficit', cashFromDate:'Movement from', cashToDate:'Movement to', cashAllProjects:'All projects', projectStatusSummary:'Project status summary', activeProjects:'Active projects', completedProjects:'Completed projects', delayedProjects:'Delayed projects', totalContractValue:'Total project contract value', estimatedProjectCost:'Estimated project cost', cashCurrency:'Currency', cashActualIn:'Receipts in period', cashActualOut:'Payments in period', cashNet:'Net movement', currentReceivables:'Current receivables', currentPayables:'Current payables', projectPortfolio:'Project portfolio', projectMargin:'Estimated margin', recentCashMoves:'Recent collection and payment movements', cashScopeNote:'Actual receipts and payments combine confirmed project collection/payment actions with legacy inflow/outflow records. Do not record the same movement in both sources. Customer receivables include approved quotations and registered project invoices/claims; supplier payables include registered purchase orders/supplier invoices and legacy supplier balances. Do not register the same obligation in more than one source. Undated legacy records remain included until dated. Project cost budgets remain forecasts, not payables until an obligation is registered. Each currency is shown separately.', expectedPosition:'Expected position', noCashMoves:'No collection or payment movements in the selected period.', dueProjects:'Past expected end date', noDueProjects:'No projects are overdue based on expected end dates.'
   }
 };
+
+const PestCrmModule = window.PEST_CRM_MODULE;
 
 function App(){
   const [lang,setLang] = useState(()=>localStorage.getItem('pestLang') || 'ar');
@@ -1771,7 +1775,7 @@ function App(){
   const omarUsername=String(currentUser?.username||'').trim().toLowerCase();
   const omarEmailLocal=String(currentUser?.email||'').split('@')[0].trim().toLowerCase();
   const isOmarProjectUser=omarUsername==='omar'||omarEmailLocal==='omar'||String(currentUser?.fullName||'').trim().toLowerCase()==='omar';
-  const permissionModules=[{id:'dashboard',label:rtl?'لوحة التحكم':'Dashboard'},{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors'},{id:'projects',label:rtl?'المشروعات وملفاتها':'Projects & Project files'},{id:'attachments',label:rtl?'المرفقات':'Attachments'},{id:'statement',label:rtl?'التدفقات النقدية':'Cash flow'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody'},{id:'reports',label:rtl?'التقارير':'Reports'},{id:'messages',label:rtl?'الرسائل وWhatsApp':'Messages & WhatsApp'},{id:'tasks',label:rtl?'المهام':'Tasks'},{id:'announcements',label:rtl?'الإعلانات العامة':'Global Announcements'},{id:'aiAgent',label:rtl?'المساعد الذكي (استخدام)':'AI Agent (Use)'},{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data'}];
+  const permissionModules=[{id:'dashboard',label:rtl?'لوحة التحكم':'Dashboard'},{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors'},{id:'pestCrm',label:rtl?'إدارة العملاء والمبيعات (PEST CRM)':'Sales & Customer CRM (PEST)'},{id:'projects',label:rtl?'المشروعات وملفاتها':'Projects & Project files'},{id:'attachments',label:rtl?'المرفقات':'Attachments'},{id:'statement',label:rtl?'التدفقات النقدية':'Cash flow'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody'},{id:'reports',label:rtl?'التقارير':'Reports'},{id:'messages',label:rtl?'الرسائل وWhatsApp':'Messages & WhatsApp'},{id:'tasks',label:rtl?'المهام':'Tasks'},{id:'announcements',label:rtl?'الإعلانات العامة':'Global Announcements'},{id:'aiAgent',label:rtl?'المساعد الذكي (استخدام)':'AI Agent (Use)'},{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data'}];
   const permissionActions=[{id:'view',label:rtl?'عرض':'View'},{id:'add',label:rtl?'إضافة':'Add'},{id:'edit',label:rtl?'تعديل':'Edit'},{id:'delete',label:rtl?'حذف':'Delete'},{id:'approve',label:rtl?'اعتماد':'Approve'},{id:'export',label:rtl?'تصدير':'Export'},{id:'manage',label:rtl?'إدارة':'Manage'},{id:'viewOthers',label:rtl?'عرض عهد الآخرين':'View others'}];
   const hasPermission=(moduleId,action='view')=>isAdmin||moduleId==='profile'&&action==='view'||(isOmarProjectUser&&moduleId==='projects'&&['view','add','edit'].includes(action))||moduleId==='cashCustody'&&['view','add','edit'].includes(action)&&currentUser?.permissions?.cashCustody?.[action]!==false||currentUser?.permissions?.[moduleId]?.[action]===true;
   const canAccessTab=tabId=>tabId==='appLauncher'?true:['companySettings','aiSettings','userRequests','userPermissions','userManagement','auditLogs'].includes(tabId)?Boolean(isAdmin):tabId==='announcements'?hasPermission('announcements','manage'):tabId==='custodyStatement'?hasPermission('cashCustody','view'):hasPermission(tabId==='projectDetail'?'projects':tabId,'view');
@@ -4762,6 +4766,7 @@ function App(){
   const navGroups=[
     {id:'dashboard',label:tr('dashboard'),icon:'fa-gauge',tab:'dashboard'},
     {id:'masterGroup',label:tr('master'),icon:'fa-database',children:[{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors',icon:'fa-address-book'}]},
+    {id:'pestCrmGroup',label:rtl?'إدارة المبيعات والعملاء':'Sales & Customer CRM',icon:'fa-handshake',children:[{id:'pestCrm',label:rtl?'PEST CRM — العملاء والعروض':'PEST CRM — Customers & Offers',icon:'fa-address-card'}]},
     {id:'projectsGroup',label:tr('projects'),icon:'fa-diagram-project',children:[{id:'projects',label:rtl?'قائمة المشروعات':'Project list',icon:'fa-list'},...(selectedProjectCode?[{id:'projectDetail',label:rtl?'ملف المشروع الحالي':'Current project file',icon:'fa-folder-open'}]:[])]},
     {id:'financeGroup',label:rtl?'المالية':'Finance',icon:'fa-coins',children:[{id:'statement',label:tr('statement'),icon:'fa-file-invoice-dollar'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody',icon:'fa-wallet'},{id:'custodyStatement',label:rtl?'كشف حساب العهد':'Custody Statement',icon:'fa-book-open'},{id:'reports',label:tr('reportCenter'),icon:'fa-chart-pie'}]},
     {id:'communicationGroup',label:rtl?'التواصل والمهام':'Communication & Tasks',icon:'fa-comments',children:[{id:'messages',label:tr('messages'),icon:'fa-envelope'},{id:'tasks',label:rtl?'المهام':'Tasks',icon:'fa-list-check'},{id:'announcements',label:rtl?'الإعلانات العامة':'Global Announcements',icon:'fa-bullhorn'}]},
@@ -4772,7 +4777,7 @@ function App(){
   useEffect(()=>{if(tab==='auditLogs'&&!isAdmin)setTab('appLauncher');},[tab,isAdmin]);
   useEffect(()=>{if(tab==='announcements'&&!hasPermission('announcements','manage'))setTab('appLauncher');},[tab,currentUser?.role,currentUser?.permissions?.announcements?.manage]);
   useEffect(()=>{if(tab==='custodyStatement'&&!hasPermission('cashCustody','view'))setTab('appLauncher');},[tab,currentUser?.role,currentUser?.permissions?.cashCustody?.view]);
-  const navGroupByTab={master:'masterGroup',attachments:'settingsGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',cashCustody:'financeGroup',custodyStatement:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',announcements:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',aiSettings:'settingsGroup',userRequests:'adminGroup',userManagement:'adminGroup',userPermissions:'adminGroup',auditLogs:'adminGroup'};
+  const navGroupByTab={master:'masterGroup',pestCrm:'pestCrmGroup',attachments:'settingsGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',cashCustody:'financeGroup',custodyStatement:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',announcements:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',aiSettings:'settingsGroup',userRequests:'adminGroup',userManagement:'adminGroup',userPermissions:'adminGroup',auditLogs:'adminGroup'};
   const visibleNavGroups=navGroups.map(group=>group.tab?group:({...group,children:(group.children||[]).filter(item=>canAccessTab(item.id))})).filter(group=>group.tab?canAccessTab(group.tab):(group.children||[]).length>0);
   const navCatalog=visibleNavGroups.flatMap(group=>group.tab?[{id:group.tab,label:group.label,icon:group.icon}]:((group.children||[]).map(item=>({...item}))));
   const navMode=navPreferences.uid===(currentUser&&currentUser.uid)?navPreferences.mode:'side';
@@ -5638,6 +5643,7 @@ function App(){
             })}
           </div>}
         </div>}
+        {tab==='pestCrm'&&canAccessTab('pestCrm')&&PestCrmModule&&<PestCrmModule db={db} currentUser={currentUser} rtl={rtl} can={hasPermission} addLog={addLog}/>}
         {tab==='dashboard'&&<div className="space-y-5 print-area">
           <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="font-bold text-xl">{tr('dashboard')} · {tr('cashFlow')}</h2><div className="flex gap-2 no-print"><button onClick={()=>setTab('reports')} className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-bold">{tr('reportCenter')}</button><button onClick={()=>window.print()} className="bg-gray-800 text-white rounded-lg px-4 py-2 text-sm">{tr('printPdf')}</button></div></div>
           <section className="app-dashboard-filterbar no-print">
