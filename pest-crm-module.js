@@ -108,7 +108,7 @@
     const canDelete=can('pestCrm','delete');
     const canExport=can('pestCrm','export');
     const canViewOthers=can('pestCrm','viewOthers')||isAdmin;
-    const inScope=record=>canViewOthers||record.createdBy===uid||record.ownerUid===uid;
+    const inScope=record=>true; // CRM records are shared among users granted CRM view access; edits remain owner/admin controlled.
     const scopedCustomers=customers.filter(inScope);
     const scopedSuppliers=suppliers.filter(inScope);
     const scopedOffers=offers.filter(inScope);
@@ -239,11 +239,15 @@
         const id=db.ref('pestCrm/visits/'+customer.id).push().key;
         const record={id:id,customerId:customer.id,visitDate:visitForm.date||today(),visitTime:visitForm.time||'',notes:clean(visitForm.notes),outcome:clean(visitForm.outcome),followUpDate:visitForm.followUpDate||'',followUpTime:visitForm.followUpTime||'',createdAt:Date.now(),createdBy:uid,createdByName:user.fullName||user.username||uid};
         await db.ref('pestCrm/visits/'+customer.id+'/'+id).set(record);
-        const customerUpdate=Object.assign({},customer,{lastVisitDate:record.visitDate,updatedAt:Date.now(),updatedBy:uid});
-        if(record.followUpDate){customerUpdate.nextFollowUpDate=record.followUpDate;customerUpdate.nextFollowUpTime=record.followUpTime;}
-        await db.ref('pestCrm/customers/'+customer.id).update(customerUpdate);
+        let customerWasUpdated=false;
+        if(mayEdit(customer)){
+          const customerUpdate=Object.assign({},customer,{lastVisitDate:record.visitDate,updatedAt:Date.now(),updatedBy:uid});
+          if(record.followUpDate){customerUpdate.nextFollowUpDate=record.followUpDate;customerUpdate.nextFollowUpTime=record.followUpTime;}
+          await db.ref('pestCrm/customers/'+customer.id).update(customerUpdate);
+          customerWasUpdated=true;
+        }
         setVisitForm({date:today(),time:'',notes:'',followUpDate:'',followUpTime:'',outcome:''});
-        setNotice(t('تم تسجيل الزيارة وتحديث موعد المتابعة.','Visit recorded and follow-up updated.'));
+        setNotice(customerWasUpdated?t('تم تسجيل الزيارة وتحديث موعد المتابعة.','Visit recorded and follow-up updated.'):t('تم تسجيل الزيارة. لم يتم تعديل بيانات العميل لعدم وجود صلاحية تعديل.','Visit recorded. Customer details were not changed because edit permission is not assigned.'));
         audit('تسجيل زيارة','visit',id);
       }catch(error){setNotice(t('فشل تسجيل الزيارة: ','Could not save visit: ')+String(error&&error.message||error));}
       finally{setVisitBusy(false);}
@@ -344,14 +348,20 @@
         const offersRows=readSheet(['offers','quotes']);
         for(const row of customersRows){
           const name=clean(row.Company||row.companyName||row.Name||row.name||row['اسم الشركة']||row['اسم العميل']);if(!name)continue;
+          const phone=clean(row.Phone||row.phone||row['الهاتف']).replace(/[^\d+]/g,'');
+          const duplicate=scopedCustomers.some(existing=>norm(existing.companyName)===norm(name)||(phone&&clean(existing.phone).replace(/[^\d+]/g,'')===phone));
+          if(duplicate)continue;
           const id=db.ref('pestCrm/customers').push().key;
-          await db.ref('pestCrm/customers/'+id).set({id:id,companyName:name,contactPerson:clean(row.Contact||row.contactPerson||row['الشخص المسؤول']),phone:clean(row.Phone||row.phone||row['الهاتف']),email:clean(row.Email||row.email),sector:clean(row.Sector||row.sector||row['القطاع']),stage:'preview',tags:[],createdAt:Date.now(),updatedAt:Date.now(),createdBy:uid,createdByName:user.fullName||user.username||uid,importedFrom:file.name});
+          await db.ref('pestCrm/customers/'+id).set({id:id,companyName:name,contactPerson:clean(row.Contact||row.contactPerson||row['الشخص المسؤول']),phone:phone,email:clean(row.Email||row.email),sector:clean(row.Sector||row.sector||row['القطاع']),stage:'preview',tags:[],createdAt:Date.now(),updatedAt:Date.now(),createdBy:uid,createdByName:user.fullName||user.username||uid,importedFrom:file.name});
           added++;
         }
         for(const row of supplierRows){
           const name=clean(row.Company||row.companyName||row.Name||row.name||row['اسم الشركة']||row['اسم المورد']);if(!name)continue;
+          const phone=clean(row.Phone||row.phone).replace(/[^\d+]/g,'');
+          const duplicate=scopedSuppliers.some(existing=>norm(existing.companyName)===norm(name)||(phone&&clean(existing.phone).replace(/[^\d+]/g,'')===phone));
+          if(duplicate)continue;
           const id=db.ref('pestCrm/suppliers').push().key;
-          await db.ref('pestCrm/suppliers/'+id).set({id:id,companyName:name,contactPerson:clean(row.Contact||row.contactPerson),category:clean(row.Category||row.category),phone:clean(row.Phone||row.phone),email:clean(row.Email||row.email),tags:[],createdAt:Date.now(),updatedAt:Date.now(),createdBy:uid,createdByName:user.fullName||user.username||uid,importedFrom:file.name});
+          await db.ref('pestCrm/suppliers/'+id).set({id:id,companyName:name,contactPerson:clean(row.Contact||row.contactPerson),category:clean(row.Category||row.category),phone:phone,email:clean(row.Email||row.email),tags:[],createdAt:Date.now(),updatedAt:Date.now(),createdBy:uid,createdByName:user.fullName||user.username||uid,importedFrom:file.name});
           added++;
         }
         for(const row of offersRows){
