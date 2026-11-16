@@ -162,7 +162,10 @@
       "$uid": {
         "$connectionId": {
           ".write": "auth != null && auth.uid === $uid && root.child('users').child(auth.uid).child('status').val() === 'active'",
-          ".validate": "newData.hasChildren(['state', 'lastChanged']) && newData.numChildren() === 2 && newData.child('state').val() === 'online' && newData.child('lastChanged').isNumber()"
+          ".validate": "newData.hasChildren(['state', 'lastChanged']) && newData.child('state').val() === 'online' && newData.child('lastChanged').isNumber()",
+          "$other": {
+            ".validate": false
+          }
         }
       }
     }
