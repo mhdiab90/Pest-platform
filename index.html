@@ -1254,7 +1254,7 @@ function App(){
     const presenceHandler=snapshot=>setOnlinePresenceByUid(snapshot.val()||{});
     presenceRef.on('value',presenceHandler,error=>console.error('Online presence listener:',error));
     const connectionRef=db.ref('.info/connected');
-    const ownPresenceRef=db.ref('presence/'+uid);
+    const ownPresenceRef=db.ref('presence/'+uid).push();
     const connectionHandler=snapshot=>{
       if(snapshot.val()!==true)return;
       ownPresenceRef.onDisconnect().remove().then(()=>ownPresenceRef.set({state:'online',lastChanged:firebase.database.ServerValue.TIMESTAMP})).catch(error=>console.error('Online presence registration:',error));
@@ -4192,7 +4192,7 @@ function App(){
   const requestStatusLabel=v=>{const x=requestStatusValue(v);return x==='approved'?tr('approvedLabel'):x==='rejected'?tr('rejectedLabel'):tr('pendingLabel');};
   const filteredRequests=userRequests.filter(r=>(requestFilter==='all'||requestStatusValue(r.status)===requestFilter) && includesText([r.fullName,r.email,r.username,r.jobTitle,r.uid].join(' '),globalSearch));
   const themeNames={red:'themeRed',blue:'themeBlue',green:'themeGreen',teal:'themeTeal',purple:'themePurple',orange:'themeOrange',charcoal:'themeCharcoal',sky:'themeSky',rose:'themeRose',amber:'themeAmber',indigo:'themeIndigo',navy:'themeNavy'};
-  const onlinePeople=userDirectory.filter(u=>u.uid&&u.uid!==currentUser?.uid&&u.status==='active'&&onlinePresenceByUid[u.uid]?.state==='online').sort((a,b)=>String(a.fullName||a.username||'').localeCompare(String(b.fullName||b.username||'')));
+  const onlinePeople=userDirectory.filter(u=>u.uid&&u.uid!==currentUser?.uid&&u.status==='active'&&Object.values(onlinePresenceByUid[u.uid]||{}).some(connection=>connection?.state==='online')).sort((a,b)=>String(a.fullName||a.username||'').localeCompare(String(b.fullName||b.username||'')));
   const onlineChatUser=userDirectory.find(u=>u.uid===onlineChatUid&&u.status==='active')||null;
   const onlineChatMessages=onlineChatUid&&currentUser?.uid?messages.filter(m=>{
     if(!m||m.visibility==='public')return false;
