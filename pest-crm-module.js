@@ -155,8 +155,6 @@
 
     function hashId(value){let hash=0;for(let i=0;i<value.length;i++)hash=((hash<<5)-hash+value.charCodeAt(i))|0;return Math.abs(hash%2000000000)+1;}
     function audit(action,entityType,entityId){
-      const record={id:db.ref('pestCrm/auditLogs').push().key,uid:uid,userName:user.fullName||user.username||user.email||uid,action:action,entityType:entityType,entityId:entityId||'',createdAt:Date.now()};
-      db.ref('pestCrm/auditLogs/'+record.id).set(record).catch(error=>console.warn('CRM audit log:',error));
       if(typeof props.addLog==='function')props.addLog('PEST CRM: '+action,user,{entityType:entityType,entityId:entityId||''});
     }
     function mayEdit(record){return canEdit&&(isAdmin||can('pestCrm','manage')||record.createdBy===uid||record.ownerUid===uid);}
@@ -202,6 +200,9 @@
       event.preventDefault();
       if(!canAdd&&!editingSupplier)return;
       if(!clean(supplierForm.companyName)){setNotice(t('اسم المورد مطلوب.','Supplier name is required.'));return;}
+      const supplierPhone=clean(supplierForm.phone).replace(/[^\d+]/g,'');
+      const duplicateSupplier=scopedSuppliers.find(item=>item.id!==editingSupplier&&(norm(item.companyName)===norm(supplierForm.companyName)||(supplierPhone&&clean(item.phone).replace(/[^\d+]/g,'')===supplierPhone)));
+      if(duplicateSupplier&&!window.confirm(t('يوجد مورد مشابه: ','A possible duplicate supplier exists: ')+(duplicateSupplier.companyName||'')+t('. هل تريد الحفظ رغم ذلك؟',' . Save anyway?')))return;
       try{
         const id=editingSupplier||db.ref('pestCrm/suppliers').push().key;
         const form=Object.assign({},supplierForm,{companyName:clean(supplierForm.companyName),tags:clean(supplierForm.tags).split(',').map(x=>x.trim()).filter(Boolean)});
@@ -488,6 +489,7 @@
         input(t('البريد الإلكتروني','Email'),supplierForm.email,v=>setSupplierForm(o=>({...o,email:v})),{type:'email'}),
         textarea(t('ملاحظات','Notes'),supplierForm.notes,v=>setSupplierForm(o=>({...o,notes:v})),{className:'sm:col-span-2'})
       ),
+      h('label',{className:'inline-flex items-center gap-2 text-sm'},h('input',{type:'checkbox',checked:!!supplierForm.pinned,onChange:e=>setSupplierForm(o=>({...o,pinned:e.target.checked}))}),t('تثبيت المورد في أعلى القائمة','Pin supplier at top')),
       h('button',{type:'submit',disabled:!canAdd&&!editingSupplier,className:'rounded-lg bg-blue-600 text-white px-5 py-2.5 font-bold'},t('حفظ المورد','Save supplier'))
     ):null;
     const suppliersView=h('div',null,
