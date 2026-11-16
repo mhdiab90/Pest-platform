@@ -10,6 +10,10 @@
   const norm = value => clean(value).toLowerCase().replace(/[\s\u064B-\u065F\u0640]+/g,'');
   const fmt = (value,currency) => new Intl.NumberFormat('en-US',{minimumFractionDigits:0,maximumFractionDigits:2}).format(Number(value)||0)+' '+(currency||'EGP');
   const download = (name, content, mime) => {
+    if(window.PEST_NATIVE&&window.PEST_NATIVE.isNative&&typeof window.PEST_NATIVE.saveTextFile==='function'){
+      window.PEST_NATIVE.saveTextFile({name:name,content:content,mimeType:mime||'text/plain'}).catch(error=>console.warn('Native file export:',error));
+      return;
+    }
     const blob=new Blob([content],{type:mime||'application/octet-stream'});
     const url=URL.createObjectURL(blob); const a=document.createElement('a');
     a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
@@ -288,7 +292,11 @@
       append('Suppliers',scopedSuppliers.map(s=>({ID:s.id,Company:s.companyName,Contact:s.contactPerson,Category:s.category,Tags:asArray(s.tags).join(', '),Phone:s.phone,Email:s.email,Notes:s.notes})));
       append('Offers',scopedOffers.map(o=>({ID:o.id,Name:o.name,Number:o.number,Customer:scopedCustomers.find(c=>c.id===o.customerId)?.companyName||'',Suppliers:asArray(o.supplierIds).map(id=>scopedSuppliers.find(s=>s.id===id)?.companyName||id).join('; '),Amount:o.amount,Currency:o.currency,Date:o.date,Status:o.status,RejectionReason:o.rejectionReason,Notes:o.notes,SalesRep:o.createdByName})));
       append('Visits',scopedVisits.map(v=>({ID:v.id,Customer:scopedCustomers.find(c=>c.id===v.customerId)?.companyName||'',Date:v.visitDate,Time:v.visitTime,Outcome:v.outcome,Notes:v.notes,FollowUpDate:v.followUpDate,FollowUpTime:v.followUpTime,CreatedBy:v.createdByName})));
-      window.XLSX.writeFile(book,'Pest-CRM-Export-'+today()+'.xlsx');
+      const exportName='Pest-CRM-Export-'+today()+'.xlsx';
+      if(window.PEST_NATIVE&&window.PEST_NATIVE.isNative&&typeof window.PEST_NATIVE.saveBase64File==='function'){
+        const base64=window.XLSX.write(book,{bookType:'xlsx',type:'base64'});
+        await window.PEST_NATIVE.saveBase64File({name:exportName,data:base64,mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      }else window.XLSX.writeFile(book,exportName);
       audit('تصدير Excel','export','workbook');
     }
     function exportJson(){
