@@ -51,12 +51,14 @@ async function showForegroundNotification({ id, type, title, body }) {
   const permission = await LocalNotifications.checkPermissions();
   if (permission.display !== 'granted') return false;
   await ensureAndroidNotificationChannel();
-  const normalizedType = String(type || '');
+  const rawType = String(type || '');
+  const normalizedType = rawType === 'request' ? 'userRequest' : rawType;
   const eventId = String(id || '');
   const route = normalizedType === 'cashCustody' ? 'cashCustody'
-    : normalizedType === 'request' || normalizedType === 'userRequest' ? 'userRequests'
+    : normalizedType === 'userRequest' ? 'userRequests'
     : 'messages';
-  const keyId = eventId.startsWith(normalizedType + ':') ? eventId.slice(normalizedType.length + 1) : eventId;
+  const prefix = eventId.startsWith(rawType + ':') ? rawType + ':' : normalizedType + ':';
+  const keyId = eventId.startsWith(prefix) ? eventId.slice(prefix.length) : eventId;
   await LocalNotifications.schedule({
     notifications: [{
       id: localNotificationId(normalizedType, keyId),
