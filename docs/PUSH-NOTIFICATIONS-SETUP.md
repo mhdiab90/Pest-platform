@@ -43,7 +43,7 @@ The Android APK workflow can use a persistent debug signing key so subsequent AP
 3. Name the secret `ANDROID_DEBUG_KEYSTORE_BASE64`. On PowerShell, generate its value using:
 
 ```powershell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("D:\\OneDrive\\Pest\\Pest Platform\\Main Project\\pest-platform-debug.keystore"))
+[Convert]::ToBase64String([IO.File]::ReadAllBytes('D:\OneDrive\Pest\Pest Platform\Main Project\pest-platform-debug.keystore'))
 ```
 
 4. Paste the resulting Base64 text as the secret value. The keystore uses alias `androiddebugkey` and the standard debug password `android`. Keep the file private.
