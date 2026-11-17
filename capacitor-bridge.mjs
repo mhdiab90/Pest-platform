@@ -63,6 +63,15 @@ async function enablePushNotifications() {
   finally { pushRegistrationInProgress = null; }
 }
 
+async function refreshPushRegistration() {
+  if (!isNative) return { granted: false, reason: 'not-native' };
+  await installPushNotificationListeners();
+  const permission = await PushNotifications.checkPermissions();
+  if (permission.receive !== 'granted') return { granted: false, reason: 'permission-not-granted' };
+  await PushNotifications.register();
+  return { granted: true };
+}
+
 async function ensureNotificationPermission() {
   if (!isNative) return false;
   let permission = await LocalNotifications.checkPermissions();
@@ -139,6 +148,7 @@ window.PEST_NATIVE = {
   isNative,
   ensureNotificationPermission,
   enablePushNotifications,
+  refreshPushRegistration,
   scheduleReminder,
   cancelReminder,
   saveBase64File,
