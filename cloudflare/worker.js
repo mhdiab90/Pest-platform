@@ -21,7 +21,7 @@ function corsHeaders(origin) {
     "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Attachment-Entity-Type, X-Attachment-Entity-Id, X-Attachment-Id, X-Attachment-File-Name",
     "Access-Control-Max-Age": "86400"
   };
-  if (origin === ALLOWED_ORIGIN) headers["Access-Control-Allow-Origin"] = ALLOWED_ORIGIN;
+  if (isAllowedOrigin(origin)) headers["Access-Control-Allow-Origin"] = origin;
   return headers;
 }
 
@@ -2469,14 +2469,23 @@ export default {
         models: { cloudflare: MODEL, openrouter: OPENROUTER_MODEL },
         schedulingAvailable: Boolean(env.AI_AGENT_SCHEDULER && env.AI_SCHEDULER_ENCRYPTION_KEY),
         whatsappNotificationsAvailable: Boolean(whatsappNotificationsConfigured(env) && env.AI_AGENT_SCHEDULER),
+        pushNotificationsAvailable: Boolean(env.FCM_SERVICE_ACCOUNT_JSON),
+        webPushConfigured: Boolean(env.FCM_SERVICE_ACCOUNT_JSON && env.FCM_WEB_VAPID_KEY),
         googleDriveConfigured: Boolean(env.GOOGLE_DRIVE_CLIENT_ID && env.GOOGLE_DRIVE_CLIENT_SECRET && env.GOOGLE_DRIVE_TOKEN_ENCRYPTION_KEY && env.AI_AGENT_SCHEDULER)
       }, 200, origin);
     }
     if (url.pathname === "/drive/oauth/callback") return handleGoogleDriveOAuthCallback(request,env);
-    if (origin !== ALLOWED_ORIGIN) return jsonResponse({ error: "Origin is not allowed." }, 403, origin);
+    if (!isAllowedOrigin(origin)) return jsonResponse({ error: "Origin is not allowed." }, 403, origin);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
+    if (url.pathname === "/push/config" && request.method === "GET") {
+      return jsonResponse({
+        senderConfigured: Boolean(env.FCM_SERVICE_ACCOUNT_JSON),
+        webVapidKey: String(env.FCM_WEB_VAPID_KEY || ""),
+        webPushConfigured: Boolean(env.FCM_SERVICE_ACCOUNT_JSON && env.FCM_WEB_VAPID_KEY)
+      }, 200, origin);
+    }
     if (!["GET","POST","DELETE"].includes(request.method)) return jsonResponse({ error: "Method not allowed." }, 405, origin);
-    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/upload", "/attachments/attach", "/attachments/replace", "/attachments/annotate", "/attachments/file", "/attachments/usage"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
+    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/upload", "/attachments/attach", "/attachments/replace", "/attachments/annotate", "/attachments/file", "/attachments/usage", "/push/notify", "/push/request"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
 
     try {
       const authorization = request.headers.get("Authorization") || "";
@@ -2491,7 +2500,15 @@ export default {
         if (!contentType.toLowerCase().includes("application/json")) return jsonResponse({ error: "Content-Type must be application/json." }, 415, origin);
         body = await request.json();
       }
+      if (url.pathname === "/push/request") {
+        const output = await handlePendingUserRequestPush(claims, token, env);
+        return jsonResponse(output, 200, origin);
+      }
       const profile = await loadProfile(claims, token);
+      if (url.pathname === "/push/notify") {
+        const output = await handlePushNotificationRequest(body, claims, token, env);
+        return jsonResponse(output, 200, origin);
+      }
       if (url.pathname.startsWith("/drive/") || url.pathname.startsWith("/attachments")) {
         const output = await handleGoogleDriveRequest(request,url,body,claims,profile,token,env);
         if (output instanceof Response) return output;
@@ -2585,6 +2602,11 @@ export default {
         return jsonResponse({ error: safeMessage || "AUTH_INVALID: Firebase sign-in token was rejected.", code: "AUTH_INVALID" }, 401, origin);
       }
       if (/Permission denied/.test(message)) return jsonResponse({ error: message }, 403, origin);
+      if (url.pathname.startsWith("/push/")) {
+        const status = /^FCM_NOT_CONFIGURED|^FCM_CONFIG_INVALID|^FCM_AUTH_FAILED/.test(message) ? 503 : 400;
+        console.error("Pest Platform push request failed:", message.slice(0, 220));
+        return jsonResponse({ error: message.slice(0, 320) || "Push notification request failed." }, status, origin);
+      }
       if (url.pathname.startsWith("/drive/") || url.pathname.startsWith("/attachments")) {
         console.error("Pest Platform attachment request failed:",message.slice(0,300));
         return jsonResponse({error:message.slice(0,320)||"Attachment request failed."},/not found/i.test(message)?404:400,origin);
