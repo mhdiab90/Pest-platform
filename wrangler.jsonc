@@ -28,5 +28,18 @@
     "crons": [
       "* * * * *"
     ]
+  },
+  "previews": {
+    "ai": {
+      "binding": "AI"
+    },
+    "durable_objects": {
+      "bindings": [
+        {
+          "name": "AI_AGENT_SCHEDULER",
+          "class_name": "AIAgentScheduler"
+        }
+      ]
+    }
   }
 }
