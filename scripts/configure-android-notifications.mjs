@@ -74,7 +74,7 @@ let manifest = await readFile(manifestPath, 'utf8');
 const metadata = [
   '<meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_stat_pest_notification" />',
   '<meta-data android:name="com.google.firebase.messaging.default_notification_color" android:resource="@color/pest_notification_color" />',
-  '<meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="pest_alerts_v2" />'
+  '<meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="pest_alerts_v3" />'
 ];
 for (const line of metadata) {
   const key = line.match(/android:name="([^"]+)"/)[1];
