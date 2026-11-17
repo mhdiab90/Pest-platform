@@ -255,7 +255,7 @@ async function getFcmAccessToken(env) {
   const header = fcmTextBase64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
   const claims = fcmTextBase64Url(JSON.stringify({
     iss: serviceAccount.client_email,
-    scope: "https://www.googleapis.com/auth/firebase.messaging https://www.googleapis.com/auth/firebase.database",
+    scope: "https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/firebase.database https://www.googleapis.com/auth/firebase.messaging",
     aud: tokenUri,
     iat: now,
     exp: now + 3600
@@ -392,7 +392,7 @@ async function dispatchPushToUsers(env, recipients, eventType, eventId, dispatch
     sent += userSent;
     failed += userFailed;
     await adminDatabaseRequest(dispatchPath, accessToken, "PUT", {
-      status: "completed", sent: userSent, failed: userFailed, updatedAt: Date.now()
+      status: userFailed > 0 ? "retryable" : "completed", sent: userSent, failed: userFailed, updatedAt: Date.now()
     });
   }
   return { recipients: uniqueRecipients.length, sent, failed, skipped, removedTokens };
