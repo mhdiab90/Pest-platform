@@ -10,6 +10,8 @@ on:
       - "capacitor-bridge.js"
       - "capacitor-bridge.mjs"
       - "capacitor.config.json"
+      - "google-services.json"
+      - "firebase-messaging-sw.js"
       - "package.json"
       - "scripts/build-mobile.mjs"
       - ".github/workflows/android-apk.yml"
@@ -51,6 +53,8 @@ jobs:
         run: |
           node --check pest-crm-module.js
           node --check capacitor-bridge.mjs
+          node --check scripts/build-mobile.mjs
+          node -e "const c=require('./google-services.json'); if(c.project_info.project_id!=='pest-plat-form'||c.client?.[0]?.client_info?.android_client_info?.package_name!=='com.mhdiab90.pestplatform') process.exit(1);"
           node .github/scripts/check-app-babel.mjs
 
       - name: Prepare local web assets
@@ -59,6 +63,8 @@ jobs:
       - name: Add Android project and sync plugins
         run: |
           npx cap add android
+          mkdir -p android/app
+          cp google-services.json android/app/google-services.json
           npx cap sync android
 
       - name: Build installable debug APK
