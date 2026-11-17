@@ -241,23 +241,20 @@ async function getMobileOtaManifest(channel) {
   if (!release) return { ok: true, updateAvailable: false, channel };
 
   const assets = Array.isArray(release.assets) ? release.assets : [];
-  const manifestAsset = assets.find(asset => asset && asset.name === "manifest.json");
-  const bundleAsset = assets.find(asset => asset && asset.name === "pest-platform-ota.zip");
-  if (!manifestAsset || !bundleAsset ||
-      !String(manifestAsset.browser_download_url || "").startsWith("https://github.com/mhdiab90/Pest-platform/releases/download/") ||
+  const bundleAsset = assets.find(asset =>
+    asset && asset.name === "pest-platform-ota.zip" && asset.state === "uploaded"
+  );
+  if (!bundleAsset ||
       !String(bundleAsset.browser_download_url || "").startsWith("https://github.com/mhdiab90/Pest-platform/releases/download/")) {
-    throw new Error("OTA release is missing its required bundle assets.");
+    throw new Error("OTA release is missing its uploaded bundle asset.");
   }
 
-  const manifestResponse = await fetch(manifestAsset.browser_download_url, {
-    headers: { "User-Agent": "Pest-Platform-OTA" }
-  });
-  if (!manifestResponse.ok) throw new Error("OTA manifest download failed.");
-  const manifest = await manifestResponse.json();
-  const version = String(manifest && manifest.version || "");
-  const sha256 = String(manifest && manifest.sha256 || "").toLowerCase();
-  if (version !== release.tag_name || !version.startsWith(prefix) || !/^[a-f0-9]{64}$/.test(sha256)) {
-    throw new Error("OTA manifest validation failed.");
+  // GitHub's Releases API supplies the SHA-256 digest for each uploaded asset.
+  // Use that metadata directly instead of fetching a second redirecting asset.
+  const version = String(release.tag_name || "");
+  const sha256 = String(bundleAsset.digest || "").replace(/^sha256:/i, "").toLowerCase();
+  if (!version.startsWith(prefix) || !/^[a-f0-9]{64}$/.test(sha256)) {
+    throw new Error("OTA release tag or bundle SHA-256 digest is invalid.");
   }
 
   return {
