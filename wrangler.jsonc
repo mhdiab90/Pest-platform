@@ -35,7 +35,7 @@
     "run_worker_first": [
       "/health",
       "/push/*",
-      "/mobile-updates/*",
+      "/mobile-updates/*", // OTA manifest is resolved by the Worker from GitHub Release metadata.
       "/agent",
       "/ask",
       "/execute",
