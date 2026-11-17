@@ -1878,10 +1878,14 @@ function App(){
   function notifyUserOfIncoming(item){
     playIncomingNotificationSound();
     const prefs=notificationPreferencesRef.current;
+    const title=item.type==='cashCustody'?(rtl?'حركة مالية جديدة تخص عهدتك':'New financial movement for your custody'):item.type==='message'?(rtl?'رسالة جديدة من '+(item.message.senderName||'مستخدم'):'New message from '+(item.message.senderName||'user')):(rtl?'طلب مستخدم جديد':'New user request');
+    const body=item.type==='cashCustody'?[item.cashCustody.senderName,money(item.cashCustody.amount)+' '+(item.cashCustody.currency||'EGP'),item.cashCustody.description].filter(Boolean).join(' · '):item.type==='message'?String(item.message.body||item.message.subject||'').slice(0,160):String(item.request.fullName||item.request.username||item.request.email||'');
+    if(window.PEST_NATIVE?.isNative&&typeof window.PEST_NATIVE.showForegroundNotification==='function'){
+      window.PEST_NATIVE.showForegroundNotification({id:item.id,type:item.type,title,body})
+        .catch(error=>console.warn('Android foreground notification:',error));
+    }
     if(!prefs.desktop||typeof Notification==='undefined'||Notification.permission!=='granted')return;
     try{
-      const title=item.type==='cashCustody'?(rtl?'حركة مالية جديدة تخص عهدتك':'New financial movement for your custody'):item.type==='message'?(rtl?'رسالة جديدة من '+(item.message.senderName||'مستخدم'):'New message from '+(item.message.senderName||'user')):(rtl?'طلب مستخدم جديد':'New user request');
-      const body=item.type==='cashCustody'?[item.cashCustody.senderName,money(item.cashCustody.amount)+' '+(item.cashCustody.currency||'EGP'),item.cashCustody.description].filter(Boolean).join(' · '):item.type==='message'?String(item.message.body||item.message.subject||'').slice(0,160):String(item.request.fullName||item.request.username||item.request.email||'');
       const popup=new Notification(title,{body,tag:'pest-'+item.id,renotify:true,silent:true});
       popup.onclick=()=>{
         window.focus();

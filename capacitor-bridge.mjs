@@ -39,6 +39,39 @@ function dispatchPushEvent(name, detail) {
   window.dispatchEvent(new CustomEvent(name, { detail }));
 }
 
+function localNotificationId(type, eventId) {
+  const key = String(type || 'notification') + ':' + String(eventId || Date.now());
+  let hash = 2166136261;
+  for (let i = 0; i < key.length; i++) hash = Math.imul(hash ^ key.charCodeAt(i), 16777619);
+  return (hash >>> 0) & 0x7fffffff || 1;
+}
+
+async function showForegroundNotification({ id, type, title, body }) {
+  if (!isNative || Capacitor.getPlatform() !== 'android') return false;
+  const permission = await LocalNotifications.checkPermissions();
+  if (permission.display !== 'granted') return false;
+  await ensureAndroidNotificationChannel();
+  const normalizedType = String(type || '');
+  const eventId = String(id || '');
+  const route = normalizedType === 'cashCustody' ? 'cashCustody'
+    : normalizedType === 'request' || normalizedType === 'userRequest' ? 'userRequests'
+    : 'messages';
+  const keyId = eventId.startsWith(normalizedType + ':') ? eventId.slice(normalizedType.length + 1) : eventId;
+  await LocalNotifications.schedule({
+    notifications: [{
+      id: localNotificationId(normalizedType, keyId),
+      title: String(title || 'PEST Platform').slice(0, 100),
+      body: String(body || '').slice(0, 180),
+      schedule: { at: new Date(Date.now() + 150) },
+      channelId: ANDROID_NOTIFICATION_CHANNEL,
+      smallIcon: 'ic_stat_pest_notification',
+      iconColor: '#14517a',
+      extra: { type: normalizedType, eventId: keyId, route }
+    }]
+  });
+  return true;
+}
+
 let otaInitializationPromise = null;
 
 function dispatchOtaEvent(name, detail) {
@@ -126,11 +159,21 @@ async function installPushNotificationListeners() {
   await PushNotifications.addListener('registration', token => dispatchPushEvent('pest-push-token', { token: token.value, platform: 'android' }));
   await PushNotifications.addListener('registrationError', error => dispatchPushEvent('pest-push-error', { message: String(error?.error || error?.message || 'FCM registration failed') }));
   await PushNotifications.addListener('pushNotificationReceived', notification => {
-    // The PushNotifications plugin presents foreground alerts through
-    // presentationOptions; this event is retained for app-side routing/telemetry.
-    dispatchPushEvent('pest-push-received', notification || {});
+    const payload = notification || {};
+    const data = payload.data || {};
+    dispatchPushEvent('pest-push-received', payload);
+    void showForegroundNotification({
+      id: data.eventId || payload.id || Date.now(),
+      type: data.type || '',
+      title: payload.title || data.title || 'PEST Platform',
+      body: payload.body || data.body || 'لديك تنبيه جديد. افتح التطبيق للاطلاع على التفاصيل.'
+    }).catch(error => console.warn('Foreground Android notification could not be displayed:', error));
   });
   await PushNotifications.addListener('pushNotificationActionPerformed', action => dispatchPushEvent('pest-push-opened', action?.notification?.data || {}));
+  await LocalNotifications.addListener('localNotificationActionPerformed', action => {
+    const extra = action?.notification?.extra || {};
+    dispatchPushEvent('pest-push-opened', extra);
+  });
   pushListenersInstalled = true;
 }
 
@@ -251,6 +294,7 @@ window.PEST_NATIVE = {
   isNative,
   initializeOtaUpdates,
   ensureNotificationPermission,
+  showForegroundNotification,
   enablePushNotifications,
   refreshPushRegistration,
   scheduleReminder,

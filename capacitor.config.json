@@ -15,13 +15,7 @@
       "statsUrl": ""
     },
     "PushNotifications": {
-      "presentationOptions": [
-        "badge",
-        "sound",
-        "alert",
-        "banner",
-        "list"
-      ]
+      "presentationOptions": []
     },
     "LocalNotifications": {
       "smallIcon": "ic_stat_pest_notification",
