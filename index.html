@@ -998,11 +998,12 @@ function App(){
   },[]);
   // Use the isolated Worker Preview as both the web host and API for preview deployments.
   const isCloudflareWorkerPreview = window.location.hostname.endsWith('-pest-platform.ai-mhdiab90.workers.dev');
-  const PUSH_WORKER_BASE = window.location.hostname === 'deploy-preview-4--pest-platform.netlify.app'
-    ? 'https://preview-fcm-setup-check-pest-platform.ai-mhdiab90.workers.dev'
-    : isCloudflareWorkerPreview
-      ? window.location.origin
-      : 'https://pest-platform.ai-mhdiab90.workers.dev';
+  const PUSH_WORKER_BASE = window.PEST_OTA_CONFIG?.workerBase
+    || (window.location.hostname === 'deploy-preview-4--pest-platform.netlify.app'
+      ? 'https://preview-fcm-setup-check-pest-platform.ai-mhdiab90.workers.dev'
+      : isCloudflareWorkerPreview
+        ? window.location.origin
+        : 'https://pest-platform.ai-mhdiab90.workers.dev');
   const [currentUser,setCurrentUser] = useState(null);
   const [authReady,setAuthReady] = useState(false);
   const [busy,setBusy] = useState(false);
