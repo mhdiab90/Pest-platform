@@ -2486,6 +2486,15 @@ export default {
       }, 200, origin);
     }
     if (url.pathname === "/drive/oauth/callback") return handleGoogleDriveOAuthCallback(request,env);
+    // Same-origin GET requests may omit the Origin header. This endpoint only
+    // returns the public VAPID key and configuration flags, never credentials.
+    if (!origin && url.pathname === "/push/config" && request.method === "GET") {
+      return jsonResponse({
+        senderConfigured: Boolean(env.FCM_SERVICE_ACCOUNT_JSON),
+        webVapidKey: String(env.FCM_WEB_VAPID_KEY || ""),
+        webPushConfigured: Boolean(env.FCM_SERVICE_ACCOUNT_JSON && env.FCM_WEB_VAPID_KEY)
+      }, 200, "");
+    }
     if (!isAllowedOrigin(origin)) return jsonResponse({ error: "Origin is not allowed." }, 403, origin);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
     if (url.pathname === "/push/config" && request.method === "GET") {
