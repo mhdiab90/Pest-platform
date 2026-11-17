@@ -19,7 +19,26 @@ async function installPushNotificationListeners() {
   if (!isNative || pushListenersInstalled) return;
   await PushNotifications.addListener('registration', token => dispatchPushEvent('pest-push-token', { token: token.value, platform: 'android' }));
   await PushNotifications.addListener('registrationError', error => dispatchPushEvent('pest-push-error', { message: String(error?.error || error?.message || 'FCM registration failed') }));
-  await PushNotifications.addListener('pushNotificationReceived', notification => dispatchPushEvent('pest-push-received', notification || {}));
+  await PushNotifications.addListener('pushNotificationReceived', notification => {
+    const payload = notification || {};
+    dispatchPushEvent('pest-push-received', payload);
+    const title = String(payload.title || 'Pest Platform');
+    const body = String(payload.body || 'لديك تنبيه جديد. افتح التطبيق للاطلاع على التفاصيل.');
+    const notificationId = Math.max(1, Date.now() % 2147483647);
+    LocalNotifications.checkPermissions().then(permission => {
+      if (permission.display !== 'granted') return;
+      return LocalNotifications.schedule({
+        notifications: [{
+          id: notificationId,
+          title,
+          body,
+          schedule: { at: new Date(Date.now() + 150) },
+          channelId: 'default',
+          extra: { source: 'pest-platform-push' }
+        }]
+      });
+    }).catch(error => console.warn('Foreground Android notification could not be displayed:', error));
+  });
   await PushNotifications.addListener('pushNotificationActionPerformed', action => dispatchPushEvent('pest-push-opened', action?.notification?.data || {}));
   pushListenersInstalled = true;
 }
