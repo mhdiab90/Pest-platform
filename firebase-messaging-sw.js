@@ -15,6 +15,9 @@ firebase.initializeApp({
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage(payload => {
+  // FCM automatically displays a payload.notification message in the background.
+  // Only render our own notification if the sender ever sends a data-only message.
+  if (payload && payload.notification) return;
   const data = payload && payload.data ? payload.data : {};
   const notification = payload && payload.notification ? payload.notification : {};
   const title = notification.title || "Pest Platform";
@@ -33,6 +36,7 @@ messaging.onBackgroundMessage(payload => {
 });
 
 self.addEventListener("notificationclick", event => {
+  event.stopImmediatePropagation();
   event.notification.close();
   const data = event.notification.data || {};
   const target = new URL("./", self.registration.scope);
