@@ -7,6 +7,7 @@ const OPENROUTER_MODEL = "openrouter/free";
 const FIREBASE_JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 const FIREBASE_API_KEY = "AIzaSyBPrzHFEIM3AOFclTzJ1SpG_Nq6BKHgrSo";
 const SCHEDULE_TIME_ZONE = "Africa/Cairo";
+// Refresh the Preview deployment after configuring Preview-only FCM secrets.
 const MAX_PROMPT_LENGTH = 24000;
 const MAX_AGENT_ACTIONS = 5;
 
