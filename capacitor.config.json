@@ -5,5 +5,13 @@
   "bundledWebRuntime": false,
   "android": {
     "allowMixedContent": false
+  },
+  "plugins": {
+    "CapacitorUpdater": {
+      "autoUpdate": false,
+      "appReadyTimeout": 60000,
+      "autoDeleteFailed": true,
+      "autoDeletePrevious": false
+    }
   }
 }
