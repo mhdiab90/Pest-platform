@@ -410,7 +410,7 @@ async function sendFcmToDevice(deviceToken, accessToken, eventType, eventId, dev
       android: {
         priority: "HIGH",
         notification: {
-          channel_id: "pest_alerts_v2",
+          channel_id: "pest_alerts_v3",
           sound: "pest_notification",
           icon: "ic_stat_pest_notification",
           color: "#14517a",
