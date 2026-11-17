@@ -6,18 +6,24 @@
   <title>PEST Platform | When Performance Matters</title>
   <meta name="theme-color" content="#c6e3fb" />
   <meta name="description" content="PEST Platform — When Performance Matters" />
+  <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin />
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="icon" type="image/png" sizes="32x32" href="./assets/icon.png" />
   <link rel="shortcut icon" type="image/png" href="./assets/icon.png" />
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <script src="https://cdn.tailwindcss.com" defer></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" defer></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js" async></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" async></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js" async></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet" />
   <style>
@@ -1017,6 +1023,7 @@ function App(){
   const [unreadNotificationMessages,setUnreadNotificationMessages] = useState([]);
   const [activeUsers,setActiveUsers] = useState([]);
   const [onlinePresenceByUid,setOnlinePresenceByUid] = useState({});
+  const [onlinePresenceError,setOnlinePresenceError] = useState('');
   const [onlineUsersOpen,setOnlineUsersOpen] = useState(false);
   const [onlineChatUid,setOnlineChatUid] = useState('');
   const [onlineChatDraft,setOnlineChatDraft] = useState('');
@@ -1437,8 +1444,7 @@ function App(){
           await auth.signOut();
           return;
         }
-        const state = String(profile.status || '').toLowerCase();
-        if(!['active','نشط','مفعل','enabled'].includes(state)){
+        if(!isActiveAccountStatus(profile.status)){
           setAuthError(tr('notActive'));
           await auth.signOut();
           return;
@@ -1541,21 +1547,50 @@ function App(){
 
   useEffect(()=>{
     const uid=currentUser?.uid||'';
-    if(!uid){setOnlinePresenceByUid({});setOnlineUsersOpen(false);setOnlineChatUid('');return;}
+    if(!uid){
+      setOnlinePresenceByUid({});
+      setOnlinePresenceError('');
+      setOnlineUsersOpen(false);
+      setOnlineChatUid('');
+      return;
+    }
+    let mounted=true;
+    let wasConnected=false;
+    setOnlinePresenceError('');
+    const reportPresenceError=(context,error)=>{
+      if(!mounted)return;
+      console.error(context,error);
+      setOnlinePresenceError(firebaseErrorMessage(error,tr));
+    };
     const presenceRef=db.ref('presence');
-    const presenceHandler=snapshot=>setOnlinePresenceByUid(snapshot.val()||{});
-    presenceRef.on('value',presenceHandler,error=>console.error('Online presence listener:',error));
+    const presenceHandler=snapshot=>{
+      if(!mounted)return;
+      setOnlinePresenceByUid(snapshot.val()||{});
+      setOnlinePresenceError('');
+    };
+    presenceRef.on('value',presenceHandler,error=>reportPresenceError('Online presence read:',error));
     const connectionRef=db.ref('.info/connected');
     const ownPresenceRef=db.ref('presence/'+uid).push();
     const connectionHandler=snapshot=>{
-      if(snapshot.val()!==true)return;
-      ownPresenceRef.onDisconnect().remove().then(()=>ownPresenceRef.set({state:'online',lastChanged:firebase.database.ServerValue.TIMESTAMP})).catch(error=>console.error('Online presence registration:',error));
+      const connected=snapshot.val()===true;
+      if(!connected){wasConnected=false;return;}
+      if(wasConnected)return;
+      wasConnected=true;
+      ownPresenceRef.onDisconnect().remove()
+        .then(()=>ownPresenceRef.set({
+          state:'online',
+          lastChanged:firebase.database.ServerValue.TIMESTAMP,
+          platform:window.PEST_NATIVE?.isNative?'android':'web'
+        }))
+        .then(()=>{if(mounted)setOnlinePresenceError('');})
+        .catch(error=>reportPresenceError('Online presence registration:',error));
     };
-    connectionRef.on('value',connectionHandler,error=>console.error('Firebase connection listener:',error));
+    connectionRef.on('value',connectionHandler,error=>reportPresenceError('Firebase connection listener:',error));
     return ()=>{
+      mounted=false;
       presenceRef.off('value',presenceHandler);
       connectionRef.off('value',connectionHandler);
-      ownPresenceRef.remove().catch(()=>{});
+      ownPresenceRef.remove().catch(error=>console.warn('Online presence cleanup:',error));
     };
   },[currentUser?.uid]);
 
@@ -1783,6 +1818,16 @@ function App(){
     });
   },[currentUser?.uid,tab,assistantOpen,attachmentEntityType]);
 
+  function closeHeaderPopoversOnOutside(event){
+    const group=event.target&&typeof event.target.closest==='function'
+      ?event.target.closest('[data-header-popover]')
+      :null;
+    const activeGroup=group?.getAttribute('data-header-popover')||'';
+    if(activeGroup!=='notifications')setNotificationOpen(false);
+    if(activeGroup!=='presence')setOnlineUsersOpen(false);
+    if(activeGroup!=='theme')setShowThemeMenu(false);
+    if(activeGroup!=='user')setShowUserMenu(false);
+  }
   function unlockNotificationAudio(){
     if(!notificationPreferencesRef.current.sound||typeof window==='undefined')return;
     const AudioContextClass=window.AudioContext||window.webkitAudioContext;
@@ -1865,6 +1910,9 @@ function App(){
     startMessageReply(message);
   }
 
+  function isActiveAccountStatus(value){
+    return ['active','نشط','مفعل','enabled'].includes(String(value||'').trim().toLowerCase());
+  }
   function firebaseErrorMessage(err,tfn){
     const code=err && err.code ? err.code : '';
     if(code==='auth/invalid-email') return tfn('invalidEmail');
@@ -4431,7 +4479,7 @@ function App(){
 
   function openOnlineChat(uid){
     if(!hasPermission('messages','view'))return alert(rtl?'ليس لديك صلاحية عرض الرسائل.':'You do not have permission to view messages.');
-    const target=userDirectory.find(u=>u.uid===uid&&u.status==='active');
+    const target=userDirectory.find(u=>u.uid===uid&&isActiveAccountStatus(u.status));
     if(!target)return;
     setOnlineUsersOpen(false);
     setMessageShortcutOpen(false);
@@ -4444,7 +4492,7 @@ function App(){
   async function sendOnlineChatMessage(e){
     e.preventDefault();
     if(!onlineChatUid||!requirePermission('messages','add'))return;
-    const target=userDirectory.find(u=>u.uid===onlineChatUid&&u.status==='active');
+    const target=userDirectory.find(u=>u.uid===onlineChatUid&&isActiveAccountStatus(u.status));
     const body=String(onlineChatDraft||'').trim();
     if(!target||(!body&&!onlineChatPendingAttachments.length))return;
     setOnlineChatSending(true);
@@ -4717,8 +4765,8 @@ function App(){
   const requestStatusLabel=v=>{const x=requestStatusValue(v);return x==='approved'?tr('approvedLabel'):x==='rejected'?tr('rejectedLabel'):tr('pendingLabel');};
   const filteredRequests=userRequests.filter(r=>(requestFilter==='all'||requestStatusValue(r.status)===requestFilter) && includesText([r.fullName,r.email,r.username,r.jobTitle,r.uid].join(' '),globalSearch));
   const themeNames={red:'themeRed',blue:'themeBlue',green:'themeGreen',teal:'themeTeal',purple:'themePurple',orange:'themeOrange',charcoal:'themeCharcoal',sky:'themeSky',rose:'themeRose',amber:'themeAmber',indigo:'themeIndigo',navy:'themeNavy'};
-  const onlinePeople=userDirectory.filter(u=>u.uid&&u.uid!==currentUser?.uid&&u.status==='active'&&Object.values(onlinePresenceByUid[u.uid]||{}).some(connection=>connection?.state==='online')).sort((a,b)=>String(a.fullName||a.username||'').localeCompare(String(b.fullName||b.username||'')));
-  const onlineChatUser=userDirectory.find(u=>u.uid===onlineChatUid&&u.status==='active')||null;
+  const onlinePeople=userDirectory.filter(u=>u.uid&&u.uid!==currentUser?.uid&&isActiveAccountStatus(u.status)&&Object.values(onlinePresenceByUid[u.uid]||{}).some(connection=>connection?.state==='online')).sort((a,b)=>String(a.fullName||a.username||'').localeCompare(String(b.fullName||b.username||'')));
+  const onlineChatUser=userDirectory.find(u=>u.uid===onlineChatUid&&isActiveAccountStatus(u.status))||null;
   const onlineChatMessages=onlineChatUid&&currentUser?.uid?messages.filter(m=>{
     if(!m||m.visibility==='public')return false;
     const recipientIds=Array.isArray(m.recipientUids)?m.recipientUids:(m.recipientUid?[m.recipientUid]:[]);
@@ -5817,7 +5865,7 @@ function App(){
     </div>;
   }
 
-  return <div className={'app-root-shell min-h-screen flex flex-col bg-gray-100 '+(tab==='appLauncher'?'app-is-launcher ':'')+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?'app-mobile-header-compact':'')} onClickCapture={unlockNotificationAudio}>
+  return <div className={'app-root-shell min-h-screen flex flex-col bg-gray-100 '+(tab==='appLauncher'?'app-is-launcher ':'')+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?'app-mobile-header-compact':'')} onClickCapture={unlockNotificationAudio} onPointerDownCapture={closeHeaderPopoversOnOutside}>
     <header className={'app-shell-header text-white p-3 px-5 flex justify-between items-center gap-3 shadow-lg '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?'app-mobile-header-compact':'')}>
       <div className="app-shell-brand flex items-center gap-3">
         <img src="./assets/pest-logo-horizontal.webp" alt="PEST — When Performance Matters" className="app-product-logo"/>
@@ -5826,7 +5874,7 @@ function App(){
       </div>
       <div className="app-shell-actions flex items-center gap-3">
         <button onClick={()=>setLang(rtl?'en':'ar')} className="bg-black/20 px-3 py-2 rounded-lg text-sm">{tr('language')}</button><input value={globalSearch} onChange={e=>setGlobalSearch(e.target.value)} placeholder={tr('searchAll')} className="hidden lg:block rounded-lg px-3 py-2 text-slate-900 text-sm w-56" />
-        <div className="relative">
+        <div className="relative" data-header-popover="notifications">
           <button type="button" aria-expanded={notificationOpen} onClick={()=>setNotificationOpen(old=>!old)} className="relative p-2 rounded-lg hover:bg-black/10" title={rtl?'التنبيهات':'Notifications'}><i className="fas fa-bell text-xl"></i>{notificationItems.length>0&&<span className="absolute -top-1 -right-1 rounded-full bg-red-600 text-xs min-w-5 px-1.5 text-center">{notificationItems.length}</span>}</button>
           {notificationOpen&&<>
             <button type="button" aria-label={rtl?'إغلاق التنبيهات':'Close notifications'} onClick={()=>setNotificationOpen(false)} className="fixed inset-0 z-[79] bg-transparent cursor-default"></button>
@@ -5843,7 +5891,7 @@ function App(){
             </div>
           </>}
         </div>
-        <div className="relative app-online-presence" onMouseEnter={()=>setOnlineUsersOpen(true)} onMouseLeave={()=>setOnlineUsersOpen(false)}>
+        <div className="relative app-online-presence" data-header-popover="presence" onMouseEnter={()=>setOnlineUsersOpen(true)} onMouseLeave={()=>setOnlineUsersOpen(false)}>
           <button type="button" onClick={()=>setOnlineUsersOpen(true)} aria-expanded={onlineUsersOpen} className="app-online-presence-trigger" title={rtl?'المستخدمون المتصلون الآن':'Users online now'}>
             <span className={'app-online-led '+(onlinePeople.length?'is-online':'is-idle')}></span>
             <i className="fas fa-users"></i>
@@ -5851,17 +5899,18 @@ function App(){
           </button>
           {onlineUsersOpen&&<div className="app-online-presence-popover">
             <div className="flex items-center justify-between gap-2 px-3 py-2 border-b"><b className="text-sm">{rtl?'المستخدمون المتصلون':'Online users'} ({onlinePeople.length})</b><button type="button" className="text-gray-400 hover:text-gray-700" onClick={()=>setOnlineUsersOpen(false)} aria-label={rtl?'إغلاق':'Close'}><i className="fas fa-times"></i></button></div>
-            {onlinePeople.length===0?<p className="p-4 text-xs text-gray-500 text-center">{rtl?'لا يوجد مستخدمون آخرون متصلون حاليًا.':'No other users are online right now.'}</p>:onlinePeople.map(user=><button type="button" key={user.uid} onClick={()=>openOnlineChat(user.uid)} className="app-online-user-row"><span className="app-online-avatar">{String(user.fullName||user.username||'?').trim().slice(0,1)}</span><span className="min-w-0 flex-1 text-start"><b className="block text-sm truncate">{user.fullName||user.username||user.uid}</b><small className="block text-xs text-gray-500 truncate">{user.jobTitle||user.username||''}</small></span><span className="app-online-led is-online"></span></button>)}
+            {onlinePresenceError&&<p role="alert" className="mx-3 my-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800 whitespace-normal break-words">{rtl?'تعذر قراءة حالة الاتصال: ':'Could not load online presence: '}{onlinePresenceError}</p>}
+            {!onlinePresenceError&&onlinePeople.length===0?<p className="p-4 text-xs text-gray-500 text-center">{rtl?'لا يوجد مستخدمون آخرون متصلون حاليًا.':'No other users are online right now.'}</p>:onlinePeople.map(user=><button type="button" key={user.uid} onClick={()=>openOnlineChat(user.uid)} className="app-online-user-row"><span className="app-online-avatar">{String(user.fullName||user.username||'?').trim().slice(0,1)}</span><span className="min-w-0 flex-1 text-start"><b className="block text-sm truncate">{user.fullName||user.username||user.uid}</b><small className="block text-xs text-gray-500 truncate">{user.jobTitle||user.username||''}</small></span><span className="app-online-led is-online"></span></button>)}
           </div>}
         </div>
-        <div className="relative"><button onClick={()=>{setShowThemeMenu(!showThemeMenu);setShowUserMenu(false);}} className="p-2" title={tr('theme')}><i className="fas fa-palette text-xl"></i></button>
+        <div className="relative" data-header-popover="theme"><button onClick={()=>{setShowThemeMenu(!showThemeMenu);setShowUserMenu(false);}} className="p-2" title={tr('theme')}><i className="fas fa-palette text-xl"></i></button>
           {showThemeMenu&&<div className="absolute top-10 right-0 z-50 w-56 max-h-[70vh] overflow-y-auto bg-white text-slate-800 rounded-xl shadow-xl border border-slate-100 p-3"><p className="font-bold text-sm mb-2">{tr('chooseTheme')}</p>{Object.keys(themeOptions).map(k=><button key={k} onClick={()=>{setTheme(k);setShowThemeMenu(false);}} className={`w-full flex items-center gap-3 px-2 py-2 rounded-xl text-sm text-slate-700 hover:bg-slate-50 transition-colors ${theme===k?'bg-slate-100':''}`}><span className="w-6 h-6 shrink-0 rounded-full shadow-sm grid place-items-center" style={{background:themeOptions[k].main}}>{theme===k&&<i className="fas fa-check text-white text-xs"></i>}</span><span className="flex-1 text-start">{tr(themeNames[k])}</span>{k==='red'&&<span className="text-[11px] font-semibold bg-slate-900 text-white rounded-md px-2 py-1">{tr('themeDefault')}</span>}</button>)}</div>}
         </div>
         <button type="button" onClick={toggleNavigationMode} title={navMode==='side'?(rtl?'تحويل القائمة إلى علوية':'Switch to top navigation'):(rtl?'تحويل القائمة إلى جانبية':'Switch to sidebar navigation')} aria-label={navMode==='side'?(rtl?'تحويل القائمة إلى علوية':'Switch to top navigation'):(rtl?'تحويل القائمة إلى جانبية':'Switch to sidebar navigation')} className="app-layout-toggle p-2 rounded-lg hover:bg-black/10"><i className={'fas '+(navMode==='side'?'fa-bars-staggered':'fa-table-columns')+' text-lg'}></i></button>
         <button type="button" onClick={toggleDesktopNavigation} aria-expanded={!(desktopNavState.uid===(currentUser&&currentUser.uid)&&desktopNavState.hidden)} aria-label={desktopNavState.uid===(currentUser&&currentUser.uid)&&desktopNavState.hidden?(rtl?'توسيع القائمة':'Expand navigation'):(rtl?'تصغير القائمة إلى أيقونات':'Collapse navigation to icons')} title={desktopNavState.uid===(currentUser&&currentUser.uid)&&desktopNavState.hidden?(rtl?'توسيع القائمة كاملة':'Expand full navigation'):(rtl?'تصغير القائمة إلى شريط أيقونات':'Collapse navigation to an icon rail')} className="app-desktop-nav-toggle rounded-lg"><i className={'fas '+(desktopNavState.uid===(currentUser&&currentUser.uid)&&desktopNavState.hidden?'fa-angles-right':'fa-table-list')}></i><span>{desktopNavState.uid===(currentUser&&currentUser.uid)&&desktopNavState.hidden?(rtl?'توسيع القائمة':'Expand menu'):(rtl?'قائمة أيقونات':'Icon menu')}</span></button>
         <button type="button" onClick={toggleMobileHeaderSize} aria-label={mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?(rtl?'تكبير عنوان البرنامج':'Use normal header size'):(rtl?'تصغير عنوان البرنامج':'Use compact header size')} title={mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?(rtl?'حجم الرأس العادي':'Normal header size'):(rtl?'تصغير رأس البرنامج':'Compact header size')} className="app-mobile-only-control app-mobile-size-toggle rounded-lg"><i className={'fas '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?'fa-expand-alt':'fa-compress-alt')}></i><span>{mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?(rtl?'عادي':'Normal'):(rtl?'مصغر':'Small')}</span></button>
         <button type="button" onClick={toggleMobileNavigation} aria-expanded={!(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden)} aria-label={mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden?(rtl?'إظهار القائمة':'Show navigation'):(rtl?'إخفاء القائمة':'Hide navigation')} title={mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden?(rtl?'إظهار القائمة':'Show navigation'):(rtl?'إخفاء القائمة':'Hide navigation')} className="app-mobile-only-control app-mobile-nav-toggle rounded-lg"><i className={'fas '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden?'fa-bars':'fa-eye-slash')}></i><span>{mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden?(rtl?'إظهار القائمة':'Show menu'):(rtl?'إخفاء القائمة':'Hide menu')}</span></button>
-        <div className="relative"><button onClick={()=>{setShowUserMenu(!showUserMenu);setShowThemeMenu(false);}} className="flex items-center gap-2 p-1 rounded-lg hover:bg-black/10"><span className="app-header-identity">{currentUser.avatar?<img src={currentUser.avatar} alt=""/>:<span className="app-user-fallback">{(currentUser.fullName||'?').charAt(0)}</span>}<span className="hidden sm:block text-end"><b className="block text-sm">{currentUser.fullName}</b><small className="text-white/75">{currentUser.jobTitle}</small></span></span><i className="fas fa-cog text-xl"></i></button>
+        <div className="relative" data-header-popover="user"><button onClick={()=>{setShowUserMenu(!showUserMenu);setShowThemeMenu(false);}} className="flex items-center gap-2 p-1 rounded-lg hover:bg-black/10"><span className="app-header-identity">{currentUser.avatar?<img src={currentUser.avatar} alt=""/>:<span className="app-user-fallback">{(currentUser.fullName||'?').charAt(0)}</span>}<span className="hidden sm:block text-end"><b className="block text-sm">{currentUser.fullName}</b><small className="text-white/75">{currentUser.jobTitle}</small></span></span><i className="fas fa-cog text-xl"></i></button>
           {showUserMenu&&<div className="absolute top-11 end-0 z-50 w-72 bg-white text-slate-800 rounded-xl shadow-xl border p-3"><div className="flex items-center gap-3 border-b pb-3 mb-2">{currentUser.avatar?<img src={currentUser.avatar} alt="Profile" className="w-12 h-12 rounded-full object-cover"/>:<div className="w-12 h-12 rounded-full bg-blue-600 text-white grid place-items-center font-bold">{(currentUser.fullName||'?').charAt(0)}</div>}<div className="min-w-0"><b className="block truncate">{currentUser.fullName}</b><small className="block text-gray-500 truncate">{currentUser.email}</small><small className="block text-gray-500 truncate">@{currentUser.username} · {currentUser.jobTitle}</small></div></div><p className="text-xs font-bold text-gray-400 px-2 py-1">{tr('accountDetails')}</p><button className="menu-item" onClick={()=>{setTab('profile');setProfileSection('personal');setShowUserMenu(false);}}><i className="fas fa-user ml-2"></i>{tr('personalDetails')}</button><button className="menu-item" onClick={()=>{setTab('profile');setProfileSection('security');setShowUserMenu(false);}}><i className="fas fa-key ml-2"></i>{tr('savePassword')}</button><button className="menu-item" onClick={()=>{setTab('profile');setProfileSection('photo');setShowUserMenu(false);}}><i className="fas fa-image ml-2"></i>{tr('changePhoto')}</button><button className="menu-item" onClick={()=>{setTab('messages');setShowUserMenu(false);}}><i className="fas fa-envelope ml-2"></i>{tr('messages')}</button></div>}
         </div>
         <button onClick={logout} title={tr('logout')} className="p-2 rounded-lg hover:bg-black/10 text-white"><i className="fas fa-sign-out-alt text-xl"></i></button>
