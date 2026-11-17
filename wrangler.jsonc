@@ -35,6 +35,7 @@
     "run_worker_first": [
       "/health",
       "/push/*",
+      "/mobile-updates/*",
       "/agent",
       "/ask",
       "/execute",
