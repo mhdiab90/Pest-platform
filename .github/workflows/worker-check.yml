@@ -31,6 +31,8 @@ jobs:
         run: npm install --no-save @babel/parser
       - name: Validate Worker JavaScript syntax
         run: node --input-type=module --check < cloudflare/worker.js
+      - name: Bundle Worker with Wrangler (dry run only)
+        run: npx --yes wrangler@4 deploy --dry-run --outdir .wrangler-dry-run
       - name: Validate Firebase Messaging service worker syntax
         run: node --check firebase-messaging-sw.js
       - name: Validate React and JSX syntax
