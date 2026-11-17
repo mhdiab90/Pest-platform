@@ -971,10 +971,13 @@ function App(){
   const [lang,setLang] = useState(()=>localStorage.getItem('pestLang') || 'ar');
   const tr = key => words[lang][key] || key;
   const rtl = lang === 'ar';
-  // Keep notification tests on the isolated Cloudflare Preview; production stays on the live Worker.
+  // Use the isolated Worker Preview as both the web host and API for preview deployments.
+  const isCloudflareWorkerPreview = window.location.hostname.endsWith('-pest-platform.ai-mhdiab90.workers.dev');
   const PUSH_WORKER_BASE = window.location.hostname === 'deploy-preview-4--pest-platform.netlify.app'
     ? 'https://preview-fcm-setup-check-pest-platform.ai-mhdiab90.workers.dev'
-    : 'https://pest-platform.ai-mhdiab90.workers.dev';
+    : isCloudflareWorkerPreview
+      ? window.location.origin
+      : 'https://pest-platform.ai-mhdiab90.workers.dev';
   const [currentUser,setCurrentUser] = useState(null);
   const [authReady,setAuthReady] = useState(false);
   const [busy,setBusy] = useState(false);
@@ -6696,7 +6699,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(<AppErrorBoundary><A
 </script>
 <script>
 (()=>{
-  const WORKER_URL='https://pest-platform.ai-mhdiab90.workers.dev';
+  const WORKER_URL=window.location.hostname.endsWith('-pest-platform.ai-mhdiab90.workers.dev')
+    ? window.location.origin
+    : 'https://pest-platform.ai-mhdiab90.workers.dev';
   const agentRequest=async(path,method='POST',body)=>{
     const firebaseAuth=window.PEST_FIREBASE_AUTH;
     const user=firebaseAuth&&firebaseAuth.currentUser;
