@@ -2557,8 +2557,11 @@ export default {
           }
         });
       } catch (error) {
-        console.error("Mobile OTA manifest:", String(error && error.message || error));
-        return jsonResponse({ ok: false, error: "OTA update service is temporarily unavailable." }, 503, origin);
+        const diagnostic = String(error && error.message || error).slice(0, 240);
+        console.error("Mobile OTA manifest:", diagnostic);
+        const payload = { ok: false, error: "OTA update service is temporarily unavailable." };
+        if (url.searchParams.get("debug") === "1") payload.diagnostic = diagnostic;
+        return jsonResponse(payload, 503, origin);
       }
     }
     // Same-origin GET requests may omit the Origin header. This endpoint only
