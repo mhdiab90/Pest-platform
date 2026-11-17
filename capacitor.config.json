@@ -11,7 +11,8 @@
       "autoUpdate": false,
       "appReadyTimeout": 60000,
       "autoDeleteFailed": true,
-      "autoDeletePrevious": false
+      "autoDeletePrevious": false,
+      "statsUrl": ""
     }
   }
 }
