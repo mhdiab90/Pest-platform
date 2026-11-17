@@ -2542,6 +2542,9 @@ export default {
         return jsonResponse({ error: "Not found." }, 404, origin);
       }
       const requestedChannel = url.searchParams.get("channel");
+      if (requestedChannel === "preview" && env.OTA_PREVIEW_ENABLED !== "true") {
+        return jsonResponse({ ok: false, error: "Preview OTA channel is disabled on this deployment." }, 404, origin);
+      }
       const channel = requestedChannel === "preview" ? "preview" : "stable";
       try {
         const manifest = await getMobileOtaManifest(channel);
