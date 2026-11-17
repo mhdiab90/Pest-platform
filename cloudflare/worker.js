@@ -1,6 +1,7 @@
 const PROJECT_ID = "pest-plat-form";
 const DATABASE_URL = "https://pest-plat-form-default-rtdb.europe-west1.firebasedatabase.app";
 const ALLOWED_ORIGIN = "https://mhdiab90.github.io";
+const APP_PUBLIC_URL = ALLOWED_ORIGIN + "/Pest-platform/";
 const MODEL = "@cf/zai-org/glm-4.7-flash";
 const OPENROUTER_MODEL = "openrouter/free";
 const FIREBASE_JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
@@ -327,7 +328,7 @@ async function sendFcmToDevice(deviceToken, accessToken, eventType, eventId) {
         type: eventType,
         eventId: String(eventId || ""),
         route,
-        url: ALLOWED_ORIGIN
+        url: APP_PUBLIC_URL
       },
       android: {
         priority: "HIGH",
@@ -335,7 +336,7 @@ async function sendFcmToDevice(deviceToken, accessToken, eventType, eventId) {
       },
       webpush: {
         headers: { TTL: "300", Urgency: "high" },
-        fcmOptions: { link: ALLOWED_ORIGIN }
+        fcmOptions: { link: APP_PUBLIC_URL }
       }
     }
   };
