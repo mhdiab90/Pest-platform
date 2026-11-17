@@ -2886,6 +2886,7 @@ function App(){
       const requestData={uid,email,username,fullName:request.fullName.trim(),jobTitle:request.jobTitle.trim(),whatsapp:String(request.whatsapp||'').trim(),avatar:requestAvatar||'',status:'pending',createdAt:firebase.database.ServerValue.TIMESTAMP};
       await db.ref('userRequests/'+uid).set(requestData);
       requestSaved=true;
+      void sendPushWorkerRequest('/push/request',{}).catch(error=>console.warn('New account request push notification failed:',error));
       try{await sendPushWorkerRequest('/push/request',{});}catch(pushError){console.warn('Admin account-request push notification failed:',pushError);}
       try{if(auth.currentUser && auth.currentUser.uid===uid) await auth.signOut();}
       catch(signOutErr){signOutWarning=true;console.warn('Request saved; sign-out failed:',signOutErr);}
@@ -2921,7 +2922,8 @@ function App(){
     if(leavingUser){
       const savedPushTokenId=localStorage.getItem('pestPushTokenId:'+leavingUser.uid);
       if(savedPushTokenId){
-        db.ref('pushTokens/'+leavingUser.uid+'/'+savedPushTokenId).remove().catch(error=>console.warn('Could not unregister this device push token:',error));
+        try{await db.ref('pushTokens/'+leavingUser.uid+'/'+savedPushTokenId).remove();}
+        catch(error){console.warn('Could not unregister this device push token:',error);}
         localStorage.removeItem('pestPushTokenId:'+leavingUser.uid);
       }
     }
@@ -4204,6 +4206,25 @@ function App(){
     try{
       const config=await loadPushConfig(true);
       if(window.PEST_NATIVE?.isNative){
+        if(!window.PEST_ANDROID_PUSH_TOKEN_LISTENER){
+          window.addEventListener('pest-push-token',event=>{
+            const tokenData=event?.detail||{};
+            if(!tokenData.token)return;
+            persistPushToken(tokenData.token,'android').then(()=>{
+              setPushStatus(config.senderConfigured
+                ?(rtl?'تم تسجيل جهاز Android لاستقبال الإشعارات.':'Android device is registered for push notifications.')
+                :(rtl?'تم حفظ رمز Android؛ إعداد خدمة الإرسال على Cloudflare ما زال مطلوبًا.':'Android token saved; Cloudflare sender setup is still required.'));
+            }).catch(error=>{
+              console.warn('Android FCM token could not be saved:',error);
+              setPushStatus(rtl?'تعذر حفظ رمز الجهاز. راجع قواعد Firebase.':'Could not save the Android token. Check Firebase Rules.');
+            });
+          });
+          window.addEventListener('pest-push-error',event=>{
+            const message=event?.detail?.message||'FCM registration failed';
+            setPushStatus(String(message));
+          });
+          window.PEST_ANDROID_PUSH_TOKEN_LISTENER=true;
+        }
         const result=await window.PEST_NATIVE.enablePushNotifications();
         if(!result?.granted){
           setPushStatus(rtl?'لم يتم منح إذن الإشعارات من إعدادات Android.':'Android notification permission was not granted.');
@@ -4402,6 +4423,7 @@ function App(){
       updates['messages/'+target.uid+'/'+messageId]={...base,id:messageId,recipientUid:target.uid,mailboxUid:target.uid,read:false};
       updates['messages/'+currentUser.uid+'/'+messageId]={...base,id:messageId,recipientUid:target.uid,mailboxUid:currentUser.uid,read:true,copyType:'sent'};
       await db.ref().update(updates);
+      void sendPushWorkerRequest('/push/notify',{kind:'message',messageId:String(messageId)}).catch(error=>console.warn('Direct chat push dispatch failed:',error));
       setOnlineChatDraft('');
       if(onlineChatPendingAttachments.length){
         try{
