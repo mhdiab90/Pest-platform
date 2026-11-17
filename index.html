@@ -1818,6 +1818,7 @@ function App(){
   },[currentUser?.uid,tab,assistantOpen,attachmentEntityType]);
 
   function closeHeaderPopoversOnOutside(event){
+    unlockNotificationAudio();
     const group=event.target&&typeof event.target.closest==='function'
       ?event.target.closest('[data-header-popover]')
       :null;
@@ -1837,7 +1838,7 @@ function App(){
     }catch(err){console.warn('Notification audio is unavailable:',err);}
   }
   function playIncomingNotificationSound(){
-    if(!notificationPreferencesRef.current.sound)return;
+    if(!notificationPreferencesRef.current.sound||window.PEST_NATIVE?.isNative)return;
     const context=notificationAudioRef.current;
     if(!context||context.state!=='running')return;
     try{
