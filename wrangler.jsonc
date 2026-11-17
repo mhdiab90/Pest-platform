@@ -46,6 +46,9 @@
     ]
   },
   "previews": {
+    "vars": {
+      "FCM_WEB_VAPID_KEY": "BKjoV8wClGv7EotLkOz0rSS0DTvUKGAJfKeRRUhj9icRzuoBVrt56_tsZrylJ8UwCqA06hVb90rdQInZ5c2n00E"
+    },
     "ai": {
       "binding": "AI"
     },
