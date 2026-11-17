@@ -8,6 +8,7 @@ on:
       - 'fix/*'
     paths:
       - "index.html"
+      - "assets/**"
       - "pest-crm-module.js"
       - "capacitor-bridge.js"
       - "capacitor-bridge.mjs"
@@ -70,6 +71,9 @@ jobs:
           mkdir -p android/app
           cp google-services.json android/app/google-services.json
           npx cap sync android
+
+      - name: Generate Android application icon
+        run: npx @capacitor/assets generate --android --assetPath assets --iconBackgroundColor '#c6e3fb'
 
       - name: Configure stable Android debug signing and version
         env:

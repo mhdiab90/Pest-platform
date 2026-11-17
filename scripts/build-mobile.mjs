@@ -1,7 +1,7 @@
 import { mkdir, copyFile, access, readFile, writeFile } from 'node:fs/promises';
 import { build, transform } from 'esbuild';
 
-const required = ['index.html', 'pest-crm-module.js', 'capacitor-bridge.mjs', 'firebase-messaging-sw.js'];
+const required = ['index.html', 'pest-crm-module.js', 'capacitor-bridge.mjs', 'firebase-messaging-sw.js', 'assets/pest-logo-horizontal.webp', 'assets/icon.png'];
 for (const file of required) {
   try { await access(file); }
   catch { throw new Error('Required mobile build input is missing: ' + file); }
@@ -11,6 +11,9 @@ await mkdir('www', { recursive: true });
 await copyFile('index.html', 'www/index.html');
 await copyFile('pest-crm-module.js', 'www/pest-crm-module.js');
 await copyFile('firebase-messaging-sw.js', 'www/firebase-messaging-sw.js');
+await mkdir('www/assets', { recursive: true });
+await copyFile('assets/pest-logo-horizontal.webp', 'www/assets/pest-logo-horizontal.webp');
+await copyFile('assets/icon.png', 'www/assets/icon.png');
 
 let html = await readFile('www/index.html', 'utf8');
 const babelScripts = [...html.matchAll(/<script type="text\/babel">([\s\S]*?)<\/script>/gi)];

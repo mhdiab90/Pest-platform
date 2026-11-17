@@ -3,7 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Project, Supply & Cash Flow Management</title>
+  <title>PEST Platform | When Performance Matters</title>
+  <meta name="theme-color" content="#c6e3fb" />
+  <meta name="description" content="PEST Platform — When Performance Matters" />
+  <link rel="icon" type="image/png" sizes="32x32" href="./assets/icon.png" />
+  <link rel="shortcut icon" type="image/png" href="./assets/icon.png" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -863,6 +867,16 @@
   .app-dashboard-filter-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
 }
 </style>
+<style id="pest-product-brand-styles">
+    .app-shell-brand>.app-product-logo{display:block;width:150px!important;height:56px!important;flex:0 0 150px!important;object-fit:contain;border-radius:8px;background:#d9ecfc}
+    .app-shell-brand>.app-company-logo{display:block;width:36px;height:36px;flex:0 0 36px;object-fit:contain;border-radius:8px;background:#fff;padding:2px}
+    .app-login-logo{display:block;width:min(100%,280px);height:auto;max-height:150px;object-fit:contain;margin:0 auto 14px;border-radius:8px}
+    @media(max-width:767px){
+      .app-shell-brand>.app-product-logo{width:118px!important;height:44px!important;flex-basis:118px!important}
+      .app-shell-brand>.app-company-logo{width:28px;height:28px;flex-basis:28px}
+      .app-root-shell.app-mobile-header-compact .app-shell-brand>.app-product-logo{width:102px!important;height:38px!important;flex-basis:102px!important}
+    }
+  </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
   <div id="root"><div class="min-h-screen grid place-items-center text-slate-600">Loading…</div></div>
@@ -5761,7 +5775,9 @@ function App(){
     return <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
       <div className="absolute top-4 left-4"><button onClick={()=>setLang(rtl?'en':'ar')} className="bg-white text-slate-900 px-4 py-2 rounded-lg font-bold">{tr('language')}</button></div>
       <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-7">
-        <div className="text-center mb-6">{companyInfo.logo?<img src={companyInfo.logo} alt="Company logo" className="h-20 max-w-48 object-contain mx-auto mb-3"/>:<div className="w-16 h-16 rounded-full bg-blue-600 text-white grid place-items-center mx-auto mb-3 text-2xl"><i className="fas fa-building"></i></div>}
+        <div className="text-center mb-6">
+          <img src="./assets/pest-logo-horizontal.webp" alt="PEST — When Performance Matters" className="app-login-logo"/>
+          {companyInfo.logo&&<img src={companyInfo.logo} alt="Company logo" className="h-10 max-w-32 object-contain mx-auto mb-3"/>}
           <h1 className="text-xl font-bold text-slate-800">{companyInfo.name || tr('app')}</h1><p className="text-sm text-gray-500 mt-2">{tr('app')}</p></div>
         {authError && <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-lg mb-3 text-sm">{authError}</div>}
         {authSuccess && <div className="bg-green-50 border border-green-200 text-green-700 p-3 rounded-lg mb-3 text-sm">{authSuccess}</div>}
@@ -5803,7 +5819,11 @@ function App(){
 
   return <div className={'app-root-shell min-h-screen flex flex-col bg-gray-100 '+(tab==='appLauncher'?'app-is-launcher ':'')+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?'app-mobile-header-compact':'')} onClickCapture={unlockNotificationAudio}>
     <header className={'app-shell-header text-white p-3 px-5 flex justify-between items-center gap-3 shadow-lg '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?'app-mobile-header-compact':'')}>
-      <div className="app-shell-brand flex items-center gap-3">{companyInfo.logo?<img src={companyInfo.logo} alt="Logo" className="h-10 w-10 object-contain bg-white rounded p-1"/>:<i className="fas fa-cubes text-white text-2xl"></i>}<div><h1 className="font-bold">{companyInfo.name || tr('app')}</h1><p className="text-xs text-white/75">{tr('app')}</p></div></div>
+      <div className="app-shell-brand flex items-center gap-3">
+        <img src="./assets/pest-logo-horizontal.webp" alt="PEST — When Performance Matters" className="app-product-logo"/>
+        {companyInfo.logo&&<img src={companyInfo.logo} alt="Company logo" className="app-company-logo"/>}
+        <div><h1 className="font-bold">{companyInfo.name || tr('app')}</h1><p className="text-xs text-white/75">{tr('app')}</p></div>
+      </div>
       <div className="app-shell-actions flex items-center gap-3">
         <button onClick={()=>setLang(rtl?'en':'ar')} className="bg-black/20 px-3 py-2 rounded-lg text-sm">{tr('language')}</button><input value={globalSearch} onChange={e=>setGlobalSearch(e.target.value)} placeholder={tr('searchAll')} className="hidden lg:block rounded-lg px-3 py-2 text-slate-900 text-sm w-56" />
         <div className="relative">
