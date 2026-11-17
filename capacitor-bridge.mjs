@@ -2,8 +2,37 @@ import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import { PushNotifications } from '@capacitor/push-notifications';
 
 const isNative = Capacitor.isNativePlatform();
+let pushListenersInstalled = false;
+let pushRegistrationInProgress = null;
+
+function dispatchPushEvent(name, detail) {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(name, { detail }));
+}
+
+async function enablePushNotifications() {
+  if (!isNative) return { granted: false, reason: 'not-native' };
+  if (pushRegistrationInProgress) return pushRegistrationInProgress;
+  pushRegistrationInProgress = (async () => {
+    if (!pushListenersInstalled) {
+      await PushNotifications.addListener('registration', token => dispatchPushEvent('pest-push-token', { token: token.value, platform: 'android' }));
+      await PushNotifications.addListener('registrationError', error => dispatchPushEvent('pest-push-error', { message: String(error?.error || error?.message || 'FCM registration failed') }));
+      await PushNotifications.addListener('pushNotificationReceived', notification => dispatchPushEvent('pest-push-received', notification || {}));
+      await PushNotifications.addListener('pushNotificationActionPerformed', action => dispatchPushEvent('pest-push-opened', action?.notification?.data || {}));
+      pushListenersInstalled = true;
+    }
+    let permission = await PushNotifications.checkPermissions();
+    if (permission.receive !== 'granted') permission = await PushNotifications.requestPermissions();
+    if (permission.receive !== 'granted') return { granted: false, reason: 'permission-denied' };
+    if (Capacitor.getPlatform() === 'android') await PushNotifications.createChannel({ id: 'default', name: 'Pest Platform', description: 'Pest Platform alerts', importance: 5, visibility: 1, vibration: true }).catch(() => {});
+    await PushNotifications.register();
+    return { granted: true };
+  })();
+  try { return await pushRegistrationInProgress; }
+  finally { pushRegistrationInProgress = null; }
+}
 
 async function ensureNotificationPermission() {
   if (!isNative) return false;
@@ -80,6 +109,7 @@ async function saveTextFile({ name, content, mimeType }) {
 window.PEST_NATIVE = {
   isNative,
   ensureNotificationPermission,
+  enablePushNotifications,
   scheduleReminder,
   cancelReminder,
   saveBase64File,
