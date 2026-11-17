@@ -2891,7 +2891,6 @@ function App(){
       const requestData={uid,email,username,fullName:request.fullName.trim(),jobTitle:request.jobTitle.trim(),whatsapp:String(request.whatsapp||'').trim(),avatar:requestAvatar||'',status:'pending',createdAt:firebase.database.ServerValue.TIMESTAMP};
       await db.ref('userRequests/'+uid).set(requestData);
       requestSaved=true;
-      void sendPushWorkerRequest('/push/request',{}).catch(error=>console.warn('New account request push notification failed:',error));
       try{await sendPushWorkerRequest('/push/request',{});}catch(pushError){console.warn('Admin account-request push notification failed:',pushError);}
       try{if(auth.currentUser && auth.currentUser.uid===uid) await auth.signOut();}
       catch(signOutErr){signOutWarning=true;console.warn('Request saved; sign-out failed:',signOutErr);}
