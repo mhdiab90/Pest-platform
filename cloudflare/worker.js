@@ -315,8 +315,15 @@ async function adminDatabaseRequest(path, accessToken, method, body) {
   return value;
 }
 
-async function sendFcmToDevice(deviceToken, accessToken, eventType, eventId) {
+async function sendFcmToDevice(deviceToken, accessToken, eventType, eventId, deviceOrigin) {
+  const appBase = isAllowedOrigin(deviceOrigin)
+    ? (deviceOrigin === ALLOWED_ORIGIN ? APP_PUBLIC_URL : deviceOrigin + "/")
+    : APP_PUBLIC_URL;
   const route = eventType === "cashCustody" ? "cashCustody" : eventType === "userRequest" ? "userRequests" : "messages";
+  const clickUrl = new URL(appBase);
+  clickUrl.searchParams.set("pushType", eventType);
+  clickUrl.searchParams.set("pushId", String(eventId || ""));
+  clickUrl.searchParams.set("pushRoute", route);
   const payload = {
     message: {
       token: deviceToken,
@@ -328,7 +335,7 @@ async function sendFcmToDevice(deviceToken, accessToken, eventType, eventId) {
         type: eventType,
         eventId: String(eventId || ""),
         route,
-        url: APP_PUBLIC_URL
+        url: clickUrl.toString()
       },
       android: {
         priority: "HIGH",
@@ -336,7 +343,7 @@ async function sendFcmToDevice(deviceToken, accessToken, eventType, eventId) {
       },
       webpush: {
         headers: { TTL: "300", Urgency: "high" },
-        fcmOptions: { link: APP_PUBLIC_URL }
+        fcmOptions: { link: clickUrl.toString() }
       }
     }
   };
@@ -382,7 +389,7 @@ async function dispatchPushToUsers(env, recipients, eventType, eventId, dispatch
     let userSent = 0, userFailed = 0;
     for (const [tokenId, record] of entries) {
       if (!record || typeof record.token !== "string" || record.token.length < 20) continue;
-      const result = await sendFcmToDevice(record.token, accessToken, eventType, eventId);
+      const result = await sendFcmToDevice(record.token, accessToken, eventType, eventId, record.origin);
       if (result.sent) userSent += 1;
       else if (result.invalidToken) {
         await adminDatabaseRequest("pushTokens/" + uid + "/" + tokenId, accessToken, "DELETE");
