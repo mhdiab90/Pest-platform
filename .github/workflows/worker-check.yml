@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "cloudflare/worker.js"
+      - "firebase-messaging-sw.js"
       - "index.html"
       - ".github/scripts/check-app-babel.mjs"
       - ".github/workflows/worker-check.yml"
@@ -30,5 +31,7 @@ jobs:
         run: npm install --no-save @babel/parser
       - name: Validate Worker JavaScript syntax
         run: node --input-type=module --check < cloudflare/worker.js
+      - name: Validate Firebase Messaging service worker syntax
+        run: node --check firebase-messaging-sw.js
       - name: Validate React and JSX syntax
         run: node .github/scripts/check-app-babel.mjs
