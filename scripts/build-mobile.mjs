@@ -40,7 +40,15 @@ const preconnects = [
   '<link rel="preconnect" href="https://www.gstatic.com" crossorigin>',
   '<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>'
 ].join('\n  ');
-html = html.replace('</head>', '  ' + preconnects + '\n</head>');
+const githubRef = process.env.GITHUB_REF || '';
+const otaChannel = githubRef.endsWith('/main') ? 'stable' : 'preview';
+const otaWorkerBase = otaChannel === 'preview'
+  ? 'https://feature-mobile-push-performance-pest-platform.ai-mhdiab90.workers.dev'
+  : 'https://pest-platform.ai-mhdiab90.workers.dev';
+const otaConfigScript = '<script>window.PEST_OTA_CONFIG=' +
+  JSON.stringify({ channel: otaChannel, workerBase: otaWorkerBase }) +
+  ';</script>';
+html = html.replace('</head>', '  ' + otaConfigScript + '\n  ' + preconnects + '\n</head>');
 await writeFile('www/index.html', html, 'utf8');
 
 await build({
