@@ -4204,6 +4204,31 @@ function App(){
     });
     return window.PEST_FIREBASE_MESSAGING_SCRIPT;
   }
+  async function setupWebPushForCurrentUser(requestPermission=false,knownConfig=null){
+    if(!('serviceWorker' in navigator)||typeof Notification==='undefined')throw new Error(rtl?'المتصفح لا يدعم Web Push.':'This browser does not support Web Push.');
+    const config=knownConfig||await loadPushConfig(true);
+    if(!config.webVapidKey)throw new Error(rtl?'مفتاح Web Push العام غير مضبوط في Cloudflare بعد.':'The public Web Push VAPID key is not configured in Cloudflare yet.');
+    let permission=Notification.permission;
+    if(permission==='default'&&requestPermission)permission=await Notification.requestPermission();
+    if(permission!=='granted'){
+      if(requestPermission)throw new Error(rtl?'لم يتم السماح بإشعارات المتصفح. فعّلها من إعدادات الموقع.':'Browser notification permission was not granted. Enable it in site settings.');
+      return null;
+    }
+    await loadFirebaseMessagingCompat();
+    if(typeof firebase.messaging.isSupported==='function'&&!await firebase.messaging.isSupported())throw new Error(rtl?'هذا المتصفح لا يدعم Firebase Web Push في إعداداته الحالية.':'Firebase Web Push is not supported in this browser configuration.');
+    const appBase=new URL('./',window.location.href);
+    const serviceWorkerUrl=new URL('firebase-messaging-sw.js',appBase).toString();
+    const registration=await navigator.serviceWorker.register(serviceWorkerUrl,{scope:appBase.pathname});
+    const messaging=firebase.messaging();
+    if(!window.PEST_WEB_PUSH_FOREGROUND_LISTENER){
+      messaging.onMessage(payload=>window.dispatchEvent(new CustomEvent('pest-push-received',{detail:payload?.data||{}})));
+      window.PEST_WEB_PUSH_FOREGROUND_LISTENER=true;
+    }
+    const token=await messaging.getToken({vapidKey:config.webVapidKey,serviceWorkerRegistration:registration});
+    if(!token)throw new Error(rtl?'لم يرجع Firebase رمزًا لهذا المتصفح.':'Firebase did not return a browser registration token.');
+    await persistPushToken(token,'web');
+    return {token,config};
+  }
   async function enableDeviceNotifications(){
     if(pushBusy||!currentUser?.uid)return;
     setPushBusy(true);
@@ -4223,23 +4248,8 @@ function App(){
           :(rtl?'تم طلب تسجيل الجهاز. تبقى خطوة إعداد خدمة الإرسال على Cloudflare.':'Device registration requested. Cloudflare sender setup is still required.'));
         return;
       }
-      if(!('serviceWorker' in navigator)||typeof Notification==='undefined')throw new Error(rtl?'المتصفح لا يدعم Web Push.':'This browser does not support Web Push.');
-      if(!config.webVapidKey)throw new Error(rtl?'مفتاح Web Push العام غير مضبوط في Cloudflare بعد.':'The public Web Push VAPID key is not configured in Cloudflare yet.');
-      const permission=Notification.permission==='default'?await Notification.requestPermission():Notification.permission;
-      if(permission!=='granted')throw new Error(rtl?'لم يتم السماح بإشعارات المتصفح. فعّلها من إعدادات الموقع.':'Browser notification permission was not granted. Enable it in site settings.');
-      await loadFirebaseMessagingCompat();
-      if(typeof firebase.messaging.isSupported==='function'&&!await firebase.messaging.isSupported())throw new Error(rtl?'هذا المتصفح لا يدعم Firebase Web Push في إعداداته الحالية.':'Firebase Web Push is not supported in this browser configuration.');
-      const appBase=new URL('./',window.location.href);
-      const serviceWorkerUrl=new URL('firebase-messaging-sw.js',appBase).toString();
-      const registration=await navigator.serviceWorker.register(serviceWorkerUrl,{scope:appBase.pathname});
-      const messaging=firebase.messaging();
-      const token=await messaging.getToken({vapidKey:config.webVapidKey,serviceWorkerRegistration:registration});
-      if(!token)throw new Error(rtl?'لم يرجع Firebase رمزًا لهذا المتصفح.':'Firebase did not return a browser registration token.');
-      await persistPushToken(token,'web');
-      if(!window.PEST_WEB_PUSH_FOREGROUND_LISTENER){
-        messaging.onMessage(payload=>window.dispatchEvent(new CustomEvent('pest-push-received',{detail:payload?.data||{}})));
-        window.PEST_WEB_PUSH_FOREGROUND_LISTENER=true;
-      }
+      const result=await setupWebPushForCurrentUser(true,config);
+      if(!result)return;
       setPushStatus(config.senderConfigured
         ?(rtl?'تم تفعيل إشعارات هذا المتصفح بنجاح.':'Browser push notifications are enabled.')
         :(rtl?'تم تسجيل المتصفح. تبقى خطوة إعداد خدمة الإرسال على Cloudflare.':'Browser token saved. Cloudflare sender setup is still required.'));
