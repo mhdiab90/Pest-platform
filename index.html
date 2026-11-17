@@ -1486,6 +1486,14 @@ function App(){
       onOpened({detail:pendingOpened});
     }
     if(currentUser?.uid){
+      const optedInPushTokenId=localStorage.getItem('pestPushTokenId:'+currentUser.uid);
+      if(optedInPushTokenId){
+        if(window.PEST_NATIVE?.isNative&&typeof window.PEST_NATIVE.refreshPushRegistration==='function'){
+          void window.PEST_NATIVE.refreshPushRegistration().catch(error=>console.warn('Restoring Android push registration:',error));
+        }else if(typeof Notification!=='undefined'&&Notification.permission==='granted'){
+          void setupWebPushForCurrentUser(false).catch(error=>console.warn('Restoring web push registration:',error));
+        }
+      }
       const params=new URLSearchParams(window.location.search);
       const type=params.get('pushType');
       if(type){
