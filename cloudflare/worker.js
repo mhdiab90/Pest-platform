@@ -11,6 +11,8 @@ const MAX_AGENT_ACTIONS = 5;
 
 let cachedJwks = null;
 let cachedJwksUntil = 0;
+let cachedFcmAccessToken = null;
+let cachedFcmAccessTokenUntil = 0;
 
 function corsHeaders(origin) {
   const headers = {
@@ -212,6 +214,244 @@ async function loadProfile(claims, token) {
     throw new Error("This user account is not active.");
   }
   return { ...profile, uid: claims.sub };
+}
+
+
+function isAllowedOrigin(origin) {
+  if (!origin) return false;
+  if (origin === ALLOWED_ORIGIN || origin === "https://pest-platform.netlify.app" ||
+      origin === "https://localhost" || origin === "capacitor://localhost" ||
+      origin === "http://localhost") return true;
+  return /^https:\/\/deploy-preview-\d+--pest-platform\.netlify\.app$/.test(origin);
+}
+
+function fcmBase64Url(bytes) {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+function fcmTextBase64Url(value) {
+  return fcmBase64Url(new TextEncoder().encode(String(value)));
+}
+
+async function fcmSha256(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(value)));
+  return Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function getFcmAccessToken(env) {
+  if (cachedFcmAccessToken && Date.now() < cachedFcmAccessTokenUntil - 60000) return cachedFcmAccessToken;
+  if (!env.FCM_SERVICE_ACCOUNT_JSON) throw new Error("FCM_NOT_CONFIGURED: Add the FCM_SERVICE_ACCOUNT_JSON secret to the Cloudflare Worker.");
+  let serviceAccount;
+  try { serviceAccount = JSON.parse(env.FCM_SERVICE_ACCOUNT_JSON); }
+  catch (_) { throw new Error("FCM_CONFIG_INVALID: The Cloudflare FCM service account secret is not valid JSON."); }
+  if (!serviceAccount.client_email || !serviceAccount.private_key || serviceAccount.project_id !== PROJECT_ID) {
+    throw new Error("FCM_CONFIG_INVALID: The FCM service account must belong to the Pest Platform Firebase project.");
+  }
+  const tokenUri = serviceAccount.token_uri || "https://oauth2.googleapis.com/token";
+  const now = Math.floor(Date.now() / 1000);
+  const header = fcmTextBase64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const claims = fcmTextBase64Url(JSON.stringify({
+    iss: serviceAccount.client_email,
+    scope: "https://www.googleapis.com/auth/firebase.messaging https://www.googleapis.com/auth/firebase.database",
+    aud: tokenUri,
+    iat: now,
+    exp: now + 3600
+  }));
+  const unsigned = header + "." + claims;
+  const pem = String(serviceAccount.private_key).replace(/-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----|\s/g, "");
+  let keyBytes;
+  try {
+    const raw = atob(pem);
+    keyBytes = Uint8Array.from(raw, char => char.charCodeAt(0));
+  } catch (_) { throw new Error("FCM_CONFIG_INVALID: The FCM private key could not be decoded."); }
+  let privateKey;
+  try {
+    privateKey = await crypto.subtle.importKey(
+      "pkcs8", keyBytes,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false, ["sign"]
+    );
+  } catch (_) { throw new Error("FCM_CONFIG_INVALID: The FCM private key format is not supported."); }
+  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", privateKey, new TextEncoder().encode(unsigned));
+  const assertion = unsigned + "." + fcmBase64Url(new Uint8Array(signature));
+  const response = await fetch(tokenUri, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion
+    })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.access_token) {
+    console.error("FCM OAuth token exchange failed:", response.status);
+    throw new Error("FCM_AUTH_FAILED: Cloudflare could not obtain a Firebase messaging access token.");
+  }
+  cachedFcmAccessToken = payload.access_token;
+  cachedFcmAccessTokenUntil = Date.now() + Math.max(60, Number(payload.expires_in || 3600)) * 1000;
+  return cachedFcmAccessToken;
+}
+
+async function adminDatabaseRequest(path, accessToken, method, body) {
+  const cleanPath = String(path || "").split("/").filter(Boolean).map(encodeURIComponent).join("/");
+  const url = DATABASE_URL + (cleanPath ? "/" + cleanPath : "") + ".json";
+  const response = await fetch(url, {
+    method: method || "GET",
+    headers: {
+      "Accept": "application/json",
+      "Authorization": "Bearer " + accessToken,
+      ...(body === undefined ? {} : { "Content-Type": "application/json" })
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) })
+  });
+  const value = await response.json().catch(() => null);
+  if (!response.ok) {
+    console.error("Firebase Admin database request failed:", response.status);
+    throw new Error("FCM_DATABASE_ERROR: Secure push delivery could not read the notification records.");
+  }
+  return value;
+}
+
+async function sendFcmToDevice(deviceToken, accessToken, eventType, eventId) {
+  const route = eventType === "cashCustody" ? "cashCustody" : eventType === "userRequest" ? "userRequests" : "messages";
+  const payload = {
+    message: {
+      token: deviceToken,
+      notification: {
+        title: "Pest Platform",
+        body: "لديك تنبيه جديد. افتح التطبيق للاطلاع على التفاصيل."
+      },
+      data: {
+        type: eventType,
+        eventId: String(eventId || ""),
+        route,
+        url: ALLOWED_ORIGIN
+      },
+      android: {
+        priority: "HIGH",
+        notification: { channel_id: "default", sound: "default" }
+      },
+      webpush: {
+        headers: { TTL: "300", Urgency: "high" },
+        fcmOptions: { link: ALLOWED_ORIGIN }
+      }
+    }
+  };
+  const response = await fetch("https://fcm.googleapis.com/v1/projects/" + PROJECT_ID + "/messages:send", {
+    method: "POST",
+    headers: { "Authorization": "Bearer " + accessToken, "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const result = await response.json().catch(() => ({}));
+  if (response.ok) return { sent: true };
+  const errorDetails = Array.isArray(result.error && result.error.details) ? result.error.details : [];
+  const invalidToken = response.status === 404 || errorDetails.some(detail => detail && detail.errorCode === "UNREGISTERED");
+  return { sent: false, invalidToken, status: response.status };
+}
+
+async function dispatchPushToUsers(env, recipients, eventType, eventId, dispatchPrefix) {
+  if (!env.FCM_SERVICE_ACCOUNT_JSON) throw new Error("FCM_NOT_CONFIGURED: Add the FCM_SERVICE_ACCOUNT_JSON secret to the Cloudflare Worker.");
+  const accessToken = await getFcmAccessToken(env);
+  const uniqueRecipients = [...new Set((recipients || []).filter(uid => typeof uid === "string" && uid && uid.length <= 128))].slice(0, 100);
+  let sent = 0, failed = 0, skipped = 0, removedTokens = 0;
+  for (const uid of uniqueRecipients) {
+    const dispatchKey = await fcmSha256(dispatchPrefix + ":" + uid);
+    const dispatchPath = "pushDispatches/" + dispatchKey;
+    const existing = await adminDatabaseRequest(dispatchPath, accessToken, "GET");
+    if (existing && existing.status === "completed") { skipped += 1; continue; }
+    await adminDatabaseRequest(dispatchPath, accessToken, "PUT", {
+      status: "sending", eventType, eventId: String(eventId || ""),
+      recipientUid: uid, updatedAt: Date.now()
+    });
+    const profile = await adminDatabaseRequest("users/" + uid, accessToken, "GET");
+    if (!active(profile)) {
+      await adminDatabaseRequest(dispatchPath, accessToken, "PUT", { status: "completed", reason: "inactive-user", updatedAt: Date.now() });
+      skipped += 1;
+      continue;
+    }
+    const tokens = await adminDatabaseRequest("pushTokens/" + uid, accessToken, "GET");
+    const entries = tokens && typeof tokens === "object" ? Object.entries(tokens) : [];
+    if (!entries.length) {
+      await adminDatabaseRequest(dispatchPath, accessToken, "PUT", { status: "completed", reason: "no-device-tokens", updatedAt: Date.now() });
+      skipped += 1;
+      continue;
+    }
+    let userSent = 0, userFailed = 0;
+    for (const [tokenId, record] of entries) {
+      if (!record || typeof record.token !== "string" || record.token.length < 20) continue;
+      const result = await sendFcmToDevice(record.token, accessToken, eventType, eventId);
+      if (result.sent) userSent += 1;
+      else if (result.invalidToken) {
+        await adminDatabaseRequest("pushTokens/" + uid + "/" + tokenId, accessToken, "DELETE");
+        removedTokens += 1;
+      } else userFailed += 1;
+    }
+    sent += userSent;
+    failed += userFailed;
+    await adminDatabaseRequest(dispatchPath, accessToken, "PUT", {
+      status: "completed", sent: userSent, failed: userFailed, updatedAt: Date.now()
+    });
+  }
+  return { recipients: uniqueRecipients.length, sent, failed, skipped, removedTokens };
+}
+
+async function handlePushNotificationRequest(body, claims, token, env) {
+  const kind = String(body.kind || "");
+  if (kind === "message") {
+    const messageId = safeSegment(body.messageId, "message id");
+    const message = await databaseRequest("messages/" + claims.sub + "/" + messageId, token, "GET");
+    if (!message || message.senderUid !== claims.sub || message.copyType !== "sent") {
+      throw new Error("Permission denied: this account cannot send a push for that message.");
+    }
+    const recipients = Array.isArray(message.recipientUids)
+      ? message.recipientUids
+      : (message.recipientUid && message.recipientUid !== "*" ? [message.recipientUid] : []);
+    const result = await dispatchPushToUsers(env, recipients.filter(uid => uid !== claims.sub), "message", messageId,
+      "message:" + claims.sub + ":" + messageId);
+    return { success: true, kind, ...result };
+  }
+  if (kind === "cashCustody") {
+    const recipientUid = safeSegment(body.recipientUid, "cash custody recipient");
+    const notificationId = safeSegment(body.notificationId, "cash custody notification id");
+    const sourceOwnerUid = safeSegment(body.sourceOwnerUid, "cash custody source owner");
+    const accessToken = await getFcmAccessToken(env);
+    const notification = await adminDatabaseRequest("cashCustodyNotifications/" + recipientUid + "/" + notificationId, accessToken, "GET");
+    if (!notification || notification.senderUid !== claims.sub || notification.recipientUid !== recipientUid) {
+      throw new Error("Permission denied: the cash custody notification does not belong to this sender.");
+    }
+    const sourceId = safeSegment(notification.pairGroupId, "cash custody source transaction id");
+    const source = await adminDatabaseRequest("cashCustodies/" + sourceOwnerUid + "/transactions/" + sourceId, accessToken, "GET");
+    const mirrorId = safeSegment(notification.transactionId, "cash custody mirror transaction id");
+    const mirror = await adminDatabaseRequest("cashCustodies/" + recipientUid + "/transactions/" + mirrorId, accessToken, "GET");
+    if (!source || source.createdBy !== claims.sub || source.linkedOwnerUid !== recipientUid ||
+        source.linkedTransactionId !== mirrorId || !mirror || mirror.createdBy !== claims.sub ||
+        mirror.pairRole !== "counterparty" || mirror.linkedOwnerUid !== sourceOwnerUid ||
+        mirror.linkedTransactionId !== sourceId) {
+      throw new Error("Permission denied: linked cash custody records could not be verified.");
+    }
+    const result = await dispatchPushToUsers(env, [recipientUid], "cashCustody", notificationId,
+      "cashCustody:" + claims.sub + ":" + notificationId);
+    return { success: true, kind, ...result };
+  }
+  throw new Error("Unsupported push notification type.");
+}
+
+async function handlePendingUserRequestPush(claims, token, env) {
+  const request = await databaseRequest("userRequests/" + claims.sub, token, "GET");
+  if (!request || request.uid !== claims.sub || String(request.status || "").toLowerCase() !== "pending" ||
+      (claims.email && String(request.email || "").toLowerCase() !== String(claims.email).toLowerCase())) {
+    throw new Error("Permission denied: no matching pending account request was found.");
+  }
+  const accessToken = await getFcmAccessToken(env);
+  const users = await adminDatabaseRequest("users", accessToken, "GET");
+  const admins = users && typeof users === "object"
+    ? Object.entries(users).filter(([, profile]) => profile && profile.role === "admin" && active(profile)).map(([uid]) => uid)
+    : [];
+  const result = await dispatchPushToUsers(env, admins, "userRequest", claims.sub,
+    "userRequest:" + claims.sub + ":" + String(request.createdAt || "created"));
+  return { success: true, kind: "userRequest", ...result };
 }
 
 async function loadAgentConfig(token) {
