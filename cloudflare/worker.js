@@ -224,7 +224,9 @@ function isAllowedOrigin(origin) {
   if (origin === ALLOWED_ORIGIN || origin === "https://pest-platform.netlify.app" ||
       origin === "https://localhost" || origin === "capacitor://localhost" ||
       origin === "http://localhost") return true;
-  return /^https:\/\/deploy-preview-\d+--pest-platform\.netlify\.app$/.test(origin);
+  if (/^https:\/\/deploy-preview-\d+--pest-platform\.netlify\.app$/.test(origin)) return true;
+  // Allow only this account's Cloudflare Worker preview hosts, not arbitrary origins.
+  return /^https:\/\/[a-z0-9-]+-pest-platform\.ai-mhdiab90\.workers\.dev$/.test(origin);
 }
 
 function fcmBase64Url(bytes) {
