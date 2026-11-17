@@ -29,6 +29,22 @@
       "* * * * *"
     ]
   },
+  "assets": {
+    "directory": ".",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/health",
+      "/push/*",
+      "/agent",
+      "/ask",
+      "/execute",
+      "/schedules",
+      "/dashboards",
+      "/whatsapp/*",
+      "/drive/*",
+      "/attachments*"
+    ]
+  },
   "previews": {
     "ai": {
       "binding": "AI"
