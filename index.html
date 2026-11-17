@@ -971,6 +971,10 @@ function App(){
   const [lang,setLang] = useState(()=>localStorage.getItem('pestLang') || 'ar');
   const tr = key => words[lang][key] || key;
   const rtl = lang === 'ar';
+  // Keep notification tests on the isolated Cloudflare Preview; production stays on the live Worker.
+  const PUSH_WORKER_BASE = window.location.hostname === 'deploy-preview-4--pest-platform.netlify.app'
+    ? 'https://preview-fcm-setup-check-pest-platform.ai-mhdiab90.workers.dev'
+    : 'https://pest-platform.ai-mhdiab90.workers.dev';
   const [currentUser,setCurrentUser] = useState(null);
   const [authReady,setAuthReady] = useState(false);
   const [busy,setBusy] = useState(false);
@@ -1441,7 +1445,7 @@ function App(){
     let mounted=true;
     const loadConfig=async()=>{
       try{
-        const response=await fetch('https://pest-platform.ai-mhdiab90.workers.dev/push/config',{method:'GET',cache:'no-store'});
+        const response=await fetch(PUSH_WORKER_BASE+'/push/config',{method:'GET',cache:'no-store'});
         const config=await response.json().catch(()=>({}));
         if(!response.ok)throw new Error(config.error||'Push configuration is unavailable.');
         if(mounted)window.PEST_PUSH_CONFIG=config;
@@ -1868,7 +1872,7 @@ function App(){
       const headers={'Authorization':'Bearer '+idToken,...(extraHeaders||{})};
       const options={method,headers,cache:'no-store'};
       if(body!==undefined){if(rawBody)options.body=body;else{headers['Content-Type']='application/json';options.body=JSON.stringify(body);}}
-      return fetch('https://pest-platform.ai-mhdiab90.workers.dev'+path,options);
+      return fetch(PUSH_WORKER_BASE+path,options);
     };
     let response=await send(false);
     if(response.status===401){
@@ -4177,7 +4181,7 @@ function App(){
 
   async function loadPushConfig(forceRefresh=false){
     if(!forceRefresh&&window.PEST_PUSH_CONFIG)return window.PEST_PUSH_CONFIG;
-    const response=await fetch('https://pest-platform.ai-mhdiab90.workers.dev/push/config',{method:'GET',cache:'no-store'});
+    const response=await fetch(PUSH_WORKER_BASE+'/push/config',{method:'GET',cache:'no-store'});
     const config=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(config.error||'Push service configuration could not be loaded.');
     window.PEST_PUSH_CONFIG=config;
@@ -4271,7 +4275,7 @@ function App(){
     if(!user)throw new Error('No authenticated Firebase session.');
     const send=async(forceRefresh)=>{
       const idToken=await user.getIdToken(Boolean(forceRefresh));
-      return fetch('https://pest-platform.ai-mhdiab90.workers.dev'+path,{
+      return fetch(PUSH_WORKER_BASE+path,{
         method:'POST',
         headers:{'Authorization':'Bearer '+idToken,'Content-Type':'application/json'},
         body:JSON.stringify(body||{}),
