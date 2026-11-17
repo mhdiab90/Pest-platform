@@ -7,12 +7,14 @@ on:
       - "cloudflare/worker.js"
       - "firebase-messaging-sw.js"
       - "index.html"
+      - "wrangler.jsonc"
       - ".github/scripts/check-app-babel.mjs"
       - ".github/workflows/worker-check.yml"
   pull_request:
     paths:
       - "cloudflare/worker.js"
       - "index.html"
+      - "wrangler.jsonc"
       - ".github/scripts/check-app-babel.mjs"
       - ".github/workflows/worker-check.yml"
   workflow_dispatch:
