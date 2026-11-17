@@ -16,11 +16,13 @@ on:
       - "firebase-messaging-sw.js"
       - "package.json"
       - "scripts/build-mobile.mjs"
+      - "cloudflare/worker.js"
+      - "wrangler.jsonc"
       - ".github/workflows/android-apk.yml"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-android:
@@ -91,6 +93,41 @@ jobs:
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
+
+      - name: Publish OTA web bundle to GitHub Releases
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f www/index.html
+          (cd www && zip -qr ../pest-platform-ota.zip .)
+          SHA256="$(sha256sum pest-platform-ota.zip | awk '{print $1}')"
+          SHORT_SHA="${GITHUB_SHA:0:12}"
+          if [[ "${GITHUB_REF_NAME}" == "main" ]]; then
+            CHANNEL="stable"
+            RELEASE_FLAGS=()
+          else
+            CHANNEL="preview"
+            RELEASE_FLAGS=(--prerelease)
+          fi
+          TAG="ota-${CHANNEL}-${SHORT_SHA}"
+          cat > manifest.json <<EOF
+          {
+            "version": "${TAG}",
+            "sha256": "${SHA256}"
+          }
+          EOF
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release upload "${TAG}" pest-platform-ota.zip manifest.json --clobber
+          else
+            gh release create "${TAG}" pest-platform-ota.zip manifest.json \
+              --title "${TAG}" \
+              --notes "Pest Platform OTA web bundle for ${CHANNEL} channel." \
+              --target "${GITHUB_SHA}" \
+              "${RELEASE_FLAGS[@]}"
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
