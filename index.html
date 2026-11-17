@@ -1480,6 +1480,11 @@ function App(){
       window.PEST_PENDING_PUSH_TOKEN=null;
       onToken({detail:pending});
     }
+    const pendingOpened=window.PEST_PENDING_PUSH_OPENED;
+    if(pendingOpened&&currentUser?.uid){
+      window.PEST_PENDING_PUSH_OPENED=null;
+      onOpened({detail:pendingOpened});
+    }
     if(currentUser?.uid){
       const params=new URLSearchParams(window.location.search);
       const type=params.get('pushType');
