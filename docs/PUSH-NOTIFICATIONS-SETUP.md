@@ -32,3 +32,21 @@ After the Worker is deployed and the v9 rules are deployed:
 ## Important deployment note
 
 The GitHub changes do not automatically set Cloudflare secrets or publish Firebase database rules. Push delivery is not live until the two Worker settings above, the v9 Database Rules, and the Worker deployment are completed. The Android APK build is independent of the Cloudflare secret setup.
+
+
+## Stable Android update signing (recommended)
+
+The Android APK workflow can use a persistent debug signing key so subsequent APK builds can be installed as updates without uninstalling the app.
+
+1. Save the provided `pest-platform-debug.keystore` outside the repository (for example in the project folder on your D: drive). Do not commit it.
+2. In the repository, open Settings → Secrets and variables → Actions → New repository secret.
+3. Name the secret `ANDROID_DEBUG_KEYSTORE_BASE64`. On PowerShell, generate its value using:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("D:\\OneDrive\\Pest\\Pest Platform\\Main Project\\pest-platform-debug.keystore"))
+```
+
+4. Paste the resulting Base64 text as the secret value. The keystore uses alias `androiddebugkey` and the standard debug password `android`. Keep the file private.
+5. Run the Android APK workflow again. The workflow uses increasing version codes and will use the same signing key on later builds.
+
+The currently generated APKs that were built before this secret is configured use temporary runner keys. Moving from an APK signed with a different key requires a one-time uninstall/reinstall; Firebase cloud records are not deleted by that operation, but local app settings and session data may reset.
