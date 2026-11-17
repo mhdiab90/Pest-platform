@@ -10,6 +10,8 @@ Open the Cloudflare dashboard, select the existing pest-platform Worker, then Se
 2. Enable the Firebase Cloud Messaging API for the same Google Cloud project and ensure the service account has permission to send Firebase Cloud Messaging messages and read the project's Realtime Database.
 3. Add a Text variable named FCM_WEB_VAPID_KEY. Generate the Web Push key pair in Firebase Console → Project settings → Cloud Messaging → Web Push certificates and use the public key only.
 
+`FCM_WEB_VAPID_KEY` is required for browser Web Push only. Native Android FCM does not use the VAPID key.
+
 The Worker /push/config endpoint exposes only whether the sender is configured and the public VAPID key. It does not return the service-account secret.
 
 ### Preview environment
@@ -18,15 +20,15 @@ For testing, set FCM_SERVICE_ACCOUNT_JSON as a Secret and FCM_WEB_VAPID_KEY as a
 
 ## Firebase Realtime Database rules
 
-Review firebase-rules/Pest-Platform-Firebase-Rules-Custody-v9-Push.json. It keeps the v8 rules and adds:
+Publish the complete file `firebase-rules/Pest-Platform-Firebase-Rules-Custody-v11-Online-Presence-Push.json`. It keeps the v8 rules and adds:
 - pushTokens/{uid}/{tokenId}: only the active signed-in owner can write their own Android/web token; client reads are denied.
 - pushDispatches: client reads and writes are denied; the Worker uses its service account for idempotency tracking.
 
-The v9 file is a proposed rules file only. It has not been deployed to Firebase. Deploy it only after reviewing the full rules against the active production rules.
+The v11 file includes the online-presence permissions and push-token permissions. It is a proposed rules file only and must be published manually in Firebase Realtime Database → Rules. It replaces the earlier v10 draft; review the full file before publishing.
 
 ## Device enrollment and delivery
 
-After the Worker is deployed and the v9 rules are deployed:
+After the Preview Worker secrets are configured and the v11 rules are published:
 - Install the new Android build, sign into Pest Platform, open the bell → Enable device / browser push notifications, and allow Android notifications.
 - On desktop, open Pest Platform over HTTPS, sign in, open the bell → Enable device / browser push notifications, and allow browser notifications.
 - Each device/browser stores its own FCM token under the signed-in UID. Logging out removes that device's token from that UID.
@@ -35,7 +37,7 @@ After the Worker is deployed and the v9 rules are deployed:
 
 ## Important deployment note
 
-The GitHub changes do not automatically set Cloudflare secrets or publish Firebase database rules. Push delivery is not live until the two Worker settings above, the v9 Database Rules, and the Worker deployment are completed. The Android APK build is independent of the Cloudflare secret setup.
+The GitHub changes do not automatically set Cloudflare secrets or publish Firebase database rules. Push delivery is not live until the two Worker settings above, the v11 Database Rules, and the Worker deployment are completed. The Android APK build is independent of the Cloudflare secret setup.
 
 ## Stable Android update signing (recommended)
 
