@@ -971,6 +971,11 @@ function App(){
   const [lang,setLang] = useState(()=>localStorage.getItem('pestLang') || 'ar');
   const tr = key => words[lang][key] || key;
   const rtl = lang === 'ar';
+  useEffect(()=>{
+    if(window.PEST_NATIVE?.isNative && typeof window.PEST_NATIVE.initializeOtaUpdates==='function'){
+      void window.PEST_NATIVE.initializeOtaUpdates();
+    }
+  },[]);
   // Use the isolated Worker Preview as both the web host and API for preview deployments.
   const isCloudflareWorkerPreview = window.location.hostname.endsWith('-pest-platform.ai-mhdiab90.workers.dev');
   const PUSH_WORKER_BASE = window.location.hostname === 'deploy-preview-4--pest-platform.netlify.app'
