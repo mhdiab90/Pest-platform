@@ -12,6 +12,10 @@ Open the Cloudflare dashboard, select the existing pest-platform Worker, then Se
 
 The Worker /push/config endpoint exposes only whether the sender is configured and the public VAPID key. It does not return the service-account secret.
 
+### Preview environment
+
+For testing, set FCM_SERVICE_ACCOUNT_JSON as a Secret and FCM_WEB_VAPID_KEY as a Text variable under Cloudflare **Previews Base**, not Production. These settings are separate from production settings. Create a new Preview deployment after changing Preview variables so the deployment receives the updated values. Never add the service-account JSON to this repository, a GitHub secret, or the Android app.
+
 ## Firebase Realtime Database rules
 
 Review firebase-rules/Pest-Platform-Firebase-Rules-Custody-v9-Push.json. It keeps the v8 rules and adds:
@@ -33,7 +37,6 @@ After the Worker is deployed and the v9 rules are deployed:
 
 The GitHub changes do not automatically set Cloudflare secrets or publish Firebase database rules. Push delivery is not live until the two Worker settings above, the v9 Database Rules, and the Worker deployment are completed. The Android APK build is independent of the Cloudflare secret setup.
 
-
 ## Stable Android update signing (recommended)
 
 The Android APK workflow can use a persistent debug signing key so subsequent APK builds can be installed as updates without uninstalling the app.
@@ -43,7 +46,7 @@ The Android APK workflow can use a persistent debug signing key so subsequent AP
 3. Name the secret `ANDROID_DEBUG_KEYSTORE_BASE64`. On PowerShell, generate its value using:
 
 ```powershell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes('D:\OneDrive\Pest\Pest Platform\Main Project\pest-platform-debug.keystore'))
+[Convert]::ToBase64String([IO.File]::ReadAllBytes('D:\\OneDrive\\Pest\\Pest Platform\\Main Project\\pest-platform-debug.keystore'))
 ```
 
 4. Paste the resulting Base64 text as the secret value. The keystore uses alias `androiddebugkey` and the standard debug password `android`. Keep the file private.
