@@ -1,5 +1,4 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
 
 const manifestPath = 'android/app/src/main/AndroidManifest.xml';
 const drawableDir = 'android/app/src/main/res/drawable';
@@ -19,7 +18,7 @@ const iconXml = `<?xml version="1.0" encoding="utf-8"?>
     android:viewportHeight="24">
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M4,3h10a6,6 0,0 1,0 12H9v6H4z M9,7v4h5a2,2 0,0 0,0 -4z"/>
+        android:pathData="M12,2 L8,5 L6,10 L6,16 L4,18 H20 L18,16 L18,10 L16,5 Z M10,20 H14 L14,21 H10 Z"/>
 </vector>
 `;
 await writeFile(iconPath, iconXml, 'utf8');
@@ -81,7 +80,7 @@ for (const line of metadata) {
   const key = line.match(/android:name="([^"]+)"/)[1];
   if (!manifest.includes(key)) {
     if (!manifest.includes('</application>')) throw new Error('AndroidManifest.xml has no application closing tag.');
-    manifest = manifest.replace('</application>', '        ' + line + '\\n    </application>');
+    manifest = manifest.replace('</application>', '        ' + line + '\n    </application>');
   }
 }
 await writeFile(manifestPath, manifest, 'utf8');

@@ -1579,8 +1579,7 @@ function App(){
       ownPresenceRef.onDisconnect().remove()
         .then(()=>ownPresenceRef.set({
           state:'online',
-          lastChanged:firebase.database.ServerValue.TIMESTAMP,
-          platform:window.PEST_NATIVE?.isNative?'android':'web'
+          lastChanged:firebase.database.ServerValue.TIMESTAMP
         }))
         .then(()=>{if(mounted)setOnlinePresenceError('');})
         .catch(error=>reportPresenceError('Online presence registration:',error));

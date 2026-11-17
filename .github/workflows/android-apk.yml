@@ -60,6 +60,7 @@ jobs:
           node --check pest-crm-module.js
           node --check capacitor-bridge.mjs
           node --check scripts/build-mobile.mjs
+          node --check scripts/configure-android-notifications.mjs
           node -e "const c=require('./google-services.json'); if(c.project_info.project_id!=='pest-plat-form'||c.client?.[0]?.client_info?.android_client_info?.package_name!=='com.mhdiab90.pestplatform') process.exit(1);"
           node .github/scripts/check-app-babel.mjs
 

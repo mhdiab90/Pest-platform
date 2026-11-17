@@ -380,7 +380,7 @@ async function adminDatabaseRequest(path, accessToken, method, body) {
 }
 
 function pushText(value, maxLength, fallback) {
-  const text = String(value == null ? "" : value).replace(/\\s+/g, " ").trim();
+  const text = String(value == null ? "" : value).replace(/\s+/g, " ").trim();
   return (text || String(fallback || "")).slice(0, maxLength);
 }
 
