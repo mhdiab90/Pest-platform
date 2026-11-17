@@ -42,7 +42,7 @@ const preconnects = [
   '<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>',
   '<link rel="preconnect" href="https://www.gstatic.com" crossorigin>',
   '<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>'
-].join('\n  ');
+].filter(link => !html.includes(link)).join('\n  ');
 const githubRef = process.env.GITHUB_REF || '';
 const otaChannel = githubRef.endsWith('/main') ? 'stable' : 'preview';
 const otaWorkerBase = otaChannel === 'preview'

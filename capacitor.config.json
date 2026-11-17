@@ -13,6 +13,19 @@
       "autoDeleteFailed": true,
       "autoDeletePrevious": false,
       "statsUrl": ""
+    },
+    "PushNotifications": {
+      "presentationOptions": [
+        "badge",
+        "sound",
+        "alert",
+        "banner",
+        "list"
+      ]
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_pest_notification",
+      "iconColor": "#14517a"
     }
   }
 }

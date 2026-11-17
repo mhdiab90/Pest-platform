@@ -6,8 +6,31 @@ import { PushNotifications } from '@capacitor/push-notifications';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 
 const isNative = Capacitor.isNativePlatform();
+const ANDROID_NOTIFICATION_CHANNEL = 'pest_alerts_v2';
 let pushListenersInstalled = false;
 let pushRegistrationInProgress = null;
+let notificationChannelPromise = null;
+
+async function ensureAndroidNotificationChannel() {
+  if (!isNative || Capacitor.getPlatform() !== 'android') return;
+  if (!notificationChannelPromise) {
+    notificationChannelPromise = LocalNotifications.createChannel({
+      id: ANDROID_NOTIFICATION_CHANNEL,
+      name: 'PEST Notifications',
+      description: 'Messages, cash custody and important PEST Platform alerts',
+      importance: 5,
+      visibility: 1,
+      sound: 'pest_notification',
+      vibration: true,
+      lights: true,
+      lightColor: '#14517a'
+    }).catch(error => {
+      notificationChannelPromise = null;
+      throw error;
+    });
+  }
+  return notificationChannelPromise;
+}
 
 function dispatchPushEvent(name, detail) {
   if (typeof window === 'undefined') return;
@@ -99,27 +122,13 @@ async function initializeOtaUpdates() {
 
 async function installPushNotificationListeners() {
   if (!isNative || pushListenersInstalled) return;
+  if (Capacitor.getPlatform() === 'android') await ensureAndroidNotificationChannel();
   await PushNotifications.addListener('registration', token => dispatchPushEvent('pest-push-token', { token: token.value, platform: 'android' }));
   await PushNotifications.addListener('registrationError', error => dispatchPushEvent('pest-push-error', { message: String(error?.error || error?.message || 'FCM registration failed') }));
   await PushNotifications.addListener('pushNotificationReceived', notification => {
-    const payload = notification || {};
-    dispatchPushEvent('pest-push-received', payload);
-    const title = String(payload.title || 'Pest Platform');
-    const body = String(payload.body || 'لديك تنبيه جديد. افتح التطبيق للاطلاع على التفاصيل.');
-    const notificationId = Math.max(1, Date.now() % 2147483647);
-    LocalNotifications.checkPermissions().then(permission => {
-      if (permission.display !== 'granted') return;
-      return LocalNotifications.schedule({
-        notifications: [{
-          id: notificationId,
-          title,
-          body,
-          schedule: { at: new Date(Date.now() + 150) },
-          channelId: 'default',
-          extra: { source: 'pest-platform-push' }
-        }]
-      });
-    }).catch(error => console.warn('Foreground Android notification could not be displayed:', error));
+    // The PushNotifications plugin presents foreground alerts through
+    // presentationOptions; this event is retained for app-side routing/telemetry.
+    dispatchPushEvent('pest-push-received', notification || {});
   });
   await PushNotifications.addListener('pushNotificationActionPerformed', action => dispatchPushEvent('pest-push-opened', action?.notification?.data || {}));
   pushListenersInstalled = true;
@@ -136,8 +145,15 @@ async function enablePushNotifications() {
     await installPushNotificationListeners();
     let permission = await PushNotifications.checkPermissions();
     if (permission.receive !== 'granted') permission = await PushNotifications.requestPermissions();
-    if (permission.receive !== 'granted') return { granted: false, reason: 'permission-denied' };
-    if (Capacitor.getPlatform() === 'android') await PushNotifications.createChannel({ id: 'default', name: 'Pest Platform', description: 'Pest Platform alerts', importance: 5, visibility: 1, vibration: true }).catch(() => {});
+    if (permission.receive !== 'granted') return { granted: false, reason: 'push-permission-denied' };
+    if (Capacitor.getPlatform() === 'android') {
+      await ensureAndroidNotificationChannel();
+      let displayPermission = await LocalNotifications.checkPermissions();
+      if (displayPermission.display !== 'granted') {
+        displayPermission = await LocalNotifications.requestPermissions();
+      }
+      if (displayPermission.display !== 'granted') return { granted: false, reason: 'display-permission-denied' };
+    }
     await PushNotifications.register();
     return { granted: true };
   })();
@@ -150,6 +166,10 @@ async function refreshPushRegistration() {
   await installPushNotificationListeners();
   const permission = await PushNotifications.checkPermissions();
   if (permission.receive !== 'granted') return { granted: false, reason: 'permission-not-granted' };
+  if (Capacitor.getPlatform() === 'android') {
+    const displayPermission = await LocalNotifications.checkPermissions();
+    if (displayPermission.display !== 'granted') return { granted: false, reason: 'display-permission-not-granted' };
+  }
   await PushNotifications.register();
   return { granted: true };
 }
@@ -176,6 +196,7 @@ async function scheduleReminder({ id, title, body, at }) {
       title: String(title || 'Pest Platform'),
       body: String(body || ''),
       schedule: { at: when, allowWhileIdle: false },
+      channelId: ANDROID_NOTIFICATION_CHANNEL,
       extra: { source: 'pest-platform-crm' }
     }]
   });

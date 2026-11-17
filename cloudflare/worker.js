@@ -379,7 +379,12 @@ async function adminDatabaseRequest(path, accessToken, method, body) {
   return value;
 }
 
-async function sendFcmToDevice(deviceToken, accessToken, eventType, eventId, deviceOrigin) {
+function pushText(value, maxLength, fallback) {
+  const text = String(value == null ? "" : value).replace(/\\s+/g, " ").trim();
+  return (text || String(fallback || "")).slice(0, maxLength);
+}
+
+async function sendFcmToDevice(deviceToken, accessToken, eventType, eventId, deviceOrigin, notificationContent) {
   const appBase = isAllowedOrigin(deviceOrigin)
     ? (deviceOrigin === ALLOWED_ORIGIN ? APP_PUBLIC_URL : deviceOrigin + "/")
     : APP_PUBLIC_URL;
@@ -388,22 +393,31 @@ async function sendFcmToDevice(deviceToken, accessToken, eventType, eventId, dev
   clickUrl.searchParams.set("pushType", eventType);
   clickUrl.searchParams.set("pushId", String(eventId || ""));
   clickUrl.searchParams.set("pushRoute", route);
+  const title = pushText(notificationContent && notificationContent.title, 100, "PEST Platform");
+  const body = pushText(notificationContent && notificationContent.body, 180, "لديك تنبيه جديد. افتح التطبيق للاطلاع على التفاصيل.");
   const payload = {
     message: {
       token: deviceToken,
-      notification: {
-        title: "Pest Platform",
-        body: "لديك تنبيه جديد. افتح التطبيق للاطلاع على التفاصيل."
-      },
+      notification: { title, body },
       data: {
         type: eventType,
         eventId: String(eventId || ""),
         route,
-        url: clickUrl.toString()
+        url: clickUrl.toString(),
+        title,
+        body
       },
       android: {
         priority: "HIGH",
-        notification: { channel_id: "default", sound: "default" }
+        notification: {
+          channel_id: "pest_alerts_v2",
+          sound: "pest_notification",
+          icon: "ic_stat_pest_notification",
+          color: "#14517a",
+          priority: "PRIORITY_MAX",
+          visibility: "PUBLIC",
+          default_vibrate_timings: true
+        }
       },
       webpush: {
         headers: { TTL: "300", Urgency: "high" },
@@ -423,7 +437,7 @@ async function sendFcmToDevice(deviceToken, accessToken, eventType, eventId, dev
   return { sent: false, invalidToken, status: response.status };
 }
 
-async function dispatchPushToUsers(env, recipients, eventType, eventId, dispatchPrefix) {
+async function dispatchPushToUsers(env, recipients, eventType, eventId, dispatchPrefix, notificationContent) {
   if (!env.FCM_SERVICE_ACCOUNT_JSON) throw new Error("FCM_NOT_CONFIGURED: Add the FCM_SERVICE_ACCOUNT_JSON secret to the Cloudflare Worker.");
   const accessToken = await getFcmAccessToken(env);
   const uniqueRecipients = [...new Set((recipients || []).filter(uid => typeof uid === "string" && uid && uid.length <= 128))].slice(0, 100);
@@ -453,7 +467,7 @@ async function dispatchPushToUsers(env, recipients, eventType, eventId, dispatch
     let userSent = 0, userFailed = 0;
     for (const [tokenId, record] of entries) {
       if (!record || typeof record.token !== "string" || record.token.length < 20) continue;
-      const result = await sendFcmToDevice(record.token, accessToken, eventType, eventId, record.origin);
+      const result = await sendFcmToDevice(record.token, accessToken, eventType, eventId, record.origin, notificationContent);
       if (result.sent) userSent += 1;
       else if (result.invalidToken) {
         await adminDatabaseRequest("pushTokens/" + uid + "/" + tokenId, accessToken, "DELETE");
@@ -480,8 +494,18 @@ async function handlePushNotificationRequest(body, claims, token, env) {
     const recipients = Array.isArray(message.recipientUids)
       ? message.recipientUids
       : (message.recipientUid && message.recipientUid !== "*" ? [message.recipientUid] : []);
+    const senderName = pushText(message.senderName || message.senderEmail || "زميلك", 55, "زميلك");
+    const subject = pushText(message.subject, 80, "");
+    const excerpt = pushText(message.body, 115, "افتح التطبيق لعرض الرسالة.");
+    const messagePreview = subject
+      ? (excerpt && excerpt !== subject ? subject + " — " + excerpt : subject)
+      : excerpt;
+    const notificationContent = {
+      title: "رسالة جديدة من " + senderName,
+      body: messagePreview
+    };
     const result = await dispatchPushToUsers(env, recipients.filter(uid => uid !== claims.sub), "message", messageId,
-      "message:" + claims.sub + ":" + messageId);
+      "message:" + claims.sub + ":" + messageId, notificationContent);
     return { success: true, kind, ...result };
   }
   if (kind === "cashCustody") {
@@ -503,8 +527,16 @@ async function handlePushNotificationRequest(body, claims, token, env) {
         mirror.linkedTransactionId !== sourceId) {
       throw new Error("Permission denied: linked cash custody records could not be verified.");
     }
+    const amount = Number(notification.amount || mirror.amount || source.amount || 0);
+    const currency = pushText(notification.currency || mirror.currency || source.currency || "EGP", 8, "EGP");
+    const description = pushText(notification.description || mirror.description || source.description, 110, "افتح التطبيق لمراجعة الحركة.");
+    const senderName = pushText(notification.senderName || source.createdByName, 50, "زميلك");
+    const notificationContent = {
+      title: "حركة عهدة جديدة",
+      body: [senderName, amount > 0 ? amount.toLocaleString("en-US") + " " + currency : "", description].filter(Boolean).join(" · ")
+    };
     const result = await dispatchPushToUsers(env, [recipientUid], "cashCustody", notificationId,
-      "cashCustody:" + claims.sub + ":" + notificationId);
+      "cashCustody:" + claims.sub + ":" + notificationId, notificationContent);
     return { success: true, kind, ...result };
   }
   throw new Error("Unsupported push notification type.");
@@ -521,8 +553,13 @@ async function handlePendingUserRequestPush(claims, token, env) {
   const admins = users && typeof users === "object"
     ? Object.entries(users).filter(([, profile]) => profile && profile.role === "admin" && active(profile)).map(([uid]) => uid)
     : [];
+  const requester = pushText(request.fullName || request.username || claims.email, 65, "مستخدم جديد");
+  const notificationContent = {
+    title: "طلب مستخدم جديد",
+    body: requester + " أرسل طلبًا لإنشاء حساب على PEST Platform."
+  };
   const result = await dispatchPushToUsers(env, admins, "userRequest", claims.sub,
-    "userRequest:" + claims.sub + ":" + String(request.createdAt || "created"));
+    "userRequest:" + claims.sub + ":" + String(request.createdAt || "created"), notificationContent);
   return { success: true, kind: "userRequest", ...result };
 }
 

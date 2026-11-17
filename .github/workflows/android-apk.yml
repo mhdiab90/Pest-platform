@@ -17,6 +17,7 @@ on:
       - "firebase-messaging-sw.js"
       - "package.json"
       - "scripts/build-mobile.mjs"
+      - "scripts/configure-android-notifications.mjs"
       - "cloudflare/worker.js"
       - "wrangler.jsonc"
       - ".github/workflows/android-apk.yml"
@@ -74,6 +75,9 @@ jobs:
 
       - name: Generate Android application icon
         run: npx @capacitor/assets generate --android --assetPath assets --iconBackgroundColor '#c6e3fb'
+
+      - name: Configure Android push notification channel and icon
+        run: node scripts/configure-android-notifications.mjs
 
       - name: Configure stable Android debug signing and version
         env:
