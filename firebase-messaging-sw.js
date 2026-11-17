@@ -38,10 +38,19 @@ messaging.onBackgroundMessage(payload => {
 self.addEventListener("notificationclick", event => {
   event.stopImmediatePropagation();
   event.notification.close();
-  const data = event.notification.data || {};
-  const target = new URL("./", self.registration.scope);
+  const raw = event.notification.data || {};
+  const fcmMessage = raw.FCM_MSG || raw;
+  const payload = fcmMessage.data || fcmMessage;
+  const data = {
+    type: String(payload.type || raw.type || ""),
+    eventId: String(payload.eventId || raw.eventId || ""),
+    route: String(payload.route || raw.route || ""),
+    url: String(payload.url || raw.url || self.registration.scope)
+  };
+  const target = new URL(data.url, self.registration.scope);
   if (data.type) target.searchParams.set("pushType", data.type);
   if (data.eventId) target.searchParams.set("pushId", data.eventId);
+  if (data.route) target.searchParams.set("pushRoute", data.route);
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async windowClients => {
       const existing = windowClients.find(client => {
