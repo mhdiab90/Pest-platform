@@ -4204,7 +4204,9 @@ function App(){
     setPushBusy(true);
     setPushStatus(rtl?'جاري تجهيز إشعارات هذا الجهاز...':'Preparing this device for push notifications...');
     try{
-      const config=await loadPushConfig(true);
+      let config=window.PEST_PUSH_CONFIG||{senderConfigured:false,webVapidKey:'',webPushConfigured:false};
+      try{config=await loadPushConfig(true);}
+      catch(configError){console.warn('Push sender configuration is not available yet:',configError);config={senderConfigured:false,webVapidKey:'',webPushConfigured:false};}
       if(window.PEST_NATIVE?.isNative){
         const result=await window.PEST_NATIVE.enablePushNotifications();
         if(!result?.granted){
