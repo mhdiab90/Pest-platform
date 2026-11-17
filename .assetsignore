@@ -1,0 +1,13 @@
+.github/
+cloudflare/
+docs/
+firebase-rules/
+scripts/
+.assetsignore
+.gitignore
+capacitor-bridge.mjs
+capacitor.config.json
+google-services.json
+package.json
+v1
+wrangler.jsonc
