@@ -9,20 +9,30 @@ let pushListenersInstalled = false;
 let pushRegistrationInProgress = null;
 
 function dispatchPushEvent(name, detail) {
-  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(name, { detail }));
+  if (typeof window === 'undefined') return;
+  if (name === 'pest-push-token') window.PEST_PENDING_PUSH_TOKEN = detail;
+  if (name === 'pest-push-opened') window.PEST_PENDING_PUSH_OPENED = detail;
+  window.dispatchEvent(new CustomEvent(name, { detail }));
+}
+
+async function installPushNotificationListeners() {
+  if (!isNative || pushListenersInstalled) return;
+  await PushNotifications.addListener('registration', token => dispatchPushEvent('pest-push-token', { token: token.value, platform: 'android' }));
+  await PushNotifications.addListener('registrationError', error => dispatchPushEvent('pest-push-error', { message: String(error?.error || error?.message || 'FCM registration failed') }));
+  await PushNotifications.addListener('pushNotificationReceived', notification => dispatchPushEvent('pest-push-received', notification || {}));
+  await PushNotifications.addListener('pushNotificationActionPerformed', action => dispatchPushEvent('pest-push-opened', action?.notification?.data || {}));
+  pushListenersInstalled = true;
+}
+
+if (isNative) {
+  installPushNotificationListeners().catch(error => dispatchPushEvent('pest-push-error', { message: String(error?.message || error) }));
 }
 
 async function enablePushNotifications() {
   if (!isNative) return { granted: false, reason: 'not-native' };
   if (pushRegistrationInProgress) return pushRegistrationInProgress;
   pushRegistrationInProgress = (async () => {
-    if (!pushListenersInstalled) {
-      await PushNotifications.addListener('registration', token => dispatchPushEvent('pest-push-token', { token: token.value, platform: 'android' }));
-      await PushNotifications.addListener('registrationError', error => dispatchPushEvent('pest-push-error', { message: String(error?.error || error?.message || 'FCM registration failed') }));
-      await PushNotifications.addListener('pushNotificationReceived', notification => dispatchPushEvent('pest-push-received', notification || {}));
-      await PushNotifications.addListener('pushNotificationActionPerformed', action => dispatchPushEvent('pest-push-opened', action?.notification?.data || {}));
-      pushListenersInstalled = true;
-    }
+    await installPushNotificationListeners();
     let permission = await PushNotifications.checkPermissions();
     if (permission.receive !== 'granted') permission = await PushNotifications.requestPermissions();
     if (permission.receive !== 'granted') return { granted: false, reason: 'permission-denied' };
