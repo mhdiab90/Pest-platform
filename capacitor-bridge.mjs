@@ -6,7 +6,7 @@ import { PushNotifications } from '@capacitor/push-notifications';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
 
 const isNative = Capacitor.isNativePlatform();
-const ANDROID_NOTIFICATION_CHANNEL = 'pest_alerts_v2';
+const ANDROID_NOTIFICATION_CHANNEL = 'pest_alerts_v3';
 let pushListenersInstalled = false;
 let pushRegistrationInProgress = null;
 let notificationChannelPromise = null;
@@ -20,7 +20,7 @@ async function ensureAndroidNotificationChannel() {
       description: 'Messages, cash custody and important PEST Platform alerts',
       importance: 5,
       visibility: 1,
-      sound: 'pest_notification',
+      sound: 'pest_notification.wav',
       vibration: true,
       lights: true,
       lightColor: '#14517a'
