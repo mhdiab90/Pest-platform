@@ -3,6 +3,7 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { PushNotifications } from '@capacitor/push-notifications';
+import { CapacitorUpdater } from '@capgo/capacitor-updater';
 
 const isNative = Capacitor.isNativePlatform();
 let pushListenersInstalled = false;
@@ -13,6 +14,87 @@ function dispatchPushEvent(name, detail) {
   if (name === 'pest-push-token') window.PEST_PENDING_PUSH_TOKEN = detail;
   if (name === 'pest-push-opened') window.PEST_PENDING_PUSH_OPENED = detail;
   window.dispatchEvent(new CustomEvent(name, { detail }));
+}
+
+let otaInitializationPromise = null;
+
+function dispatchOtaEvent(name, detail) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(name, { detail }));
+}
+
+async function initializeOtaUpdates() {
+  if (!isNative) return { available: false, reason: 'not-native' };
+  if (otaInitializationPromise) return otaInitializationPromise;
+
+  otaInitializationPromise = (async () => {
+    // Confirm the currently running bundle is healthy before staging another one.
+    await CapacitorUpdater.notifyAppReady();
+
+    const config = window.PEST_OTA_CONFIG || {};
+    const channel = config.channel === 'stable' ? 'stable' : 'preview';
+    const workerBase = String(config.workerBase || '').replace(/\/$/, '');
+    if (!workerBase.startsWith('https://')) {
+      throw new Error('OTA update server is not configured.');
+    }
+
+    const manifestUrl = new URL(workerBase + '/mobile-updates/latest');
+    manifestUrl.searchParams.set('channel', channel);
+    const response = await fetch(manifestUrl.toString(), {
+      method: 'GET',
+      cache: 'no-store',
+      headers: { 'Accept': 'application/json' }
+    });
+    if (!response.ok) throw new Error('OTA update check failed with HTTP ' + response.status + '.');
+
+    const manifest = await response.json();
+    if (!manifest || manifest.ok !== true || manifest.updateAvailable !== true) {
+      return { available: false, reason: 'no-update' };
+    }
+
+    const expectedPrefix = channel === 'preview' ? 'ota-preview-' : 'ota-stable-';
+    const version = String(manifest.version || '');
+    const bundleUrl = String(manifest.bundleUrl || '');
+    const checksum = String(manifest.sha256 || '').toLowerCase();
+    if (!version.startsWith(expectedPrefix) || !/^[a-f0-9]{64}$/.test(checksum)) {
+      throw new Error('OTA manifest failed validation.');
+    }
+    const parsedBundleUrl = new URL(bundleUrl);
+    if (parsedBundleUrl.protocol !== 'https:' ||
+        parsedBundleUrl.hostname !== 'github.com' ||
+        !parsedBundleUrl.pathname.startsWith('/mhdiab90/Pest-platform/releases/download/')) {
+      throw new Error('OTA bundle URL is not trusted.');
+    }
+
+    const current = await CapacitorUpdater.current();
+    if (String(current?.bundle?.version || '') === version) {
+      return { available: false, reason: 'already-current', version };
+    }
+
+    // Reuse a bundle that was downloaded earlier but has not yet been activated.
+    const stored = await CapacitorUpdater.list({ raw: true });
+    const existing = (stored?.bundles || []).find(item =>
+      item?.version === version && item?.status === 'success' && item?.id
+    );
+    const bundle = existing || await CapacitorUpdater.download({
+      url: bundleUrl,
+      version,
+      checksum
+    });
+    if (!bundle?.id || (bundle.status && bundle.status !== 'success')) {
+      throw new Error('OTA bundle download did not complete successfully.');
+    }
+
+    await CapacitorUpdater.next({ id: bundle.id });
+    dispatchOtaEvent('pest-ota-update-ready', { version, channel });
+    return { available: true, downloaded: true, version, channel };
+  })().catch(error => {
+    console.warn('Pest Platform OTA check:', error);
+    dispatchOtaEvent('pest-ota-update-error', { message: String(error?.message || error) });
+    return { available: false, error: String(error?.message || error) };
+  });
+
+  return otaInitializationPromise;
 }
 
 async function installPushNotificationListeners() {
@@ -146,6 +228,7 @@ async function saveTextFile({ name, content, mimeType }) {
 
 window.PEST_NATIVE = {
   isNative,
+  initializeOtaUpdates,
   ensureNotificationPermission,
   enablePushNotifications,
   refreshPushRegistration,
