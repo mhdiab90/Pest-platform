@@ -219,6 +219,58 @@ async function loadProfile(claims, token) {
 }
 
 
+async function getMobileOtaManifest(channel) {
+  const isPreview = channel === "preview";
+  const releasesUrl = "https://api.github.com/repos/mhdiab90/Pest-platform/releases?per_page=100";
+  const releasesResponse = await fetch(releasesUrl, {
+    headers: {
+      "Accept": "application/vnd.github+json",
+      "User-Agent": "Pest-Platform-OTA",
+      "X-GitHub-Api-Version": "2022-11-28"
+    }
+  });
+  if (!releasesResponse.ok) throw new Error("OTA release lookup failed with HTTP " + releasesResponse.status + ".");
+  const releases = await releasesResponse.json();
+  if (!Array.isArray(releases)) throw new Error("OTA release list is invalid.");
+
+  const prefix = isPreview ? "ota-preview-" : "ota-stable-";
+  const release = releases.find(item =>
+    item && !item.draft && Boolean(item.prerelease) === isPreview &&
+    typeof item.tag_name === "string" && item.tag_name.startsWith(prefix)
+  );
+  if (!release) return { ok: true, updateAvailable: false, channel };
+
+  const assets = Array.isArray(release.assets) ? release.assets : [];
+  const manifestAsset = assets.find(asset => asset && asset.name === "manifest.json");
+  const bundleAsset = assets.find(asset => asset && asset.name === "pest-platform-ota.zip");
+  if (!manifestAsset || !bundleAsset ||
+      !String(manifestAsset.browser_download_url || "").startsWith("https://github.com/mhdiab90/Pest-platform/releases/download/") ||
+      !String(bundleAsset.browser_download_url || "").startsWith("https://github.com/mhdiab90/Pest-platform/releases/download/")) {
+    throw new Error("OTA release is missing its required bundle assets.");
+  }
+
+  const manifestResponse = await fetch(manifestAsset.browser_download_url, {
+    headers: { "User-Agent": "Pest-Platform-OTA" }
+  });
+  if (!manifestResponse.ok) throw new Error("OTA manifest download failed.");
+  const manifest = await manifestResponse.json();
+  const version = String(manifest && manifest.version || "");
+  const sha256 = String(manifest && manifest.sha256 || "").toLowerCase();
+  if (version !== release.tag_name || !version.startsWith(prefix) || !/^[a-f0-9]{64}$/.test(sha256)) {
+    throw new Error("OTA manifest validation failed.");
+  }
+
+  return {
+    ok: true,
+    updateAvailable: true,
+    channel,
+    version,
+    sha256,
+    bundleUrl: bundleAsset.browser_download_url,
+    publishedAt: release.published_at || release.created_at || null
+  };
+}
+
 function isAllowedOrigin(origin) {
   if (!origin) return false;
   if (origin === ALLOWED_ORIGIN || origin === "https://pest-platform.netlify.app" ||
@@ -2486,6 +2538,29 @@ export default {
       }, 200, origin);
     }
     if (url.pathname === "/drive/oauth/callback") return handleGoogleDriveOAuthCallback(request,env);
+    if (url.pathname.startsWith("/mobile-updates/")) {
+      if (origin && !isAllowedOrigin(origin)) return jsonResponse({ error: "Origin is not allowed." }, 403, origin);
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
+      if (url.pathname !== "/mobile-updates/latest" || request.method !== "GET") {
+        return jsonResponse({ error: "Not found." }, 404, origin);
+      }
+      const requestedChannel = url.searchParams.get("channel");
+      const channel = requestedChannel === "preview" ? "preview" : "stable";
+      try {
+        const manifest = await getMobileOtaManifest(channel);
+        return new Response(JSON.stringify(manifest), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Cache-Control": "public, max-age=60",
+            ...corsHeaders(origin)
+          }
+        });
+      } catch (error) {
+        console.error("Mobile OTA manifest:", String(error && error.message || error));
+        return jsonResponse({ ok: false, error: "OTA update service is temporarily unavailable." }, 503, origin);
+      }
+    }
     // Same-origin GET requests may omit the Origin header. This endpoint only
     // returns the public VAPID key and configuration flags, never credentials.
     if (!origin && url.pathname === "/push/config" && request.method === "GET") {
