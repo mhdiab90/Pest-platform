@@ -4186,6 +4186,7 @@ function App(){
     await db.ref('pushTokens/'+uid+'/'+tokenId).set({
       token:String(token),
       platform:platform==='android'?'android':'web',
+      ...(platform==='web'?{origin:window.location.origin}:{}),
       updatedAt:firebase.database.ServerValue.TIMESTAMP
     });
     try{localStorage.setItem('pestPushTokenId:'+uid,tokenId);}catch(_){}
