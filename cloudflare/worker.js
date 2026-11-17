@@ -221,23 +221,35 @@ async function loadProfile(claims, token) {
 
 async function getMobileOtaManifest(channel) {
   const isPreview = channel === "preview";
+  const prefix = isPreview ? "ota-preview-" : "ota-stable-";
+  const branchName = isPreview ? "feature/mobile-push-performance" : "main";
+  const headers = {
+    "Accept": "application/vnd.github+json",
+    "User-Agent": "Pest-Platform-OTA",
+    "X-GitHub-Api-Version": "2022-11-28"
+  };
+
+  // Match the release to the current branch head, not the Releases API list
+  // order. Concurrent Android builds can publish older commits after newer ones.
+  const branchUrl = "https://api.github.com/repos/mhdiab90/Pest-platform/branches/" + encodeURIComponent(branchName);
+  const branchResponse = await fetch(branchUrl, { headers });
+  if (!branchResponse.ok) throw new Error("OTA branch lookup failed with HTTP " + branchResponse.status + ".");
+  const branch = await branchResponse.json();
+  const headSha = String(branch && branch.commit && branch.commit.sha || "").toLowerCase();
+  if (!/^[a-f0-9]{40}$/.test(headSha)) throw new Error("OTA branch head SHA is invalid.");
+
   const releasesUrl = "https://api.github.com/repos/mhdiab90/Pest-platform/releases?per_page=100";
-  const releasesResponse = await fetch(releasesUrl, {
-    headers: {
-      "Accept": "application/vnd.github+json",
-      "User-Agent": "Pest-Platform-OTA",
-      "X-GitHub-Api-Version": "2022-11-28"
-    }
-  });
+  const releasesResponse = await fetch(releasesUrl, { headers });
   if (!releasesResponse.ok) throw new Error("OTA release lookup failed with HTTP " + releasesResponse.status + ".");
   const releases = await releasesResponse.json();
   if (!Array.isArray(releases)) throw new Error("OTA release list is invalid.");
 
-  const prefix = isPreview ? "ota-preview-" : "ota-stable-";
+  const expectedTag = prefix + headSha.slice(0, 12);
   const release = releases.find(item =>
     item && !item.draft && Boolean(item.prerelease) === isPreview &&
-    typeof item.tag_name === "string" && item.tag_name.startsWith(prefix)
+    item.target_commitish === headSha && item.tag_name === expectedTag
   );
+  // Do not fall back to an older bundle while the current commit is building.
   if (!release) return { ok: true, updateAvailable: false, channel };
 
   const assets = Array.isArray(release.assets) ? release.assets : [];
