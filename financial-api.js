@@ -313,6 +313,7 @@ export async function handleFinancialRequest(ctx){
   const draftId=id(body.id||uid("INV")),previous=body.id?await adminRead("documents/"+draftId):null;
   if(previous&&(!(previous.type==="invoice"&&["draft","needs_correction","returned_to_creator"].includes(previous.status))||previous.createdBy!==claims.sub))throw new Error("لا يمكن تعديل هذه الفاتورة في حالتها الحالية.");
   const inv={...body,id:draftId,type:"invoice",invoiceType:direction,date:date(body.date),number:txt(body.number,120),partyId:txt(body.partyId,120),partyName:txt(body.partyName,180),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:previous&&previous.createdAt||now,createdBy:previous&&previous.createdBy||claims.sub,createdByName:previous&&previous.createdByName||txt(profile.fullName||profile.username||profile.email,120),status:"draft"};
+  if(previous&&previous.returnedTaskId)inv.returnedTaskId=previous.returnedTaskId;
   if(previous&&previous.attachments)inv.attachments=previous.attachments;
   inv.errors=[];
   if(!inv.partyId)inv.errors.push("اختيار العميل أو المورد مطلوب");
@@ -330,7 +331,7 @@ export async function handleFinancialRequest(ctx){
   return {success:true,id:draftId,status:"draft",errors:inv.errors};
  }
  if(action==="assignInvoice"){
-  requirePermission(profile,"financial","edit");
+  requirePermission(profile,"financial","add");
   const invoiceId=id(body.invoiceId),invoice=await adminRead("documents/"+invoiceId);
   if(!invoice||invoice.type!=="invoice")throw new Error("الفاتورة المطلوب تحويلها غير موجودة.");
   if(invoice.createdBy!==claims.sub&&profile.role!=="admin")throw new Error("لا يمكنك تحويل فاتورة أنشأها مستخدم آخر.");
@@ -351,6 +352,7 @@ export async function handleFinancialRequest(ctx){
   updates["audit/"+uid("AUD")]={action:"assign_invoice",documentId:invoiceId,assignmentId,assigneeUid,uid:claims.sub,createdAt:now};
   if(!adminPatchRoot)throw new Error("خدمة تحويل المهام غير متاحة.");
   updates["tasks/"+assigneeUid+"/"+taskId]=task;
+  updates["cashCustodyNotifications/"+assigneeUid+"/"+assignmentId]={id:assignmentId,type:"financialAssignment",recipientUid:assigneeUid,assignmentId,invoiceId,senderUid:claims.sub,senderName:createdByName,title:"فاتورة محولة إليك",description:instruction,createdAt:now,read:false};
   const globalUpdates={};Object.entries(updates).forEach(([key,value])=>globalUpdates[key.startsWith("documents/")||key.startsWith("assignments/")||key.startsWith("audit/")?"financial/"+key:key]=value);
   await adminPatchRoot(globalUpdates);
   return {success:true,id:invoiceId,assignmentId,taskId,status:"assigned",pushNotification:{recipientUid:assigneeUid,eventType:"financialAssignment",eventId:assignmentId,content:{title:"فاتورة محولة إليك",body:"مطلوب: "+instruction}}};
@@ -398,6 +400,7 @@ export async function handleFinancialRequest(ctx){
   rootUpdates["financial/audit/"+uid("AUD")]={action:"complete_invoice_assignment",documentId:invoice.id,assignmentId,uid:claims.sub,createdAt:nowCompleted};
   if(assignment.taskId)rootUpdates["tasks/"+claims.sub+"/"+assignment.taskId+"/status"]="completed";
   rootUpdates["tasks/"+ownerUid+"/"+ownerTaskId]=returnedTask;
+  rootUpdates["cashCustodyNotifications/"+ownerUid+"/"+ownerTaskId]={id:ownerTaskId,type:"financialAssignmentReturned",recipientUid:ownerUid,assignmentId,invoiceId:invoice.id,senderUid:claims.sub,senderName:txt(profile.fullName||profile.username||profile.email,120),title:"اكتمل استكمال الفاتورة",description:"عاد المستند إلى مسوداتك للمراجعة والإرسال.",createdAt:nowCompleted,read:false};
   rootUpdates["financial/documents/"+invoice.id+"/returnedTaskId"]=ownerTaskId;
   await adminPatchRoot(rootUpdates);
   return {success:true,id:invoice.id,assignmentId,status:"returned_to_creator",pushNotification:{recipientUid:ownerUid,eventType:"financialAssignmentReturned",eventId:invoice.id,content:{title:"اكتمل استكمال الفاتورة",body:"عاد المستند إلى مسوداتك للمراجعة والإرسال."}}};
@@ -418,13 +421,16 @@ export async function handleFinancialRequest(ctx){
     if(!account||account.isGroup||account.active===false||account.type!==expectedType)errors.push("حدد حساب "+(expectedType==="expense"?"مصروف صحيح":"إيراد صحيح")+" للبند "+(i+1));
    }
   });
+  let previous=null;
   if(body.id){
-   const previous=await adminRead("documents/"+inv.id);
-   if(previous&&(!(previous.status==="needs_correction"||previous.status==="draft")||previous.createdBy!==claims.sub))throw new Error("لا يمكن تعديل هذا المستند بعد إرساله أو اعتماده.");
+   previous=await adminRead("documents/"+inv.id);
+   if(previous&&(!(previous.status==="needs_correction"||previous.status==="draft"||previous.status==="returned_to_creator")||previous.createdBy!==claims.sub))throw new Error("لا يمكن تعديل هذا المستند بعد إرساله أو اعتماده.");
    if(previous){
     inv.createdAt=previous.createdAt||inv.createdAt;
     inv.createdBy=previous.createdBy||inv.createdBy;
+    inv.createdByName=previous.createdByName||inv.createdByName||"";
     if(previous.attachments)inv.attachments=previous.attachments;
+    if(previous.returnedTaskId)inv.returnedTaskId=previous.returnedTaskId;
    }
   }
   const totals=invoiceTotals(inv);inv.totals=totals;inv.total=totals.total;inv.errors=errors;inv.fingerprint=await sha([inv.invoiceType,inv.partyId,inv.number,inv.date,totals.total.toFixed(2)].join("|").toLowerCase());const duplicate=await adminRead("documentFingerprints/"+inv.fingerprint);inv.warnings=duplicate?["مستند مشابه مسجل سابقًا: "+duplicate.documentId]:[];inv.status=errors.length?"needs_correction":"pending_review";
