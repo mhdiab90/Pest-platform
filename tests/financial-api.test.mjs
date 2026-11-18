@@ -222,6 +222,8 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
   const earlySpecialRate=await invoke("POST","",{action:"submitInvoice",type:"purchase",date:"2026-07-01",number:"PUR-5-EARLY",partyId:"VENDOR-001",partyName:"Supplier Test",currency:"EGP",taxCode:"VAT-IN-05",lines:[{description:"Production machine",kind:"stock",itemCode:"ITEM-001",quantity:1,unitPrice:100}]});
   assert.equal(earlySpecialRate.status,"needs_correction","the 5% special rate cannot be used before its effective date");
   assert.ok(earlySpecialRate.errors.some(x=>x.includes("غير سارٍ بتاريخ الفاتورة")));
+  const unclassifiedVat=await invoke("POST","",{action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-VAT-NO-CODE",partyId:"VENDOR-001",partyName:"Supplier Test",currency:"EGP",taxRate:5,lines:[{description:"Equipment",kind:"stock",itemCode:"ITEM-001",quantity:1,unitPrice:100}]});
+  assert.equal(unclassifiedVat.status,"needs_correction","positive VAT rate requires a direction-specific tax code");
   await invoke("POST","",{
     action:"saveMaster",kind:"bankAccounts",
     item:{code:"1120",name:"Main Test Bank",accountCode:"1120"}
@@ -295,7 +297,7 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
 
   const duplicate = await invoke("POST","",{
     action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-001",
-    partyId:"VENDOR-001",partyName:"Supplier Test",currency:"EGP",taxRate:14,discount:10,
+    partyId:"VENDOR-001",partyName:"Supplier Test",currency:"EGP",taxCode:"VAT-IN-14",taxRate:14,discount:10,
     lines:[{description:"Test stock",kind:"stock",itemCode:"ITEM-001",quantity:2,unitPrice:50,discount:0,warehouseCode:"default"}]
   });
   assert.ok(duplicate.warnings.length>0,"duplicate invoice is flagged");
