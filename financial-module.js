@@ -248,6 +248,86 @@ function FinanceModule(props){
   try{const r=await api('', 'POST',{action:'submitBankImport',bankAccountCode:bankAccount,fileName:bankFile&&bankFile.name,rows:bankRows});setNotice('تم إدخال '+r.rows+' حركة بنكية للمراجعة، منها '+r.duplicates+' تكرارات محتملة.');setBankRows([]);setBankFile(null);await refresh();}
   catch(e){setError(e.message||String(e));}finally{setBusy(false);}
  };
+ const masterImportConfig={
+  customers:{label:'العملاء',kind:'parties',partyType:'customer',columns:['code','name','phone','taxNumber','email','address']},
+  suppliers:{label:'الموردون',kind:'parties',partyType:'vendor',columns:['code','name','phone','taxNumber','email','address']},
+  itemGroups:{label:'مجموعات الأصناف',kind:'itemGroups',columns:['code','name']},
+  items:{label:'الأصناف المخزنية',kind:'items',columns:['code','name','unit','groupCode','version','warehouseCode']},
+  chartOfAccounts:{label:'دليل الحسابات',kind:'chartOfAccounts',columns:['code','name','type','nature','parentCode','isGroup']},
+  costCenters:{label:'مراكز التكلفة',kind:'costCenters',columns:['code','name','projectCode']},
+  warehouses:{label:'المخازن',kind:'warehouses',columns:['code','name']},
+  taxCodes:{label:'الأكواد الضريبية',kind:'taxCodes',columns:['code','name','taxType','rate','effectiveFrom']}
+ };
+ const downloadMasterTemplate=()=>{
+  const config=masterImportConfig[masterImportKind],csv='\\uFEFF'+config.columns.join(',')+'\\r\\n';
+  dl('Pest-'+masterImportKind+'-template.csv',csv);
+ };
+ const parseMasterImport=async file=>{
+  if(!file)return;
+  setBusy(true);setError('');setMasterImportRows([]);setMasterImportName(file.name);
+  try{
+   if(!window.XLSX)throw new Error('مكتبة Excel غير متاحة.');
+   const workbook=window.XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:true});
+   const sheet=workbook.Sheets[workbook.SheetNames[0]];
+   const raw=window.XLSX.utils.sheet_to_json(sheet,{defval:''});
+   if(!raw.length)throw new Error('الملف لا يحتوي على بيانات.');
+   const aliases={
+    code:['code','الكود','كود','كود العميل','كود المورد','كود الصنف','رقم الحساب'],
+    name:['name','الاسم','اسم','اسم العميل','اسم المورد','اسم الصنف','اسم الحساب'],
+    phone:['phone','mobile','الهاتف','تليفون','موبايل','رقم الهاتف'],
+    taxNumber:['taxnumber','taxno','الرقم الضريبي','رقم التسجيل الضريبي','التسجيل الضريبي'],
+    email:['email','البريد الالكتروني','البريد الإلكتروني'],
+    address:['address','العنوان'],
+    unit:['unit','الوحدة','وحدة القياس'],
+    groupCode:['groupcode','كود المجموعة','المجموعة'],
+    version:['version','الإصدار','الاصدار'],
+    warehouseCode:['warehousecode','كود المخزن','المخزن'],
+    type:['type','نوع الحساب','نوع'],
+    nature:['nature','طبيعة الحساب','الطبيعة'],
+    parentCode:['parentcode','الحساب الأب','الحساب الاب','كود الحساب الأب'],
+    isGroup:['isgroup','حساب تجميعي','تجميعي'],
+    projectCode:['projectcode','كود المشروع','المشروع'],
+    taxType:['taxtype','نوع الضريبة'],
+    rate:['rate','النسبة','النسبة %'],
+    effectiveFrom:['effectivefrom','بداية السريان','تاريخ السريان']
+   };
+   const normalizeHeader=v=>String(v||'').toLowerCase().replace(/[\\s_\\-]+/g,'').trim();
+   const rowsOut=raw.map((row,index)=>{
+    const keys=Object.keys(row),out={};
+    Object.keys(aliases).forEach(fieldName=>{
+     const wanted=aliases[fieldName].map(normalizeHeader);
+     const key=keys.find(k=>wanted.includes(normalizeHeader(k)));
+     if(key!==undefined)out[fieldName]=row[key];
+    });
+    Object.keys(out).forEach(fieldName=>{if(out[fieldName] instanceof Date)out[fieldName]=out[fieldName].toISOString().slice(0,10);});
+    if(out.isGroup!==undefined)out.isGroup=out.isGroup===true||['true','1','yes','نعم'].includes(String(out.isGroup).toLowerCase());
+    if(out.type==='أصول')out.type='asset';if(out.type==='التزامات')out.type='liability';if(out.type==='حقوق ملكية')out.type='equity';if(out.type==='إيرادات')out.type='revenue';if(out.type==='مصروفات')out.type='expense';
+    if(out.nature==='مدين')out.nature='debit';if(out.nature==='دائن')out.nature='credit';
+    if(out.taxType==='قيمة مضافة مدخلات')out.taxType='vat_input';if(out.taxType==='قيمة مضافة مخرجات')out.taxType='vat_output';if(out.taxType==='خصم/استقطاع')out.taxType='withholding';if(out.taxType==='إضافة')out.taxType='addition';
+    return out;
+   }).filter(row=>row.code||row.name);
+   if(!rowsOut.length)throw new Error('لم يتم التعرف على أعمدة الكود والاسم. استخدم النموذج المرفق.');
+   if(rowsOut.length>500)throw new Error('الحد الأقصى 500 سجل في الملف الواحد.');
+   const invalid=rowsOut.findIndex(row=>!String(row.code||'').trim()||!String(row.name||'').trim());
+   if(invalid>=0)throw new Error('الصف '+(invalid+2)+': يجب إدخال الكود والاسم.');
+   if(masterImportKind==='chartOfAccounts'&&rowsOut.some(row=>!row.type||!row.nature))throw new Error('يجب تحديد نوع الحساب وطبيعته في كل صف.');
+   if(masterImportKind==='taxCodes'&&rowsOut.some(row=>!row.taxType))throw new Error('يجب تحديد نوع الضريبة في كل صف.');
+   setMasterImportRows(rowsOut);
+   setNotice('تمت قراءة '+rowsOut.length+' سجل. راجع المعاينة ثم اضغط تنفيذ الاستيراد.');
+  }catch(error){setError(error.message||String(error));}
+  finally{setBusy(false);}
+ };
+ const submitMasterImport=async()=>{
+  const config=masterImportConfig[masterImportKind];
+  if(!masterImportRows.length){setError('اختر ملفًا صالحًا وراجع بياناته أولاً.');return;}
+  setBusy(true);setError('');
+  try{
+   const result=await api('', 'POST',{action:'importMasters',kind:config.kind,partyType:config.partyType,rows:masterImportRows});
+   setNotice('تم استيراد '+result.count+' سجل إلى '+config.label+'. وتم ربط العملاء والموردين بسجلات البرنامج الرئيسية.');
+   setMasterImportRows([]);setMasterImportName('');await refresh();
+  }catch(error){setError(error.message||String(error));}
+  finally{setBusy(false);}
+ };
  const editDoc=doc=>{
   setSelected(null);
   if(doc.type==='journal'){setJournal({id:doc.id,date:doc.date,description:doc.description||'',reference:doc.reference||'',currency:doc.currency||'EGP',lines:(doc.lines||[]).map(x=>Object.assign({},x))});setTab('journal');}
@@ -472,6 +552,28 @@ function FinanceModule(props){
   const groupPanel=panel('إجمالي المخزون حسب المجموعة والمخزن','يمكن فتح المجموعة لمشاهدة الإصدارات والأكواد التفصيلية.',table(['المجموعة','المخزن','إجمالي الكمية','متوسط تكلفة المجموعة','قيمة الرصيد'],groupRows));
   const detailsPanel=panel('تفاصيل الأصناف والإصدارات','الرصيد والتكلفة محفوظان على مستوى كود الصنف والإصدار والمخزن.',table(['الكود','الصنف','المجموعة','الإصدار','الوحدة','المخزن','الكمية','متوسط التكلفة','القيمة'],stockRows));
   return h('div',{className:'space-y-4'},groupPanel,detailsPanel);
+ };
+ const renderMasters=()=>{
+  const partyRows=[...allClients.map(p=>Object.assign({},p,{partyType:'customer'})),...allVendors.map(p=>Object.assign({},p,{partyType:'vendor'}))];
+  const visibleParties=partyRows.filter(p=>!masterPartySearch||normalizeMatch([p.code,p.name,p.phone,p.taxNumber,p.partyType].join(' ')).includes(normalizeMatch(masterPartySearch)));
+  const partyPanel=panel('دليل العملاء والموردين','الدليل مرتبط بسجلات العملاء والموردين المستخدمة في إدارة المشروعات، ويعرض الكود والاسم وبيانات البحث.',h('div',{className:'space-y-3'},
+   h('div',{className:'flex flex-wrap gap-2'},button('＋ عميل جديد',()=>openQuickAdd('parties',null,{code:nextCode('CUS',allClients),partyType:'customer'}),'primary'),button('＋ مورد جديد',()=>openQuickAdd('parties',null,{code:nextCode('VND',allVendors),partyType:'vendor'}),'primary')),
+   field('بحث بالكود أو الاسم أو الهاتف أو الرقم الضريبي',masterPartySearch,setMasterPartySearch),
+   table(['النوع','الكود','الاسم','الهاتف','الرقم الضريبي','البريد الإلكتروني'],visibleParties.map(p=>h('tr',{key:p.partyType+'-'+(p.code||p.id),className:'border-t'},h('td',{className:'p-2'},p.partyType==='vendor'?'مورد':'عميل'),h('td',{className:'p-2 font-bold'},p.code||p.id),h('td',{className:'p-2'},partyName(p)),h('td',{className:'p-2'},p.phone||p.mobile||'—'),h('td',{className:'p-2'},p.taxNumber||'—'),h('td',{className:'p-2'},p.email||'—'))))
+  ));
+  const config=masterImportConfig[masterImportKind];
+  const preview=masterImportRows.slice(0,12);
+  const importPanel=panel('استيراد البيانات والأكواد من نموذج Excel / CSV','نزّل النموذج أولاً، أضف بياناتك بنفس عناوين الأعمدة، ثم ارفع الملف لمراجعته قبل الحفظ. الحد الأقصى 500 سجل في العملية الواحدة.',h('div',{className:'space-y-3'},
+   h('div',{className:'grid md:grid-cols-3 gap-3 items-end'},
+    select('نوع البيانات',masterImportKind,v=>{setMasterImportKind(v);setMasterImportRows([]);setMasterImportName('');},Object.keys(masterImportConfig).map(key=>({value:key,label:masterImportConfig[key].label}))),
+    button('تنزيل نموذج '+config.label,downloadMasterTemplate,'muted'),
+    h('label',{className:'block text-sm font-bold text-slate-700'},'رفع ملف Excel أو CSV',h('input',{type:'file',accept:'.xlsx,.xls,.csv',onChange:e=>parseMasterImport(e.target.files&&e.target.files[0]),className:'block mt-1 w-full rounded-lg border p-2 font-normal bg-white'}))
+   ),
+   masterImportName?h('p',{className:'text-xs text-slate-600'},'الملف: '+masterImportName):null,
+   masterImportRows.length?panel('معاينة أول 12 صفًا','لن يتم حفظ أي سجل قبل الضغط على تنفيذ الاستيراد.',table(config.columns.map(x=>x==='code'?'الكود':x==='name'?'الاسم':x),preview.map((row,index)=>h('tr',{key:index,className:'border-t'},config.columns.map((key,i)=>h('td',{key,className:'p-2'},String(row[key]==null?'':row[key]))))))):null,
+   masterImportRows.length?h('div',{className:'flex flex-wrap items-center gap-3'},h('b',{className:'text-sm'},'عدد السجلات: '+masterImportRows.length),button('تنفيذ الاستيراد',submitMasterImport,'primary',busy),button('إلغاء الملف',()=>{setMasterImportRows([]);setMasterImportName('');},'muted')):null
+  ));
+  return h('div',{className:'space-y-4'},partyPanel,importPanel);
  };
  const renderTax=()=>panel('تقارير الضرائب','ملخص الحسابات الضريبية من القيود المرحلة. نسب الضرائب الفعلية حسب إعدادات الشركة والتشريعات.',h('div',{className:'space-y-3'},
   h('div',{className:'grid md:grid-cols-3 gap-3'},metric('ضريبة مدخلات',fmt((balances['1410']||{}).debit-(balances['1410']||{}).credit)+' ج.م'),metric('ضريبة مخرجات',fmt((balances['2110']||{}).credit-(balances['2110']||{}).debit)+' ج.م'),metric('صافي الضريبة',fmt(((balances['2110']||{}).credit-(balances['2110']||{}).debit)-((balances['1410']||{}).debit-(balances['1410']||{}).credit))+' ج.م')),
