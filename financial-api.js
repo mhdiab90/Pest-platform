@@ -1,4 +1,24 @@
 
+const COMPANY_TAX_REGISTRATION_NUMBER = "589845268";
+function normalizeTaxRegistrationNumber(value) {
+  return String(value || "").replace(/[٠-٩]/g, digit => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit))).replace(/[۰-۹]/g, digit => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit))).replace(/[^0-9]/g, "");
+}
+function extractEtaParty(block) {
+  const source = String(block || "");
+  const nameMatch = source.match(/Taxpayer\s+Name\s*:\s*([\s\S]*?)(?=\s+Registration\s+Number\s*:)/i);
+  const taxMatch = source.match(/Registration\s+Number\s*:\s*#?\s*([0-9]{6,15})/i);
+  const cleanName = value => String(value || "").replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "").replace(/\s+/g, " ").trim();
+  return { name: cleanName(nameMatch && nameMatch[1]), taxNumber: normalizeTaxRegistrationNumber(taxMatch && taxMatch[1]) };
+}
+function extractEtaInvoiceParties(value) {
+  const source = String(value || ""), issuerMarker = /Issuer\s*\(\s*From\s*\)/i.exec(source), recipientMarker = /Recipients?\s*\(\s*To\s*\)/i.exec(source);
+  if (!issuerMarker || !recipientMarker || recipientMarker.index <= issuerMarker.index) return {};
+  const recipientRest = source.slice(recipientMarker.index + recipientMarker[0].length), itemMarker = /Code\s+Name/i.exec(recipientRest);
+  const issuer = extractEtaParty(source.slice(issuerMarker.index + issuerMarker[0].length, recipientMarker.index));
+  const recipient = extractEtaParty(itemMarker ? recipientRest.slice(0, itemMarker.index) : recipientRest);
+  return { issuerName: issuer.name, issuerTaxNumber: issuer.taxNumber, recipientName: recipient.name, recipientTaxNumber: recipient.taxNumber };
+}
+
 const DEFAULT_STAFF_ACCOUNTS = [
  {code:"1220",name:"العهد لدى العاملين",type:"asset",nature:"debit",parentCode:"11",isControl:true,subledgerType:"employeeCustody"},
  {code:"1230",name:"السلف لدى العاملين",type:"asset",nature:"debit",parentCode:"11",isControl:true,subledgerType:"employeeAdvance"}
@@ -208,13 +228,19 @@ export async function handleFinancialRequest(ctx){
    content=[{type:"image_url",image_url:{url:image}}];
   }
   const accounts=Array.isArray(body.expenseAccounts)?body.expenseAccounts.slice(0,80).map(x=>({code:txt(x&&x.code,32),name:txt(x&&x.name,120)})).filter(x=>x.code&&x.name):[];
-  const prompt="Read this invoice page "+pageNumber+" of "+totalPages+". Return only valid JSON with fields type (purchase or sales), number, date YYYY-MM-DD, partyName, taxNumber, currency, netTotal, taxRate, taxAmount, total, discount, items array. Each item must include description, quantity, unit, unitPrice, discount, kind (stock or service), itemCode if printed, and suggestedExpenseCode if it is an expense and a matching code exists in the allowed account list. Classify as stock ONLY goods that should enter inventory for resale or production. Classify maintenance, repairs, training, cleaning, pantry, hospitality, stationery, office supplies, transport, utilities, consulting and similar consumed services/costs as service. Allowed expense accounts: "+JSON.stringify(accounts)+". Select suggestedExpenseCode only from this list. This is one page of a possibly multi-page invoice: extract header fields when visible and only the line items actually visible on this page. Do not invent unreadable values. Preserve Arabic and English. Human review is mandatory.";
+  const prompt="Read this Egyptian e-invoice page "+pageNumber+" of "+totalPages+". Return only valid JSON with fields type (purchase or sales or unknown), number, date YYYY-MM-DD, issuerName, issuerTaxNumber, recipientName, recipientTaxNumber, partyName, taxNumber, currency, netTotal, taxRate, taxAmount, total, discount, items array. The company's Egyptian tax registration number is "+COMPANY_TAX_REGISTRATION_NUMBER+". Read the two party blocks separately: Issuer (From) is the document issuer/seller; Recipients (To) is the recipient/buyer. Determine direction from exact tax-number match: when the company number appears in Recipients (To), this is a PURCHASE invoice received by the company from the Issuer; when the company number appears in Issuer (From), this is a SALES invoice issued by the company to the Recipient. In these cases set type accordingly, and set partyName and taxNumber to the OTHER party (supplier for purchase, customer for sales), not our own company. Do not infer direction from words like Total Sales Amount, item descriptions, or filename. If neither party tax number matches the company number, return the separately extracted issuer/recipient fields and use explicit invoice roles only; otherwise type=unknown. Each item must include description, quantity, unit, unitPrice, discount, kind (stock or service), itemCode if printed, and suggestedExpenseCode if it is an expense and a matching code exists in the allowed account list. Classify as stock ONLY goods that should enter inventory for resale or production. Classify maintenance, repairs, training, cleaning, pantry, hospitality, stationery, office supplies, transport, utilities, consulting and similar consumed services/costs as service. Allowed expense accounts: "+JSON.stringify(accounts)+". Select suggestedExpenseCode only from this list. This is one page of a possibly multi-page invoice: extract header fields when visible and only the line items actually visible on this page. Do not invent unreadable values. Preserve Arabic and English. Human review is mandatory.";
   const messages=[{role:"user",content:[{type:"text",text:prompt},...content]}];
   const out=await env.AI.run("@cf/meta/llama-4-scout-17b-16e-instruct",{messages,max_tokens:2200,temperature:0.1});
   let raw=String(out&&out.response||"").trim();const first=raw.indexOf("{"),last=raw.lastIndexOf("}");
   if(first<0||last<=first)throw new Error("تعذر استخراج بيانات واضحة من الفاتورة. أدخل البيانات يدويًا.");
   let data;try{data=JSON.parse(raw.slice(first,last+1));}catch(_){throw new Error("نتيجة قراءة الفاتورة غير مكتملة. أدخل البيانات يدويًا.");}
   if(!data||typeof data!=="object"||Array.isArray(data))throw new Error("نتيجة قراءة الفاتورة غير صالحة.");
+  const etaParties=textOnly?extractEtaInvoiceParties(body.text):{};
+  ["issuerName","issuerTaxNumber","recipientName","recipientTaxNumber"].forEach(key=>{if(etaParties[key])data[key]=etaParties[key];else if(key.endsWith("TaxNumber"))data[key]=normalizeTaxRegistrationNumber(data[key]);});
+  const issuerIsCompany=normalizeTaxRegistrationNumber(data.issuerTaxNumber)===COMPANY_TAX_REGISTRATION_NUMBER;
+  const recipientIsCompany=normalizeTaxRegistrationNumber(data.recipientTaxNumber)===COMPANY_TAX_REGISTRATION_NUMBER;
+  if(issuerIsCompany&&!recipientIsCompany){data.type="sales";data.partyName=data.recipientName||data.partyName||"";data.taxNumber=data.recipientTaxNumber||data.taxNumber||"";data.companyPartyRole="issuer";}
+  else if(recipientIsCompany&&!issuerIsCompany){data.type="purchase";data.partyName=data.issuerName||data.partyName||"";data.taxNumber=data.issuerTaxNumber||data.taxNumber||"";data.companyPartyRole="recipient";}
   return {success:true,extracted:data,needsHumanReview:true,pageNumber,totalPages,model:"llama-4-scout-17b-16e-instruct"};
  }
  if(action==="saveMaster"){
