@@ -20,6 +20,15 @@ const parseEtaInvoiceParties=value=>{
  const recipient=parseEtaPartyBlock(itemMarker?rest.slice(0,itemMarker.index):rest);
  return {issuerName:issuer.name,issuerTaxNumber:issuer.taxNumber,recipientName:recipient.name,recipientTaxNumber:recipient.taxNumber};
 };
+const parseInternalInvoiceNumber=value=>{
+ const source=String(value||'').replace(/[\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]/g,'');
+ const marker=/\\bInternal\\s*id\\s*[:：]\\s*/i.exec(source);
+ if(!marker)return '';
+ let candidate=source.slice(marker.index+marker[0].length).split(/\\r?\\n/,1)[0];
+ const nextField=/\\s+(?=(?:Document\\s+Type(?:\\s+Version)?|Date\\s+Time\\s+Issued|Issue\\s+Date(?:\\s+Time)?|Invoice\\s+Date|Issuer\\s*\\(\\s*From\\s*\\)|Recipients?\\s*\\(\\s*To\\s*\\)|Seller\\b|Buyer\\b|Internal\\s*id\\s*[:：]|Total\\s+(?:Sales\\s+)?Amount|Taxable\\s+Items|Items\\s+Count|Payment\\s+Method|Signature\\b|QR\\s+Code))/i.exec(candidate);
+ if(nextField)candidate=candidate.slice(0,nextField.index);
+ return candidate.replace(/^\\s*[:：#-]+\\s*/,'').replace(/[\\s|;,]+$/,'').replace(/\\s+/g,' ').trim().slice(0,120);
+};
 const today=()=>new Date().toISOString().slice(0,10);
 const rows=o=>o?Object.entries(o).map(([key,v])=>Object.assign({id:v&&v.id||key,code:v&&v.code||key},v||{})):[];
 const id=p=>p+'_'+(crypto.randomUUID?crypto.randomUUID().replace(/-/g,''):Date.now());
@@ -506,7 +515,7 @@ function FinanceModule(props){
   setBusy(true);setError('');setNotice(isPdf?'جارٍ فتح ملف PDF وتحليل صفحاته...':'جارٍ قراءة صورة الفاتورة...');
   try{
    const expenseAccounts=posting.filter(account=>account.type==='expense').map(account=>({code:account.code,name:account.name}));
-   const pageResults=[];let totalPdfPages=0,pagesRead=0;
+   const pageResults=[],pdfPageTexts=[];let totalPdfPages=0,pagesRead=0;
    if(isPdf){
     const pdfjs=await loadInvoicePdfJs();
     pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -519,6 +528,7 @@ function FinanceModule(props){
      const page=await pdf.getPage(pageNumber);
      const textContent=await page.getTextContent();
      const pageText=(textContent.items||[]).map(item=>item.str||'').filter(Boolean).join(' ').replace(/\\s+/g,' ').trim();
+     pdfPageTexts.push(pageText);
      let result;
      if(pageText.length>=100){
       result=await api('', 'POST',{action:'ocrText',text:pageText,pageNumber,totalPages:pdf.numPages,expenseAccounts});
@@ -547,6 +557,8 @@ function FinanceModule(props){
     pageResults.forEach(page=>{if(page&&page[key]!==undefined&&page[key]!==null&&page[key]!=='')x[key]=page[key];});
    });
    pageResults.forEach(page=>{if(Array.isArray(page&&page.items))x.items.push(...page.items);});
+   const internalInvoiceNumber=pdfPageTexts.map(parseInternalInvoiceNumber).find(Boolean);
+   if(internalInvoiceNumber)x.number=internalInvoiceNumber;
    const modelDirection=x.type==='sales'?'sales':x.type==='purchase'?'purchase':'';
    const detectedDirection=detectEtaInvoiceDirection(x);
    const nextType=invoiceTypeManuallySelected?invoice.type:(detectedDirection||invoice.type);
