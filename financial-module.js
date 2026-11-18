@@ -187,7 +187,8 @@ function FinanceModule(props){
  const mergePartyRows=(base,type)=>{const map=new Map((base||[]).map(p=>[String(p.code||p.id),p]));financialParties.filter(p=>p.partyType===type).forEach(p=>map.set(String(p.code||p.id),p));return Array.from(map.values()).filter(p=>p&&p.code||p&&p.id);};
  const allClients=mergePartyRows(clients,'customer'),allVendors=mergePartyRows(vendors,'vendor');
  const parties=invoice.type==='purchase'?allVendors:allClients;
- const partyName=p=>p.name||p.companyName||p.legalName||p.code||p.id;
+ const partyTaxNumber=p=>p.taxNumber||p.taxRegistrationNumber||p.registrationNumber||p.registrationNo||p.vatNumber||p.taxId||'';
+ const partyName=p=>p.name||p.companyName||p.legalName||p.supplierName||p.vendorName||p.customerName||p.clientName||p.title||p.code||p.id;
  const nextCode=(prefix,list)=>{const used=new Set((list||[]).map(x=>String(x.code||x.id||'')));let i=1,code='';do{code=prefix+'-'+String(i++).padStart(3,'0');}while(used.has(code));return code;};
  const normalizeMatch=v=>String(v||'').toLowerCase().replace(/[\s\-_.،,]+/g,'').trim();
 
@@ -209,12 +210,12 @@ function FinanceModule(props){
  const openQuickAdd=(kind,onCreated,defaults)=>{if(quickAddType)setQuickAddParent({type:quickAddType,form:quickAddForm,target:quickAddTarget});else setQuickAddParent(null);setQuickAddType(kind);setQuickAddTarget(()=>onCreated||null);setQuickAddForm(Object.assign({code:'',name:'',type:'expense',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',unit:'قطعة',groupCode:'',groupType:'other',itemType:'stock',version:'',warehouseCode:'default',projectCode:'',taxType:'vat_output',rate:'0',effectiveFrom:today(),partyType:'customer',phone:'',taxNumber:'',email:'',address:''},defaults||{}));};
  const selectWithAdd=(label,value,onChange,options,kind,defaults)=>select(label,value,function(next){if(next==='__quick_add__'){openQuickAdd(kind,onChange,defaults);}else onChange(next);},(options||[]).concat([{value:'__quick_add__',label:'＋ إضافة كود جديد'}]));
  const partyPicker=(label,list,value,onChange,query,setQuery,partyType)=>{
-  const term=normalizeMatch(query),matches=(list||[]).filter(p=>!term||normalizeMatch([p.code,p.name,p.companyName,p.legalName,p.phone,p.mobile,p.taxNumber].join(' ')).includes(term)).slice(0,8);
+  const term=normalizeMatch(query),matches=(list||[]).filter(p=>!term||normalizeMatch([p.code,partyName(p),p.phone,p.mobile,partyTaxNumber(p)].join(' ')).includes(term)).slice(0,8);
   const selected=(list||[]).find(p=>String(p.code||p.id)===String(value||''));
   return h('div',{className:'block text-sm font-bold text-slate-700 min-w-0'},label,
    h('input',{type:'search',value:query||'',onChange:e=>setQuery(e.target.value),placeholder:'ابحث بالاسم أو الكود أو رقم التسجيل الضريبي',className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal bg-white'}),
    selected?h('div',{className:'mt-1 text-xs text-emerald-700'},'المحدد: '+partyName(selected)+' ('+(selected.code||selected.id)+')'):null,
-   h('div',{className:'mt-1 max-h-36 overflow-auto rounded-lg border bg-white'},matches.length?matches.map(p=>h('button',{key:String(p.code||p.id),type:'button',onClick:()=>{onChange(p);setQuery(partyName(p));},className:'block w-full text-start px-3 py-2 text-sm hover:bg-blue-50 border-b last:border-0'},h('b',null,p.code||p.id),' — ',partyName(p),p.taxNumber?h('small',{className:'block text-slate-500'},'رقم ضريبي: '+p.taxNumber):null)):h('div',{className:'p-2 text-xs text-slate-500'},'لا توجد نتيجة مطابقة')),
+   h('div',{className:'mt-1 max-h-36 overflow-auto rounded-lg border bg-white'},matches.length?matches.map(p=>h('button',{key:String(p.code||p.id),type:'button',onClick:()=>{onChange(p);setQuery(partyName(p));},className:'block w-full text-start px-3 py-2 text-sm hover:bg-blue-50 border-b last:border-0'},h('b',null,p.code||p.id),' — ',partyName(p),partyTaxNumber(p)?h('small',{className:'block text-slate-500'},'رقم ضريبي: '+partyTaxNumber(p)):null)):h('div',{className:'p-2 text-xs text-slate-500'},'لا توجد نتيجة مطابقة')),
    h('button',{type:'button',onClick:()=>openQuickAdd('parties',code=>{const p={code,name:query,partyType};onChange(p);setQuery(String(query||'').replace(/\s*\([^)]*\)\s*$/,''));},{code:nextCode(partyType==='vendor'?'VND':'CUS',list),name:String(query||'').replace(/\s*\([^)]*\)\s*$/,''),partyType}),className:'mt-2 text-xs font-bold text-blue-700 underline'},'＋ تكويد '+(partyType==='vendor'?'مورد':'عميل')+' جديد')
   );
  };
@@ -420,8 +421,8 @@ function FinanceModule(props){
  const masterImportConfig={
   customers:{label:'العملاء',kind:'parties',partyType:'customer',columns:['code','name','phone','taxNumber','email','address']},
   suppliers:{label:'الموردون',kind:'parties',partyType:'vendor',columns:['code','name','phone','taxNumber','email','address']},
-  itemGroups:{label:'مجموعات الأصناف',kind:'itemGroups',columns:['code','name']},
-  items:{label:'الأصناف المخزنية',kind:'items',columns:['code','name','unit','groupCode','version','warehouseCode']},
+  itemGroups:{label:'مجموعات الأصناف',kind:'itemGroups',columns:['code','name','groupType']},
+  items:{label:'الأصناف المخزنية',kind:'items',columns:['code','name','itemType','unit','groupCode','version','warehouseCode']},
   chartOfAccounts:{label:'دليل الحسابات',kind:'chartOfAccounts',columns:['code','name','type','nature','parentCode','isGroup']},
   costCenters:{label:'مراكز التكلفة',kind:'costCenters',columns:['code','name','projectCode']},
   warehouses:{label:'المخازن',kind:'warehouses',columns:['code','name']},
@@ -448,6 +449,8 @@ function FinanceModule(props){
     taxNumber:['taxnumber','taxno','الرقم الضريبي','رقم التسجيل الضريبي','التسجيل الضريبي'],
     email:['email','البريد الالكتروني','البريد الإلكتروني'],
     address:['address','العنوان'],
+    itemType:['itemtype','تصنيف الصنف','نوع الصنف','تصنيف مخزني'],
+    groupType:['grouptype','نوع المجموعة','تصنيف المجموعة'],
     unit:['unit','الوحدة','وحدة القياس'],
     groupCode:['groupcode','كود المجموعة','المجموعة'],
     version:['version','الإصدار','الاصدار'],
@@ -474,6 +477,21 @@ function FinanceModule(props){
     if(out.isGroup!==undefined)out.isGroup=out.isGroup===true||['true','1','yes','نعم'].includes(String(out.isGroup).toLowerCase());
     if(out.type==='أصول')out.type='asset';if(out.type==='التزامات')out.type='liability';if(out.type==='حقوق ملكية')out.type='equity';if(out.type==='إيرادات')out.type='revenue';if(out.type==='مصروفات')out.type='expense';
     if(out.nature==='مدين')out.nature='debit';if(out.nature==='دائن')out.nature='credit';
+    if(out.itemType==='بضاعة'||out.itemType==='مخزون عام')out.itemType='stock';
+    if(out.itemType==='خامة'||out.itemType==='مواد خام')out.itemType='raw_material';
+    if(out.itemType==='منتج تام'||out.itemType==='منتجات تامة')out.itemType='finished_good';
+    if(out.itemType==='قطع غيار')out.itemType='spare_part';
+    if(out.itemType==='مستهلكات'||out.itemType==='مستهلكات تشغيل')out.itemType='consumable';
+    if(out.itemType==='مستلزمات مكتبية')out.itemType='office_supply';
+    if(out.groupType==='خامات'||out.groupType==='مواد خام')out.groupType='raw_material';
+    if(out.groupType==='منتجات تامة'||out.groupType==='منتج تام')out.groupType='finished_good';
+    if(out.groupType==='قطع غيار')out.groupType='spare_part';
+    if(out.groupType==='مستهلكات')out.groupType='consumable';
+    if(out.groupType==='مستلزمات مكتبية')out.groupType='office_supply';
+    if(out.groupType==='تعبئة وتغليف')out.groupType='packaging';
+    if(out.groupType==='أخرى')out.groupType='other';
+    if(masterImportKind==='items'&&!out.itemType)out.itemType='stock';
+    if(masterImportKind==='itemGroups'&&!out.groupType)out.groupType='other';
     if(out.taxType==='قيمة مضافة مدخلات')out.taxType='vat_input';if(out.taxType==='قيمة مضافة مخرجات')out.taxType='vat_output';if(out.taxType==='خصم/استقطاع')out.taxType='withholding';if(out.taxType==='إضافة')out.taxType='addition';
     return out;
    }).filter(row=>row.code||row.name);
@@ -483,6 +501,8 @@ function FinanceModule(props){
    if(invalid>=0)throw new Error('الصف '+(invalid+2)+': يجب إدخال الكود والاسم.');
    if(masterImportKind==='chartOfAccounts'&&rowsOut.some(row=>!row.type||!row.nature))throw new Error('يجب تحديد نوع الحساب وطبيعته في كل صف.');
    if(masterImportKind==='taxCodes'&&rowsOut.some(row=>!row.taxType))throw new Error('يجب تحديد نوع الضريبة في كل صف.');
+   if(masterImportKind==='items'&&rowsOut.some(row=>!['stock','consumable','spare_part','finished_good','raw_material','office_supply'].includes(row.itemType)))throw new Error('حدد تصنيف كل صنف مخزني من النموذج.');
+   if(masterImportKind==='itemGroups'&&rowsOut.some(row=>!['raw_material','finished_good','spare_part','consumable','office_supply','packaging','other'].includes(row.groupType)))throw new Error('حدد نوع كل مجموعة أصناف من النموذج.');
    setMasterImportRows(rowsOut);
    setNotice('تمت قراءة '+rowsOut.length+' سجل. راجع المعاينة ثم اضغط تنفيذ الاستيراد.');
   }catch(error){setError(error.message||String(error));}
