@@ -613,6 +613,39 @@ export async function handleFinancialRequest(ctx){
   const updates={};updates["documents/"+documentId+"/attachments/"+attachmentId]=metadata;updates["audit/"+uid("AUD")]={action:"attach_financial_document",documentId,attachmentId,uid:claims.sub,createdAt:now};
   await adminPatch(updates);return {success:true,attachment:metadata};
  }
+ if(action==="setAttachmentUploadStatus"){
+  requirePermission(profile,"financial","add");
+  const documentId=id(body.documentId),document=await adminRead("documents/"+documentId);
+  if(!document||document.type!=="invoice")throw new Error("الفاتورة غير موجودة لتحديث حالة المرفق.");
+  if(document.createdBy!==claims.sub&&profile.role!=="admin"&&!hasPermission(profile,"financial","edit"))throw new Error("ليس لديك صلاحية تحديث مرفقات هذه الفاتورة.");
+  if(!["pending","uploaded"].includes(body.status))throw new Error("حالة المرفق غير صحيحة.");
+  const updates={};
+  if(body.status==="pending"){
+   const fileName=txt(body.fileName,240),uploadError=txt(body.error,300);
+   updates["documents/"+documentId+"/attachmentUploadStatus"]="pending";
+   updates["documents/"+documentId+"/attachmentFileName"]=fileName;
+   updates["documents/"+documentId+"/attachmentUploadError"]=uploadError;
+   const queued=await adminRead("reviewQueue/"+documentId);
+   if(queued){
+    updates["reviewQueue/"+documentId+"/attachmentUploadStatus"]="pending";
+    updates["reviewQueue/"+documentId+"/attachmentFileName"]=fileName;
+    updates["reviewQueue/"+documentId+"/attachmentUploadError"]=uploadError;
+   }
+  }else{
+   updates["documents/"+documentId+"/attachmentUploadStatus"]=null;
+   updates["documents/"+documentId+"/attachmentFileName"]=null;
+   updates["documents/"+documentId+"/attachmentUploadError"]=null;
+   const queued=await adminRead("reviewQueue/"+documentId);
+   if(queued){
+    updates["reviewQueue/"+documentId+"/attachmentUploadStatus"]=null;
+    updates["reviewQueue/"+documentId+"/attachmentFileName"]=null;
+    updates["reviewQueue/"+documentId+"/attachmentUploadError"]=null;
+   }
+  }
+  updates["audit/"+uid("AUD")]={action:"update_invoice_attachment_status",documentId,status:body.status,uid:claims.sub,createdAt:now};
+  await adminPatch(updates);
+  return {success:true,documentId,status:body.status};
+ }
  if(action==="setBankOffset"){
   if(!hasPermission(profile,"financial","approve"))throw new Error("Permission denied: financial.approve.");
   const docId=id(body.id),doc=await adminRead("documents/"+docId);
