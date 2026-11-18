@@ -22,6 +22,7 @@ function FinanceModule(props){
  const [invoiceFile,setInvoiceFile]=React.useState(null),[cash,setCash]=React.useState({direction:'in',date:today(),amount:'',description:'',reference:'',partyType:'customer',partyId:'',cashAccountCode:'1110',partyAccountCode:'1210'});
  const [bankFile,setBankFile]=React.useState(null),[bankRows,setBankRows]=React.useState([]),[bankAccount,setBankAccount]=React.useState('1120');
  const [search,setSearch]=React.useState('');
+ const [partyStatement,setPartyStatement]=React.useState({type:'customer',id:''}),[partyRows,setPartyRows]=React.useState([]);
  const api=async(path,method,body)=>{
   const auth=window.PEST_FIREBASE_AUTH&&window.PEST_FIREBASE_AUTH.currentUser;
   if(!auth)throw new Error(t('جلسة الدخول انتهت. أعد تسجيل الدخول.','Your session expired. Sign in again.'));
@@ -54,7 +55,19 @@ function FinanceModule(props){
   finally{setBusy(false);}
  };
  React.useEffect(()=>{refresh();if(db){Promise.all([db.ref('clients').once('value'),db.ref('vendors').once('value'),db.ref('projects').once('value')]).then(a=>{setClients(rows(a[0].val()));setVendors(rows(a[1].val()));setProjects(rows(a[2].val()));}).catch(e=>console.warn(e));}},[]);
- React.useEffect(()=>{if(['overview','reports','tax'].includes(tab))loadPeriod();},[tab,period.from,period.to]);
+ React.useEffect(()=>{if(['overview','reports','tax','centers'].includes(tab))loadPeriod();},[tab,period.from,period.to]);
+ const loadParty=async()=>{
+  if(!partyStatement.id){setError('اختر العميل أو المورد أولاً.');return;}
+  setBusy(true);setError('');
+  try{
+   const result=await api('?resource=party&type='+encodeURIComponent(partyStatement.type)+'&id='+encodeURIComponent(partyStatement.id));
+   const entries=[];
+   Object.values(result.entries||{}).forEach(function(periodRows){Object.values(periodRows||{}).forEach(function(entry){entries.push(entry);});});
+   entries.sort(function(a,b){return String(a.date||'').localeCompare(String(b.date||''))||String(a.journalId||'').localeCompare(String(b.journalId||''));});
+   setPartyRows(entries);
+  }catch(error){setError(error.message||String(error));}
+  finally{setBusy(false);}
+ };
  const accounts=rows(master.chartOfAccounts).sort((a,b)=>String(a.code).localeCompare(String(b.code),undefined,{numeric:true}));
  const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
  const centers=rows(master.costCenters),items=rows(master.items);
@@ -159,7 +172,7 @@ function FinanceModule(props){
   else if(doc.type==='invoice'){setInvoice({id:doc.id,type:doc.invoiceType||(doc.type==='purchase'?'purchase':'sales'),date:doc.date,number:doc.number,partyId:doc.partyId,partyName:doc.partyName,currency:doc.currency||'EGP',taxRate:String(doc.taxRate||''),taxAmount:doc.taxAmount==null?'':String(doc.taxAmount),discount:String(doc.discount||''),projectCode:doc.projectCode||'',lines:(doc.lines||[]).map(x=>Object.assign({},x))});setTab('invoices');}
  };
  const nav=[
- ['overview','ملخص مالي'],['journal','القيود اليومية'],['review','المراجعة والاعتماد'],['invoices','فواتير العملاء والموردين'],['accounts','دليل الحسابات'],['centers','مراكز التكلفة'],['inventory','المخزون والأكواد'],['cash','الخزينة والتحصيل والسداد'],['bank','كشوف البنوك'],['tax','الضرائب'],['reports','القوائم المالية']
+ ['overview','ملخص مالي'],['journal','القيود اليومية'],['review','المراجعة والاعتماد'],['invoices','فواتير العملاء والموردين'],['partyStatements','كشف حساب عميل / مورد'],['accounts','دليل الحسابات'],['centers','مراكز التكلفة'],['inventory','المخزون والأكواد'],['cash','الخزينة والتحصيل والسداد'],['bank','كشوف البنوك'],['tax','الضرائب'],['reports','القوائم المالية']
  ];
  const renderOverview=()=>h('div',{className:'space-y-4'},
   h('div',{className:'grid grid-cols-2 xl:grid-cols-4 gap-3'},metric('إجمالي المدين',fmt(trial.reduce((s,x)=>s+x.amount.debit,0))+' ج.م'),metric('إجمالي الدائن',fmt(trial.reduce((s,x)=>s+x.amount.credit,0))+' ج.م'),metric('صافي الربح / الخسارة',fmt(profit)+' ج.م'),metric('بانتظار المراجعة',String(review.length))),
@@ -259,6 +272,51 @@ function FinanceModule(props){
    panel(kind==='accounts'?'قائمة الحسابات':kind==='centers'?'قائمة مراكز التكلفة':'قائمة الأصناف', '',table(['الكود','الاسم','تفاصيل'],data.filter(x=>!search||[x.code,x.name,x.version,x.groupCode].join(' ').toLowerCase().includes(search.toLowerCase())).map(x=>h('tr',{key:x.code,className:'border-t'},h('td',{className:'p-2'},x.code),h('td',{className:'p-2'},x.name),h('td',{className:'p-2'},kind==='accounts'?(x.isGroup?'تجميعي':x.type+' / '+x.nature):kind==='centers'?(x.projectCode||'—'):[x.groupCode,x.version].filter(Boolean).join(' / '))))))
   );
  };
+ const renderPartyStatements = function() {
+  const list=partyStatement.type==='customer'?clients:vendors;
+  let running=0;
+  const displayRows=partyRows.map(function(line,index){
+   const movement=partyStatement.type==='vendor'?n(line.credit)-n(line.debit):n(line.debit)-n(line.credit);
+   running+=movement;
+   return h('tr',{key:(line.journalId||'entry')+'-'+index,className:'border-t'},
+    h('td',{className:'p-2'},line.date||'—'),
+    h('td',{className:'p-2'},line.reference||'—'),
+    h('td',{className:'p-2'},line.journalId||'—'),
+    h('td',{className:'p-2'},line.description||'—'),
+    h('td',{className:'p-2'},fmt(line.debit)),
+    h('td',{className:'p-2'},fmt(line.credit)),
+    h('td',{className:'p-2 font-bold'},fmt(running))
+   );
+  });
+  const selectedParty=list.find(function(p){return (p.code||p.id)===partyStatement.id;});
+  return panel('كشف حساب العميل / المورد','الحركة مستخرجة من الأستاذ الفرعي ومربوطة بالحساب الرقابي.',h('div',{className:'space-y-3'},
+   h('div',{className:'grid md:grid-cols-3 gap-3'},
+    select('نوع الطرف',partyStatement.type,function(v){setPartyStatement({type:v,id:''});setPartyRows([]);},[{value:'customer',label:'عميل'},{value:'vendor',label:'مورد'}]),
+    select('الطرف',partyStatement.id,function(v){setPartyStatement(function(old){return Object.assign({},old,{id:v});});},[{value:'',label:'اختر الطرف'}].concat(list.map(function(p){return {value:p.code||p.id,label:partyName(p)+' ('+(p.code||p.id)+')'};}))),
+    button('عرض كشف الحساب',loadParty,'primary',busy)
+   ),
+   selectedParty?metric('الطرف المحدد',partyName(selectedParty)):null,
+   table(['التاريخ','المرجع','رقم القيد','البيان','مدين','دائن',partyStatement.type==='vendor'?'الرصيد الدائن':'الرصيد المدين'],displayRows),
+   h('div',{className:'text-sm font-bold text-slate-800'},(partyStatement.type==='vendor'?'الرصيد الدائن الختامي: ':'الرصيد المدين الختامي: ')+fmt(running)+' ج.م')
+  ));
+ };
+ const renderCostCenterAnalysis = function() {
+  const rowsByCenter=centers.map(function(center){
+   const values=flat.filter(function(line){
+    if(line.costCenterId!==center.code)return false;
+    const account=accounts.find(function(item){return item.code===line.accountCode;});
+    return account&&account.type==='expense';
+   }).reduce(function(sum,line){sum.debit+=n(line.debit);sum.credit+=n(line.credit);return sum;},{debit:0,credit:0});
+   return h('tr',{key:center.code,className:'border-t'},
+    h('td',{className:'p-2'},center.code+' — '+center.name),
+    h('td',{className:'p-2'},center.projectCode||'—'),
+    h('td',{className:'p-2'},fmt(values.debit)),
+    h('td',{className:'p-2'},fmt(values.credit)),
+    h('td',{className:'p-2 font-bold'},fmt(values.debit-values.credit))
+   );
+  });
+  return panel('تحليل المصروفات الفعلية حسب مركز التكلفة','المبالغ من القيود المرحلة بالفترة المحددة فقط.',table(['مركز التكلفة','المشروع','إجمالي المدين','إجمالي الدائن','صافي المصروف'],rowsByCenter));
+ };
  const renderReview=()=>panel('قائمة المراجعة والاعتماد','أي مستخدم يدخل المستندات. المراجع فقط يعتمدها أو يعيدها أو يرفضها.',selected?h('div',{className:'space-y-3'},
    h('div',{className:'flex items-center justify-between'},h('strong',null,selected.title||selected.number||selected.id),button('إغلاق',()=>setSelected(null))),
    h('p',{className:'text-sm'},'النوع: '+selected.type+' · التاريخ: '+selected.date+' · الحالة: '+status(selected.status)),
@@ -339,8 +397,9 @@ function FinanceModule(props){
  if(tab==='journal')content=renderJournal();
  if(tab==='review')content=renderReview();
  if(tab==='invoices')content=renderInvoices();
+ if(tab==='partyStatements')content=renderPartyStatements();
  if(tab==='accounts')content=renderMaster('accounts');
- if(tab==='centers')content=renderMaster('centers');
+ if(tab==='centers')content=h('div',{className:'space-y-4'},renderMaster('centers'),renderCostCenterAnalysis());
  if(tab==='inventory')content=renderInventory();
  if(tab==='cash')content=renderCash();
  if(tab==='bank')content=renderBank();
