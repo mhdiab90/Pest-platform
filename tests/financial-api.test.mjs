@@ -431,3 +431,11 @@ test("foreign-currency posting is blocked until exchange rates and revaluation e
   assert.equal(foreignInvoice.status,"needs_correction","foreign invoice is retained as a draft requiring correction, not posted");
   assert.equal(read("documents/"+foreignInvoice.id).currency,"USD","original invoice currency is preserved until the user deliberately converts it");
 });
+
+
+test("first accounting start month migration preserves the earliest existing posted journal", async () => {
+  write("journals/OLD-POSTED",{id:"OLD-POSTED",date:"2026-08-14",status:"posted",lines:[]});
+  write("journals/PENDING",{id:"PENDING",date:"2026-07-01",status:"pending_review",lines:[]});
+  await invoke("GET","?resource=bootstrap");
+  assert.equal(read("settings/accountingStartMonth"),"2026-08","the first period includes all existing posted financial history");
+});
