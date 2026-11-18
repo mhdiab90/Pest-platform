@@ -134,13 +134,13 @@ function FinanceModule(props){
    const parent=quickAddParent,target=quickAddTarget;
    await refresh();
    if(parent){
-    setQuickAddType(parent.type);setQuickAddForm(parent.form);setQuickAddTarget(parent.target);
+    setQuickAddType(parent.type);setQuickAddForm(parent.form);setQuickAddTarget(()=>parent.target||null);
     if(target&&result.item)target(result.item.code);
     setQuickAddParent(null);
    }else{
     setQuickAddType('');
     if(target&&result.item)target(result.item.code);
-    setQuickAddTarget(null);
+    setQuickAddTarget(null);setQuickAddParent(null);
    }
   }catch(error){setError(error.message||String(error));}
   finally{setBusy(false);}
