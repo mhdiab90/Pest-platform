@@ -177,12 +177,18 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
   assert.equal(read("clients/CUSTOMER-MASTER-01").name,"Customer Master Test","new finance customers are also registered in the main CRM");
   const supplierCreate = await invoke("POST","",{
     action:"saveMaster",kind:"parties",
-    item:{code:"SUP-NEW-MASTER-01",name:"New Supplier Master Test",partyType:"vendor",phone:"01110000000",taxNumber:"589566777"}
+    item:{code:"SUP-NEW-MASTER-01",name:"New Supplier Master Test",partyType:"vendor",phone:"01110000000",mobile:"01099998888",taxNumber:"589566777",commercialRegister:"CR-1001",contactPerson:"Contact Person",contactTitle:"Purchasing",email:"supplier@example.test",city:"Cairo",country:"Egypt",paymentTerms:"30 days",creditLimit:25000,currency:"EGP",bankName:"Test Bank",bankAccount:"12345",iban:"EG00TEST",address:"Test address",notes:"Created from invoice"}
   });
   assert.equal(supplierCreate.success,true);
   assert.equal(supplierCreate.created,true);
   assert.equal(read("vendors/SUP-NEW-MASTER-01").name,"New Supplier Master Test","supplier is added to the global supplier register");
+  assert.equal(read("vendors/SUP-NEW-MASTER-01").companyName,"New Supplier Master Test","supplier company name remains readable by the CRM screen");
+  assert.equal(read("vendors/SUP-NEW-MASTER-01").commercialRegister,"CR-1001","full master-data fields are stored in the CRM supplier record");
+  assert.equal(read("vendors/SUP-NEW-MASTER-01").creditLimit,25000,"supplier credit limit is retained");
   assert.equal(read("parties/SUP-NEW-MASTER-01").taxRegistrationNumber,"589566777","supplier tax number is stored on the financial party master");
+  assert.equal(read("parties/SUP-NEW-MASTER-01").iban,"EG00TEST","full supplier data is synchronized to the finance master");
+  const supplierReadback=await invoke("GET","?resource=bootstrap");
+  assert.equal(supplierReadback.parties["SUP-NEW-MASTER-01"].partyType,"vendor","saved supplier is visible again after server readback");
   const supplierRetry=await invoke("POST","",{
     action:"saveMaster",kind:"parties",
     item:{code:"SUP-NEW-MASTER-01",name:"New Supplier Master Test",partyType:"vendor",taxNumber:"589566777"}

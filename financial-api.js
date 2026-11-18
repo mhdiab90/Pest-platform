@@ -329,11 +329,19 @@ export async function handleFinancialRequest(ctx){
    saved={...(correctParty||{}),...(existingCode||{}),...supplied,code,name:txt(item.name,180),partyType:item.partyType,active:true,createdAt:(existingCode&&existingCode.createdAt)||(correctParty&&correctParty.createdAt)||now,createdBy:(existingCode&&existingCode.createdBy)||(correctParty&&correctParty.createdBy)||claims.sub,updatedAt:now,updatedBy:claims.sub};
    if(!saved.taxNumber&&saved.taxRegistrationNumber)saved.taxNumber=saved.taxRegistrationNumber;
    if(!saved.taxRegistrationNumber&&saved.taxNumber)saved.taxRegistrationNumber=saved.taxNumber;
-   const root=saved.partyType==="customer"?"clients":"vendors",globalUpdates={};
-   globalUpdates[root+"/"+code]=saved;
-   globalUpdates["financial/parties/"+code]=saved;
-   globalUpdates["financial/audit/"+uid("AUD")]=audit;
-   await adminPatchRoot(globalUpdates);
+   const root=saved.partyType==="customer"?"clients":"vendors";
+   saved.companyName=saved.companyName||saved.name;
+   // Write CRM and finance master records separately and confirm both are readable.
+   await adminPatchRoot({[root+"/"+code]:saved});
+   await adminPatch({"parties/"+code:saved,"audit/"+uid("AUD"):audit});
+   const [crmCheck,financeCheck]=await Promise.all([
+    adminReadRoot(root+"/"+code),
+    adminRead("parties/"+code)
+   ]);
+   const validRecord=record=>record&&String(record.code||code)===code&&record.partyType===saved.partyType&&String(record.name||record.companyName||"").trim()===saved.name;
+   if(!validRecord(crmCheck)||!validRecord(financeCheck)){
+    throw new Error("تعذر تأكيد حفظ المورد/العميل في سجل البيانات الرئيسية والحسابات. راجع الاتصال وصلاحية قاعدة البيانات ثم أعد المحاولة.");
+   }
   }else{
    const updates={};updates[kind+"/"+code]=saved;updates["audit/"+uid("AUD")]=audit;await adminPatch(updates);
   }
