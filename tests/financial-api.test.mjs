@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { handleFinancialRequest } from "../financial-api.js";
-import { isAllowedOrigin } from "../cloudflare/worker.js";
+import { isAllowedOrigin } from "../cloudflare/origin.js";
 
 const database = {};
 const segments = path => String(path || "").split("/").filter(Boolean);
