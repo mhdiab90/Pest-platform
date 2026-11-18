@@ -248,7 +248,7 @@ export async function handleFinancialRequest(ctx){
    const oppositeParty=item.partyType==="customer"?currentVendor:currentCustomer;
    if(oppositeParty)throw new Error("هذا الكود مستخدم بالفعل في سجل "+(item.partyType==="customer"?"الموردين":"العملاء")+".");
    if(correctParty){
-    if(String(correctParty.name||correctParty.companyName||"").trim()!==String(item.name||"").trim())throw new Error("كود الطرف موجود في السجل الأساسي باسم مختلف. استخدم كودًا آخر أو راجع السجل الأساسي.");
+    if(String(correctParty.name||correctParty.companyName||correctParty.legalName||correctParty.supplierName||correctParty.vendorName||correctParty.customerName||"").trim()!==String(item.name||"").trim())throw new Error("كود الطرف موجود في السجل الأساسي باسم مختلف. استخدم كودًا آخر أو راجع السجل الأساسي.");
     saved={...correctParty,...item,code,name:txt(item.name,180),partyType:item.partyType,active:true,updatedAt:now,updatedBy:claims.sub};
    }
    const root=saved.partyType==="customer"?"clients":"vendors",globalUpdates={};
@@ -284,7 +284,11 @@ export async function handleFinancialRequest(ctx){
     if(row.parentCode){const parent=await adminRead("chartOfAccounts/"+id(row.parentCode));if(!parent||!parent.isGroup)throw new Error("الصف "+(i+2)+": الحساب الأب يجب أن يكون مجموعة موجودة.");}
     if(row.isGroup===true||String(row.isGroup).toLowerCase()==="true"||String(row.isGroup)==="1")row.isGroup=true;else row.isGroup=false;
    }
-   if(kind==="items"&&row.groupCode&&!groups[row.groupCode])throw new Error("الصف "+(i+2)+": مجموعة الصنف "+row.groupCode+" غير موجودة.");
+   if(kind==="items"){
+    if(!["stock","consumable","spare_part","finished_good","raw_material","office_supply"].includes(row.itemType||"stock"))throw new Error("الصف "+(i+2)+": تصنيف الصنف المخزني غير صحيح.");
+    if(row.groupCode&&!groups[row.groupCode])throw new Error("الصف "+(i+2)+": مجموعة الصنف "+row.groupCode+" غير موجودة.");
+   }
+   if(kind==="itemGroups"&&!["raw_material","finished_good","spare_part","consumable","office_supply","packaging","other"].includes(row.groupType||"other"))throw new Error("الصف "+(i+2)+": نوع مجموعة الأصناف غير صحيح.");
    if(kind==="bankAccounts"){const account=await adminRead("chartOfAccounts/"+id(row.accountCode||code));if(!account||account.isGroup||account.active===false)throw new Error("الصف "+(i+2)+": حساب البنك المحاسبي غير موجود أو غير قابل للترحيل.");}
    if(kind==="taxCodes"&&!["vat_input","vat_output","withholding","addition"].includes(row.taxType))throw new Error("الصف "+(i+2)+": نوع الضريبة غير صحيح.");
    const saved={...row,code,name,active:row.active!==false,createdAt:now,createdBy:claims.sub,updatedAt:now,updatedBy:claims.sub};
