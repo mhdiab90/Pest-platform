@@ -198,7 +198,11 @@ export async function handleFinancialRequest(ctx){
     for(const taxCode of DEFAULT_VAT_CODES){if(!currentTaxCodes[taxCode.code])taxUpdates["taxCodes/"+taxCode.code]={...taxCode,active:true,createdAt:Date.now(),createdBy:claims.sub};}
     if(Object.keys(taxUpdates).length)await adminPatch(taxUpdates);
     const accountingStartMonth=await adminRead("settings/accountingStartMonth");
-    if(!accountingStartMonth)await adminPatch({"settings/accountingStartMonth":new Date().toISOString().slice(0,7)});
+    if(!accountingStartMonth){
+     const postedJournals=Object.values((await adminRead("journals"))||{}).filter(j=>j&&j.status==="posted"&&/^\d{4}-\d{2}-\d{2}$/.test(String(j.date||"")));
+     const earliestMonth=postedJournals.map(j=>String(j.date).slice(0,7)).sort()[0]||new Date().toISOString().slice(0,7);
+     await adminPatch({"settings/accountingStartMonth":earliestMonth});
+    }
    }
    const out={chartOfAccounts:chart};for(const k of ["costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","settings"])out[k]=(await adminRead(k))||{};
    const parties=(await adminRead("parties"))||{};
