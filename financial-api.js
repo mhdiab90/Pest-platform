@@ -168,7 +168,7 @@ function invoiceTotals(inv){const net=rnd(invoiceLineAmounts(inv).reduce(functio
 async function sha(v){const a=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(v));return Array.from(new Uint8Array(a)).map(x=>x.toString(16).padStart(2,"0")).join("");}
 
 export async function handleFinancialRequest(ctx){
- const {request,url,body,claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch,adminReadRoot,adminPatchRoot}=ctx;
+ const {request,url,body,claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch,adminReadRoot,adminPutRoot,adminPatchRoot}=ctx;
  if(!profile||!["active","نشط","مفعل","enabled"].includes(String(profile.status||"").toLowerCase()))throw new Error("This user account is not active.");
  if(request.method==="GET"){
   requirePermission(profile,"financial","view");const res=txt(url.searchParams.get("resource")||"bootstrap",40);
@@ -315,7 +315,7 @@ export async function handleFinancialRequest(ctx){
   if(kind==="parties"){
    if(!["customer","vendor"].includes(item.partyType))throw new Error("حدد نوع الطرف: عميل أو مورد.");
    if(!txt(item.code,120)||!txt(item.name,180))throw new Error("كود واسم المورد/العميل مطلوبان.");
-   if(!adminReadRoot||!adminPatchRoot)throw new Error("خدمة سجل العملاء والموردين غير متاحة.");
+   if(!adminReadRoot||!adminPutRoot)throw new Error("خدمة سجل العملاء والموردين غير متاحة.");
    const [currentCustomer,currentVendor]=await Promise.all([adminReadRoot("clients/"+code),adminReadRoot("vendors/"+code)]);
    const correctParty=item.partyType==="customer"?currentCustomer:currentVendor;
    const oppositeParty=item.partyType==="customer"?currentVendor:currentCustomer;
@@ -332,7 +332,7 @@ export async function handleFinancialRequest(ctx){
    const root=saved.partyType==="customer"?"clients":"vendors";
    saved.companyName=saved.companyName||saved.name;
    // Write CRM and finance master records separately and confirm both are readable.
-   await adminPatchRoot({[root+"/"+code]:saved});
+   await adminPutRoot(root+"/"+code,saved);
    await adminPatch({["parties/"+code]:saved,["audit/"+uid("AUD")]:audit});
    const [crmCheck,financeCheck]=await Promise.all([
     adminReadRoot(root+"/"+code),
