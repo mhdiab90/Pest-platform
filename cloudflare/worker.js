@@ -491,16 +491,21 @@ async function dispatchPushToUsers(env, recipients, eventType, eventId, dispatch
     sent += userSent;
     failed += userFailed;
     await adminDatabaseRequest(dispatchPath, accessToken, "PUT", {
-      status: userFailed > 0 ? "retryable" : "completed", sent: userSent, failed: userFailed, updatedAt: Date.now()
+      status: userFailed > 0 ? "retryable" : "completed",
+      sent: userSent, failed: userFailed, badgeCount, updatedAt: Date.now()
     });
   }
   return { recipients: uniqueRecipients.length, sent, failed, skipped, removedTokens };
 }
 
-async function clearPushBadgeCount(claims, env) {
+async function syncPushBadgeCount(body, claims, env) {
+  const count = Number(body && body.count);
+  if (!Number.isInteger(count) || count < 0 || count > 999) {
+    throw new Error("Invalid notification badge count.");
+  }
   const accessToken = await getFcmAccessToken(env);
-  await adminDatabaseRequest("pushBadgeCounts/" + claims.sub, accessToken, "PUT", 0);
-  return { success: true, badgeCount: 0 };
+  await adminDatabaseRequest("pushBadgeCounts/" + claims.sub, accessToken, "PUT", count);
+  return { success: true, badgeCount: count };
 }
 
 async function handlePushNotificationRequest(body, claims, token, env) {
@@ -2653,7 +2658,7 @@ export default {
       }, 200, origin);
     }
     if (!["GET","POST","DELETE"].includes(request.method)) return jsonResponse({ error: "Method not allowed." }, 405, origin);
-    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/upload", "/attachments/attach", "/attachments/replace", "/attachments/annotate", "/attachments/file", "/attachments/usage", "/push/notify", "/push/request", "/push/badge/clear"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
+    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/upload", "/attachments/attach", "/attachments/replace", "/attachments/annotate", "/attachments/file", "/attachments/usage", "/push/notify", "/push/request", "/push/badge/sync"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
 
     try {
       const authorization = request.headers.get("Authorization") || "";
@@ -2677,8 +2682,8 @@ export default {
         const output = await handlePushNotificationRequest(body, claims, token, env);
         return jsonResponse(output, 200, origin);
       }
-      if (url.pathname === "/push/badge/clear" && request.method === "POST") {
-        const output = await clearPushBadgeCount(claims, env);
+      if (url.pathname === "/push/badge/sync" && request.method === "POST") {
+        const output = await syncPushBadgeCount(body, claims, env);
         return jsonResponse(output, 200, origin);
       }
       if (url.pathname.startsWith("/drive/") || url.pathname.startsWith("/attachments")) {
