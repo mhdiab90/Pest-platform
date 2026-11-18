@@ -246,6 +246,42 @@ function FinanceModule(props){
  const equity=balanceTrial.filter(x=>x.account.type==='equity').reduce((sum,x)=>sum+x.amount.credit-x.amount.debit,0)+accumulatedProfit;
  const cashCodeSet=new Set(['1110','1120',...rows(master.bankAccounts).map(x=>String(x.accountCode||x.code||''))]);
  const cashAccounts=balanceTrial.filter(x=>cashCodeSet.has(String(x.account.code))||x.account.isCash);
+ const cashFlowSummary=(()=>{
+  const accountByCode=new Map(accounts.map(a=>[String(a.code),a]));
+  const cashCodes=new Set([...cashCodeSet,...cashAccounts.filter(x=>x.account.isCash).map(x=>String(x.account.code))]);
+  let openingCash=0,operatingIn=0,operatingOut=0,investingIn=0,investingOut=0,financingIn=0,financingOut=0,unclassified=0;
+  balanceFlat.filter(line=>String(line.date||'')<String(period.from||'')+'-01'&&cashCodes.has(String(line.accountCode))).forEach(line=>{openingCash+=n(line.debit)-n(line.credit);});
+  const cashDocuments=new Map(documents.filter(d=>d&&d.type==='cash').map(d=>[String(d.id),d]));
+  const periodSourceDocuments=new Map(documents.filter(d=>d&&d.type==='bankLine').map(d=>[String(d.id),d]));
+  periodJournals.forEach(journal=>{
+   const cashLines=(journal.lines||[]).filter(line=>cashCodes.has(String(line.accountCode)));
+   if(!cashLines.length)return;
+   const doc=journal.sourceType==='cash'?cashDocuments.get(String(journal.sourceId)):journal.sourceType==='bankLine'?periodSourceDocuments.get(String(journal.sourceId)):null;
+   if(doc&&['cash_to_bank','bank_to_cash'].includes(doc.movementType))return;
+   cashLines.forEach(cashLine=>{
+    const flow=n(cashLine.debit)-n(cashLine.credit);
+    if(Math.abs(flow)<0.005)return;
+    let category='';
+    const movement=doc&&doc.movementType;
+    if(movement&&['customer_receipt','supplier_payment','other_receipt','other_payment','employee_custody','employee_custody_return','employee_advance','employee_advance_recovery'].includes(movement))category='operating';
+    else{
+     const counterparts=(journal.lines||[]).filter(line=>!cashCodes.has(String(line.accountCode))&&Math.abs(n(line.debit))+Math.abs(n(line.credit))>0);
+     if(!counterparts.length){unclassified+=flow;return;}
+     const main=counterparts[0],account=accountByCode.get(String(main.accountCode));
+     const code=String(main.accountCode||'');
+     if(['1210','281','1300','1410','2110','1220','1230'].includes(code)||account&&['expense','revenue'].includes(account.type))category='operating';
+     else if(account&&['liability','equity'].includes(account.type))category='financing';
+     else if(account&&account.type==='asset')category='investing';
+    }
+    if(category==='operating'){if(flow>=0)operatingIn+=flow;else operatingOut+=Math.abs(flow);}
+    else if(category==='investing'){if(flow>=0)investingIn+=flow;else investingOut+=Math.abs(flow);}
+    else if(category==='financing'){if(flow>=0)financingIn+=flow;else financingOut+=Math.abs(flow);}
+    else unclassified+=flow;
+   });
+  });
+  const netChange=operatingIn-operatingOut+investingIn-investingOut+financingIn-financingOut;
+  return {openingCash,operatingIn,operatingOut,investingIn,investingOut,financingIn,financingOut,unclassified,netChange,closingCash:openingCash+netChange};
+ })();
  const status=s=>({pending_review:'بانتظار المراجعة',needs_correction:'يحتاج تصحيح',duplicate_review:'تكرار محتمل',posted:'مُرحّل',rejected:'مرفوض'}[s]||s||'—');
  const button=(label,fn,kind,disabled)=>h('button',{type:'button',onClick:fn,disabled:!!disabled,className:'rounded-xl px-3 py-2 text-sm font-bold border '+(kind==='primary'?'bg-blue-700 text-white border-blue-700':kind==='success'?'bg-emerald-600 text-white border-emerald-600':kind==='danger'?'bg-rose-50 text-rose-700 border-rose-200':'bg-white text-slate-700 border-slate-200')},label);
  const field=(label,value,onChange,type,extra)=>h('label',{className:'block text-sm font-bold text-slate-700'},label,h('input',Object.assign({type:type||'text',value:value==null?'':value,onChange:e=>onChange(e.target.value),className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal bg-white',step:'any'},extra||{})));
@@ -989,9 +1025,14 @@ function FinanceModule(props){
   report==='trial'?h('div',{className:'space-y-2'},table(['الحساب','الاسم','افتتاحي مدين','افتتاحي دائن','حركة مدين','حركة دائن','ختامي مدين','ختامي دائن'],balanceTrial.map(x=>h('tr',{key:x.account.code},h('td',{className:'p-2'},x.account.code),h('td',{className:'p-2'},x.account.name),h('td',{className:'p-2'},fmt(x.opening.debit)),h('td',{className:'p-2'},fmt(x.opening.credit)),h('td',{className:'p-2'},fmt(x.activity.debit)),h('td',{className:'p-2'},fmt(x.activity.credit)),h('td',{className:'p-2 font-bold'},fmt(x.ending.debit)),h('td',{className:'p-2 font-bold'},fmt(x.ending.credit)))),h('div',{className:'flex flex-wrap justify-end gap-4 text-sm font-bold border rounded-lg p-3'},h('span',null,'إجمالي الختامي المدين: '+fmt(balanceTrial.reduce((s,x)=>s+x.ending.debit,0))),h('span',null,'إجمالي الختامي الدائن: '+fmt(balanceTrial.reduce((s,x)=>s+x.ending.credit,0))))):null,
   report==='income'?table(['البند','القيمة'],trial.filter(x=>['revenue','expense'].includes(x.account.type)).map(x=>h('tr',{key:x.account.code},h('td',{className:'p-2'},x.account.code+' — '+x.account.name),h('td',{className:'p-2'},fmt(x.account.type==='revenue'?x.amount.credit-x.amount.debit:x.amount.debit-x.amount.credit)))).concat([h('tr',{key:'net',className:'font-bold bg-slate-50'},h('td',{className:'p-2'},'صافي الربح / الخسارة'),h('td',{className:'p-2'},fmt(profit)))])):null,
   report==='balance'?h('div',{className:'space-y-2'},table(['البند','القيمة'],[['إجمالي الأصول',assets],['إجمالي الالتزامات',liabilities],['حقوق الملكية قبل نتيجة الأرباح',equity-accumulatedProfit],['الأرباح المتراكمة منذ بداية الدفاتر',accumulatedProfit],['إجمالي حقوق الملكية',equity],['إجمالي الالتزامات وحقوق الملكية',liabilities+equity],['فرق التوازن (يجب أن يساوي صفرًا)',assets-liabilities-equity]].map((x,i)=>h('tr',{key:i,className:i===6?'font-bold':''},h('td',{className:'p-2'},x[0]),h('td',{className:'p-2'},fmt(x[1]))))),h('p',{className:'text-xs text-slate-500'},'المركز المالي يعرض الأرصدة المتراكمة منذ بداية الدفاتر المحاسبية '+(accountingStartMonth||'')+' وحتى '+period.to+'. يجب إدخال قيد افتتاحي معتمد للأرصدة السابقة لبداية الدفاتر.')):null,
-  report==='cashflow'?table(['الحساب النقدي','مدين','دائن','صافي الحركة'],cashAccounts.map(x=>h('tr',{key:x.account.code},h('td',{className:'p-2'},x.account.code+' — '+x.account.name),h('td',{className:'p-2'},fmt(x.amount.debit)),h('td',{className:'p-2'},fmt(x.amount.credit)),h('td',{className:'p-2'},fmt(x.amount.debit-x.amount.credit))))):null,
+  report==='cashflow'?h('div',{className:'space-y-3'},panel('قائمة التدفقات النقدية المبسطة','تستند إلى الحركات النقدية والبنكية المرحلة بالفترة المحددة. التحويلات بين النقدية والبنوك مستبعدة لتجنب ازدواج احتسابها.',table(['النشاط','تدفقات داخلة','تدفقات خارجة','صافي التدفق'],[
+   ['الأنشطة التشغيلية',cashFlowSummary.operatingIn,cashFlowSummary.operatingOut,cashFlowSummary.operatingIn-cashFlowSummary.operatingOut],
+   ['الأنشطة الاستثمارية',cashFlowSummary.investingIn,cashFlowSummary.investingOut,cashFlowSummary.investingIn-cashFlowSummary.investingOut],
+   ['الأنشطة التمويلية',cashFlowSummary.financingIn,cashFlowSummary.financingOut,cashFlowSummary.financingIn-cashFlowSummary.financingOut],
+   ['الإجمالي',cashFlowSummary.operatingIn+cashFlowSummary.investingIn+cashFlowSummary.financingIn,cashFlowSummary.operatingOut+cashFlowSummary.investingOut+cashFlowSummary.financingOut,cashFlowSummary.netChange]
+  ].map((x,i)=>h('tr',{key:i,className:i===3?'font-bold':''},h('td',{className:'p-2'},x[0]),h('td',{className:'p-2'},fmt(x[1])),h('td',{className:'p-2'},fmt(x[2])),h('td',{className:'p-2'},fmt(x[3])))))),panel('مطابقة النقدية والبنوك','الرصيد الافتتاحي + صافي التدفقات = الرصيد الختامي الدفتري.',table(['البيان','القيمة'],[['الرصيد الافتتاحي في بداية الفترة',cashFlowSummary.openingCash],['صافي التغير خلال الفترة',cashFlowSummary.netChange],['الرصيد الختامي المتوقع',cashFlowSummary.closingCash],['الرصيد الختامي بدفتر الأستاذ',cashAccounts.reduce((sum,x)=>sum+x.amount.debit-x.amount.credit,0)],['حركات غير مصنفة تحتاج مراجعة',cashFlowSummary.unclassified]].map((x,i)=>h('tr',{key:i,className:i===4?'text-amber-700':''},h('td',{className:'p-2'},x[0]),h('td',{className:'p-2 font-bold'},fmt(x[1])))))),null):null,
   report==='ledger'?h('div',null,field('بحث في الحساب أو البيان',search,setSearch),table(['التاريخ','القيد','الحساب','البيان','مدين','دائن','مركز التكلفة'],flat.filter(x=>!search||[x.accountCode,x.description,x.journalId].join(' ').toLowerCase().includes(search.toLowerCase())).map((x,i)=>h('tr',{key:i},h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},x.journalId),h('td',{className:'p-2'},x.accountCode),h('td',{className:'p-2'},x.description),h('td',{className:'p-2'},fmt(x.debit)),h('td',{className:'p-2'},fmt(x.credit)),h('td',{className:'p-2'},x.costCenterId||'—'))))):null,
-  button('تصدير ميزان المراجعة CSV',()=>dl('financial-trial-balance.csv',[['Code','Account','Debit','Credit'],...trial.map(x=>[x.account.code,x.account.name,x.amount.debit,x.amount.credit])].map(x=>x.join(',')).join('\n')))
+  button('تصدير ميزان المراجعة CSV',()=>dl('financial-trial-balance.csv',[['Code','Account','Opening Debit','Opening Credit','Period Debit','Period Credit','Closing Debit','Closing Credit'],...balanceTrial.map(x=>[x.account.code,x.account.name,x.opening.debit,x.opening.credit,x.activity.debit,x.activity.credit,x.ending.debit,x.ending.credit])].map(x=>x.map(v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"').join(',')).join('\n')))
  ));
  const renderQuickAdd = function() {
   if(!quickAddType)return null;
