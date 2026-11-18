@@ -107,7 +107,7 @@ function FinanceModule(props){
    const party=parties.find(x=>(x.code||x.id)===invoice.partyId);
    const payload=Object.assign({},invoice,{partyName:party?partyName(party):invoice.partyName,lines:invoice.lines.map(x=>Object.assign({},x,{quantity:n(x.quantity),unitPrice:n(x.unitPrice),discount:n(x.discount)}))});
    const result=await api('', 'POST',Object.assign({action:'submitInvoice'},payload));
-   if(invoiceFile){try{await upload(invoiceFile,result.id);}catch(e){setNotice('تم تسجيل الفاتورة لكن تعذر رفع المرفق: '+e.message);}}
+   if(invoiceFile){try{const uploadResult=await upload(invoiceFile,result.id);const attachment=uploadResult.attachment||uploadResult;await api('', 'POST',{action:'addAttachment',documentId:result.id,attachment});}catch(e){setNotice('تم تسجيل الفاتورة لكن تعذر رفع المرفق أو ربطه: '+e.message);}}
    setNotice(result.status==='pending_review'?'تم إرسال الفاتورة للمراجعة':('الفاتورة محفوظة وتحتاج تعديل: '+(result.errors||[]).join('، ')));
    if(result.status==='pending_review'){setInvoice({id:'',type:invoice.type,date:today(),number:'',partyId:'',partyName:'',currency:'EGP',taxRate:'',taxAmount:'',discount:'',projectCode:'',lines:[{description:'',kind:'stock',itemCode:'',quantity:'1',unit:'قطعة',unitPrice:'',discount:'',accountCode:'6100',incomeAccountCode:'4100',costCenterId:'',warehouseCode:'default'}]});setInvoiceFile(null);}
    else setInvoice(o=>Object.assign({},o,{id:result.id}));
