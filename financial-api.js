@@ -226,7 +226,33 @@ export async function handleFinancialRequest(ctx){
    return out;
   }
   if(res==="document"){const docId=id(url.searchParams.get("id"));const item=await adminRead("documents/"+docId);if(!item)throw new Error("المستند المطلوب غير موجود أو تم نقله من قائمة المراجعة.");return {item};}
-  if(res==="review"||res==="journals"||res==="documents"||res==="inventory"||res==="tax"||res==="audit")return {items:(await adminRead(res==="review"?"reviewQueue":res))||{}};
+  if(res==="review"){
+   const queue=(await adminRead("reviewQueue"))||{};
+   if(url.searchParams.get("repair")==="1"){
+    const docs=(await adminRead("documents"))||{},next={...queue},updates={};
+    let restored=0,removed=0;
+    for(const [docId,doc] of Object.entries(docs)){
+     if(!doc||!["pending_review","duplicate_review"].includes(doc.status))continue;
+     const current=queue[docId],record=reviewRecord(doc);
+     if(!current||current.status!==record.status||current.type!==record.type||current.number!==record.number||Number(current.total||0)!==record.total){
+      updates["reviewQueue/"+id(docId)]=record;next[docId]=record;restored++;
+     }
+    }
+    for(const [docId,record] of Object.entries(queue)){
+     const doc=docs[docId];
+     if(!doc||!["pending_review","duplicate_review"].includes(doc.status)){
+      updates["reviewQueue/"+id(docId)]=null;delete next[docId];removed++;
+     }
+    }
+    if(Object.keys(updates).length){
+     updates["audit/"+uid("AUD")]={action:"reconcile_review_queue",restored,removed,uid:claims.sub,createdAt:Date.now()};
+     await adminPatch(updates);
+    }
+    return {items:next,reconciliation:{restored,removed}};
+   }
+   return {items:queue};
+  }
+  if(res==="journals"||res==="documents"||res==="inventory"||res==="tax"||res==="audit")return {items:(await adminRead(res))||{}};
   if(res==="bank")return {items:(await adminRead("bankImports"))||{},accounts:(await adminRead("bankAccounts"))||{}};
   if(res==="periods"){
    const from=txt(url.searchParams.get("from")||new Date().toISOString().slice(0,7),7),to=txt(url.searchParams.get("to")||from,7);

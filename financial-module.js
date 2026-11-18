@@ -118,11 +118,12 @@ function FinanceModule(props){
   }catch(e){setError(e.message||String(e));}
   finally{setBusy(false);}
  };
- const refreshReviewQueue=async(silent)=>{
+ const refreshReviewQueue=async(silent,repair)=>{
   try{
-   const result=await api('?resource=review');
+   const result=await api(repair?'?resource=review&repair=1':'?resource=review');
    const list=rows(result.items).filter(item=>['pending_review','duplicate_review'].includes(item.status)).sort((a,b)=>n(b.createdAt)-n(a.createdAt));
    setReview(list);
+   if(repair&&result.reconciliation&&(result.reconciliation.restored||result.reconciliation.removed))setNotice('تمت مزامنة سجل المراجعة: استعادة '+result.reconciliation.restored+' مستند وإزالة '+result.reconciliation.removed+' سجل قديم غير مطابق.');
    return list;
   }catch(error){if(!silent)setError(error.message||String(error));return null;}
  };
@@ -260,16 +261,19 @@ function FinanceModule(props){
  React.useEffect(()=>{refresh();if(db){Promise.all([db.ref('clients').once('value'),db.ref('vendors').once('value'),db.ref('projects').once('value')]).then(a=>{setClients(rows(a[0].val()));setVendors(rows(a[1].val()));setProjects(rows(a[2].val()));}).catch(e=>console.warn(e));}},[]);
  React.useEffect(()=>{
   if(tab!=='review')return;
-  let active=true,loading=false;
+  let active=true,loading=false,firstSync=true;
   const sync=async()=>{
    if(!active||loading||(typeof document!=='undefined'&&document.visibilityState==='hidden'))return;
    loading=true;
    try{
-    const result=await api('?resource=review');
+    const path=firstSync?'?resource=review&repair=1':'?resource=review';
+    firstSync=false;
+    const result=await api(path);
     if(!active)return;
     const list=rows(result.items).filter(item=>['pending_review','duplicate_review'].includes(item.status)).sort((a,b)=>n(b.createdAt)-n(a.createdAt));
     setReview(list);
     setSelected(old=>old&&!list.some(item=>item.id===old.id)?null:old);
+    if(result.reconciliation&&(result.reconciliation.restored||result.reconciliation.removed))setNotice('تمت مزامنة سجل المراجعة: استعادة '+result.reconciliation.restored+' مستند وإزالة '+result.reconciliation.removed+' سجل قديم غير مطابق.');
    }catch(error){if(active)setError(error.message||String(error));}
    finally{loading=false;}
   };
@@ -1015,7 +1019,7 @@ function FinanceModule(props){
   return panel('تحليل المصروفات الفعلية حسب مركز التكلفة','المبالغ من القيود المرحلة بالفترة المحددة فقط.',table(['مركز التكلفة','المشروع','إجمالي المدين','إجمالي الدائن','صافي المصروف'],rowsByCenter));
  };
  const renderReview=()=>panel('قائمة المراجعة والاعتماد','تتحدّث القائمة تلقائيًا عند فتح التبويب وكل 15 ثانية أثناء عرضه. أي مستخدم مخوّل يرى المستندات؛ المراجع فقط يعتمدها أو يعيدها أو يرفضها.',h('div',{className:'space-y-3'},
-  h('div',{className:'flex flex-wrap items-center justify-between gap-2'},h('strong',null,'مستندات بانتظار القرار: '+review.length),button('تحديث القائمة الآن',()=>refreshReviewQueue(false),'muted')),
+  h('div',{className:'flex flex-wrap items-center justify-between gap-2'},h('strong',null,'مستندات بانتظار القرار: '+review.length),button('تحديث ومزامنة القائمة',()=>refreshReviewQueue(false,true),'muted')),
   selected?h('div',{className:'space-y-3'},
    h('div',{className:'flex items-center justify-between'},h('strong',null,selected.title||selected.number||selected.id),button('إغلاق',()=>setSelected(null))),
    h('p',{className:'text-sm'},'النوع: '+(selected.type==='invoice'?(selected.invoiceType==='purchase'?'فاتورة مشتريات':'فاتورة مبيعات'):selected.type==='cash'?'حركة خزينة':selected.type)+' · التاريخ: '+selected.date+' · الحالة: '+status(selected.status)),
