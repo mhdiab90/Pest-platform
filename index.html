@@ -1230,7 +1230,10 @@ function App(){
   const [master,setMaster] = useState(blankMaster());
   const [editingMasterCode,setEditingMasterCode] = useState('');
   const [masterFormOpen,setMasterFormOpen] = useState(false);
+  const [financialModuleMounted,setFinancialModuleMounted] = useState(false);
+  const [financialPartyReturn,setFinancialPartyReturn] = useState(null);
   const [masterFilter,setMasterFilter] = useState('');
+  useEffect(()=>{if(tab==='financial')setFinancialModuleMounted(true);},[tab]);
   const blankProject = () => ({code:'',name:'',contractNo:'',purchaseOrderNo:'',projectType:'supply',status:'جاري',clientCode:'',clientCodes:[],vendorCodes:[],projectManager:'',startDate:'',expectedEndDate:'',actualEndDate:'',location:'',deliveryAddress:'',currency:'EGP',amount:'',costBudget:'',paymentTerms:'',scope:'',notes:''});
   const [project,setProject] = useState(blankProject());
   const [editingProjectCode,setEditingProjectCode] = useState('');
@@ -4160,6 +4163,21 @@ function App(){
     }
   }
 
+  function openFinancialPartyMaster(payload){
+    if(!requirePermission('master','add'))return;
+    const type=payload&&payload.partyType==='vendor'?'vendor':'client';
+    const defaults=Object.assign({},payload&&payload.defaults||{});
+    delete defaults.partyType;
+    setFinancialPartyReturn(payload||null);
+    setMaster({...blankMaster(type),...defaults,type,code:defaults.code||'',name:defaults.name||''});
+    setMasterPendingAttachments([]);
+    setEditingMasterCode('');
+    setMasterFormOpen(true);
+    setFinancialModuleMounted(true);
+    setTab('master');
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+
   async function addMaster(e){
     e.preventDefault();if(!requirePermission('master',editingMasterCode?'edit':'add'))return;
     const type=master.type;const path=type==='client'?'clients':'vendors';
@@ -4178,7 +4196,13 @@ function App(){
       try{if(masterPendingAttachments.length)await uploadInlineAttachments(masterPendingAttachments,type,code,setMasterPendingAttachments);}
       catch(attachmentError){setMaster({...record,type});setEditingMasterCode(code);setMasterFormOpen(true);alert((rtl?'تم حفظ البيانات، لكن تعذر رفع بعض المرفقات. أصلح الاتصال ثم اضغط حفظ مرة أخرى لإكمال الرفع.\n':'The record was saved, but some attachments could not be uploaded. Fix the connection and press Save again to finish uploading.\n')+String(attachmentError.message||attachmentError));return;}
       await addLog((editingMasterCode?'تعديل ':'إضافة ')+(type==='client'?'عميل: ':'مورد: ')+name,currentUser,{entityType:type,entityId:code,changes:auditChanges(previousRecord,record),metadata:{oldCode:editingMasterCode||''}});
-      setMaster(blankMaster(type));setMasterPendingAttachments([]);setEditingMasterCode('');setMasterFormOpen(false);alert(tr('saved'));
+      const returnContext=financialPartyReturn;
+      setMaster(blankMaster(type));setMasterPendingAttachments([]);setEditingMasterCode('');setMasterFormOpen(false);
+      if(returnContext&&typeof returnContext.onSaved==='function'&&(type==='client'||type==='vendor')){
+        setFinancialPartyReturn(null);
+        setTab('financial');
+        await returnContext.onSaved(Object.assign({},record,{type,partyType:type==='vendor'?'vendor':'customer'}));
+      }else alert(tr('saved'));
     }catch(err){alert(firebaseErrorMessage(err,tr));}
   }
 
@@ -6139,7 +6163,7 @@ function App(){
           </div>}
         </div>}
         {tab==='pestCrm'&&canAccessTab('pestCrm')&&PestCrmModule&&<PestCrmModule db={db} currentUser={currentUser} rtl={rtl} can={hasPermission} addLog={addLog}/>}
-        {tab==='financial'&&canAccessTab('financial')&&<FinanceModuleSlot db={db} currentUser={currentUser} rtl={rtl} workerBase={PUSH_WORKER_BASE} userDirectory={userDirectory} addLog={addLog}/>}
+        {financialModuleMounted&&canAccessTab('financial')&&<div className={tab==='financial'?'':'hidden'}><FinanceModuleSlot db={db} currentUser={currentUser} rtl={rtl} workerBase={PUSH_WORKER_BASE} userDirectory={userDirectory} addLog={addLog} onOpenPartyMaster={openFinancialPartyMaster}/></div>}
         {tab==='dashboard'&&<div className="space-y-5 print-area">
           <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="font-bold text-xl">{tr('dashboard')} · {tr('cashFlow')}</h2><div className="flex gap-2 no-print"><button onClick={()=>setTab('reports')} className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-bold">{tr('reportCenter')}</button><button onClick={()=>window.print()} className="bg-gray-800 text-white rounded-lg px-4 py-2 text-sm">{tr('printPdf')}</button></div></div>
           <section className="app-dashboard-filterbar no-print">
@@ -6292,7 +6316,7 @@ function App(){
 
         {tab==='master'&&<div className="space-y-5">
           <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="font-bold text-xl">{tr('master')}</h2><input className="border rounded-lg p-2 min-w-64" placeholder={tr('searchAll')} value={masterFilter} onChange={e=>setMasterFilter(e.target.value)}/></div>
-          <section className="bg-white p-5 rounded-xl border shadow-sm"><div className="flex flex-wrap justify-between items-center gap-3 mb-3"><h3 className="font-bold">{editingMasterCode?(rtl?'تعديل بيانات':'Edit record'):(rtl?'إضافة بيانات عميل أو مورد':'Add client or vendor')}</h3><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={()=>{setMasterPendingAttachments([]);setEditingMasterCode('');setMaster(blankMaster('client'));setMasterFormOpen(true);}} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold">{rtl?'إضافة عميل':'Add client'}</button><button type="button" onClick={()=>{setMasterPendingAttachments([]);setEditingMasterCode('');setMaster(blankMaster('vendor'));setMasterFormOpen(true);}} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold">{rtl?'إضافة مورد':'Add vendor'}</button><button type="button" aria-expanded={masterFormOpen} onClick={()=>setMasterFormOpen(old=>!old)} className="w-10 h-10 rounded-lg bg-gray-100 text-gray-700" title={rtl?'فتح أو إغلاق النموذج':'Expand or collapse form'}><i className={masterFormOpen?'fas fa-chevron-up':'fas fa-chevron-down'}></i></button>{editingMasterCode&&<button type="button" className="text-red-600 text-sm" onClick={()=>{setMasterPendingAttachments([]);setMaster(blankMaster());setEditingMasterCode('');setMasterFormOpen(false);}}>{tr('clear')}</button>}</div></div>
+          <section className="bg-white p-5 rounded-xl border shadow-sm"><div className="flex flex-wrap justify-between items-center gap-3 mb-3"><h3 className="font-bold">{editingMasterCode?(rtl?'تعديل بيانات':'Edit record'):(rtl?'إضافة بيانات عميل أو مورد':'Add client or vendor')}</h3><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={()=>{setMasterPendingAttachments([]);setEditingMasterCode('');setMaster(blankMaster('client'));setMasterFormOpen(true);}} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold">{rtl?'إضافة عميل':'Add client'}</button><button type="button" onClick={()=>{setMasterPendingAttachments([]);setEditingMasterCode('');setMaster(blankMaster('vendor'));setMasterFormOpen(true);}} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold">{rtl?'إضافة مورد':'Add vendor'}</button><button type="button" aria-expanded={masterFormOpen} onClick={()=>setMasterFormOpen(old=>!old)} className="w-10 h-10 rounded-lg bg-gray-100 text-gray-700" title={rtl?'فتح أو إغلاق النموذج':'Expand or collapse form'}><i className={masterFormOpen?'fas fa-chevron-up':'fas fa-chevron-down'}></i></button>{financialPartyReturn&&<button type="button" className="px-3 py-2 rounded-lg bg-amber-100 text-amber-900 text-xs font-bold" onClick={()=>{setFinancialPartyReturn(null);setMaster(blankMaster());setMasterPendingAttachments([]);setEditingMasterCode('');setMasterFormOpen(false);setTab('financial');}}>{rtl?'العودة إلى الفاتورة دون حفظ':'Return to invoice without saving'}</button>}{editingMasterCode&&<button type="button" className="text-red-600 text-sm" onClick={()=>{setMasterPendingAttachments([]);setMaster(blankMaster());setEditingMasterCode('');setMasterFormOpen(false);}}>{tr('clear')}</button>}</div></div>
             {masterFormOpen&&<form onSubmit={addMaster} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
               <input required className="border rounded-lg p-3" placeholder={tr('code')} value={master.code} onChange={e=>setMaster({...master,code:e.target.value})}/>
               <input required className="border rounded-lg p-3" placeholder={tr('name')} value={master.name} onChange={e=>setMaster({...master,name:e.target.value})}/>
