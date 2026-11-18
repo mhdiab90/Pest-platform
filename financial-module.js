@@ -806,7 +806,7 @@ function FinanceModule(props){
    ),
    selectedParty?metric(employee?"الموظف":typeLabel,partyName(selectedParty)):null,
    table(["التاريخ","المرجع","رقم القيد","البيان","مدين","دائن","الرصيد"],displayRows),
-   h("div",{className:"text-sm font-bold text-slate-800"},"الرصيد الختامي "+(partyStatement.type==="vendor"?"الدائن":"المدين")+": "+fmt(running)+" ج.م")
+   h("div",{className:"text-sm font-bold text-slate-800"},"الرصيد الختامي "+(employee?"المدين":partyStatement.type==="vendor"?(running>=0?"الدائن":"المدين — دفعة مقدمة للمورد"):(running>=0?"المدين":"الدائن — دفعة مقدمة من العميل"))+": "+fmt(Math.abs(running))+" ج.م")
   ));
  };
  const renderCostCenterAnalysis = function() {
