@@ -261,7 +261,7 @@ test("supplier linking, delegated invoice completion, staff custody and advances
   const linked=await invoke("POST","",{action:"saveMaster",kind:"parties",item:{code:"VENDOR-LEGACY",name:"Legacy Supplier",partyType:"vendor",taxNumber:"TX-8899"}});
   assert.equal(linked.success,true);
   assert.equal(linked.linkedExisting,true);
-  assert.equal(read("financial/parties/VENDOR-LEGACY").taxRegistrationNumber,"TX-8899","legacy supplier tax registration is preserved");
+  assert.equal(read("parties/VENDOR-LEGACY").taxRegistrationNumber,"TX-8899","legacy supplier tax registration is preserved");
   assert.equal(read("vendors/VENDOR-LEGACY").name,"Legacy Supplier","existing CRM supplier remains unchanged");
 
   write("users/EMPLOYEE-01",{uid:"EMPLOYEE-01",status:"active",fullName:"Employee One",username:"employee.one",role:"user"});
