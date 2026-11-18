@@ -249,7 +249,7 @@ function FinanceModule(props){
  const cashFlowSummary=(()=>{
   const accountByCode=new Map(accounts.map(a=>[String(a.code),a]));
   const cashCodes=new Set([...cashCodeSet,...cashAccounts.filter(x=>x.account.isCash).map(x=>String(x.account.code))]);
-  let openingCash=0,operatingIn=0,operatingOut=0,investingIn=0,investingOut=0,financingIn=0,financingOut=0,unclassified=0;
+  let openingCash=0,operatingIn=0,operatingOut=0,investingIn=0,investingOut=0,financingIn=0,financingOut=0,unclassifiedIn=0,unclassifiedOut=0;
   balanceFlat.filter(line=>String(line.date||'')<String(period.from||'')+'-01'&&cashCodes.has(String(line.accountCode))).forEach(line=>{openingCash+=n(line.debit)-n(line.credit);});
   const cashDocuments=new Map(documents.filter(d=>d&&d.type==='cash').map(d=>[String(d.id),d]));
   const periodSourceDocuments=new Map(documents.filter(d=>d&&d.type==='bankLine').map(d=>[String(d.id),d]));
@@ -266,7 +266,7 @@ function FinanceModule(props){
     if(movement&&['customer_receipt','supplier_payment','other_receipt','other_payment','employee_custody','employee_custody_return','employee_advance','employee_advance_recovery'].includes(movement))category='operating';
     else{
      const counterparts=(journal.lines||[]).filter(line=>!cashCodes.has(String(line.accountCode))&&Math.abs(n(line.debit))+Math.abs(n(line.credit))>0);
-     if(!counterparts.length){unclassified+=flow;return;}
+     if(!counterparts.length){if(flow>=0)unclassifiedIn+=flow;else unclassifiedOut+=Math.abs(flow);return;}
      const main=counterparts[0],account=accountByCode.get(String(main.accountCode));
      const code=String(main.accountCode||'');
      if(['1210','281','1300','1410','2110','1220','1230'].includes(code)||account&&['expense','revenue'].includes(account.type))category='operating';
@@ -276,11 +276,12 @@ function FinanceModule(props){
     if(category==='operating'){if(flow>=0)operatingIn+=flow;else operatingOut+=Math.abs(flow);}
     else if(category==='investing'){if(flow>=0)investingIn+=flow;else investingOut+=Math.abs(flow);}
     else if(category==='financing'){if(flow>=0)financingIn+=flow;else financingOut+=Math.abs(flow);}
-    else unclassified+=flow;
+    else if(flow>=0)unclassifiedIn+=flow;else unclassifiedOut+=Math.abs(flow);
    });
   });
-  const netChange=operatingIn-operatingOut+investingIn-investingOut+financingIn-financingOut;
-  return {openingCash,operatingIn,operatingOut,investingIn,investingOut,financingIn,financingOut,unclassified,netChange,closingCash:openingCash+netChange};
+  const unclassified=unclassifiedIn-unclassifiedOut;
+  const netChange=operatingIn-operatingOut+investingIn-investingOut+financingIn-financingOut+unclassified;
+  return {openingCash,operatingIn,operatingOut,investingIn,investingOut,financingIn,financingOut,unclassified,unclassifiedIn,unclassifiedOut,netChange,closingCash:openingCash+netChange};
  })();
  const status=s=>({pending_review:'بانتظار المراجعة',needs_correction:'يحتاج تصحيح',duplicate_review:'تكرار محتمل',posted:'مُرحّل',rejected:'مرفوض'}[s]||s||'—');
  const button=(label,fn,kind,disabled)=>h('button',{type:'button',onClick:fn,disabled:!!disabled,className:'rounded-xl px-3 py-2 text-sm font-bold border '+(kind==='primary'?'bg-blue-700 text-white border-blue-700':kind==='success'?'bg-emerald-600 text-white border-emerald-600':kind==='danger'?'bg-rose-50 text-rose-700 border-rose-200':'bg-white text-slate-700 border-slate-200')},label);
