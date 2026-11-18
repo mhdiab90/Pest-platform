@@ -113,10 +113,33 @@ function FinanceModule(props){
    const [r,d]=await Promise.all([api('?resource=review'),api('?resource=documents')]);
    setMaster(Object.assign({chartOfAccounts:{},costCenters:{},items:{},itemGroups:{},warehouses:{},bankAccounts:{},taxCodes:{},parties:{},settings:{},inventory:{balances:{}}},b));
    setAccountingStartMonth(b.settings&&b.settings.accountingStartMonth||'');
-   setReview(rows(r.items).sort((a,b)=>n(b.createdAt)-n(a.createdAt)));
+   setReview(rows(r.items).filter(item=>['pending_review','duplicate_review'].includes(item.status)).sort((a,b)=>n(b.createdAt)-n(a.createdAt)));
    setDocuments(rows(d.items).sort((a,b)=>n(b.createdAt)-n(a.createdAt)));
   }catch(e){setError(e.message||String(e));}
   finally{setBusy(false);}
+ };
+ const refreshReviewQueue=async(silent)=>{
+  try{
+   const result=await api('?resource=review');
+   const list=rows(result.items).filter(item=>['pending_review','duplicate_review'].includes(item.status)).sort((a,b)=>n(b.createdAt)-n(a.createdAt));
+   setReview(list);
+   return list;
+  }catch(error){if(!silent)setError(error.message||String(error));return null;}
+ };
+ const openReviewItem=async item=>{
+  setSelected(documents.find(doc=>doc.id===item.id)||item);
+  setOffset(item.offsetAccountCode||'6100');
+  try{
+   const result=await api('?resource=document&id='+encodeURIComponent(item.id));
+   if(result.item){
+    setSelected(result.item);
+    setDocuments(old=>{
+     const index=old.findIndex(doc=>doc.id===result.item.id);
+     if(index<0)return [...old,result.item];
+     const next=old.slice();next[index]=result.item;return next;
+    });
+   }
+  }catch(error){setError(error.message||String(error));}
  };
  const refreshAssignments=async()=>{
   try{
@@ -226,6 +249,27 @@ function FinanceModule(props){
   finally{setBusy(false);}
  };
  React.useEffect(()=>{refresh();if(db){Promise.all([db.ref('clients').once('value'),db.ref('vendors').once('value'),db.ref('projects').once('value')]).then(a=>{setClients(rows(a[0].val()));setVendors(rows(a[1].val()));setProjects(rows(a[2].val()));}).catch(e=>console.warn(e));}},[]);
+ React.useEffect(()=>{
+  if(tab!=='review')return;
+  let active=true,loading=false;
+  const sync=async()=>{
+   if(!active||loading||(typeof document!=='undefined'&&document.visibilityState==='hidden'))return;
+   loading=true;
+   try{
+    const result=await api('?resource=review');
+    if(!active)return;
+    const list=rows(result.items).filter(item=>['pending_review','duplicate_review'].includes(item.status)).sort((a,b)=>n(b.createdAt)-n(a.createdAt));
+    setReview(list);
+    setSelected(old=>old&&!list.some(item=>item.id===old.id)?null:old);
+   }catch(error){if(active)setError(error.message||String(error));}
+   finally{loading=false;}
+  };
+  void sync();
+  const timer=window.setInterval(sync,15000);
+  const onVisibility=()=>{if(document.visibilityState==='visible')void sync();};
+  document.addEventListener('visibilitychange',onVisibility);
+  return()=>{active=false;window.clearInterval(timer);document.removeEventListener('visibilitychange',onVisibility);};
+ },[tab,currentUser&&currentUser.uid]);
  React.useEffect(()=>{if(['overview','reports','tax','centers'].includes(tab))loadPeriod();},[tab,period.from,period.to]);
  const loadParty=async()=>{
   if(!partyStatement.id){setError('اختر العميل أو المورد أولاً.');return;}
@@ -860,9 +904,10 @@ function FinanceModule(props){
   ));
   const totalsBox = h('div',{className:'flex flex-wrap items-center gap-4 p-3 bg-white border rounded-xl'},h('b',null,'الصافي: '+fmt(net)),h('b',null,'الضريبة: '+fmt(tax)),h('b',null,'الإجمالي: '+fmt(total)),button('إرسال للمراجعة',submitInvoice,'primary',busy));
   const correctionRows=documents.filter(function(x){return x.type==='invoice'&&['needs_correction','draft','returned_to_creator'].includes(x.status);}).map(function(x){
-   return h('tr',{key:x.id,className:'border-t'},h('td',{className:'p-2'},x.number||x.id),h('td',{className:'p-2'},x.partyName),h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},status(x.status)),h('td',{className:'p-2'},button('تعديل',function(){editDoc(x);},'muted')));
+   const reason=[...(x.errors||[]),x.reviewReason||''].filter(Boolean).join(' · ');
+   return h('tr',{key:x.id,className:'border-t'},h('td',{className:'p-2'},x.number||x.id),h('td',{className:'p-2'},x.partyName),h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},status(x.status)),h('td',{className:'p-2 text-xs text-rose-700 min-w-[180px]'},reason||(x.status==='draft'?'مسودة لم تُرسل للمراجعة بعد':'لا يوجد سبب محفوظ؛ افتح الفاتورة وراجع بياناتها')),h('td',{className:'p-2'},button('تعديل واستكمال',function(){editDoc(x);},'muted')));
   });
-  const correctionPanel = panel('فواتير تحتاج تصحيح','',table(['الفاتورة','الطرف','التاريخ','الحالة','إجراء'],correctionRows));
+  const correctionPanel = panel('فواتير تحتاج تصحيح','هذه الفواتير لم تدخل قائمة الاعتماد بعد، أو أعادها المراجع للتصحيح. راجع السبب واستكملها ثم أرسلها للمراجعة.',table(['الفاتورة','الطرف','التاريخ','الحالة','سبب عدم ظهورها في المراجعة','إجراء'],correctionRows));
   return h('div',{className:'space-y-4'},invoiceHead,suggestionsPanel,invoiceLines,journalPreview,totalsBox,delegationPanel,correctionPanel);
  };
  const renderMaster=kind=>{
@@ -958,18 +1003,31 @@ function FinanceModule(props){
   });
   return panel('تحليل المصروفات الفعلية حسب مركز التكلفة','المبالغ من القيود المرحلة بالفترة المحددة فقط.',table(['مركز التكلفة','المشروع','إجمالي المدين','إجمالي الدائن','صافي المصروف'],rowsByCenter));
  };
- const renderReview=()=>panel('قائمة المراجعة والاعتماد','أي مستخدم يدخل المستندات. المراجع فقط يعتمدها أو يعيدها أو يرفضها.',selected?h('div',{className:'space-y-3'},
+ const renderReview=()=>panel('قائمة المراجعة والاعتماد','تتحدّث القائمة تلقائيًا عند فتح التبويب وكل 15 ثانية أثناء عرضه. أي مستخدم مخوّل يرى المستندات؛ المراجع فقط يعتمدها أو يعيدها أو يرفضها.',h('div',{className:'space-y-3'},
+  h('div',{className:'flex flex-wrap items-center justify-between gap-2'},h('strong',null,'مستندات بانتظار القرار: '+review.length),button('تحديث القائمة الآن',()=>refreshReviewQueue(false),'muted')),
+  selected?h('div',{className:'space-y-3'},
    h('div',{className:'flex items-center justify-between'},h('strong',null,selected.title||selected.number||selected.id),button('إغلاق',()=>setSelected(null))),
-   h('p',{className:'text-sm'},'النوع: '+selected.type+' · التاريخ: '+selected.date+' · الحالة: '+status(selected.status)),
+   h('p',{className:'text-sm'},'النوع: '+(selected.type==='invoice'?(selected.invoiceType==='purchase'?'فاتورة مشتريات':'فاتورة مبيعات'):selected.type==='cash'?'حركة خزينة':selected.type)+' · التاريخ: '+selected.date+' · الحالة: '+status(selected.status)),
    h('p',{className:'text-sm'},'القيمة: '+fmt(selected.total||selected.amount||0)),
+   (selected.reviewReason||'')?h('p',{className:'rounded-lg border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900'},'ملاحظة المراجعة السابقة: '+selected.reviewReason):null,
    (selected.errors||[]).length?h('ul',{className:'list-disc pr-5 text-rose-700'},selected.errors.map((x,i)=>h('li',{key:i},x))):null,
    (selected.warnings||[]).length?h('ul',{className:'list-disc pr-5 text-amber-700'},selected.warnings.map((x,i)=>h('li',{key:i},x))):null,
    selected.type==='invoice'?panel(selected.attachmentUploadStatus==='pending'?'المرفق لم يتم رفعه بعد':'إضافة مرفق للفاتورة',selected.attachmentUploadError||'يمكنك رفع صورة أو ملف الفاتورة وربطه بالمستند من هنا.',h('label',{className:'inline-flex flex-col gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-sm font-bold cursor-pointer'},'اختيار صورة أو ملف وإرفاقه',h('input',{type:'file',accept:'image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt',disabled:busy,className:'text-xs font-normal',onChange:e=>{const file=e.target.files&&e.target.files[0];if(file)void retryInvoiceAttachment(file,selected.id);e.target.value='';}}))):null,
    Object.keys(selected.attachments||{}).length?panel('مرفقات المستند','الملفات محفوظة في مساحة المرفقات المالية المرتبطة بالفاتورة.',table(['اسم الملف','النوع','الحجم','الإجراء'],Object.values(selected.attachments||{}).map(function(attachment){return h('tr',{key:attachment.id,className:'border-t'},h('td',{className:'p-2'},attachment.fileName||'—'),h('td',{className:'p-2'},attachment.mimeType||'—'),h('td',{className:'p-2'},fmt((Number(attachment.size)||0)/1024)+' KB'),h('td',{className:'p-2'},button('تحميل المرفق',function(){downloadFinancialAttachment(selected.id,attachment);},'muted')));}))) : null,
    selected.type==='bankLine'?select('الحساب المقابل',offset,v=>setOffset(v),posting.map(a=>({value:a.code,label:a.code+' — '+a.name}))):null,
-   selected.type==='bankLine'?button('حفظ الحساب المقابل',async()=>{try{await api('', 'POST',{action:'setBankOffset',id:selected.id,offsetAccountCode:offset});setNotice('تم حفظ الحساب المقابل');}catch(e){setError(e.message);}}):null,
+   selected.type==='bankLine'?button('حفظ الحساب المقابل',async()=>{try{await api('', 'POST',{action:'setBankOffset',id:selected.id,offsetAccountCode:offset});setNotice('تم حفظ الحساب المقابل');await refreshReviewQueue(true);}catch(e){setError(e.message);}}):null,
    h('div',{className:'flex flex-wrap gap-2'},button('اعتماد وترحيل',()=>reviewAction(selected.status==='duplicate_review'?'approveDuplicate':'approve'),'success',busy),button('إعادة للتصحيح',()=>reviewAction('return'),'muted',busy),button('رفض',()=>reviewAction('reject'),'danger',busy))
-  ):table(['المستند','النوع','التاريخ','الطرف','المبلغ','الحالة','مراجعة'],review.map(x=>h('tr',{key:x.id,className:'border-t'},h('td',{className:'p-2'},x.title||x.id),h('td',{className:'p-2'},x.type),h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},x.partyName||'—'),h('td',{className:'p-2'},fmt(x.total||x.amount||0)),h('td',{className:'p-2'},status(x.status)),h('td',{className:'p-2'},button('فتح',()=>{setSelected(documents.find(d=>d.id===x.id)||x);setOffset('6100');}))))));
+  ):table(['المستند','النوع','التاريخ','الطرف','المبلغ','الحالة','المرفق','مراجعة'],review.map(x=>h('tr',{key:x.id,className:'border-t'},
+   h('td',{className:'p-2'},x.title||x.id),
+   h('td',{className:'p-2'},x.type==='invoice'?(x.invoiceType==='purchase'?'مشتريات':'مبيعات'):x.type==='cash'?'الخزينة':x.type),
+   h('td',{className:'p-2'},x.date||'—'),
+   h('td',{className:'p-2'},x.partyName||'—'),
+   h('td',{className:'p-2'},fmt(x.total||x.amount||0)),
+   h('td',{className:'p-2'},status(x.status)),
+   h('td',{className:'p-2'},x.attachmentUploadStatus==='pending'?'المرفق يحتاج إعادة رفع':x.attachmentFileName||'—'),
+   h('td',{className:'p-2'},button('فتح',()=>{void openReviewItem(x);},'muted'))
+  ))))
+ ));
  const renderCash=()=>{
   const movementLabels={customer_receipt:"تحصيل من عميل",supplier_payment:"سداد إلى مورد",other_receipt:"استلام نقدية / إيراد آخر",other_payment:"مصروف / مدفوعات أخرى",cash_to_bank:"إيداع نقدية بالبنك",bank_to_cash:"سحب نقدية من البنك",employee_custody:"تسليم عهدة لموظف",employee_custody_return:"استرداد عهدة من موظف",employee_advance:"صرف سلفة لموظف",employee_advance_recovery:"تحصيل سلفة من موظف"};
   const movement=cash.movementType;
