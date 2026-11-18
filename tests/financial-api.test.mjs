@@ -254,3 +254,66 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
   assert.ok(saleJournal.lines.some(x=>x.accountCode==="5100"&&x.debit===45),"sale posts cost of goods sold");
   assert.ok(saleJournal.lines.some(x=>x.accountCode==="1300"&&x.credit===45),"sale credits inventory");
 });
+
+test("supplier linking, delegated invoice completion, staff custody and advances", async () => {
+  await invoke("GET","?resource=bootstrap");
+  write("vendors/VENDOR-LEGACY",{code:"VENDOR-LEGACY",name:"Legacy Supplier",taxRegistrationNumber:"TX-8899",phone:"01000000000"});
+  const linked=await invoke("POST","",{action:"saveMaster",kind:"parties",item:{code:"VENDOR-LEGACY",name:"Legacy Supplier",partyType:"vendor",taxNumber:"TX-8899"}});
+  assert.equal(linked.success,true);
+  assert.equal(linked.linkedExisting,true);
+  assert.equal(read("financial/parties/VENDOR-LEGACY").taxRegistrationNumber,"TX-8899","legacy supplier tax registration is preserved");
+  assert.equal(read("vendors/VENDOR-LEGACY").name,"Legacy Supplier","existing CRM supplier remains unchanged");
+
+  write("users/EMPLOYEE-01",{uid:"EMPLOYEE-01",status:"active",fullName:"Employee One",username:"employee.one",role:"user"});
+  const draft=await invoke("POST","",{action:"saveInvoiceDraft",type:"purchase",date:"2026-11-18",number:"ASSIGN-001",partyId:"VENDOR-LEGACY",partyName:"Legacy Supplier",lines:[
+    {description:"Stationery supplies",kind:"stock",itemCode:"",quantity:1,unitPrice:300,accountCode:"6901"}
+  ]});
+  assert.equal(draft.status,"draft");
+  const assigned=await invoke("POST","",{action:"assignInvoice",invoiceId:draft.id,assigneeUid:"EMPLOYEE-01",instruction:"صنّف البند كمستلزمات مكتبية واربط حسابه الصحيح"});
+  assert.equal(assigned.status,"assigned");
+  assert.equal(read("tasks/EMPLOYEE-01/"+assigned.taskId).kind,"financialAssignment");
+  assert.equal(read("cashCustodyNotifications/EMPLOYEE-01/"+assigned.assignmentId).type,"financialAssignment");
+
+  const previousUid=claims.sub,previousRole=profile.role,previousName=profile.fullName;
+  claims.sub="EMPLOYEE-01";profile.role="user";profile.fullName="Employee One";
+  const assignmentList=await invoke("GET","?resource=assignments");
+  assert.equal(assignmentList.items.length,1,"assignee only sees their own open assignment");
+  const completed=await invoke("POST","",{action:"completeInvoiceAssignment",assignmentId:assigned.assignmentId,lines:[
+    {index:0,kind:"service",accountCode:"6901"}
+  ]});
+  assert.equal(completed.status,"returned_to_creator");
+  assert.equal(read("documents/"+draft.id).status,"returned_to_creator");
+  assert.equal(read("cashCustodyNotifications/"+previousUid+"/"+read("documents/"+draft.id).returnedTaskId).type,"financialAssignmentReturned");
+  assert.equal(read("tasks/EMPLOYEE-01/"+assigned.taskId+"/status"),"completed");
+
+  claims.sub=previousUid;profile.role=previousRole;profile.fullName=previousName;
+  const resubmitted=await invoke("POST","",{action:"submitInvoice",id:draft.id,type:"purchase",date:"2026-11-18",number:"ASSIGN-001",partyId:"VENDOR-LEGACY",partyName:"Legacy Supplier",lines:[
+    {description:"Stationery supplies",kind:"service",accountCode:"6901",quantity:1,unitPrice:300}
+  ]});
+  assert.equal(resubmitted.status,"pending_review","creator can submit a returned delegated invoice");
+  assert.equal(read("tasks/test-admin/"+read("documents/"+draft.id).returnedTaskId+"/status"),"completed");
+
+  const custody=await invoke("POST","",{action:"submitCash",movementType:"employee_custody",date:"2026-11-18",amount:500,currency:"EGP",description:"Employee cash custody",employeeUid:"EMPLOYEE-01",cashAccountCode:"1110"});
+  const custodyPosted=await invoke("POST","",{action:"review",id:custody.id,decision:"approve",reason:"custody handover"});
+  assert.equal(custodyPosted.status,"posted");
+  const custodyLines=Object.values(read("partyLedger/employeeCustody/EMPLOYEE-01/2026-11")||{});
+  assert.ok(custodyLines.some(x=>x.accountCode==="1220"&&x.debit===500),"employee custody is posted to control account 1220 and staff subledger");
+  assert.ok(Object.keys(read("cashCustodies/EMPLOYEE-01/transactions")||{}).length>0,"custody handover appears in the existing personal cash-custody book");
+
+  const advance=await invoke("POST","",{action:"submitCash",movementType:"employee_advance",date:"2026-11-18",amount:400,currency:"EGP",description:"Employee advance",employeeUid:"EMPLOYEE-01",cashAccountCode:"1110"});
+  const advancePosted=await invoke("POST","",{action:"review",id:advance.id,decision:"approve",reason:"advance issue"});
+  assert.equal(advancePosted.status,"posted");
+  const advanceLines=Object.values(read("partyLedger/employeeAdvance/EMPLOYEE-01/2026-11")||{});
+  assert.ok(advanceLines.some(x=>x.accountCode==="1230"&&x.debit===400),"employee advance is posted to separate control account 1230");
+
+  const recovery=await invoke("POST","",{action:"submitCash",movementType:"employee_advance_recovery",date:"2026-11-18",amount:150,currency:"EGP",description:"Advance recovery",employeeUid:"EMPLOYEE-01",cashAccountCode:"1110"});
+  const recoveryPosted=await invoke("POST","",{action:"review",id:recovery.id,decision:"approve",reason:"advance recovered"});
+  assert.equal(recoveryPosted.status,"posted");
+  const finalAdvanceRows=Object.values(read("partyLedger/employeeAdvance/EMPLOYEE-01/2026-11")||{});
+  const finalAdvanceBalance=finalAdvanceRows.reduce((sum,x)=>sum+Number(x.debit||0)-Number(x.credit||0),0);
+  assert.equal(finalAdvanceBalance,250,"advance recovery reduces the employee's separate loan balance");
+
+  const excessRecovery=await invoke("POST","",{action:"submitCash",movementType:"employee_advance_recovery",date:"2026-11-18",amount:300,currency:"EGP",description:"Excess recovery",employeeUid:"EMPLOYEE-01",cashAccountCode:"1110"});
+  await assert.rejects(invoke("POST","",{action:"review",id:excessRecovery.id,decision:"approve",reason:"must not over recover"}),/أكبر من رصيد السلفة/);
+});
+
