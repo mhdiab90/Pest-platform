@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "cloudflare/worker.js"
+      - "cloudflare/origin.js"
       - "financial-api.js"
       - "financial-module.js"
       - "tests/**"
@@ -42,6 +43,7 @@ jobs:
       - name: Validate Worker JavaScript syntax
         run: |
           node --input-type=module --check < cloudflare/worker.js
+          node --check cloudflare/origin.js
           node --check financial-api.js
           node --check financial-module.js
           node --check scripts/build-mobile.mjs
