@@ -1,3 +1,4 @@
+const ALLOWED_ORIGIN = "https://mhdiab90.github.io";
 export function isAllowedOrigin(origin) {
   if (!origin) return false;
   let parsed;
