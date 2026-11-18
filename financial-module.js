@@ -188,20 +188,27 @@ function FinanceModule(props){
  const saveInvoiceDraftRecord=async()=>{
   const payload=invoicePayload();
   const result=await api('', 'POST',Object.assign({action:'saveInvoiceDraft'},payload));
-  if(invoiceFile){
-   const uploadResult=await upload(invoiceFile,result.id),attachment=uploadResult.attachment||uploadResult;
-   await api('', 'POST',{action:'addAttachment',documentId:result.id,attachment});
-   setInvoiceFile(null);
-  }
   setInvoice(old=>Object.assign({},old,{id:result.id}));
+  let attachmentError='';
+  if(invoiceFile){
+   try{
+    await saveInvoiceAttachment(invoiceFile,result.id);
+    setInvoiceFile(null);
+   }catch(error){
+    attachmentError=error.message||String(error);
+    await api('', 'POST',{action:'setAttachmentUploadStatus',documentId:result.id,status:'pending',fileName:invoiceFile.name||'',error:attachmentError}).catch(()=>null);
+   }
+  }
   await refresh();
-  return result;
+  return Object.assign({},result,{attachmentError});
  };
  const saveInvoiceDraft=async()=>{
   setBusy(true);setError('');
   try{
    const result=await saveInvoiceDraftRecord();
-   setNotice('تم حفظ الفاتورة كمسودة غير مرحلة. يمكنك استكمالها أو تحويلها لمستخدم آخر.');
+   setNotice(result.attachmentError
+    ?'تم حفظ المسودة. تعذر رفع المرفق حاليًا، لكن بيانات الفاتورة محفوظة ويمكنك إعادة رفع الملف لاحقًا من المرفقات.'
+    :'تم حفظ الفاتورة كمسودة غير مرحلة. يمكنك استكمالها أو تحويلها لمستخدم آخر.');
   }catch(e){setError(e.message||String(e));}
   finally{setBusy(false);}
  };
@@ -211,7 +218,9 @@ function FinanceModule(props){
   try{
    const draft=await saveInvoiceDraftRecord();
    const result=await api('', 'POST',{action:'assignInvoice',invoiceId:draft.id,assigneeUid:assignmentUserUid,instruction:assignmentInstruction});
-   setNotice('تم حفظ المسودة وتحويلها للمستخدم المختار، وستصل إليه في المهام والتنبيهات.');
+   setNotice(draft.attachmentError
+    ?'تم حفظ المسودة وتحويلها للمستخدم المختار بنجاح. المرفق لم يُرفع بعد؛ يمكن إعادة رفعه لاحقًا من الفاتورة.'
+    :'تم حفظ المسودة وتحويلها للمستخدم المختار، وستصل إليه في المهام والتنبيهات.');
    setInvoice(o=>Object.assign({},o,{id:draft.id}));
    await refresh();
   }catch(e){setError(e.message||String(e));}
@@ -504,9 +513,11 @@ function FinanceModule(props){
    const result=await api('', 'POST',Object.assign({action:'submitInvoice'},payload));
    const queued=['pending_review','duplicate_review'].includes(result.status);
    let attachmentError='',savedAttachment=null;
-   if(queued&&invoiceFile){
-    try{savedAttachment=await saveInvoiceAttachment(invoiceFile,result.id);}
-    catch(e){
+   if(result.id&&invoiceFile){
+    try{
+     savedAttachment=await saveInvoiceAttachment(invoiceFile,result.id);
+     setInvoiceFile(null);
+    }catch(e){
      attachmentError=e.message||String(e);
      await api('', 'POST',{action:'setAttachmentUploadStatus',documentId:result.id,status:'pending',fileName:invoiceFile.name||'',error:attachmentError}).catch(()=>null);
     }
@@ -523,7 +534,7 @@ function FinanceModule(props){
      :'تم حفظ الفاتورة وإرسالها للمراجعة. سيتم إنشاء وترحيل القيد بعد الاعتماد.');
    }else{
     setInvoice(o=>Object.assign({},o,{id:result.id}));
-    setNotice('الفاتورة محفوظة وتحتاج تصحيح: '+(result.errors||[]).join('، '));
+    setNotice('الفاتورة محفوظة وتحتاج تصحيح: '+(result.errors||[]).join('، ')+(attachmentError?' · تعذر رفع المرفق: '+attachmentError:'')+'. لم تدخل قائمة المراجعة؛ استكمل الأخطاء ثم أرسلها مرة أخرى.');
    }
    await refresh();
    if(queued){
