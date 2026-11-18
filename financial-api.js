@@ -25,7 +25,7 @@ function extractInternalInvoiceNumber(value) {
   if (!marker) return "";
   let candidate = source.slice(marker.index + marker[0].length);
   candidate = candidate.split(/\r?\n/, 1)[0];
-  const nextField = /\s+(?=(?:Document\s+Type(?:\s+Version)?|Date\s+Time\s+Issued|Issue\s+Date(?:\s+Time)?|Invoice\s+Date|Issuer\s*\(\s*From\s*\)|Recipients?\s*\(\s*To\s*\)|Seller\b|Buyer\b|Internal\s*id\s*[:：]|Total\s+(?:Sales\s+)?Amount|Taxable\s+Items|Items\s+Count|Payment\s+Method|Signature\b|QR\s+Code)\b)/i.exec(candidate);
+  const nextField = /\s+(?=(?:Document\s+Type(?:\s+Version)?|Date\s+Time\s+Issued|Issue\s+Date(?:\s+Time)?|Invoice\s+Date|Issuer\s*\(\s*From\s*\)|Recipients?\s*\(\s*To\s*\)|Seller\b|Buyer\b|Internal\s*id\s*[:：]|Total\s+(?:Sales\s+)?Amount|Taxable\s+Items|Items\s+Count|Payment\s+Method|Signature\b|QR\s+Code)(?:\s|[:：]|$))/i.exec(candidate);
   if (nextField) candidate = candidate.slice(0, nextField.index);
   return candidate.replace(/^\s*[:：#-]+\s*/, "").replace(/[\s|;,]+$/, "").replace(/\s+/g, " ").trim().slice(0, 120);
 }
