@@ -117,12 +117,36 @@ function FinanceModule(props){
   try{const r=await api('', 'POST',Object.assign({action:'submitCash'},cash,{amount:n(cash.amount)}));setNotice('تم تسجيل الحركة وإرسالها للمراجعة. لا تؤثر على الأرصدة قبل الاعتماد.');setCash(o=>Object.assign({},o,{amount:'',description:'',reference:''}));await refresh();}
   catch(e){setError(e.message||String(e));}finally{setBusy(false);}
  };
- const parseBank=async file=>{
-  setBankFile(file);setBankRows([]);
-  try{if(!window.XLSX)throw new Error('مكتبة Excel غير متاحة');const wb=window.XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:true}),sheet=wb.Sheets[wb.SheetNames[0]],raw=window.XLSX.utils.sheet_to_json(sheet,{defval:''});
-   const parsed=raw.map(r=>{const keys=Object.keys(r),get=terms=>{const k=keys.find(x=>terms.some(t=>String(x).toLowerCase().includes(t)));return k?r[k]:'';};let d=get(['date','تاريخ']);if(d instanceof Date)d=d.toISOString().slice(0,10);else if(typeof d==='number')d=new Date(Math.round((d-25569)*86400*1000)).toISOString().slice(0,10);else d=String(d||'').slice(0,10);const debit=n(get(['debit','مدين','withdrawal','سحب'])),credit=n(get(['credit','دائن','deposit','إيداع'])),amount=n(get(['amount','مبلغ','value','القيمة']))||debit||credit;return {date:d,description:String(get(['description','details','narration','بيان','الوصف'])||''),reference:String(get(['reference','ref','مرجع'])||''),amount,direction:credit>0||amount>0&&debit===0?'in':'out'};}).filter(x=>x.date&&x.amount>0);
-   setBankRows(parsed);if(!parsed.length)setError('لم يتم التعرف على حركات صحيحة من ملف البنك.');
-  }catch(e){setError(e.message||String(e));}
+ const parseBank = async function(file) {
+  setBankFile(file);
+  setBankRows([]);
+  setError('');
+  try {
+   if (!window.XLSX) throw new Error('مكتبة Excel غير متاحة');
+   const workbook = window.XLSX.read(await file.arrayBuffer(), {type:'array', cellDates:true});
+   const sheet = workbook.Sheets[workbook.SheetNames[0]];
+   const raw = window.XLSX.utils.sheet_to_json(sheet, {defval:''});
+   const parsed = raw.map(function(row) {
+    const keys = Object.keys(row);
+    const get = function(terms) {
+     const key = keys.find(function(name) {
+      return terms.some(function(term) { return String(name).toLowerCase().includes(term); });
+     });
+     return key ? row[key] : '';
+    };
+    let transactionDate = get(['date','تاريخ']);
+    if (transactionDate instanceof Date) transactionDate = transactionDate.toISOString().slice(0,10);
+    else if (typeof transactionDate === 'number') transactionDate = new Date(Math.round((transactionDate - 25569) * 86400 * 1000)).toISOString().slice(0,10);
+    else transactionDate = String(transactionDate || '').slice(0,10);
+    const debit = n(get(['debit','مدين','withdrawal','سحب']));
+    const credit = n(get(['credit','دائن','deposit','إيداع']));
+    const amount = n(get(['amount','مبلغ','value','القيمة'])) || debit || credit;
+    const direction = (credit > 0 || (amount > 0 && debit === 0)) ? 'in' : 'out';
+    return {date:transactionDate, description:String(get(['description','details','narration','بيان','الوصف']) || ''), reference:String(get(['reference','ref','مرجع']) || ''), amount:amount, direction:direction};
+   }).filter(function(item) { return item.date && item.amount > 0; });
+   setBankRows(parsed);
+   if (!parsed.length) setError('لم يتم التعرف على حركات صحيحة من ملف البنك.');
+  } catch (error) { setError(error.message || String(error)); }
  };
  const sendBank=async()=>{
   setBusy(true);setError('');
