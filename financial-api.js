@@ -59,7 +59,7 @@ function invoiceTotals(inv){const net=rnd(invoiceLineAmounts(inv).reduce(functio
 async function sha(v){const a=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(v));return Array.from(new Uint8Array(a)).map(x=>x.toString(16).padStart(2,"0")).join("");}
 
 export async function handleFinancialRequest(ctx){
- const {request,url,body,claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch}=ctx;
+ const {request,url,body,claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch,adminReadRoot,adminPatchRoot}=ctx;
  if(!profile||!["active","نشط","مفعل","enabled"].includes(String(profile.status||"").toLowerCase()))throw new Error("This user account is not active.");
  if(request.method==="GET"){
   requirePermission(profile,"financial","view");const res=txt(url.searchParams.get("resource")||"bootstrap",40);
@@ -69,7 +69,13 @@ export async function handleFinancialRequest(ctx){
     if(profile.role!=="admin")throw new Error("يجب على مدير النظام تهيئة دليل الحسابات أولاً.");
     const u={};DEFAULT_FINANCE_ACCOUNTS.forEach(a=>u["chartOfAccounts/"+a.code]={...a,active:true,createdAt:Date.now(),createdBy:claims.sub});u["settings/baseCurrency"]="EGP";u["settings/seedVersion"]=1;await adminPatch(u);chart=Object.fromEntries(DEFAULT_FINANCE_ACCOUNTS.map(a=>[a.code,{...a,active:true}]));
    }
-   const out={chartOfAccounts:chart};for(const k of ["costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties","settings"])out[k]=(await adminRead(k))||{};
+   const out={chartOfAccounts:chart};for(const k of ["costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","settings"])out[k]=(await adminRead(k))||{};
+   const parties=(await adminRead("parties"))||{};
+   const crmClients=adminReadRoot?(await adminReadRoot("clients"))||{}:{};
+   const crmVendors=adminReadRoot?(await adminReadRoot("vendors"))||{}:{};
+   Object.entries(crmClients).forEach(([code,party])=>{if(party&&typeof party==="object")parties[code]={...party,code:party.code||code,partyType:"customer"};});
+   Object.entries(crmVendors).forEach(([code,party])=>{if(party&&typeof party==="object")parties[code]={...party,code:party.code||code,partyType:"vendor"};});
+   out.parties=parties;
    out.inventory={balances:(await adminRead("inventory/balances"))||{}};
    return out;
   }
@@ -89,7 +95,54 @@ export async function handleFinancialRequest(ctx){
  if(action==="saveMaster"){
   requirePermission(profile,"financial","add");const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties"];if(!allowed.includes(kind))throw new Error("Unsupported master data type.");const item=body.item||{},code=id(item.code);if(!txt(item.name,180))throw new Error("الاسم مطلوب");const existingCode=await adminRead(kind+"/"+code);if(existingCode)throw new Error("هذا الكود مسجل بالفعل. اختر كودًا آخر حتى لا يتم استبدال بياناته.");
   if(kind==="chartOfAccounts"){if(!["asset","liability","equity","revenue","expense"].includes(item.type)||!["debit","credit"].includes(item.nature))throw new Error("نوع أو طبيعة الحساب غير صحيحة");if(item.isGroup&&item.allowPosting)throw new Error("الحساب التجميعي لا يقبل الترحيل");if(item.parentCode){const p=await adminRead("chartOfAccounts/"+id(item.parentCode));if(!p||!p.isGroup)throw new Error("الحساب الأب يجب أن يكون مجموعة");}}if(kind==="items"&&item.groupCode){const group=await adminRead("itemGroups/"+id(item.groupCode));if(!group)throw new Error("مجموعة الصنف غير موجودة. أضف المجموعة أولاً.");}
-  const saved={...item,code,name:txt(item.name,180),active:item.active!==false,createdAt:item.createdAt||now,createdBy:item.createdBy||claims.sub,updatedAt:now,updatedBy:claims.sub},u={};u[kind+"/"+code]=saved;u["audit/"+uid("AUD")]={action:"save_master",kind,code,uid:claims.sub,createdAt:now};await adminPatch(u);return {success:true,item:saved};
+  if(kind==="parties"){
+   if(!["customer","vendor"].includes(item.partyType))throw new Error("حدد نوع الطرف: عميل أو مورد.");
+   const root= item.partyType==="customer"?"clients":"vendors";
+   const current=adminReadRoot?await adminReadRoot(root+"/"+code):null;
+   if(current)throw new Error("كود الطرف موجود بالفعل في سجل العملاء أو الموردين.");
+  }
+  const saved={...item,code,name:txt(item.name,180),active:item.active!==false,createdAt:item.createdAt||now,createdBy:item.createdBy||claims.sub,updatedAt:now,updatedBy:claims.sub},u={};u[kind+"/"+code]=saved;u["audit/"+uid("AUD")]={action:"save_master",kind,code,uid:claims.sub,createdAt:now};
+  if(kind==="parties"&&adminPatchRoot){
+   const root=saved.partyType==="customer"?"clients":"vendors";
+   const globalUpdates={};globalUpdates[root+"/"+code]=saved;globalUpdates["financial/parties/"+code]=saved;globalUpdates["financial/audit/"+uid("AUD")]=u["audit/"+Object.keys(u).find(key=>key.startsWith("audit/")).slice(6)];
+   await adminPatchRoot(globalUpdates);
+  }else await adminPatch(u);
+  return {success:true,item:saved};
+ }
+ if(action==="importMasters"){
+  requirePermission(profile,"financial","add");
+  const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties"];
+  if(!allowed.includes(kind))throw new Error("Unsupported master data import type.");
+  const sourceRows=Array.isArray(body.rows)?body.rows.slice(0,500):[];
+  if(!sourceRows.length)throw new Error("ملف الاستيراد لا يحتوي على صفوف.");
+  if(sourceRows.length>500)throw new Error("الحد الأقصى 500 سجل في عملية الاستيراد الواحدة.");
+  const existing=(await adminRead(kind))||{},groups=(await adminRead("itemGroups"))||{},seen=new Set(),updates={},rootUpdates={};
+  const partyRoot=kind==="parties"?(body.partyType==="customer"?"clients":body.partyType==="vendor"?"vendors":""):"";
+  if(kind==="parties"&&!partyRoot)throw new Error("حدد هل ملف الأطراف للعملاء أم الموردين.");
+  const legacy=partyRoot&&adminReadRoot?(await adminReadRoot(partyRoot))||{}:{};
+  let count=0;
+  for(let i=0;i<sourceRows.length;i++){
+   const row=sourceRows[i]||{},code=id(row.code),name=txt(row.name,180);
+   if(!name)throw new Error("الصف "+(i+2)+": الاسم مطلوب.");
+   if(seen.has(code)||existing[code]||(legacy&&legacy[code]))throw new Error("الصف "+(i+2)+": الكود "+code+" موجود بالفعل أو مكرر في الملف.");
+   seen.add(code);
+   if(kind==="chartOfAccounts"){
+    if(!["asset","liability","equity","revenue","expense"].includes(row.type)||!["debit","credit"].includes(row.nature))throw new Error("الصف "+(i+2)+": نوع أو طبيعة الحساب غير صحيحة.");
+    if(row.parentCode){const parent=await adminRead("chartOfAccounts/"+id(row.parentCode));if(!parent||!parent.isGroup)throw new Error("الصف "+(i+2)+": الحساب الأب يجب أن يكون مجموعة موجودة.");}
+    if(row.isGroup===true||String(row.isGroup).toLowerCase()==="true"||String(row.isGroup)==="1")row.isGroup=true;else row.isGroup=false;
+   }
+   if(kind==="items"&&row.groupCode&&!groups[row.groupCode])throw new Error("الصف "+(i+2)+": مجموعة الصنف "+row.groupCode+" غير موجودة.");
+   if(kind==="taxCodes"&&!["vat_input","vat_output","withholding","addition"].includes(row.taxType))throw new Error("الصف "+(i+2)+": نوع الضريبة غير صحيح.");
+   const saved={...row,code,name,active:row.active!==false,createdAt:now,createdBy:claims.sub,updatedAt:now,updatedBy:claims.sub};
+   if(kind==="parties")saved.partyType=body.partyType;
+   updates[kind+"/"+code]=saved;
+   if(kind==="parties")rootUpdates[partyRoot+"/"+code]=saved;
+   count++;
+  }
+  const audit={action:"import_masters",kind,count,uid:claims.sub,createdAt:now};
+  if(kind==="parties"&&adminPatchRoot){rootUpdates["financial/parties"] = undefined;Object.entries(updates).forEach(([path,value])=>{rootUpdates["financial/"+path]=value;});rootUpdates["financial/audit/"+uid("AUD")]=audit;await adminPatchRoot(rootUpdates);}
+  else{updates["audit/"+uid("AUD")]=audit;await adminPatch(updates);}
+  return {success:true,kind,count};
  }
  if(action==="submitJournal"){
   requirePermission(profile,"financial","add");const j={id:id(body.id||uid("DOC")),type:"journal",date:date(body.date),description:txt(body.description,500),reference:txt(body.reference,120),currency:txt(body.currency||"EGP",3),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120)};
