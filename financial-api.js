@@ -333,7 +333,7 @@ export async function handleFinancialRequest(ctx){
    saved.companyName=saved.companyName||saved.name;
    // Write CRM and finance master records separately and confirm both are readable.
    await adminPatchRoot({[root+"/"+code]:saved});
-   await adminPatch({"parties/"+code:saved,"audit/"+uid("AUD"):audit});
+   await adminPatch({["parties/"+code]:saved,["audit/"+uid("AUD")]:audit});
    const [crmCheck,financeCheck]=await Promise.all([
     adminReadRoot(root+"/"+code),
     adminRead("parties/"+code)
