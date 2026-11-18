@@ -1535,13 +1535,18 @@ function App(){
       setNotificationOpen(false);
       if(detail.type==='message'||detail.route==='messages')navigateToTab('messages');
       else if(detail.type==='cashCustody'||detail.route==='cashCustody')navigateToTab('cashCustody');
-      else if(detail.type==='financialAssignment'||detail.route==='financialAssignments'){
+      else if(detail.type==='financialAssignment'){
         window.PEST_PENDING_FINANCE_ASSIGNMENT_ID=detail.eventId||detail.id||'';
         window.dispatchEvent(new Event('pest-finance-route'));
         navigateToTab('financial');
       }
       else if(detail.type==='financialAssignmentReturned'){
         window.PEST_PENDING_FINANCE_INVOICE_ID=detail.eventId||detail.invoiceId||'';
+        window.dispatchEvent(new Event('pest-finance-route'));
+        navigateToTab('financial');
+      }
+      else if(detail.route==='financialAssignments'){
+        window.PEST_PENDING_FINANCE_ASSIGNMENT_ID=detail.eventId||detail.id||'';
         window.dispatchEvent(new Event('pest-finance-route'));
         navigateToTab('financial');
       }
@@ -1579,13 +1584,18 @@ function App(){
       if(type){
         if(type==='message')navigateToTab('messages');
         else if(type==='cashCustody')navigateToTab('cashCustody');
-        else if(type==='financialAssignment'||params.get('pushRoute')==='financialAssignments'){
+        else if(type==='financialAssignment'){
           window.PEST_PENDING_FINANCE_ASSIGNMENT_ID=params.get('pushId')||'';
           window.dispatchEvent(new Event('pest-finance-route'));
           navigateToTab('financial');
         }
         else if(type==='financialAssignmentReturned'){
           window.PEST_PENDING_FINANCE_INVOICE_ID=params.get('pushId')||'';
+          window.dispatchEvent(new Event('pest-finance-route'));
+          navigateToTab('financial');
+        }
+        else if(params.get('pushRoute')==='financialAssignments'){
+          window.PEST_PENDING_FINANCE_ASSIGNMENT_ID=params.get('pushId')||'';
           window.dispatchEvent(new Event('pest-finance-route'));
           navigateToTab('financial');
         }
