@@ -492,6 +492,7 @@ export async function handleFinancialRequest(ctx){
    else if(taxCode.effectiveFrom&&inv.date<String(taxCode.effectiveFrom))errors.push("كود الضريبة "+taxCode.code+" غير سارٍ بتاريخ الفاتورة. تاريخ بداية السريان: "+taxCode.effectiveFrom);
    else{inv.taxCode=taxCode.code||body.taxCode;inv.taxType=taxCode.taxType;inv.taxRate=num(taxCode.rate||0);}
   }
+  else if(Number(inv.taxRate||0)>0||Number(inv.taxAmount||0)>0)errors.push("يجب اختيار كود ضريبي نشط من نوع مدخلات للمشتريات أو مخرجات للمبيعات، ومطابق لتاريخ الفاتورة ونسبتها.");
   if(inv.currency!=="EGP")errors.push("لا يمكن ترحيل فاتورة بعملة أجنبية قبل تفعيل أسعار الصرف وإعادة تقييم أرصدة العملات. اختر الجنيه المصري أو اترك المستند مسودة.");
   if(!inv.partyId)errors.push("اختيار العميل أو المورد مطلوب");
   else{
