@@ -5,6 +5,9 @@
   "compatibility_date": "2026-11-09",
   "keep_vars": true,
   "workers_dev": true,
+  "vars": {
+    "FCM_WEB_VAPID_KEY": "BKjoV8wClGv7EotLkOz0rSS0DTvUKGAJfKeRRUhj9icRzuoBVrt56_tsZrylJ8UwCqA06hVb90rdQInZ5c2n00E"
+  },
   "ai": {
     "binding": "AI"
   },
