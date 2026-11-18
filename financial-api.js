@@ -19,6 +19,11 @@ function extractEtaInvoiceParties(value) {
   return { issuerName: issuer.name, issuerTaxNumber: issuer.taxNumber, recipientName: recipient.name, recipientTaxNumber: recipient.taxNumber };
 }
 
+const DEFAULT_VAT_CODES = [
+ {code:"VAT-IN-14",name:"ضريبة قيمة مضافة مدخلات 14%",taxType:"vat_input",rate:14,effectiveFrom:"2017-07-01",etaTaxType:"T1"},
+ {code:"VAT-OUT-14",name:"ضريبة قيمة مضافة مخرجات 14%",taxType:"vat_output",rate:14,effectiveFrom:"2017-07-01",etaTaxType:"T1"}
+];
+
 const DEFAULT_STAFF_ACCOUNTS = [
  {code:"1220",name:"العهد لدى العاملين",type:"asset",nature:"debit",parentCode:"11",isControl:true,subledgerType:"employeeCustody"},
  {code:"1230",name:"السلف لدى العاملين",type:"asset",nature:"debit",parentCode:"11",isControl:true,subledgerType:"employeeAdvance"}
@@ -129,7 +134,7 @@ const balance=lines=>{const debit=rnd((lines||[]).reduce((s,x)=>s+Number(x.debit
 const reviewRecord=doc=>({id:doc.id,documentId:doc.id,type:doc.type,title:doc.title||doc.number||doc.id,number:doc.number||"",date:doc.date||"",partyName:doc.partyName||"",total:Number(doc.total||0),status:doc.status,createdAt:doc.createdAt,createdBy:doc.createdBy,errors:doc.errors||[],warnings:doc.warnings||[]});
 function journalUpdates(j){
  const u={},m=month(j.date);u["journals/"+j.id]=j;u["periods/"+m+"/entries/"+j.id]=j;
- (j.lines||[]).forEach((l,i)=>{const row={journalId:j.id,lineNo:i+1,date:j.date,description:l.description||j.description||"",accountCode:l.accountCode,debit:Number(l.debit||0),credit:Number(l.credit||0),currency:l.currency||j.currency||"EGP",costCenterId:l.costCenterId||"",projectCode:l.projectCode||"",partyType:l.partyType||"",partyId:l.partyId||"",sourceType:j.sourceType||"manual",sourceId:j.sourceId||"",reference:j.reference||""};u["ledger/"+l.accountCode+"/"+m+"/"+j.id+"_"+(i+1)]=row;if(l.partyType&&l.partyId)u["partyLedger/"+l.partyType+"/"+l.partyId+"/"+m+"/"+j.id+"_"+(i+1)]=row;if(l.costCenterId)u["costLedger/"+l.costCenterId+"/"+m+"/"+j.id+"_"+(i+1)]=row;});
+ (j.lines||[]).forEach((l,i)=>{const row={journalId:j.id,lineNo:i+1,date:j.date,description:l.description||j.description||"",accountCode:l.accountCode,debit:Number(l.debit||0),credit:Number(l.credit||0),currency:l.currency||j.currency||"EGP",costCenterId:l.costCenterId||"",projectCode:l.projectCode||"",partyType:l.partyType||"",partyId:l.partyId||"",sourceType:j.sourceType||"manual",sourceId:j.sourceId||"",reference:j.reference||"",taxCode:l.taxCode||"",taxType:l.taxType||""};u["ledger/"+l.accountCode+"/"+m+"/"+j.id+"_"+(i+1)]=row;if(l.partyType&&l.partyId)u["partyLedger/"+l.partyType+"/"+l.partyId+"/"+m+"/"+j.id+"_"+(i+1)]=row;if(l.costCenterId)u["costLedger/"+l.costCenterId+"/"+m+"/"+j.id+"_"+(i+1)]=row;});
  if(j.sourceType&&j.sourceId)u["sourceLocks/"+j.sourceType+"_"+j.sourceId]={journalId:j.id,postedAt:Date.now()};return u;
 }
 function validateJournal(j,chart,centers){
@@ -149,7 +154,7 @@ function invoiceLineAmounts(inv){
   return {line:row.line,amount:rnd(Math.max(0,row.base-share))};
  });
 }
-function invoiceTotals(inv){const net=rnd(invoiceLineAmounts(inv).reduce(function(sum,row){return sum+row.amount;},0)),tax=rnd(inv.taxAmount==null?net*num(inv.taxRate||0)/100:num(inv.taxAmount));return {net,tax,total:rnd(net+tax)};}
+function invoiceTotals(inv){const net=rnd(invoiceLineAmounts(inv).reduce(function(sum,row){return sum+row.amount;},0)),hasFixedTax=inv.taxAmount!==undefined&&inv.taxAmount!==null&&String(inv.taxAmount).trim()!=="",tax=rnd(hasFixedTax?num(inv.taxAmount):net*num(inv.taxRate||0)/100);return {net,tax,total:rnd(net+tax)};}
 async function sha(v){const a=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(v));return Array.from(new Uint8Array(a)).map(x=>x.toString(16).padStart(2,"0")).join("");}
 
 export async function handleFinancialRequest(ctx){
@@ -177,6 +182,11 @@ export async function handleFinancialRequest(ctx){
      updates["chartOfAccounts/"+account.code]=saved;
     }
     if(Object.keys(updates).length)await adminPatch(updates);
+   }
+   if(profile.role==="admin"){
+    const currentTaxCodes=(await adminRead("taxCodes"))||{},taxUpdates={};
+    for(const taxCode of DEFAULT_VAT_CODES){if(!currentTaxCodes[taxCode.code])taxUpdates["taxCodes/"+taxCode.code]={...taxCode,active:true,createdAt:Date.now(),createdBy:claims.sub};}
+    if(Object.keys(taxUpdates).length)await adminPatch(taxUpdates);
    }
    const out={chartOfAccounts:chart};for(const k of ["costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","settings"])out[k]=(await adminRead(k))||{};
    const parties=(await adminRead("parties"))||{};
@@ -249,10 +259,8 @@ export async function handleFinancialRequest(ctx){
   if(!allowed.includes(kind))throw new Error("Unsupported master data type.");
   const item=body.item||{},code=id(item.code),existingCode=await adminRead(kind+"/"+code);
   if(!txt(item.name,180))throw new Error("الاسم مطلوب");
-  if(existingCode){
-   if(kind==="parties"&&existingCode.partyType===item.partyType&&String(existingCode.name||"").trim()===String(item.name||"").trim())return {success:true,item:existingCode,alreadyExists:true};
-   throw new Error("هذا الكود مسجل بالفعل. اختر كودًا آخر حتى لا يتم استبدال بياناته.");
-  }
+  if(existingCode&&kind!=="parties")throw new Error("هذا الكود مسجل بالفعل. اختر كودًا آخر حتى لا يتم استبدال بياناته.");
+  if(existingCode&&kind==="parties"&&existingCode.partyType&&existingCode.partyType!==item.partyType)throw new Error("هذا الكود مسجل بالفعل لنوع طرف مختلف.");
   if(kind==="chartOfAccounts"){
    if(!["asset","liability","equity","revenue","expense"].includes(item.type)||!["debit","credit"].includes(item.nature))throw new Error("نوع أو طبيعة الحساب غير صحيحة");
    if(item.isGroup&&item.allowPosting)throw new Error("الحساب التجميعي لا يقبل الترحيل");
@@ -263,20 +271,31 @@ export async function handleFinancialRequest(ctx){
    if(item.groupCode){const group=await adminRead("itemGroups/"+id(item.groupCode));if(!group)throw new Error("مجموعة الصنف غير موجودة. أضف المجموعة أولاً.");}
   }
   if(kind==="itemGroups"&&!["raw_material","finished_good","spare_part","consumable","office_supply","packaging","other"].includes(item.groupType||"other"))throw new Error("حدد نوع مجموعة الأصناف.");
+  if(kind==="taxCodes"){
+   if(!["vat_input","vat_output","withholding","addition"].includes(item.taxType))throw new Error("حدد نوع الضريبة بصورة صحيحة.");
+   const rate=Number(item.rate);if(!Number.isFinite(rate)||rate<0||rate>100)throw new Error("نسبة الضريبة يجب أن تكون من 0 إلى 100.");
+  }
   if(kind==="bankAccounts"){const account=await adminRead("chartOfAccounts/"+id(item.accountCode||code));if(!account||account.isGroup||account.active===false)throw new Error("اربط حساب البنك بحساب محاسبي نشط وقابل للترحيل في دليل الحسابات.");}
   let saved={...item,code,name:txt(item.name,180),active:item.active!==false,createdAt:item.createdAt||now,createdBy:item.createdBy||claims.sub,updatedAt:now,updatedBy:claims.sub};
   const audit={action:"save_master",kind,code,uid:claims.sub,createdAt:now};
+  let linkedExisting=false;
   if(kind==="parties"){
    if(!["customer","vendor"].includes(item.partyType))throw new Error("حدد نوع الطرف: عميل أو مورد.");
+   if(!txt(item.code,120)||!txt(item.name,180))throw new Error("كود واسم المورد/العميل مطلوبان.");
    if(!adminReadRoot||!adminPatchRoot)throw new Error("خدمة سجل العملاء والموردين غير متاحة.");
    const [currentCustomer,currentVendor]=await Promise.all([adminReadRoot("clients/"+code),adminReadRoot("vendors/"+code)]);
    const correctParty=item.partyType==="customer"?currentCustomer:currentVendor;
    const oppositeParty=item.partyType==="customer"?currentVendor:currentCustomer;
    if(oppositeParty)throw new Error("هذا الكود مستخدم بالفعل في سجل "+(item.partyType==="customer"?"الموردين":"العملاء")+".");
-   if(correctParty){
-    if(String(correctParty.name||correctParty.companyName||correctParty.legalName||correctParty.supplierName||correctParty.vendorName||correctParty.customerName||"").trim()!==String(item.name||"").trim())throw new Error("كود الطرف موجود في السجل الأساسي باسم مختلف. استخدم كودًا آخر أو راجع السجل الأساسي.");
-    saved={...correctParty,...item,code,name:txt(item.name,180),partyType:item.partyType,active:true,updatedAt:now,updatedBy:claims.sub};
-   }
+   const partyNameOf=p=>String(p&&(p.name||p.companyName||p.legalName||p.supplierName||p.vendorName||p.customerName||p.clientName)||"").trim();
+   const taxOf=p=>String(p&&(p.taxNumber||p.taxRegistrationNumber||p.registrationNumber||p.registrationNo||p.vatNumber||p.taxId)||"").replace(/[^0-9]/g,"");
+   if(existingCode&&partyNameOf(existingCode)&&partyNameOf(existingCode)!==txt(item.name,180)&&!(taxOf(existingCode)&&taxOf(item)&&taxOf(existingCode)===taxOf(item)))throw new Error("الكود مسجل بالفعل باسم أو رقم ضريبي مختلف. راجع سجل الموردين قبل الإضافة.");
+   if(correctParty&&partyNameOf(correctParty)&&partyNameOf(correctParty)!==txt(item.name,180)&&!(taxOf(correctParty)&&taxOf(item)&&taxOf(correctParty)===taxOf(item)))throw new Error("كود المورد/العميل موجود باسم أو رقم ضريبي مختلف في السجل الرئيسي.");
+   linkedExisting=Boolean(existingCode||correctParty);
+   const supplied=Object.fromEntries(Object.entries(item).filter(([,value])=>value!==undefined&&value!==null&&value!==""));
+   saved={...(correctParty||{}),...(existingCode||{}),...supplied,code,name:txt(item.name,180),partyType:item.partyType,active:true,updatedAt:now,updatedBy:claims.sub};
+   if(!saved.taxNumber&&saved.taxRegistrationNumber)saved.taxNumber=saved.taxRegistrationNumber;
+   if(!saved.taxRegistrationNumber&&saved.taxNumber)saved.taxRegistrationNumber=saved.taxNumber;
    const root=saved.partyType==="customer"?"clients":"vendors",globalUpdates={};
    globalUpdates[root+"/"+code]=saved;
    globalUpdates["financial/parties/"+code]=saved;
@@ -285,7 +304,7 @@ export async function handleFinancialRequest(ctx){
   }else{
    const updates={};updates[kind+"/"+code]=saved;updates["audit/"+uid("AUD")]=audit;await adminPatch(updates);
   }
-  return {success:true,item:saved,linkedExisting:kind==="parties"&&Boolean(saved.createdBy!==claims.sub)};
+  return {success:true,item:saved,linkedExisting:kind==="parties"&&linkedExisting,created:kind==="parties"&&!linkedExisting};
  }
  if(action==="importMasters"){
   requirePermission(profile,"financial","add");
@@ -437,6 +456,11 @@ export async function handleFinancialRequest(ctx){
  }
  if(action==="submitInvoice"){
   requirePermission(profile,"financial","add");if(!["purchase","sales"].includes(body.type))throw new Error("حدد هل الفاتورة مشتريات من مورد أم مبيعات لعميل.");const inv={...body,id:id(body.id||uid("INV")),type:"invoice",invoiceType:body.type,date:date(body.date),number:txt(body.number,120),partyId:txt(body.partyId,120),partyName:txt(body.partyName,180),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:now,createdBy:claims.sub},errors=[];
+  if(body.taxCode){
+   const taxCode=await adminRead("taxCodes/"+id(body.taxCode)),expectedTaxType=inv.invoiceType==="purchase"?"vat_input":"vat_output";
+   if(!taxCode||taxCode.taxType!==expectedTaxType)errors.push("كود ضريبة القيمة المضافة لا يتوافق مع نوع الفاتورة.");
+   else{inv.taxCode=taxCode.code||body.taxCode;inv.taxType=taxCode.taxType;inv.taxRate=num(taxCode.rate||0);}
+  }
   if(!inv.partyId)errors.push("اختيار العميل أو المورد مطلوب");if(!inv.number)errors.push("رقم الفاتورة مطلوب");if(!inv.lines.length)errors.push("أضف بندًا واحدًا على الأقل");
   const invoiceChart=(await adminRead("chartOfAccounts"))||{};
   inv.lines.forEach((l,i)=>{
@@ -628,7 +652,7 @@ export async function handleFinancialRequest(ctx){
      if(!account||account.isGroup||account.active===false||account.type!==expectedType)throw new Error("حساب بند الفاتورة غير صالح: "+accountCode);
     }
     lines.push(purchase?{accountCode:l.kind==="stock"?"1300":txt(l.accountCode||"6100",32),debit:value,credit:0,description:l.description,costCenterId:l.costCenterId||(projectCenter&&projectCenter.code)||"",projectCode:inv.projectCode||"",itemCode:l.kind==="stock"?l.itemCode:"",quantity:num(l.quantity),warehouseCode:l.warehouseCode||"default"}:{accountCode:l.kind==="stock"?"4100":txt(l.incomeAccountCode||"4200",32),debit:0,credit:value,description:l.description,costCenterId:l.costCenterId||(projectCenter&&projectCenter.code)||"",projectCode:inv.projectCode||"",itemCode:l.kind==="stock"?l.itemCode:"",quantity:num(l.quantity),warehouseCode:l.warehouseCode||"default"});}
-   if(purchase&&tot.tax)lines.push({accountCode:"1410",debit:tot.tax,credit:0,description:"ضريبة مدخلات"});if(!purchase&&tot.tax)lines.push({accountCode:"2110",debit:0,credit:tot.tax,description:"ضريبة مخرجات"});lines.push(purchase?{accountCode:"281",debit:0,credit:tot.total,description:"فاتورة مشتريات",partyType:"vendor",partyId}:{accountCode:"1210",debit:tot.total,credit:0,description:"فاتورة مبيعات",partyType:"customer",partyId});
+   if(purchase&&tot.tax)lines.push({accountCode:"1410",debit:tot.tax,credit:0,description:"ضريبة مدخلات",taxCode:inv.taxCode||"",taxType:inv.taxType||"vat_input"});if(!purchase&&tot.tax)lines.push({accountCode:"2110",debit:0,credit:tot.tax,description:"ضريبة مخرجات",taxCode:inv.taxCode||"",taxType:inv.taxType||"vat_output"});lines.push(purchase?{accountCode:"281",debit:0,credit:tot.total,description:"فاتورة مشتريات",partyType:"vendor",partyId}:{accountCode:"1210",debit:tot.total,credit:0,description:"فاتورة مبيعات",partyType:"customer",partyId});
    const bal=(await adminRead("inventory/balances"))||{};
    if(!purchase){for(const l of lines.filter(x=>x.itemCode)){const stock=bal[l.warehouseCode]&&bal[l.warehouseCode][l.itemCode]||{quantity:0,averageCost:0};if(Number(stock.quantity||0)<l.quantity)throw new Error("الرصيد غير كافٍ للصنف "+l.itemCode);const cost=rnd(l.quantity*Number(stock.averageCost||0));lines.push({accountCode:"5100",debit:cost,credit:0,description:"تكلفة مبيعات "+l.description,itemCode:l.itemCode,quantity:l.quantity,warehouseCode:l.warehouseCode,costCenterId:l.costCenterId},{accountCode:"1300",debit:0,credit:cost,description:"صرف مخزون "+l.description,itemCode:l.itemCode,quantity:l.quantity,warehouseCode:l.warehouseCode});}}
    const check=balance(lines);if(Math.abs(check.difference)>0.01)throw new Error("القيد الناتج غير متوازن: "+check.difference);
