@@ -104,7 +104,7 @@ export async function handleFinancialRequest(ctx){
   const saved={...item,code,name:txt(item.name,180),active:item.active!==false,createdAt:item.createdAt||now,createdBy:item.createdBy||claims.sub,updatedAt:now,updatedBy:claims.sub},u={};u[kind+"/"+code]=saved;u["audit/"+uid("AUD")]={action:"save_master",kind,code,uid:claims.sub,createdAt:now};
   if(kind==="parties"&&adminPatchRoot){
    const root=saved.partyType==="customer"?"clients":"vendors";
-   const globalUpdates={};globalUpdates[root+"/"+code]=saved;globalUpdates["financial/parties/"+code]=saved;globalUpdates["financial/audit/"+uid("AUD")]=u["audit/"+Object.keys(u).find(key=>key.startsWith("audit/")).slice(6)];
+   const globalUpdates={},auditId=uid("AUD");globalUpdates[root+"/"+code]=saved;globalUpdates["financial/parties/"+code]=saved;globalUpdates["financial/audit/"+auditId]=u["audit/"+Object.keys(u).find(key=>key.startsWith("audit/")).slice(6)];
    await adminPatchRoot(globalUpdates);
   }else await adminPatch(u);
   return {success:true,item:saved};
@@ -140,7 +140,7 @@ export async function handleFinancialRequest(ctx){
    count++;
   }
   const audit={action:"import_masters",kind,count,uid:claims.sub,createdAt:now};
-  if(kind==="parties"&&adminPatchRoot){rootUpdates["financial/parties"] = undefined;Object.entries(updates).forEach(([path,value])=>{rootUpdates["financial/"+path]=value;});rootUpdates["financial/audit/"+uid("AUD")]=audit;await adminPatchRoot(rootUpdates);}
+  if(kind==="parties"&&adminPatchRoot){Object.entries(updates).forEach(([path,value])=>{rootUpdates["financial/"+path]=value;});rootUpdates["financial/audit/"+uid("AUD")]=audit;await adminPatchRoot(rootUpdates);}
   else{updates["audit/"+uid("AUD")]=audit;await adminPatch(updates);}
   return {success:true,kind,count};
  }
