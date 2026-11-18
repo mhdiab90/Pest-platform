@@ -1,6 +1,25 @@
 (function(){
 'use strict';
 const h=React.createElement;
+const COMPANY_TAX_REGISTRATION_NUMBER='589845268';
+const normalizeTaxRegistrationNumber=value=>String(value||'').replace(/[٠-٩]/g,d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/[۰-۹]/g,d=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[^0-9]/g,'');
+const detectEtaInvoiceDirection=extracted=>{
+ const issuerIsCompany=normalizeTaxRegistrationNumber(extracted&&extracted.issuerTaxNumber)===COMPANY_TAX_REGISTRATION_NUMBER;
+ const recipientIsCompany=normalizeTaxRegistrationNumber(extracted&&extracted.recipientTaxNumber)===COMPANY_TAX_REGISTRATION_NUMBER;
+ return issuerIsCompany===recipientIsCompany?'':issuerIsCompany?'sales':'purchase';
+};
+const parseEtaPartyBlock=block=>{
+ const source=String(block||''),name=source.match(/Taxpayer\s+Name\s*:\s*([\s\S]*?)(?=\s+Registration\s+Number\s*:)/i),tax=source.match(/Registration\s+Number\s*:\s*#?\s*([0-9]{6,15})/i);
+ return {name:String(name&&name[1]||'').replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,'').replace(/\s+/g,' ').trim(),taxNumber:normalizeTaxRegistrationNumber(tax&&tax[1])};
+};
+const parseEtaInvoiceParties=value=>{
+ const source=String(value||''),issuerMarker=/Issuer\s*\(\s*From\s*\)/i.exec(source),recipientMarker=/Recipients?\s*\(\s*To\s*\)/i.exec(source);
+ if(!issuerMarker||!recipientMarker||recipientMarker.index<=issuerMarker.index)return {};
+ const rest=source.slice(recipientMarker.index+recipientMarker[0].length),itemMarker=/Code\s+Name/i.exec(rest);
+ const issuer=parseEtaPartyBlock(source.slice(issuerMarker.index+issuerMarker[0].length,recipientMarker.index));
+ const recipient=parseEtaPartyBlock(itemMarker?rest.slice(0,itemMarker.index):rest);
+ return {issuerName:issuer.name,issuerTaxNumber:issuer.taxNumber,recipientName:recipient.name,recipientTaxNumber:recipient.taxNumber};
+};
 const today=()=>new Date().toISOString().slice(0,10);
 const rows=o=>o?Object.entries(o).map(([key,v])=>Object.assign({id:v&&v.id||key,code:v&&v.code||key},v||{})):[];
 const id=p=>p+'_'+(crypto.randomUUID?crypto.randomUUID().replace(/-/g,''):Date.now());
@@ -21,6 +40,7 @@ function FinanceModule(props){
  const [masterForm,setMasterForm]=React.useState({kind:'chartOfAccounts',code:'',name:'',type:'asset',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',unit:'قطعة',groupCode:'',groupType:'other',itemType:'stock',version:'',projectCode:'',warehouseCode:'default',taxType:'vat',rate:'0',effectiveFrom:today()});
  const [journal,setJournal]=React.useState({id:'',date:today(),description:'',reference:'',currency:'EGP',lines:[{accountCode:'6100',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''},{accountCode:'1110',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''}]});
  const [invoice,setInvoice]=React.useState({id:'',type:'purchase',date:today(),number:'',partyId:'',partyName:'',currency:'EGP',taxRate:'',taxAmount:'',discount:'',projectCode:'',lines:[{description:'',kind:'stock',itemCode:'',quantity:'1',unit:'قطعة',unitPrice:'',discount:'',accountCode:'6100',incomeAccountCode:'4100',costCenterId:'',warehouseCode:'default'}]});
+ const [invoiceTypeManuallySelected,setInvoiceTypeManuallySelected]=React.useState(false);
  const [invoiceFile,setInvoiceFile]=React.useState(null),[invoicePartySearch,setInvoicePartySearch]=React.useState(''),[cashPartySearch,setCashPartySearch]=React.useState(''),[statementPartySearch,setStatementPartySearch]=React.useState(''),[ocrSuggestions,setOcrSuggestions]=React.useState({party:null,items:[]}),[cash,setCash]=React.useState({movementType:'customer_receipt',date:today(),amount:'',description:'',reference:'',partyType:'customer',partyId:'',partyName:'',employeeUid:'',employeeName:'',cashAccountCode:'1110',bankAccountCode:'1120',offsetAccountCode:'6100',projectCode:'',currency:'EGP'});
  const [cashHistorySearch,setCashHistorySearch]=React.useState(''),[masterViewKind,setMasterViewKind]=React.useState('customers');
  const [bankFile,setBankFile]=React.useState(null),[bankRows,setBankRows]=React.useState([]),[bankAccount,setBankAccount]=React.useState('1120');
@@ -270,7 +290,8 @@ function FinanceModule(props){
    else setNotice('الفاتورة محفوظة وتحتاج تصحيح: '+(result.errors||[]).join('، '));
    if(result.status==='pending_review'){
     setInvoice({id:'',type:invoice.type,date:today(),number:'',partyId:'',partyName:'',currency:'EGP',taxRate:'',taxAmount:'',discount:'',projectCode:'',lines:[{description:'',kind:'stock',itemCode:'',quantity:'1',unit:'قطعة',unitPrice:'',discount:'',accountCode:'6100',incomeAccountCode:'4100',costCenterId:'',warehouseCode:'default'}]});
-    setInvoiceFile(null);setInvoicePartySearch('');setOcrSuggestions({party:null,items:[]});
+    setInvoiceTypeManuallySelected(false);
+     setInvoiceFile(null);setInvoicePartySearch('');setOcrSuggestions({party:null,items:[]});
    }else setInvoice(o=>Object.assign({},o,{id:result.id}));
    await refresh();
    if(attachmentError)setError('تم حفظ بيانات الفاتورة، لكن تعذر رفع الصورة أو ربطها: '+attachmentError);
@@ -332,7 +353,7 @@ function FinanceModule(props){
       canvas.width=0;canvas.height=0;
       result=await api('', 'POST',{action:'ocr',image,pageNumber,totalPages:pdf.numPages,expenseAccounts});
      }
-     pageResults.push(result.extracted||{});
+     pageResults.push(Object.assign({},result.extracted||{},parseEtaInvoiceParties(pageText)));
     }
    }else{
     const image=await readInvoiceFileAsDataUrl(selectedFile);
@@ -340,17 +361,20 @@ function FinanceModule(props){
     pageResults.push(result.extracted||{});
    }
    const x={items:[]};
-   ['type','number','date','partyName','taxNumber','currency','netTotal','taxRate','taxAmount','total','discount'].forEach(key=>{
+   ['type','number','date','partyName','taxNumber','issuerName','issuerTaxNumber','recipientName','recipientTaxNumber','currency','netTotal','taxRate','taxAmount','total','discount'].forEach(key=>{
     pageResults.forEach(page=>{if(page&&page[key]!==undefined&&page[key]!==null&&page[key]!=='')x[key]=page[key];});
    });
    pageResults.forEach(page=>{if(Array.isArray(page&&page.items))x.items.push(...page.items);});
    const modelDirection=x.type==='sales'?'sales':x.type==='purchase'?'purchase':'';
-   const nextType=invoice.type;
-   const directionMismatch=Boolean(modelDirection&&modelDirection!==invoice.type);
+   const detectedDirection=detectEtaInvoiceDirection(x);
+   const nextType=invoiceTypeManuallySelected?invoice.type:(detectedDirection||invoice.type);
+   const directionMismatch=Boolean(detectedDirection&&detectedDirection!==nextType);
    const targetPartyType=nextType==='purchase'?'vendor':'customer',partyList=targetPartyType==='vendor'?allVendors:allClients;
-   const extractedParty=String(x.partyName||'').trim(),taxNumber=String(x.taxNumber||'').trim();
-   const partyTax=p=>String(p.taxNumber||p.taxRegistrationNumber||p.registrationNumber||p.registrationNo||p.vatNumber||p.taxId||'').trim();
-   const matchedParty=partyList.find(p=>taxNumber&&partyTax(p)===taxNumber)||partyList.find(p=>normalizeMatch(partyName(p))===normalizeMatch(extractedParty));
+   const identifiedPartyDirection=detectedDirection||modelDirection;
+   const extractedParty=String((identifiedPartyDirection==='purchase'?x.issuerName:identifiedPartyDirection==='sales'?x.recipientName:'')||x.partyName||'').trim();
+   const taxNumber=String((identifiedPartyDirection==='purchase'?x.issuerTaxNumber:identifiedPartyDirection==='sales'?x.recipientTaxNumber:'')||x.taxNumber||'').trim();
+   const partyTax=p=>normalizeTaxRegistrationNumber(p.taxNumber||p.taxRegistrationNumber||p.registrationNumber||p.registrationNo||p.vatNumber||p.taxId||'');
+   const matchedParty=directionMismatch?null:(partyList.find(p=>taxNumber&&partyTax(p)===normalizeTaxRegistrationNumber(taxNumber))||partyList.find(p=>normalizeMatch(partyName(p))===normalizeMatch(extractedParty)));
    const unmatchedItems=[];
    const extractedLines=Array.isArray(x.items)?x.items.map((line,index)=>{
     const description=String(line.description||'').trim();
@@ -367,9 +391,13 @@ function FinanceModule(props){
     lines:extractedLines.length?extractedLines:old.lines
    }));
    setInvoicePartySearch(extractedParty);
-   setOcrSuggestions({party:extractedParty&&!matchedParty?{name:extractedParty,taxNumber,partyType:targetPartyType,code:nextCode(targetPartyType==='vendor'?'VND':'CUS',partyList)}:null,items:unmatchedItems});
+   setOcrSuggestions({party:extractedParty&&!matchedParty&&!directionMismatch?{name:extractedParty,taxNumber,partyType:targetPartyType,code:nextCode(targetPartyType==='vendor'?'VND':'CUS',partyList)}:null,items:unmatchedItems});
    const pageSummary=isPdf?'اكتملت قراءة '+pagesRead+' من '+totalPdfPages+' صفحة PDF.':'اكتملت قراءة صورة الفاتورة.';
-   setNotice(pageSummary+' راجع كل بند وحدد هل هو صنف مخزني أم مصروف/خدمة، وتأكد من الحساب المقترح قبل الإرسال.'+(directionMismatch?' تنبيه: اقتراح الذكاء الاصطناعي اختلف عن نوع الفاتورة المختار؛ تم الالتزام باختيارك اليدوي ('+(invoice.type==='purchase'?'مشتريات من مورد':'مبيعات لعميل')+').' :'')+(isPdf?' تم الاحتفاظ بملف PDF الأصلي لربطه بالفاتورة.':'')+(isPdf&&totalPdfPages>pagesRead?' تنبيه: تم تحليل أول 12 صفحة فقط؛ راجع الصفحات المتبقية يدويًا.':''));
+   const detectedLabel=detectedDirection==='purchase'?'فاتورة مشتريات لصالح الشركة':detectedDirection==='sales'?'فاتورة مبيعات صادرة من الشركة':'';
+   const directionNotice=detectedDirection
+    ?' تم التعرف على '+detectedLabel+' لأن الرقم الضريبي للشركة '+COMPANY_TAX_REGISTRATION_NUMBER+' ظهر في خانة '+(detectedDirection==='purchase'?'Recipients (To) / المستلم':'Issuer (From) / المُصدر')+'.'+(invoiceTypeManuallySelected&&directionMismatch?' لكن تم الإبقاء على اختيارك اليدوي وعدم تغييره.':invoiceTypeManuallySelected?' تم الالتزام باختيارك اليدوي.':' وتم ضبط نوع الفاتورة تلقائيًا.')
+    :(modelDirection&&modelDirection!==nextType?' تنبيه: اقتراح النموذج اختلف عن نوع الفاتورة المختار؛ تم الالتزام باختيارك اليدوي.':'');
+   setNotice(pageSummary+directionNotice+' راجع بيانات الطرف والبنود والحسابات قبل الإرسال.'+(isPdf?' تم الاحتفاظ بملف PDF الأصلي لربطه بالفاتورة.':'')+(isPdf&&totalPdfPages>pagesRead?' تنبيه: تم تحليل أول 12 صفحة فقط؛ راجع الصفحات المتبقية يدويًا.':''));
   }catch(e){setError('تعذرت قراءة الفاتورة آليًا: '+(e.message||String(e))+' ويمكنك استكمال البيانات يدويًا.');}
   finally{setBusy(false);}
  };
@@ -568,7 +596,7 @@ function FinanceModule(props){
  };
  const renderInvoices = function() {
   const headFields = h('div',{className:'grid md:grid-cols-3 gap-3'},
-   select('نوع الفاتورة',invoice.type,function(v){setInvoice(function(old){return Object.assign({},old,{type:v,partyId:'',partyName:''});});},[{value:'purchase',label:'مشتريات / مورد'},{value:'sales',label:'مبيعات / عميل'}]),
+   select('نوع الفاتورة',invoice.type,function(v){setInvoiceTypeManuallySelected(true);setInvoice(function(old){return Object.assign({},old,{type:v,partyId:'',partyName:''});});},[{value:'purchase',label:'مشتريات / مورد'},{value:'sales',label:'مبيعات / عميل'}]),
    field('رقم الفاتورة',invoice.number,function(v){setInvoice(function(old){return Object.assign({},old,{number:v});});}),
    field('التاريخ',invoice.date,function(v){setInvoice(function(old){return Object.assign({},old,{date:v});});},'date'),
    partyPicker(invoice.type==='purchase'?'المورد':'العميل',parties,invoice.partyId,function(p){setInvoice(old=>Object.assign({},old,{partyId:p.code||p.id,partyName:partyName(p)}));},invoicePartySearch,setInvoicePartySearch,invoice.type==='purchase'?'vendor':'customer'),
