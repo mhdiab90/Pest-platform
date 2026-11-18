@@ -8,6 +8,8 @@ on:
       - 'fix/*'
     paths:
       - "index.html"
+      - "financial-module.js"
+      - "financial-api.js"
       - "assets/**"
       - "pest-crm-module.js"
       - "capacitor-bridge.js"
