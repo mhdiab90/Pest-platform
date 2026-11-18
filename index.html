@@ -923,8 +923,6 @@
   <div id="root"><div class="min-h-screen grid place-items-center text-slate-600">Loading…</div></div>
 
 <script src="./capacitor-bridge.js" defer></script>
-<script src="./pest-crm-module.js" defer></script>
-<script src="./financial-module.js" defer></script>
 <script type="text/babel">
 const firebaseConfig = {
   apiKey: "AIzaSyBPrzHFEIM3AOFclTzJ1SpG_Nq6BKHgrSo",
@@ -1021,7 +1019,37 @@ const words = {
   }
 };
 
-const PestCrmModule = window.PEST_CRM_MODULE;
+function PestCrmModuleSlot(props){
+  const [PestCrmModule,setPestCrmModule]=useState(()=>window.PEST_CRM_MODULE||null);
+  const [loadError,setLoadError]=useState('');
+  useEffect(()=>{
+    if(window.PEST_CRM_MODULE){setPestCrmModule(()=>window.PEST_CRM_MODULE);return;}
+    let active=true;
+    const script=document.createElement('script');
+    script.src=new URL('./pest-crm-module.js',window.location.href).href;
+    script.async=true;
+    script.onload=()=>{
+      if(!active)return;
+      if(typeof window.PEST_CRM_MODULE==='function'){
+        setPestCrmModule(()=>window.PEST_CRM_MODULE);
+        setLoadError('');
+      }else setLoadError(props.rtl?'تم تحميل الملف لكن وحدة إدارة العملاء لم تبدأ. أعد تحميل البرنامج.':'The CRM file loaded, but the CRM module did not start. Reload the application.');
+    };
+    script.onerror=()=>{
+      if(active)setLoadError(props.rtl?'تعذر تحميل وحدة إدارة العملاء. تحقق من الاتصال وحاول مرة أخرى.':'Could not load the CRM module. Check your connection and retry.');
+    };
+    document.head.appendChild(script);
+    return ()=>{active=false;script.onload=null;script.onerror=null;};
+  },[]);
+  if(!PestCrmModule){
+    return <section dir={props.rtl?'rtl':'ltr'} className="m-3 rounded-2xl border border-amber-300 bg-amber-50 p-5 text-amber-950 space-y-3">
+      <h2 className="font-extrabold text-lg">{props.rtl?'إدارة العملاء والمبيعات':'Customer and sales management'}</h2>
+      <p className="text-sm">{loadError||(props.rtl?'جارٍ تحميل وحدة إدارة العملاء...':'Loading the CRM module...')}</p>
+      <button type="button" onClick={()=>window.location.reload()} className="rounded-lg bg-amber-700 px-4 py-2 text-white font-bold">{props.rtl?'إعادة تحميل البرنامج':'Reload application'}</button>
+    </section>;
+  }
+  return <PestCrmModule {...props}/>;
+}
 
 function FinanceModuleSlot(props){
   const [FinanceModule,setFinanceModule]=useState(()=>window.PEST_FINANCE_MODULE||null);
@@ -6182,7 +6210,7 @@ function App(){
             })}
           </div>}
         </div>}
-        {tab==='pestCrm'&&canAccessTab('pestCrm')&&PestCrmModule&&<PestCrmModule db={db} currentUser={currentUser} rtl={rtl} can={hasPermission} addLog={addLog}/>}
+        {tab==='pestCrm'&&canAccessTab('pestCrm')&&<PestCrmModuleSlot db={db} currentUser={currentUser} rtl={rtl} can={hasPermission} addLog={addLog}/>}
         {financialModuleMounted&&canAccessTab('financial')&&<div className={tab==='financial'?'':'hidden'}><FinanceModuleSlot db={db} currentUser={currentUser} rtl={rtl} workerBase={PUSH_WORKER_BASE} userDirectory={userDirectory} addLog={addLog} onOpenPartyMaster={openFinancialPartyMaster}/></div>}
         {tab==='dashboard'&&<div className="space-y-5 print-area">
           <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="font-bold text-xl">{tr('dashboard')} · {tr('cashFlow')}</h2><div className="flex gap-2 no-print"><button onClick={()=>setTab('reports')} className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-bold">{tr('reportCenter')}</button><button onClick={()=>window.print()} className="bg-gray-800 text-white rounded-lg px-4 py-2 text-sm">{tr('printPdf')}</button></div></div>
