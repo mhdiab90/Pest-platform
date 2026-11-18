@@ -79,6 +79,14 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
     item:{code:"CC-PRJ-1",name:"Project 1 cost center",projectCode:"PRJ-1"}
   });
   await invoke("POST","",{
+    action:"saveMaster",kind:"itemGroups",
+    item:{code:"GROUP-1",name:"Test stock group"}
+  });
+  await assert.rejects(
+    invoke("POST","",{action:"saveMaster",kind:"itemGroups",item:{code:"GROUP-1",name:"Attempted overwrite"}}),
+    /مسجل بالفعل/
+  );
+  await invoke("POST","",{
     action:"saveMaster",kind:"items",
     item:{code:"ITEM-001",name:"Test stock item",unit:"piece",groupCode:"GROUP-1",version:"V1",warehouseCode:"default"}
   });
