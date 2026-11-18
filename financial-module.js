@@ -76,6 +76,27 @@ function FinanceModule(props){
   const response=await fetch(base+'/attachments/upload',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':file.type||'application/octet-stream','X-Attachment-Entity-Type':'financial','X-Attachment-Entity-Id':entityId,'X-Attachment-File-Name':encodeURIComponent(file.name)},body:file});
   const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||'تعذر حفظ المرفق');return data;
  };
+ const saveInvoiceAttachment=async(file,documentId)=>{
+  const uploadResult=await upload(file,documentId),attachment=uploadResult.attachment||uploadResult;
+  await api('', 'POST',{action:'addAttachment',documentId,attachment});
+  await api('', 'POST',{action:'setAttachmentUploadStatus',documentId,status:'uploaded'});
+  return attachment;
+ };
+ const retryInvoiceAttachment=async(file,documentId)=>{
+  setBusy(true);setError('');
+  try{
+   const attachment=await saveInvoiceAttachment(file,documentId);
+   setSelected(old=>old&&old.id===documentId?Object.assign({},old,{attachmentUploadStatus:'',attachmentUploadError:'',attachments:Object.assign({},old.attachments||{},{[attachment.id]:attachment})}):old);
+   setNotice('تم رفع المرفق وربطه بالفاتورة بنجاح.');
+   await refresh();
+   setSelected(old=>old&&old.id===documentId?Object.assign({},old,{attachmentUploadStatus:'',attachmentUploadError:'',attachments:Object.assign({},old.attachments||{},{[attachment.id]:attachment})}):old);
+  }catch(e){
+   const message=e.message||String(e);
+   await api('', 'POST',{action:'setAttachmentUploadStatus',documentId,status:'pending',fileName:file&&file.name||'',error:message}).catch(()=>null);
+   setSelected(old=>old&&old.id===documentId?Object.assign({},old,{attachmentUploadStatus:'pending',attachmentFileName:file&&file.name||old.attachmentFileName||'',attachmentUploadError:message}):old);
+   setError('الفاتورة ما زالت موجودة في قائمة المراجعة، لكن تعذر رفع المرفق: '+message);
+  }finally{setBusy(false);}
+ };
  const refresh=async()=>{
   setBusy(true);setError('');
   try{
@@ -428,21 +449,34 @@ function FinanceModule(props){
   try{
    const payload=invoicePayload();
    const result=await api('', 'POST',Object.assign({action:'submitInvoice'},payload));
-   let attachmentError='';
-   if(invoiceFile){
-    try{const uploadResult=await upload(invoiceFile,result.id);const attachment=uploadResult.attachment||uploadResult;await api('', 'POST',{action:'addAttachment',documentId:result.id,attachment});}
-    catch(e){attachmentError=e.message||String(e);}
+   const queued=['pending_review','duplicate_review'].includes(result.status);
+   let attachmentError='',savedAttachment=null;
+   if(queued&&invoiceFile){
+    try{savedAttachment=await saveInvoiceAttachment(invoiceFile,result.id);}
+    catch(e){
+     attachmentError=e.message||String(e);
+     await api('', 'POST',{action:'setAttachmentUploadStatus',documentId:result.id,status:'pending',fileName:invoiceFile.name||'',error:attachmentError}).catch(()=>null);
+    }
    }
-   if(result.status==='pending_review')setNotice('تم حفظ الفاتورة وإرسالها للمراجعة. سيتم إنشاء وترحيل القيد بعد الاعتماد.');
-   else setNotice('الفاتورة محفوظة وتحتاج تصحيح: '+(result.errors||[]).join('، '));
-   if(result.status==='pending_review'){
+   if(queued){
     const resetTaxCode=findVatCode(invoice.type,14);
     setInvoice({id:'',type:invoice.type,date:today(),number:'',partyId:'',partyName:'',partyTaxNumber:'',currency:'EGP',taxCode:resetTaxCode?resetTaxCode.code:defaultVatCodeForInvoice(invoice.type),taxRate:resetTaxCode?String(resetTaxCode.rate):'14',taxAmount:'',discount:'',projectCode:'',lines:[{description:'',kind:'stock',itemCode:'',quantity:'1',unit:'قطعة',unitPrice:'',discount:'',accountCode:'6100',incomeAccountCode:'4100',costCenterId:'',warehouseCode:'default'}]});
     setInvoiceTypeManuallySelected(false);
-     setInvoiceFile(null);setInvoicePartySearch('');setOcrSuggestions({party:null,items:[]});
-   }else setInvoice(o=>Object.assign({},o,{id:result.id}));
+    setInvoiceFile(null);setInvoicePartySearch('');setOcrSuggestions({party:null,items:[]});
+    setTab('review');
+    setSelected(Object.assign({},payload,{id:result.id,type:'invoice',invoiceType:payload.type,status:result.status,total:result.totals&&result.totals.total||0,createdAt:Date.now(),attachments:savedAttachment?{[savedAttachment.id]:savedAttachment}:{},attachmentUploadStatus:attachmentError?'pending':'',attachmentFileName:attachmentError&&invoiceFile?invoiceFile.name:'',attachmentUploadError:attachmentError}));
+    setNotice(attachmentError
+     ?'تم حفظ الفاتورة وإدراجها في قائمة المراجعة بنجاح. تعذر رفع المرفق حاليًا؛ افتح الفاتورة من المراجعة واختر إعادة رفع المرفق.'
+     :'تم حفظ الفاتورة وإرسالها للمراجعة. سيتم إنشاء وترحيل القيد بعد الاعتماد.');
+   }else{
+    setInvoice(o=>Object.assign({},o,{id:result.id}));
+    setNotice('الفاتورة محفوظة وتحتاج تصحيح: '+(result.errors||[]).join('، '));
+   }
    await refresh();
-   if(attachmentError)setError('تم حفظ بيانات الفاتورة، لكن تعذر رفع الصورة أو ربطها: '+attachmentError);
+   if(queued){
+    setTab('review');
+    setSelected(old=>old&&old.id===result.id?Object.assign({},old,{attachmentUploadStatus:attachmentError?'pending':'',attachmentFileName:attachmentError&&invoiceFile?invoiceFile.name:'',attachmentUploadError:attachmentError,attachments:savedAttachment?Object.assign({},old.attachments||{},{[savedAttachment.id]:savedAttachment}):old.attachments||{}}):old);
+   }
   }catch(e){setError(e.message||String(e));}
   finally{setBusy(false);}
  };
