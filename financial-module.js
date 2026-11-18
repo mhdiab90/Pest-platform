@@ -21,13 +21,13 @@ const parseEtaInvoiceParties=value=>{
  return {issuerName:issuer.name,issuerTaxNumber:issuer.taxNumber,recipientName:recipient.name,recipientTaxNumber:recipient.taxNumber};
 };
 const parseInternalInvoiceNumber=value=>{
- const source=String(value||'').replace(/[\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]/g,'');
- const marker=/\\bInternal\\s*id\\s*[:：]\\s*/i.exec(source);
+ const source=String(value||'').replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,'');
+ const marker=/\bInternal\s*id\s*[:：]\s*/i.exec(source);
  if(!marker)return '';
- let candidate=source.slice(marker.index+marker[0].length).split(/\\r?\\n/,1)[0];
- const nextField=/\\s+(?=(?:Document\\s+Type(?:\\s+Version)?|Date\\s+Time\\s+Issued|Issue\\s+Date(?:\\s+Time)?|Invoice\\s+Date|Issuer\\s*\\(\\s*From\\s*\\)|Recipients?\\s*\\(\\s*To\\s*\\)|Seller\\b|Buyer\\b|Internal\\s*id\\s*[:：]|Total\\s+(?:Sales\\s+)?Amount|Taxable\\s+Items|Items\\s+Count|Payment\\s+Method|Signature\\b|QR\\s+Code))/i.exec(candidate);
+ let candidate=source.slice(marker.index+marker[0].length).split(/\r?\n/,1)[0];
+ const nextField=/\s+(?=(?:Document\s+Type(?:\s+Version)?|Date\s+Time\s+Issued|Issue\s+Date(?:\s+Time)?|Invoice\s+Date|Issuer\s*\(\s*From\s*\)|Recipients?\s*\(\s*To\s*\)|Seller\b|Buyer\b|Internal\s*id\s*[:：]|Total\s+(?:Sales\s+)?Amount|Taxable\s+Items|Items\s+Count|Payment\s+Method|Signature\b|QR\s+Code))/i.exec(candidate);
  if(nextField)candidate=candidate.slice(0,nextField.index);
- return candidate.replace(/^\\s*[:：#-]+\\s*/,'').replace(/[\\s|;,]+$/,'').replace(/\\s+/g,' ').trim().slice(0,120);
+ return candidate.replace(/^\s*[:：#-]+\s*/,'').replace(/[\s|;,]+$/,'').replace(/\s+/g,' ').trim().slice(0,120);
 };
 const today=()=>new Date().toISOString().slice(0,10);
 const rows=o=>o?Object.entries(o).map(([key,v])=>Object.assign({id:v&&v.id||key,code:v&&v.code||key},v||{})):[];
