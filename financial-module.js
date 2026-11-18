@@ -82,6 +82,28 @@ function FinanceModule(props){
  };
  React.useEffect(()=>{if(tab==='assignments')refreshAssignments();},[tab]);
  React.useEffect(()=>{
+  const openPendingRoute=async()=>{
+   const assignmentId=window.PEST_PENDING_FINANCE_ASSIGNMENT_ID;
+   if(assignmentId){setTab("assignments");await refreshAssignments();return;}
+   const invoiceId=window.PEST_PENDING_FINANCE_INVOICE_ID;
+   if(invoiceId){
+    setTab("invoices");
+    try{
+     const result=await api("?resource=documents"),list=rows(result.items);
+     setDocuments(list.sort((a,b)=>n(b.createdAt)-n(a.createdAt)));
+     const invoiceDoc=list.find(x=>x.id===invoiceId&&x.type==="invoice");
+     if(invoiceDoc){editDoc(invoiceDoc);setNotice("تم فتح مسودة الفاتورة العائدة من المستخدم المستكمل. راجعها ثم أرسلها للمراجعة.");}
+     window.PEST_PENDING_FINANCE_INVOICE_ID="";
+    }catch(error){setError(error.message||String(error));}
+   }
+  };
+  const listener=()=>{void openPendingRoute();};
+  window.addEventListener("pest-finance-route",listener);
+  if(window.PEST_PENDING_FINANCE_ASSIGNMENT_ID||window.PEST_PENDING_FINANCE_INVOICE_ID)void openPendingRoute();
+  return()=>window.removeEventListener("pest-finance-route",listener);
+ },[]);
+
+ React.useEffect(()=>{
   const pending=window.PEST_PENDING_FINANCE_ASSIGNMENT_ID;
   if(pending){setSelectedAssignmentId(pending);setTab('assignments');}
  },[]);
