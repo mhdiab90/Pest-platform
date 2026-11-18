@@ -420,6 +420,8 @@ export async function handleFinancialRequest(ctx){
   const inv={...body,id:draftId,type:"invoice",invoiceType:direction,date:date(body.date),number:txt(body.number,120),partyId:txt(body.partyId,120),partyName:txt(body.partyName,180),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:previous&&previous.createdAt||now,createdBy:previous&&previous.createdBy||claims.sub,createdByName:previous&&previous.createdByName||txt(profile.fullName||profile.username||profile.email,120),status:"draft"};
   if(previous&&previous.returnedTaskId)inv.returnedTaskId=previous.returnedTaskId;
   if(previous&&previous.attachments)inv.attachments=previous.attachments;
+  if(previous&&previous.returnedTaskId)inv.returnedTaskId=previous.returnedTaskId;
+  if(previous)for(const field of ["attachmentUploadStatus","attachmentFileName","attachmentUploadError"])if(previous[field])inv[field]=previous[field];
   inv.errors=[];
   if(!inv.partyId)inv.errors.push("اختيار العميل أو المورد مطلوب");
   if(!inv.number)inv.errors.push("رقم الفاتورة مطلوب");
