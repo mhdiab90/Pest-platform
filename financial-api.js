@@ -101,10 +101,10 @@ export async function handleFinancialRequest(ctx){
    const current=adminReadRoot?await adminReadRoot(root+"/"+code):null;
    if(current)throw new Error("كود الطرف موجود بالفعل في سجل العملاء أو الموردين.");
   }
-  const saved={...item,code,name:txt(item.name,180),active:item.active!==false,createdAt:item.createdAt||now,createdBy:item.createdBy||claims.sub,updatedAt:now,updatedBy:claims.sub},u={};u[kind+"/"+code]=saved;u["audit/"+uid("AUD")]={action:"save_master",kind,code,uid:claims.sub,createdAt:now};
+  const saved={...item,code,name:txt(item.name,180),active:item.active!==false,createdAt:item.createdAt||now,createdBy:item.createdBy||claims.sub,updatedAt:now,updatedBy:claims.sub};
+  const audit={action:"save_master",kind,code,uid:claims.sub,createdAt:now},u={};u[kind+"/"+code]=saved;u["audit/"+uid("AUD")]=audit;
   if(kind==="parties"&&adminPatchRoot){
-   const root=saved.partyType==="customer"?"clients":"vendors";
-   const globalUpdates={},auditId=uid("AUD");globalUpdates[root+"/"+code]=saved;globalUpdates["financial/parties/"+code]=saved;globalUpdates["financial/audit/"+auditId]=u["audit/"+Object.keys(u).find(key=>key.startsWith("audit/")).slice(6)];
+   const root=saved.partyType==="customer"?"clients":"vendors",globalUpdates={};globalUpdates[root+"/"+code]=saved;globalUpdates["financial/parties/"+code]=saved;globalUpdates["financial/audit/"+uid("AUD")]=audit;
    await adminPatchRoot(globalUpdates);
   }else await adminPatch(u);
   return {success:true,item:saved};
@@ -113,7 +113,7 @@ export async function handleFinancialRequest(ctx){
   requirePermission(profile,"financial","add");
   const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties"];
   if(!allowed.includes(kind))throw new Error("Unsupported master data import type.");
-  const sourceRows=Array.isArray(body.rows)?body.rows.slice(0,500):[];
+  const sourceRows=Array.isArray(body.rows)?body.rows:[];
   if(!sourceRows.length)throw new Error("ملف الاستيراد لا يحتوي على صفوف.");
   if(sourceRows.length>500)throw new Error("الحد الأقصى 500 سجل في عملية الاستيراد الواحدة.");
   const existing=(await adminRead(kind))||{},groups=(await adminRead("itemGroups"))||{},seen=new Set(),updates={},rootUpdates={};
