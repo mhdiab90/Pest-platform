@@ -128,7 +128,7 @@ function FinanceModule(props){
   setBusy(true);setError('');
   try{
    const f=quickAddForm,kind=quickAddType;
-   const item=kind==='parties'?{code:f.code,name:f.name,partyType:f.partyType,phone:f.phone,taxNumber:f.taxNumber,email:f.email,address:f.address}:{code:f.code,name:f.name,type:f.type,nature:f.nature,parentCode:f.parentCode,isGroup:f.isGroup,subledgerType:f.subledgerType,unit:f.unit,groupCode:f.groupCode,version:f.version,warehouseCode:f.warehouseCode,projectCode:f.projectCode,taxType:f.taxType,rate:n(f.rate),effectiveFrom:f.effectiveFrom};
+   const item=kind==='parties'?{code:f.code,name:f.name,partyType:f.partyType,phone:f.phone,taxNumber:f.taxNumber,email:f.email,address:f.address}:{code:f.code,name:f.name,type:f.type,nature:f.nature,parentCode:f.parentCode,isGroup:f.isGroup,subledgerType:f.subledgerType,unit:f.unit,groupCode:f.groupCode,version:f.version,warehouseCode:f.warehouseCode,projectCode:f.projectCode,taxType:f.taxType,rate:n(f.rate),effectiveFrom:f.effectiveFrom,accountCode:kind==='bankAccounts'?(f.accountCode||f.code):undefined};
    const result=await api('', 'POST',{action:'saveMaster',kind,item});
    setNotice(kind==='parties'?'تم تسجيل الطرف في سجل العملاء/الموردين.':'تم إضافة الكود بنجاح.');
    const parent=quickAddParent,target=quickAddTarget;
@@ -533,7 +533,7 @@ function FinanceModule(props){
   button('حفظ وإرسال للمراجعة',submitCash,'primary',busy)
  ));
  const renderBank=()=>panel('استيراد كشف حساب البنك','Excel أو CSV. المكررات تعرض للمراجع بدل ترحيلها تلقائيًا.',h('div',{className:'space-y-3'},
-  selectWithAdd('حساب البنك',bankAccount,v=>setBankAccount(v),[{value:'1120',label:'1120 — البنوك'},...rows(master.bankAccounts).map(x=>({value:x.accountCode||x.code,label:x.code+' — '+x.name}))],'bankAccounts',{accountCode:bankAccount}),
+  selectWithAdd('حساب البنك',bankAccount,v=>setBankAccount(v),[{value:'1120',label:'1120 — البنوك'},...rows(master.bankAccounts).map(x=>({value:x.accountCode||x.code,label:x.code+' — '+x.name}))],'bankAccounts',{code:bankAccount,accountCode:bankAccount}),
   h('label',{className:'block text-sm font-bold'},'ملف كشف الحساب',h('input',{type:'file',accept:'.xlsx,.xls,.csv',className:'block mt-1',onChange:e=>e.target.files&&e.target.files[0]&&parseBank(e.target.files[0])})),
   bankRows.length?table(['التاريخ','الوصف','المرجع','المبلغ','النوع'],bankRows.map((x,i)=>h('tr',{key:i},h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},x.description),h('td',{className:'p-2'},x.reference),h('td',{className:'p-2'},fmt(x.amount)),h('td',{className:'p-2'},x.direction==='in'?'وارد':'صادر')))):null,
   button('إرسال الحركات إلى المراجعة',sendBank,'primary',busy||!bankRows.length)
