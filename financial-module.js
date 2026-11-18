@@ -283,7 +283,26 @@ function FinanceModule(props){
   bankRows.length?table(['التاريخ','الوصف','المرجع','المبلغ','النوع'],bankRows.map((x,i)=>h('tr',{key:i},h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},x.description),h('td',{className:'p-2'},x.reference),h('td',{className:'p-2'},fmt(x.amount)),h('td',{className:'p-2'},x.direction==='in'?'وارد':'صادر')))):null,
   button('إرسال الحركات إلى المراجعة',sendBank,'primary',busy||!bankRows.length)
  ));
- const renderInventory=()=>panel('الأرصدة المخزنية ومتوسط التكلفة','الرصيد مفصل حسب الصنف والمخزن والإصدار. رصيد المجموعة هو مجموع الأصناف التابعة.',table(['الكود','الصنف','المجموعة','الإصدار','الوحدة','المخزن','الكمية','متوسط التكلفة','القيمة'],items.map(x=>{const b=master.inventory&&master.inventory.balances&&master.inventory.balances[x.warehouseCode||'default']&&master.inventory.balances[x.warehouseCode||'default'][x.code]||{};return h('tr',{key:x.code,className:'border-t'},h('td',{className:'p-2'},x.code),h('td',{className:'p-2'},x.name),h('td',{className:'p-2'},x.groupCode||'—'),h('td',{className:'p-2'},x.version||'—'),h('td',{className:'p-2'},x.unit||'—'),h('td',{className:'p-2'},x.warehouseCode||'default'),h('td',{className:'p-2'},fmt(b.quantity||0)),h('td',{className:'p-2'},fmt(b.averageCost||0)),h('td',{className:'p-2'},fmt(b.value||0)));}))));
+ const renderInventory = function() {
+  const stockRows = items.map(function(item) {
+   const warehouse=item.warehouseCode||'default';
+   const balancesByWarehouse=master.inventory&&master.inventory.balances||{};
+   const warehouseBalances=balancesByWarehouse[warehouse]||{};
+   const stock=warehouseBalances[item.code]||{};
+   return h('tr',{key:item.code,className:'border-t'},
+    h('td',{className:'p-2'},item.code),
+    h('td',{className:'p-2'},item.name),
+    h('td',{className:'p-2'},item.groupCode||'—'),
+    h('td',{className:'p-2'},item.version||'—'),
+    h('td',{className:'p-2'},item.unit||'—'),
+    h('td',{className:'p-2'},warehouse),
+    h('td',{className:'p-2'},fmt(stock.quantity||0)),
+    h('td',{className:'p-2'},fmt(stock.averageCost||0)),
+    h('td',{className:'p-2'},fmt(stock.value||0))
+   );
+  });
+  return panel('الأرصدة المخزنية ومتوسط التكلفة','الرصيد مفصل حسب الصنف والمخزن والإصدار. رصيد المجموعة هو مجموع الأصناف التابعة.',table(['الكود','الصنف','المجموعة','الإصدار','الوحدة','المخزن','الكمية','متوسط التكلفة','القيمة'],stockRows));
+ };
  const renderTax=()=>panel('تقارير الضرائب','ملخص الحسابات الضريبية من القيود المرحلة. نسب الضرائب الفعلية حسب إعدادات الشركة والتشريعات.',h('div',{className:'space-y-3'},
   h('div',{className:'grid md:grid-cols-3 gap-3'},metric('ضريبة مدخلات',fmt((balances['1410']||{}).debit-(balances['1410']||{}).credit)+' ج.م'),metric('ضريبة مخرجات',fmt((balances['2110']||{}).credit-(balances['2110']||{}).debit)+' ج.م'),metric('صافي الضريبة',fmt(((balances['2110']||{}).credit-(balances['2110']||{}).debit)-((balances['1410']||{}).debit-(balances['1410']||{}).credit))+' ج.م')),
   table(['الكود','اسم الضريبة','النوع','النسبة','بداية السريان'],rows(master.taxCodes).map(x=>h('tr',{key:x.code},h('td',{className:'p-2'},x.code),h('td',{className:'p-2'},x.name),h('td',{className:'p-2'},x.taxType),h('td',{className:'p-2'},x.rate),h('td',{className:'p-2'},x.effectiveFrom))))
