@@ -10,6 +10,8 @@ on:
       - "financial-module.js"
       - "tests/**"
       - "scripts/build-mobile.mjs"
+      - "scripts/build-web.mjs"
+      - "package.json"
       - "firebase-messaging-sw.js"
       - "index.html"
       - "wrangler.jsonc"
@@ -47,9 +49,10 @@ jobs:
           node --check financial-api.js
           node --check financial-module.js
           node --check scripts/build-mobile.mjs
+          node --check scripts/build-web.mjs
       - name: Run financial accounting tests
         run: node --test tests/financial-api.test.mjs
-      - name: Bundle Worker with Wrangler (dry run only)
+      - name: Build optimized web assets and bundle Worker (dry run only)
         run: npx --yes wrangler@4 deploy --dry-run --outdir .wrangler-dry-run
       - name: Validate Firebase Messaging service worker syntax
         run: node --check firebase-messaging-sw.js
