@@ -219,7 +219,11 @@ function FinanceModule(props){
  const partyTaxNumber=p=>p.taxNumber||p.taxRegistrationNumber||p.registrationNumber||p.registrationNo||p.vatNumber||p.taxId||'';
  const vatTypeForInvoice=type=>type==='purchase'?'vat_input':'vat_output';
  const defaultVatCodeForInvoice=type=>type==='purchase'?'VAT-IN-14':'VAT-OUT-14';
- const findVatCode=(type,rate)=>rows(master.taxCodes).find(x=>x.taxType===vatTypeForInvoice(type)&&Number(x.rate)===Number(rate))||rows(master.taxCodes).find(x=>x.code===defaultVatCodeForInvoice(type))||null;
+ const findVatCode=(type,rate)=>{
+  const eligible=rows(master.taxCodes).filter(x=>x.taxType===vatTypeForInvoice(type)&&x.active!==false);
+  if(rate!==undefined&&rate!==null&&String(rate)!=='')return eligible.find(x=>Number(x.rate)===Number(rate))||null;
+  return eligible.find(x=>x.code===defaultVatCodeForInvoice(type))||null;
+ };
  const partyName=p=>p.name||p.companyName||p.legalName||p.supplierName||p.vendorName||p.customerName||p.clientName||p.title||p.code||p.id;
  const nextCode=(prefix,list)=>{const used=new Set((list||[]).map(x=>String(x.code||x.id||'')));let i=1,code='';do{code=prefix+'-'+String(i++).padStart(3,'0');}while(used.has(code));return code;};
  const normalizeMatch=v=>String(v||'').toLowerCase().replace(/[\s\-_.،,]+/g,'').trim();
@@ -454,7 +458,7 @@ function FinanceModule(props){
    setInvoice(old=>Object.assign({},old,{
     type:nextType,number:x.number||old.number,date:x.date||old.date,partyId:matchedParty?(matchedParty.code||matchedParty.id):'',
     partyName:extractedParty||old.partyName,partyTaxNumber:matchedParty?partyTaxNumber(matchedParty):taxNumber||old.partyTaxNumber,currency:x.currency||old.currency,
-    taxCode:(findVatCode(nextType,x.taxRate==null?old.taxRate:x.taxRate)||{}).code||defaultVatCodeForInvoice(nextType),
+    taxCode:(findVatCode(nextType,x.taxRate==null?old.taxRate:x.taxRate)||{}).code||'',
     taxRate:x.taxRate==null?old.taxRate:String(x.taxRate),
     taxAmount:x.taxAmount==null?old.taxAmount:String(x.taxAmount),discount:x.discount==null?old.discount:String(x.discount),
     lines:extractedLines.length?extractedLines:old.lines
