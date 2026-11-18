@@ -20,6 +20,10 @@
     "LocalNotifications": {
       "smallIcon": "ic_stat_pest_notification",
       "iconColor": "#14517a"
+    },
+    "Badge": {
+      "persist": true,
+      "autoClear": false
     }
   }
 }
