@@ -32,6 +32,10 @@ const DEFAULT_STAFF_ACCOUNTS = [
  {code:"1220",name:"العهد لدى العاملين",type:"asset",nature:"debit",parentCode:"11",isControl:true,subledgerType:"employeeCustody"},
  {code:"1230",name:"السلف لدى العاملين",type:"asset",nature:"debit",parentCode:"11",isControl:true,subledgerType:"employeeAdvance"}
 ];
+const DEFAULT_PARTY_ADVANCE_ACCOUNTS = [
+ {code:"1240",name:"دفعات مقدمة للموردين",type:"asset",nature:"debit",parentCode:"11",isControl:true,subledgerType:"vendor"},
+ {code:"2130",name:"دفعات مقدمة من العملاء",type:"liability",nature:"credit",parentCode:"21",isControl:true,subledgerType:"customer"}
+];
 
 const DEFAULT_EXPENSE_ACCOUNTS = [
  {code:"65",name:"مصروفات الصيانة والإصلاحات",type:"expense",nature:"debit",isGroup:true,parentCode:"6"},
@@ -106,12 +110,14 @@ export const DEFAULT_FINANCE_ACCOUNTS = [
 {code:"1210",name:"العملاء",type:"asset",nature:"debit",parentCode:"11",isControl:true,subledgerType:"customer"},
 {code:"1220",name:"العهد لدى العاملين",type:"asset",nature:"debit",parentCode:"11",isControl:true,subledgerType:"employeeCustody"},
 {code:"1230",name:"السلف لدى العاملين",type:"asset",nature:"debit",parentCode:"11",isControl:true,subledgerType:"employeeAdvance"},
+{code:"1240",name:"دفعات مقدمة للموردين",type:"asset",nature:"debit",parentCode:"11",isControl:true,subledgerType:"vendor"},
 {code:"1300",name:"المخزون",type:"asset",nature:"debit",parentCode:"11",isControl:true},
 {code:"1410",name:"ضريبة القيمة المضافة - مدخلات",type:"asset",nature:"debit",parentCode:"11"},
 {code:"2",name:"الالتزامات",type:"liability",nature:"credit",isGroup:true},
 {code:"21",name:"الالتزامات المتداولة",type:"liability",nature:"credit",isGroup:true,parentCode:"2"},
 {code:"281",name:"الموردون",type:"liability",nature:"credit",parentCode:"21",isControl:true,subledgerType:"vendor"},
 {code:"2110",name:"ضريبة القيمة المضافة - مخرجات",type:"liability",nature:"credit",parentCode:"21"},
+{code:"2130",name:"دفعات مقدمة من العملاء",type:"liability",nature:"credit",parentCode:"21",isControl:true,subledgerType:"customer"},
 {code:"2120",name:"ضرائب الخصم والإضافة المستحقة",type:"liability",nature:"credit",parentCode:"21"},
 {code:"3",name:"حقوق الملكية",type:"equity",nature:"credit",isGroup:true},
 {code:"3100",name:"رأس المال والأرصدة الافتتاحية",type:"equity",nature:"credit",parentCode:"3"},
@@ -176,7 +182,7 @@ export async function handleFinancialRequest(ctx){
    if(profile.role==="admin"){
     const migrated={};
     const updates={};
-    for(const account of [...DEFAULT_EXPENSE_ACCOUNTS,...DEFAULT_STAFF_ACCOUNTS]){
+    for(const account of [...DEFAULT_EXPENSE_ACCOUNTS,...DEFAULT_STAFF_ACCOUNTS,...DEFAULT_PARTY_ADVANCE_ACCOUNTS]){
      if(chart[account.code])continue;
      const parent=account.parentCode?(chart[account.parentCode]||migrated[account.parentCode]):null;
      if(account.parentCode&&(!parent||!parent.isGroup))continue;
@@ -617,10 +623,21 @@ export async function handleFinancialRequest(ctx){
    let lines=[],custodyMirror=null,advanceRecord=null;
    if(movement==="customer_receipt"){
     if(!doc.partyId)throw new Error("اختر العميل قبل اعتماد التحصيل.");
-    lines=[{accountCode:cash,debit:amount,credit:0,description:doc.description},{accountCode:"1210",debit:0,credit:amount,description:doc.description,partyType:"customer",partyId:doc.partyId}];
+    const ledger=(await adminRead("partyLedger/customer/"+doc.partyId))||{};
+    const receivable=Object.values(ledger).reduce((sum,periodRows)=>sum+Object.values(periodRows||{}).reduce((part,row)=>part+(row.accountCode==="1210"?Number(row.debit||0)-Number(row.credit||0):0),0),0);
+    const settled=rnd(Math.min(amount,Math.max(0,receivable))),advance=rnd(amount-settled);
+    lines=[{accountCode:cash,debit:amount,credit:0,description:doc.description}];
+    if(settled)lines.push({accountCode:"1210",debit:0,credit:settled,description:"تحصيل مقابل مديونية العميل — "+doc.description,partyType:"customer",partyId:doc.partyId});
+    if(advance)lines.push({accountCode:"2130",debit:0,credit:advance,description:"دفعة مقدمة من العميل — "+doc.description,partyType:"customer",partyId:doc.partyId});
    }else if(movement==="supplier_payment"){
     if(!doc.partyId)throw new Error("اختر المورد قبل اعتماد السداد.");
-    lines=[{accountCode:"281",debit:amount,credit:0,description:doc.description,partyType:"vendor",partyId:doc.partyId},{accountCode:cash,debit:0,credit:amount,description:doc.description}];
+    const ledger=(await adminRead("partyLedger/vendor/"+doc.partyId))||{};
+    const payable=Object.values(ledger).reduce((sum,periodRows)=>sum+Object.values(periodRows||{}).reduce((part,row)=>part+(row.accountCode==="281"?Number(row.credit||0)-Number(row.debit||0):0),0),0);
+    const settled=rnd(Math.min(amount,Math.max(0,payable))),advance=rnd(amount-settled);
+    lines=[];
+    if(settled)lines.push({accountCode:"281",debit:settled,credit:0,description:"سداد مديونية المورد — "+doc.description,partyType:"vendor",partyId:doc.partyId});
+    if(advance)lines.push({accountCode:"1240",debit:advance,credit:0,description:"دفعة مقدمة للمورد — "+doc.description,partyType:"vendor",partyId:doc.partyId});
+    lines.push({accountCode:cash,debit:0,credit:amount,description:doc.description});
    }else if(movement==="other_receipt"){
     const offset=id(doc.offsetAccountCode);validate(offset,"revenue");
     lines=[{accountCode:cash,debit:amount,credit:0,description:doc.description},{accountCode:offset,debit:0,credit:amount,description:doc.description}];
@@ -700,7 +717,21 @@ export async function handleFinancialRequest(ctx){
      if(!account||account.isGroup||account.active===false||account.type!==expectedType)throw new Error("حساب بند الفاتورة غير صالح: "+accountCode);
     }
     lines.push(purchase?{accountCode:l.kind==="stock"?"1300":txt(l.accountCode||"6100",32),debit:value,credit:0,description:l.description,costCenterId:l.costCenterId||(projectCenter&&projectCenter.code)||"",projectCode:inv.projectCode||"",itemCode:l.kind==="stock"?l.itemCode:"",quantity:num(l.quantity),warehouseCode:l.warehouseCode||"default"}:{accountCode:l.kind==="stock"?"4100":txt(l.incomeAccountCode||"4200",32),debit:0,credit:value,description:l.description,costCenterId:l.costCenterId||(projectCenter&&projectCenter.code)||"",projectCode:inv.projectCode||"",itemCode:l.kind==="stock"?l.itemCode:"",quantity:num(l.quantity),warehouseCode:l.warehouseCode||"default"});}
-   if(purchase&&tot.tax)lines.push({accountCode:"1410",debit:tot.tax,credit:0,description:"ضريبة مدخلات",taxCode:inv.taxCode||"",taxType:inv.taxType||"vat_input"});if(!purchase&&tot.tax)lines.push({accountCode:"2110",debit:0,credit:tot.tax,description:"ضريبة مخرجات",taxCode:inv.taxCode||"",taxType:inv.taxType||"vat_output"});lines.push(purchase?{accountCode:"281",debit:0,credit:tot.total,description:"فاتورة مشتريات",partyType:"vendor",partyId}:{accountCode:"1210",debit:tot.total,credit:0,description:"فاتورة مبيعات",partyType:"customer",partyId});
+   if(purchase&&tot.tax)lines.push({accountCode:"1410",debit:tot.tax,credit:0,description:"ضريبة مدخلات",taxCode:inv.taxCode||"",taxType:inv.taxType||"vat_input"});
+   if(!purchase&&tot.tax)lines.push({accountCode:"2110",debit:0,credit:tot.tax,description:"ضريبة مخرجات",taxCode:inv.taxCode||"",taxType:inv.taxType||"vat_output"});
+   if(purchase){
+    lines.push({accountCode:"281",debit:0,credit:tot.total,description:"فاتورة مشتريات",partyType:"vendor",partyId});
+    const supplierLedger=(await adminRead("partyLedger/vendor/"+partyId))||{};
+    const supplierAdvance=Object.values(supplierLedger).reduce((sum,periodRows)=>sum+Object.values(periodRows||{}).reduce((part,row)=>part+(row.accountCode==="1240"?Number(row.debit||0)-Number(row.credit||0):0),0),0);
+    const applied=rnd(Math.min(tot.total,Math.max(0,supplierAdvance)));
+    if(applied)lines.push({accountCode:"281",debit:applied,credit:0,description:"تسوية دفعة مقدمة للمورد",partyType:"vendor",partyId},{accountCode:"1240",debit:0,credit:applied,description:"تسوية دفعة مقدمة للمورد",partyType:"vendor",partyId});
+   }else{
+    lines.push({accountCode:"1210",debit:tot.total,credit:0,description:"فاتورة مبيعات",partyType:"customer",partyId});
+    const customerLedger=(await adminRead("partyLedger/customer/"+partyId))||{};
+    const customerAdvance=Object.values(customerLedger).reduce((sum,periodRows)=>sum+Object.values(periodRows||{}).reduce((part,row)=>part+(row.accountCode==="2130"?Number(row.credit||0)-Number(row.debit||0):0),0),0);
+    const applied=rnd(Math.min(tot.total,Math.max(0,customerAdvance)));
+    if(applied)lines.push({accountCode:"2130",debit:applied,credit:0,description:"تسوية دفعة مقدمة من العميل",partyType:"customer",partyId},{accountCode:"1210",debit:0,credit:applied,description:"تسوية دفعة مقدمة من العميل",partyType:"customer",partyId});
+   }
    const bal=(await adminRead("inventory/balances"))||{};
    if(!purchase){for(const l of lines.filter(x=>x.itemCode)){const stock=bal[l.warehouseCode]&&bal[l.warehouseCode][l.itemCode]||{quantity:0,averageCost:0};if(Number(stock.quantity||0)<l.quantity)throw new Error("الرصيد غير كافٍ للصنف "+l.itemCode);const cost=rnd(l.quantity*Number(stock.averageCost||0));lines.push({accountCode:"5100",debit:cost,credit:0,description:"تكلفة مبيعات "+l.description,itemCode:l.itemCode,quantity:l.quantity,warehouseCode:l.warehouseCode,costCenterId:l.costCenterId||(projectCenter&&projectCenter.code)||"",projectCode:inv.projectCode||""},{accountCode:"1300",debit:0,credit:cost,description:"صرف مخزون "+l.description,itemCode:l.itemCode,quantity:l.quantity,warehouseCode:l.warehouseCode});}}
    const check=balance(lines);if(Math.abs(check.difference)>0.01)throw new Error("القيد الناتج غير متوازن: "+check.difference);
