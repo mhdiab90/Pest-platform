@@ -361,7 +361,7 @@ async function getFcmAccessToken(env) {
 }
 
 async function getFirebaseDatabaseAccessToken(env) {
-  return getServiceAccountAccessToken(env, "https://www.googleapis.com/auth/firebase.database", "database");
+  return getServiceAccountAccessToken(env, "https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/firebase.database", "database");
 }
 
 async function adminDatabaseRequest(path, accessToken, method, body) {
