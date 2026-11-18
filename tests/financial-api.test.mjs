@@ -25,6 +25,12 @@ async function adminPatch(updates) {
   return true;
 }
 async function adminReadRoot(path) { return read(path); }
+const adminPutRootCalls = [];
+async function adminPutRoot(path, value) {
+  adminPutRootCalls.push({ path, value });
+  write(path, value);
+  return true;
+}
 async function adminPatchRoot(updates) {
   for (const [path, value] of Object.entries(updates)) {
     write(path.startsWith("financial/") ? path.slice("financial/".length) : path, value);
@@ -41,7 +47,7 @@ async function invoke(method, path, body) {
     request:{method},
     url:new URL("https://example.test/finance" + (path || "")),
     body:body || {},
-    claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch,adminReadRoot,adminPatchRoot
+    claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch,adminReadRoot,adminPutRoot,adminPatchRoot
   });
 }
 
@@ -351,6 +357,25 @@ test("supplier linking, delegated invoice completion, staff custody and advances
   assert.equal(linked.linkedExisting,true);
   assert.equal(read("parties/VENDOR-LEGACY").taxRegistrationNumber,"TX-8899","legacy supplier tax registration is preserved");
   assert.equal(read("vendors/VENDOR-LEGACY").name,"Legacy Supplier","existing CRM supplier remains unchanged");
+
+  const newVendor=await invoke("POST","",{action:"saveMaster",kind:"parties",item:{
+    code:"VENDOR-NEW-01",name:"New Test Supplier",partyType:"vendor",taxNumber:"TX-NEW-01",
+    phone:"01012345678",email:"supplier@example.test",paymentTerms:"30 days"
+  }});
+  assert.equal(newVendor.success,true);
+  assert.equal(adminPutRootCalls[adminPutRootCalls.length-1].path,"vendors/VENDOR-NEW-01","supplier CRM record is saved with a path-scoped PUT, not a root PATCH");
+  assert.equal(read("vendors/VENDOR-NEW-01").name,"New Test Supplier");
+  assert.equal(read("vendors/VENDOR-NEW-01").taxRegistrationNumber,"TX-NEW-01");
+  assert.equal(read("parties/VENDOR-NEW-01").email,"supplier@example.test","the finance subledger master is synchronized");
+  assert.equal(newVendor.created,true);
+
+  const newClient=await invoke("POST","",{action:"saveMaster",kind:"parties",item:{
+    code:"CLIENT-NEW-01",name:"New Test Customer",partyType:"customer",taxNumber:"TX-CLIENT-01",mobile:"01098765432"
+  }});
+  assert.equal(newClient.success,true);
+  assert.equal(adminPutRootCalls[adminPutRootCalls.length-1].path,"clients/CLIENT-NEW-01","customer CRM record is saved directly to its own path");
+  assert.equal(read("clients/CLIENT-NEW-01").mobile,"01098765432");
+  assert.equal(read("parties/CLIENT-NEW-01").partyType,"customer");
 
   write("users/EMPLOYEE-01",{uid:"EMPLOYEE-01",status:"active",fullName:"Employee One",username:"employee.one",role:"user"});
   const draft=await invoke("POST","",{action:"saveInvoiceDraft",type:"purchase",date:"2026-11-18",number:"ASSIGN-001",partyId:"VENDOR-LEGACY",partyName:"Legacy Supplier",lines:[
