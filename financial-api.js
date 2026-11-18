@@ -398,8 +398,9 @@ export async function handleFinancialRequest(ctx){
   rootUpdates["financial/audit/"+uid("AUD")]={action:"complete_invoice_assignment",documentId:invoice.id,assignmentId,uid:claims.sub,createdAt:nowCompleted};
   if(assignment.taskId)rootUpdates["tasks/"+claims.sub+"/"+assignment.taskId+"/status"]="completed";
   rootUpdates["tasks/"+ownerUid+"/"+ownerTaskId]=returnedTask;
+  rootUpdates["financial/documents/"+invoice.id+"/returnedTaskId"]=ownerTaskId;
   await adminPatchRoot(rootUpdates);
-  return {success:true,id:invoice.id,assignmentId,status:"returned_to_creator",pushNotification:{recipientUid:ownerUid,eventType:"financialAssignment",eventId:assignmentId,content:{title:"اكتمل استكمال الفاتورة",body:"عاد المستند إلى مسوداتك للمراجعة والإرسال."}}};
+  return {success:true,id:invoice.id,assignmentId,status:"returned_to_creator",pushNotification:{recipientUid:ownerUid,eventType:"financialAssignmentReturned",eventId:invoice.id,content:{title:"اكتمل استكمال الفاتورة",body:"عاد المستند إلى مسوداتك للمراجعة والإرسال."}}};
  }
  if(action==="submitInvoice"){
   requirePermission(profile,"financial","add");if(!["purchase","sales"].includes(body.type))throw new Error("حدد هل الفاتورة مشتريات من مورد أم مبيعات لعميل.");const inv={...body,id:id(body.id||uid("INV")),type:"invoice",invoiceType:body.type,date:date(body.date),number:txt(body.number,120),partyId:txt(body.partyId,120),partyName:txt(body.partyName,180),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:now,createdBy:claims.sub},errors=[];
@@ -427,7 +428,7 @@ export async function handleFinancialRequest(ctx){
    }
   }
   const totals=invoiceTotals(inv);inv.totals=totals;inv.total=totals.total;inv.errors=errors;inv.fingerprint=await sha([inv.invoiceType,inv.partyId,inv.number,inv.date,totals.total.toFixed(2)].join("|").toLowerCase());const duplicate=await adminRead("documentFingerprints/"+inv.fingerprint);inv.warnings=duplicate?["مستند مشابه مسجل سابقًا: "+duplicate.documentId]:[];inv.status=errors.length?"needs_correction":"pending_review";
-  const u={};u["documents/"+inv.id]=inv;if(!errors.length)u["reviewQueue/"+inv.id]=reviewRecord(inv);u["audit/"+uid("AUD")]={action:"submit_invoice",documentId:inv.id,status:inv.status,uid:claims.sub,createdAt:now};await adminPatch(u);return {success:true,id:inv.id,status:inv.status,errors,warnings:inv.warnings,totals};
+  const u={};u["documents/"+inv.id]=inv;if(!errors.length)u["reviewQueue/"+inv.id]=reviewRecord(inv);u["audit/"+uid("AUD")]={action:"submit_invoice",documentId:inv.id,status:inv.status,uid:claims.sub,createdAt:now};await adminPatch(u);if(!errors.length&&previous&&previous.returnedTaskId&&adminPatchRoot){const taskUpdates={};taskUpdates["tasks/"+claims.sub+"/"+id(previous.returnedTaskId)+"/status"]="completed";taskUpdates["tasks/"+claims.sub+"/"+id(previous.returnedTaskId)+"/completedAt"]=now;taskUpdates["tasks/"+claims.sub+"/"+id(previous.returnedTaskId)+"/completedBy"]=claims.sub;await adminPatchRoot(taskUpdates);}return {success:true,id:inv.id,status:inv.status,errors,warnings:inv.warnings,totals};
  }
  if(action==="submitCash"){
   requirePermission(profile,"financial","add");
