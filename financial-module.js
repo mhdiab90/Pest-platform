@@ -394,8 +394,8 @@ function FinanceModule(props){
    field('الضريبة (قيمة ثابتة اختيارية)',invoice.taxAmount,function(v){setInvoice(function(old){return Object.assign({},old,{taxAmount:v});});},'number'),
    field('خصم الفاتورة',invoice.discount,function(v){setInvoice(function(old){return Object.assign({},old,{discount:v});});},'number'),
    h('div',{className:'md:col-span-3 flex flex-wrap items-end gap-3 p-3 border rounded-xl bg-blue-50/50'},
-    h('label',{className:'block text-sm font-bold flex-1 min-w-[220px]'},'صورة / PDF الفاتورة',h('input',{type:'file',accept:'image/jpeg,image/png,image/webp,application/pdf',onChange:function(e){const file=e.target.files&&e.target.files[0]||null;setInvoiceFile(file);setOcrSuggestions({party:null,items:[]});setNotice('');setError('');},className:'block mt-1 w-full text-sm'}),invoiceFile?h('small',{className:'block mt-1 text-slate-600 font-normal'},invoiceFile.name):null),
-    button(busy?'جارٍ قراءة الفاتورة...':'قراءة الفاتورة وملء الحقول',()=>readImage(invoiceFile),'primary',busy||!invoiceFile||!String(invoiceFile.type||'').startsWith('image/'))
+    h('label',{className:'block text-sm font-bold flex-1 min-w-[220px]'},'صورة / PDF الفاتورة',h('input',{type:'file',accept:'image/jpeg,image/png,image/webp,application/pdf',onChange:function(e){const file=e.target.files&&e.target.files[0]||null;setInvoiceFile(file);setOcrSuggestions({party:null,items:[]});setNotice('');setError('');},className:'block mt-1 w-full text-sm'}),invoiceFile?h('small',{className:'block mt-1 text-slate-600 font-normal'},invoiceFile.name,invoiceFile.type==='application/pdf'?' — PDF سيتم حفظه كمرفق ويحتاج إدخال البيانات يدويًا':''):null),
+    button(busy?'جارٍ قراءة الفاتورة...':'رفع الصورة وقراءتها وملء الحقول',()=>readImage(invoiceFile),'primary',busy||!invoiceFile||!String(invoiceFile.type||'').startsWith('image/'))
    )
   );
   const invoiceHead = panel('بيانات الفاتورة','صورة الفاتورة تساعد في استخراج البيانات. راجعها بنفسك قبل الإرسال للمراجعة.',headFields);
@@ -422,12 +422,23 @@ function FinanceModule(props){
    suggestionCards.push(h('div',{key:'suggest-'+item.index,className:'flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl border bg-amber-50'},h('div',null,h('b',null,'صنف غير مسجل: '+item.name),h('p',{className:'text-xs text-slate-600'},'الكود المقترح '+item.code+' — يمكنك أيضًا اختيار خدمة/مصروف بدلًا من الصنف المخزني')),button('تكويد الصنف واختياره',()=>openQuickAdd('items',code=>{setInvoice(old=>Object.assign({},old,{lines:old.lines.map((line,index)=>index===item.index?Object.assign({},line,{itemCode:code}):line)}));setOcrSuggestions(old=>Object.assign({},old,{items:old.items.filter(x=>x.index!==item.index)}));},{code:item.code,name:item.name,unit:'قطعة',warehouseCode:'default'}),'primary')));
   });
   const suggestionsPanel=suggestionCards.length?panel('اقتراحات التكويد بعد قراءة الفاتورة','هذه اقتراحات فقط. لا يتم إنشاء عميل أو مورد أو صنف إلا بعد ضغط المستخدم على زر التكويد.',h('div',{className:'space-y-2'},...suggestionCards)):null;
+  const previewRows=[];
+  invoice.lines.forEach(function(line){
+   const amount=Math.max(0,n(line.quantity)*n(line.unitPrice)-n(line.discount));
+   const accountCode=invoice.type==='purchase'?(line.kind==='stock'?'1300':line.accountCode||'6100'):(line.kind==='stock'?'4100':line.incomeAccountCode||'4200');
+   const account=accounts.find(a=>a.code===accountCode);
+   previewRows.push(h('tr',{key:'line-'+previewRows.length,className:'border-t'},h('td',{className:'p-2'},accountCode+' — '+(account&&account.name||'الحساب')),h('td',{className:'p-2'},line.description||'—'),h('td',{className:'p-2'},fmt(invoice.type==='purchase'?amount:0)),h('td',{className:'p-2'},fmt(invoice.type==='sales'?amount:0))));
+  });
+  if(invoice.type==='purchase'&&tax)previewRows.push(h('tr',{key:'tax',className:'border-t'},h('td',{className:'p-2'},'1410 — ضريبة مدخلات'),h('td',{className:'p-2'},'ضريبة الفاتورة'),h('td',{className:'p-2'},fmt(tax)),h('td',{className:'p-2'},fmt(0))));
+  if(invoice.type==='sales'&&tax)previewRows.push(h('tr',{key:'tax',className:'border-t'},h('td',{className:'p-2'},'2110 — ضريبة مخرجات'),h('td',{className:'p-2'},'ضريبة الفاتورة'),h('td',{className:'p-2'},fmt(0)),h('td',{className:'p-2'},fmt(tax))));
+  previewRows.push(h('tr',{key:'party',className:'border-t font-bold bg-slate-50'},h('td',{className:'p-2'},invoice.type==='purchase'?'281 — الموردون':'1210 — العملاء'),h('td',{className:'p-2'},invoice.partyName||'الطرف المختار'),h('td',{className:'p-2'},fmt(invoice.type==='sales'?total:0)),h('td',{className:'p-2'},fmt(invoice.type==='purchase'?total:0))));
+  const journalPreview=panel('المقترح المحاسبي قبل الحفظ','معاينة مبدئية للقيد. تكلفة المبيعات وصرف المخزون تُحسب من متوسط التكلفة عند اعتماد فاتورة البيع.',table(['الحساب','البيان','مدين','دائن'],previewRows));
   const totalsBox = h('div',{className:'flex flex-wrap items-center gap-4 p-3 bg-white border rounded-xl'},h('b',null,'الصافي: '+fmt(net)),h('b',null,'الضريبة: '+fmt(tax)),h('b',null,'الإجمالي: '+fmt(total)),button('حفظ وإرسال للمراجعة',submitInvoice,'primary',busy));
   const correctionRows=documents.filter(function(x){return x.type==='invoice'&&['needs_correction','draft'].includes(x.status);}).map(function(x){
    return h('tr',{key:x.id,className:'border-t'},h('td',{className:'p-2'},x.number||x.id),h('td',{className:'p-2'},x.partyName),h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},status(x.status)),h('td',{className:'p-2'},button('تعديل',function(){editDoc(x);},'muted')));
   });
   const correctionPanel = panel('فواتير تحتاج تصحيح','',table(['الفاتورة','الطرف','التاريخ','الحالة','إجراء'],correctionRows));
-  return h('div',{className:'space-y-4'},invoiceHead,suggestionsPanel,invoiceLines,totalsBox,correctionPanel);
+  return h('div',{className:'space-y-4'},invoiceHead,suggestionsPanel,invoiceLines,journalPreview,totalsBox,correctionPanel);
  };
  const renderMaster=kind=>{
   const opts=[['chartOfAccounts','حساب عام'],['costCenters','مركز تكلفة'],['itemGroups','مجموعة أصناف'],['items','صنف مخزني / إصدار'],['warehouses','مخزن'],['bankAccounts','حساب بنك'],['taxCodes','كود ضريبي']];
