@@ -1885,7 +1885,8 @@ function App(){
     });
     watchArray('cashCustodyNotifications:'+uid,'cashCustodyNotifications/'+uid,setCashCustodyNotifications,(eventType,item)=>{
       if(eventType==='added'&&item&&item.read!==true&&Number(item.createdAt||0)>=sessionStartedAtRef.current){
-        notifyUserOfIncoming({id:'cashCustody:'+item.id,type:'cashCustody',cashCustody:item});
+        const notificationType=item.type||'cashCustody';
+        notifyUserOfIncoming({id:'cashCustody:'+item.id,type:notificationType,cashCustody:item,assignment:item});
       }
     });
     // The child listeners above stay incremental; this one small initial read only
@@ -1960,8 +1961,9 @@ function App(){
   function notifyUserOfIncoming(item){
     playIncomingNotificationSound();
     const prefs=notificationPreferencesRef.current;
-    const title=item.type==='cashCustody'?(rtl?'حركة مالية جديدة تخص عهدتك':'New financial movement for your custody'):item.type==='message'?(rtl?'رسالة جديدة من '+(item.message.senderName||'مستخدم'):'New message from '+(item.message.senderName||'user')):(rtl?'طلب مستخدم جديد':'New user request');
-    const body=item.type==='cashCustody'?[item.cashCustody.senderName,money(item.cashCustody.amount)+' '+(item.cashCustody.currency||'EGP'),item.cashCustody.description].filter(Boolean).join(' · '):item.type==='message'?String(item.message.body||item.message.subject||'').slice(0,160):String(item.request.fullName||item.request.username||item.request.email||'');
+    const assignmentNotice=item.type==='financialAssignment'||item.type==='financialAssignmentReturned';
+    const title=assignmentNotice?(item.assignment.title||(item.type==='financialAssignment'?(rtl?'فاتورة محولة إليك':'Invoice assigned to you'):(rtl?'اكتمل استكمال الفاتورة':'Invoice completion returned'))):item.type==='cashCustody'?(rtl?'حركة مالية جديدة تخص عهدتك':'New financial movement for your custody'):item.type==='message'?(rtl?'رسالة جديدة من '+(item.message.senderName||'مستخدم'):'New message from '+(item.message.senderName||'user')):(rtl?'طلب مستخدم جديد':'New user request');
+    const body=assignmentNotice?(item.assignment.description||item.assignment.invoiceId||'') :item.type==='cashCustody'?[item.cashCustody.senderName,money(item.cashCustody.amount)+' '+(item.cashCustody.currency||'EGP'),item.cashCustody.description].filter(Boolean).join(' · '):item.type==='message'?String(item.message.body||item.message.subject||'').slice(0,160):String(item.request.fullName||item.request.username||item.request.email||'');
     if(window.PEST_NATIVE?.isNative&&typeof window.PEST_NATIVE.showForegroundNotification==='function'){
       window.PEST_NATIVE.showForegroundNotification({id:item.id,type:item.type,title,body})
         .catch(error=>console.warn('Android foreground notification:',error));
@@ -1971,7 +1973,12 @@ function App(){
       const popup=new Notification(title,{body,tag:'pest-'+item.id,renotify:true,silent:true});
       popup.onclick=()=>{
         window.focus();
-        if(item.type==='cashCustody'){
+        if(item.type==='financialAssignment'||item.type==='financialAssignmentReturned'){
+          setNotificationOpen(false);
+          if(item.type==='financialAssignment')window.PEST_PENDING_FINANCE_ASSIGNMENT_ID=item.assignment.assignmentId||item.assignment.id;
+          else window.PEST_PENDING_FINANCE_INVOICE_ID=item.assignment.invoiceId||'';
+          window.dispatchEvent(new Event('pest-finance-route'));navigateToTab('financial');
+        }else if(item.type==='cashCustody'){
           setNotificationOpen(false);setCashCustodyTargetUid(currentUser.uid);setCashCustodyBookScope(item.cashCustody.bookScope==='company'?'company':'personal');setCashCustodyCurrencyFilter(item.cashCustody.currency||'EGP');setTab('cashCustody');
         }else if(item.type==='message'){
           setAssistantOpen(false);setMessageShortcutOpen(true);setMessageShortcutSearch('');
@@ -4772,7 +4779,12 @@ function App(){
   const unreadMessages=unreadNotificationMessages.filter(m=>m.read!==true);
   const notificationItems=[
     ...unreadMessages.map(m=>({id:'message:'+m.id,type:'message',title:m.subject|| (rtl?'رسالة جديدة':'New message'),description:(rtl?'من: ':'From: ')+(m.senderName||m.senderUid||''),createdAt:Number(m.createdAt||0),message:m})),
-    ...cashCustodyNotifications.filter(n=>n.read!==true).map(n=>({id:'cashCustody:'+n.id,type:'cashCustody',title:rtl?'حركة مالية تخص عهدتك':'Financial movement for your custody',description:[n.senderName,money(n.amount)+' '+(n.currency||'EGP'),n.description].filter(Boolean).join(' · '),createdAt:Number(n.createdAt||0),cashCustody:n})),
+    ...cashCustodyNotifications.filter(n=>n.read!==true).map(n=>{
+      const type=n.type||'cashCustody';
+      const title=n.title||(type==='financialAssignment'?(rtl?'فاتورة محولة إليك للاستكمال':'Invoice assigned to you'):type==='financialAssignmentReturned'?(rtl?'اكتمل استكمال الفاتورة وعادت إليك':'Invoice completion returned to you'):(rtl?'حركة مالية تخص عهدتك':'Financial movement for your custody'));
+      const description=n.description||[n.senderName,n.amount!=null?money(n.amount)+' '+(n.currency||'EGP'):'',n.description].filter(Boolean).join(' · ');
+      return {id:'cashCustody:'+n.id,type,title,description,createdAt:Number(n.createdAt||0),cashCustody:n,assignment:n};
+    }),
     ...(isAdmin?pendingRequests.filter(r=>!seenRequestIds.includes(r.uid)).map(r=>({id:'request:'+r.uid,type:'request',title:rtl?'طلب مستخدم جديد':'New user request',description:(r.fullName||r.username||r.email||r.uid),createdAt:Number(r.createdAt||0),request:r})):[])
   ].sort((a,b)=>b.createdAt-a.createdAt);
 
@@ -4811,6 +4823,17 @@ function App(){
   function markRequestNotificationSeen(uid){setSeenRequestIds(old=>{const next=old.includes(uid)?old:[...old,uid];try{localStorage.setItem('pestSeenAdminRequests:'+currentUser.uid,JSON.stringify(next));}catch(err){console.warn('Could not save notification read state:',err);}return next;});}
   async function openNotification(item){
     setNotificationOpen(false);
+    if(item.type==='financialAssignment'||item.type==='financialAssignmentReturned'){
+      try{
+        const notification=item.assignment||item.cashCustody;
+        await db.ref('cashCustodyNotifications/'+currentUser.uid+'/'+notification.id).update({read:true,readAt:firebase.database.ServerValue.TIMESTAMP});
+        setCashCustodyNotifications(old=>old.map(n=>n.id===notification.id?{...n,read:true}:n));
+        if(item.type==='financialAssignment')window.PEST_PENDING_FINANCE_ASSIGNMENT_ID=notification.assignmentId||notification.id;
+        else window.PEST_PENDING_FINANCE_INVOICE_ID=notification.invoiceId||'';
+        window.dispatchEvent(new Event('pest-finance-route'));navigateToTab('financial');
+      }catch(err){alert(firebaseErrorMessage(err,tr));}
+      return;
+    }
     if(item.type==='cashCustody'){
       try{await db.ref('cashCustodyNotifications/'+currentUser.uid+'/'+item.cashCustody.id).update({read:true,readAt:firebase.database.ServerValue.TIMESTAMP});setCashCustodyNotifications(old=>old.map(n=>n.id===item.cashCustody.id?{...n,read:true}:n));setCashCustodyTargetUid(currentUser.uid);setCashCustodyBookScope(item.cashCustody.bookScope==='company'?'company':'personal');setCashCustodyCurrencyFilter(item.cashCustody.currency||'EGP');setCashCustodySearch('');navigateToTab('cashCustody');}
       catch(err){alert(firebaseErrorMessage(err,tr));}
