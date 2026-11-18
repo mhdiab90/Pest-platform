@@ -20,14 +20,14 @@ function extractEtaInvoiceParties(value) {
 }
 
 function extractInternalInvoiceNumber(value) {
-  const source = String(value || "").replace(/[\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]/g, "");
-  const marker = /\\bInternal\\s*id\\s*[:：]\\s*/i.exec(source);
+  const source = String(value || "").replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "");
+  const marker = /\bInternal\s*id\s*[:：]\s*/i.exec(source);
   if (!marker) return "";
   let candidate = source.slice(marker.index + marker[0].length);
-  candidate = candidate.split(/\\r?\\n/, 1)[0];
-  const nextField = /\\s+(?=(?:Document\\s+Type(?:\\s+Version)?|Date\\s+Time\\s+Issued|Issue\\s+Date(?:\\s+Time)?|Invoice\\s+Date|Issuer\\s*\\(\\s*From\\s*\\)|Recipients?\\s*\\(\\s*To\\s*\\)|Seller\\b|Buyer\\b|Internal\\s*id\\s*[:：]|Total\\s+(?:Sales\\s+)?Amount|Taxable\\s+Items|Items\\s+Count|Payment\\s+Method|Signature\\b|QR\\s+Code)\\b)/i.exec(candidate);
+  candidate = candidate.split(/\r?\n/, 1)[0];
+  const nextField = /\s+(?=(?:Document\s+Type(?:\s+Version)?|Date\s+Time\s+Issued|Issue\s+Date(?:\s+Time)?|Invoice\s+Date|Issuer\s*\(\s*From\s*\)|Recipients?\s*\(\s*To\s*\)|Seller\b|Buyer\b|Internal\s*id\s*[:：]|Total\s+(?:Sales\s+)?Amount|Taxable\s+Items|Items\s+Count|Payment\s+Method|Signature\b|QR\s+Code)\b)/i.exec(candidate);
   if (nextField) candidate = candidate.slice(0, nextField.index);
-  return candidate.replace(/^\\s*[:：#-]+\\s*/, "").replace(/[\\s|;,]+$/, "").replace(/\\s+/g, " ").trim().slice(0, 120);
+  return candidate.replace(/^\s*[:：#-]+\s*/, "").replace(/[\s|;,]+$/, "").replace(/\s+/g, " ").trim().slice(0, 120);
 }
 
 const DEFAULT_VAT_CODES = [
