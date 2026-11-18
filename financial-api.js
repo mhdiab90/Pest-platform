@@ -94,7 +94,7 @@ export async function handleFinancialRequest(ctx){
  }
  if(action==="saveMaster"){
   requirePermission(profile,"financial","add");const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties"];if(!allowed.includes(kind))throw new Error("Unsupported master data type.");const item=body.item||{},code=id(item.code);if(!txt(item.name,180))throw new Error("الاسم مطلوب");const existingCode=await adminRead(kind+"/"+code);if(existingCode)throw new Error("هذا الكود مسجل بالفعل. اختر كودًا آخر حتى لا يتم استبدال بياناته.");
-  if(kind==="chartOfAccounts"){if(!["asset","liability","equity","revenue","expense"].includes(item.type)||!["debit","credit"].includes(item.nature))throw new Error("نوع أو طبيعة الحساب غير صحيحة");if(item.isGroup&&item.allowPosting)throw new Error("الحساب التجميعي لا يقبل الترحيل");if(item.parentCode){const p=await adminRead("chartOfAccounts/"+id(item.parentCode));if(!p||!p.isGroup)throw new Error("الحساب الأب يجب أن يكون مجموعة");}}if(kind==="items"&&item.groupCode){const group=await adminRead("itemGroups/"+id(item.groupCode));if(!group)throw new Error("مجموعة الصنف غير موجودة. أضف المجموعة أولاً.");}
+  if(kind==="chartOfAccounts"){if(!["asset","liability","equity","revenue","expense"].includes(item.type)||!["debit","credit"].includes(item.nature))throw new Error("نوع أو طبيعة الحساب غير صحيحة");if(item.isGroup&&item.allowPosting)throw new Error("الحساب التجميعي لا يقبل الترحيل");if(item.parentCode){const p=await adminRead("chartOfAccounts/"+id(item.parentCode));if(!p||!p.isGroup)throw new Error("الحساب الأب يجب أن يكون مجموعة");}}if(kind==="items"&&item.groupCode){const group=await adminRead("itemGroups/"+id(item.groupCode));if(!group)throw new Error("مجموعة الصنف غير موجودة. أضف المجموعة أولاً.");}if(kind==="bankAccounts"){const account=await adminRead("chartOfAccounts/"+id(item.accountCode||code));if(!account||account.isGroup||account.active===false)throw new Error("اربط حساب البنك بحساب محاسبي نشط وقابل للترحيل في دليل الحسابات.");}
   if(kind==="parties"){
    if(!["customer","vendor"].includes(item.partyType))throw new Error("حدد نوع الطرف: عميل أو مورد.");
    const root= item.partyType==="customer"?"clients":"vendors";
@@ -132,6 +132,7 @@ export async function handleFinancialRequest(ctx){
     if(row.isGroup===true||String(row.isGroup).toLowerCase()==="true"||String(row.isGroup)==="1")row.isGroup=true;else row.isGroup=false;
    }
    if(kind==="items"&&row.groupCode&&!groups[row.groupCode])throw new Error("الصف "+(i+2)+": مجموعة الصنف "+row.groupCode+" غير موجودة.");
+   if(kind==="bankAccounts"){const account=await adminRead("chartOfAccounts/"+id(row.accountCode||code));if(!account||account.isGroup||account.active===false)throw new Error("الصف "+(i+2)+": حساب البنك المحاسبي غير موجود أو غير قابل للترحيل.");}
    if(kind==="taxCodes"&&!["vat_input","vat_output","withholding","addition"].includes(row.taxType))throw new Error("الصف "+(i+2)+": نوع الضريبة غير صحيح.");
    const saved={...row,code,name,active:row.active!==false,createdAt:now,createdBy:claims.sub,updatedAt:now,updatedBy:claims.sub};
    if(kind==="parties")saved.partyType=body.partyType;
