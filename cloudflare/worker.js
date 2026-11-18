@@ -2578,7 +2578,7 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     if(!response.ok)throw new Error("Could not download file from Google Drive (HTTP "+response.status+").");
     const mime=["application/pdf","image/jpeg","image/png","image/webp","text/plain","text/csv"].includes(attachment.mimeType)?attachment.mimeType:"application/octet-stream";
     const inline=mime!=="application/octet-stream",safeName=attachment.fileName.replace(/[\r\n"]/g,"_");
-    return new Response(response.body,{status:200,headers:{"Content-Type":mime,"Content-Disposition":(inline?"inline":"attachment")+"; filename*=UTF-8''"+encodeURIComponent(safeName),"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'none'; sandbox","Access-Control-Allow-Origin":ALLOWED_ORIGIN,"Vary":"Origin"}});
+    return new Response(response.body,{status:200,headers:{"Content-Type":mime,"Content-Disposition":(inline?"inline":"attachment")+"; filename*=UTF-8''"+encodeURIComponent(safeName),"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'none'; sandbox",...corsHeaders(request.headers.get("Origin")||"")}});
   }
   if(url.pathname==="/attachments"&&request.method==="DELETE"){
     const type=cleanText(body.entityType,24),entityId=cleanText(body.entityId,120),id=safeSegment(body.id,"attachment id");
