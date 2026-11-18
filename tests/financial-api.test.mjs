@@ -371,6 +371,54 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
 
 });
 
+test("review inbox exposes newly submitted invoice details and removes invalid resubmissions without losing attachments", async () => {
+  await invoke("GET","?resource=bootstrap");
+  write("vendors/VENDOR-REVIEW-01",{code:"VENDOR-REVIEW-01",name:"Review Supplier",partyType:"vendor"});
+  write("parties/VENDOR-REVIEW-01",{code:"VENDOR-REVIEW-01",name:"Review Supplier",partyType:"vendor"});
+  const payload={
+    action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-REVIEW-FLOW-01",
+    partyId:"VENDOR-REVIEW-01",partyName:"Review Supplier",currency:"EGP",taxCode:"VAT-IN-14",taxRate:14,
+    lines:[{description:"Maintenance service",kind:"service",accountCode:"6100",quantity:1,unitPrice:100}]
+  };
+  const submitted=await invoke("POST","",payload);
+  assert.equal(submitted.status,"pending_review");
+  const inbox=await invoke("GET","?resource=review");
+  const queued=inbox.items[submitted.id];
+  assert.ok(queued,"a valid submitted invoice must be visible in the review queue");
+  assert.equal(queued.invoiceType,"purchase");
+  assert.equal(queued.createdByName,"Finance Test");
+  assert.equal(queued.total,114);
+  const detail=await invoke("GET","?resource=document&id="+encodeURIComponent(submitted.id));
+  assert.equal(detail.item.id,submitted.id);
+  assert.equal(detail.item.lines[0].description,"Maintenance service");
+
+  const before=read("documents/"+submitted.id);
+  const attachment={id:"ATT-REVIEW-01",fileName:"invoice-original.pdf",mimeType:"application/pdf",size:4096};
+  write("documents/"+submitted.id+"/attachments/"+attachment.id,attachment);
+  write("documents/"+submitted.id+"/attachmentUploadStatus","pending");
+  write("documents/"+submitted.id+"/attachmentFileName","invoice-original.pdf");
+  write("documents/"+submitted.id+"/status","needs_correction");
+  write("documents/"+submitted.id+"/errors",["حدد الصنف المخزني"]);
+  write("reviewQueue/"+submitted.id,queued);
+
+  const invalid=await invoke("POST","",{...payload,id:submitted.id,lines:[]});
+  assert.equal(invalid.status,"needs_correction");
+  assert.equal(read("reviewQueue/"+submitted.id),null,"an invalid resubmission must be removed from the approval queue");
+  assert.equal(read("documents/"+submitted.id+"/status"),"needs_correction");
+  assert.equal(read("documents/"+submitted.id+"/createdBy"),before.createdBy);
+  assert.equal(read("documents/"+submitted.id+"/createdAt"),before.createdAt);
+  assert.equal(read("documents/"+submitted.id+"/attachments/"+attachment.id).fileName,"invoice-original.pdf","resubmission must preserve the original scanned invoice");
+  assert.equal(read("documents/"+submitted.id+"/attachmentUploadStatus"),"pending","resubmission must preserve a pending attachment retry");
+  const afterInvalid=await invoke("GET","?resource=review");
+  assert.equal(afterInvalid.items[submitted.id],undefined,"documents that need correction must not masquerade as awaiting approval");
+
+  const repaired=await invoke("POST","",{...payload,id:submitted.id});
+  assert.equal(repaired.status,"pending_review");
+  assert.ok(read("reviewQueue/"+submitted.id),"a corrected invoice returns to review");
+  assert.equal(read("documents/"+submitted.id+"/attachments/"+attachment.id).fileName,"invoice-original.pdf");
+  assert.equal(read("documents/"+submitted.id+"/attachmentUploadStatus"),"pending");
+});
+
 test("invoice remains in review when its Drive attachment upload is pending", async () => {
   await invoke("GET","?resource=bootstrap");
   write("vendors/VENDOR-ATTACH-01",{code:"VENDOR-ATTACH-01",name:"Attachment Supplier",partyType:"vendor"});
@@ -453,9 +501,23 @@ test("supplier linking, delegated invoice completion, staff custody and advances
   const custody=await invoke("POST","",{action:"submitCash",movementType:"employee_custody",date:"2026-11-18",amount:500,currency:"EGP",description:"Employee cash custody",employeeUid:"EMPLOYEE-01",cashAccountCode:"1110"});
   const custodyPosted=await invoke("POST","",{action:"review",id:custody.id,decision:"approve",reason:"custody handover"});
   assert.equal(custodyPosted.status,"posted");
+  assert.equal(read("documents/"+custody.id).status,"posted","employee custody approval must finalize its source document");
+  assert.equal(read("documents/"+custody.id).journalId,custodyPosted.journalId,"the source document must link to the one posted journal");
+  assert.equal(read("reviewQueue/"+custody.id),null,"employee custody must be removed from the review queue in the same transaction");
+  assert.equal(read("sourceLocks/cash_"+custody.id).journalId,custodyPosted.journalId,"the source lock must point at the posted journal");
   const custodyLines=Object.values(read("partyLedger/employeeCustody/EMPLOYEE-01/2026-11")||{});
   assert.ok(custodyLines.some(x=>x.accountCode==="1220"&&x.debit===500),"employee custody is posted to control account 1220 and staff subledger");
   assert.ok(Object.keys(read("cashCustodies/EMPLOYEE-01/transactions")||{}).length>0,"custody handover appears in the existing personal cash-custody book");
+  const custodyRowsAfterPost=Object.values(read("partyLedger/employeeCustody/EMPLOYEE-01/2026-11")||{}).length;
+  write("documents/"+custody.id+"/status","pending_review");
+  write("reviewQueue/"+custody.id,{id:custody.id,status:"pending_review",type:"cash"});
+  const reconciled=await invoke("POST","",{action:"review",id:custody.id,decision:"approve",reason:"recover legacy partial posting"});
+  assert.equal(reconciled.status,"posted");
+  assert.equal(reconciled.reconciled,true,"a legacy source lock repairs a stale review state instead of reposting");
+  assert.equal(reconciled.journalId,custodyPosted.journalId);
+  assert.equal(read("documents/"+custody.id).status,"posted");
+  assert.equal(read("reviewQueue/"+custody.id),null);
+  assert.equal(Object.values(read("partyLedger/employeeCustody/EMPLOYEE-01/2026-11")||{}).length,custodyRowsAfterPost,"reconciliation must not duplicate party-ledger lines");
 
   const advance=await invoke("POST","",{action:"submitCash",movementType:"employee_advance",date:"2026-11-18",amount:400,currency:"EGP",description:"Employee advance",employeeUid:"EMPLOYEE-01",cashAccountCode:"1110"});
   const advancePosted=await invoke("POST","",{action:"review",id:advance.id,decision:"approve",reason:"advance issue"});
