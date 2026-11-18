@@ -1,4 +1,5 @@
 import { mkdir, copyFile, access, readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { build, transform } from 'esbuild';
 
 const required = ['index.html', 'pest-crm-module.js', 'financial-module.js', 'financial-api.js', 'capacitor-bridge.mjs', 'firebase-messaging-sw.js', 'assets/pest-logo-horizontal.webp', 'assets/icon.png'];
@@ -24,8 +25,10 @@ if (babelScripts.length !== 1) {
 const compiled = await transform(babelScripts[0][1], {
   loader: 'jsx', target: 'es2020', minify: true, legalComments: 'none'
 });
-await writeFile('www/app.js', compiled.code, 'utf8');
-html = html.replace(babelScripts[0][0], '<script defer src="./app.js"></script>');
+const appHash = createHash('sha256').update(compiled.code).digest('hex').slice(0, 16);
+const appBundleName = 'app.' + appHash + '.js';
+await writeFile('www/' + appBundleName, compiled.code, 'utf8');
+html = html.replace(babelScripts[0][0], '<script defer src="./' + appBundleName + '"></script>');
 
 // Defer external scripts while preserving their document order.
 html = html.replace(/<script\b([^>]*?)src="([^"]+)"([^>]*)><\/script>/gi, (all, before, src, after) => {
@@ -60,4 +63,4 @@ await build({
   format: 'iife', target: ['es2020'], outfile: 'www/capacitor-bridge.js',
   sourcemap: false, minify: true
 });
-console.log('Optimized mobile assets: JSX precompiled, scripts deferred in order, Babel runtime removed.');
+console.log('Optimized mobile assets: JSX precompiled into ' + appBundleName + ', scripts deferred in order, Babel runtime removed.');

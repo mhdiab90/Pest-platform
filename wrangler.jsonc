@@ -33,12 +33,12 @@
     ]
   },
   "assets": {
-    "directory": ".",
+    "directory": "web-dist",
     "not_found_handling": "single-page-application",
     "run_worker_first": [
       "/health",
       "/push/*",
-      "/mobile-updates/*", // OTA manifest is resolved by the Worker from GitHub Release metadata.
+      "/mobile-updates/*",
       "/agent",
       "/ask",
       "/execute",

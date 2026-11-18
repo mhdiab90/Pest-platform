@@ -6,7 +6,8 @@
   "scripts": {
     "build:mobile": "node scripts/build-mobile.mjs",
     "check:crm": "node --check pest-crm-module.js",
-    "check:bridge": "node --check capacitor-bridge.mjs"
+    "check:bridge": "node --check capacitor-bridge.mjs",
+    "build:web": "node scripts/build-web.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.0",
