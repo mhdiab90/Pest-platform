@@ -152,7 +152,8 @@ function FinanceModule(props){
   if(!assignment)return;
   setAssignmentBusy(true);setError('');
   try{
-   const lines=assignmentLines.map((line,index)=>({index,kind:line.kind,itemCode:line.itemCode||'',groupCode:line.groupCode||'',warehouseCode:line.warehouseCode||'default',accountCode:line.accountCode||'',itemType:line.itemType||'stock'}));
+   const purchase=assignment&&assignment.invoice&&assignment.invoice.invoiceType==='purchase';
+   const lines=assignmentLines.map((line,index)=>({index,kind:line.kind,itemCode:line.itemCode||'',groupCode:line.groupCode||'',warehouseCode:line.warehouseCode||'default',accountCode:purchase?(line.accountCode||''):(line.incomeAccountCode||''),itemType:line.itemType||'stock'}));
    const result=await api('', 'POST',{action:'completeInvoiceAssignment',assignmentId:assignment.id,lines});
    setNotice('تم استكمال التصنيف وإرجاع المسودة إلى المستخدم الأصلي للمراجعة والإرسال.');
    setSelectedAssignmentId('');setAssignmentLines([]);
@@ -668,7 +669,7 @@ function FinanceModule(props){
    const change=(key,value)=>setAssignmentLines(old=>old.map((x,i)=>i===index?Object.assign({},x,{[key]:value}):x));
    return h('div',{key:index,className:'grid grid-cols-1 md:grid-cols-12 gap-2 rounded-xl border bg-slate-50 p-3'},
     h('div',{className:'md:col-span-3'},field('وصف البند',line.description||'',value=>change('description',value))),
-    h('div',{className:'md:col-span-2'},select('تصنيف البند',line.kind||'stock',value=>change('kind',value),[{value:'stock',label:'بضاعة / مخزون'},{value:'service',label:'مصروف / خدمة'}])),
+    h('div',{className:'md:col-span-2'},select('تصنيف البند',line.kind||'',value=>change('kind',value),[{value:'',label:'حدد تصنيف البند'},{value:'stock',label:'بضاعة / مخزون'},{value:'service',label:'مصروف / خدمة'}])),
     line.kind==='service'
      ?h('div',{className:'md:col-span-4'},selectWithAdd('حساب '+(purchase?'المصروف':'الإيراد'),purchase?(line.accountCode||''):(line.incomeAccountCode||''),value=>change(purchase?'accountCode':'incomeAccountCode',value),accountOptions,'chartOfAccounts',{type:expenseType,nature:purchase?'debit':'credit',parentCode:purchase?'6':'4'}))
      :h('div',{className:'md:col-span-3'},selectWithAdd('كود الصنف',line.itemCode||'',value=>change('itemCode',value),itemOptions,'items',{code:nextCode('ITM',items),name:line.description||'',itemType:'stock',unit:line.unit||'قطعة',warehouseCode:'default'})),
