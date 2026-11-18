@@ -151,22 +151,56 @@ function FinanceModule(props){
   setBusy(true);setError('');try{const payload=Object.assign({},journal);const result=await api('', 'POST',Object.assign({action:'submitJournal'},payload));setNotice(result.status==='pending_review'?'تم إرسال القيد إلى المراجعة':'تم حفظ القيد مع أخطاء: '+(result.errors||[]).join('، '));if(result.status==='pending_review')setJournal({id:'',date:today(),description:'',reference:'',currency:'EGP',lines:[{accountCode:'6100',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''},{accountCode:'1110',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''}]});else setJournal(o=>Object.assign({},o,{id:result.id}));await refresh();}catch(e){setError(e.message||String(e));}finally{setBusy(false);}
  };
  const submitInvoice=async()=>{
-  setBusy(true);setError('');try{
-   const party=parties.find(x=>(x.code||x.id)===invoice.partyId);
+  setBusy(true);setError('');
+  try{
+   const party=parties.find(x=>String(x.code||x.id)===String(invoice.partyId));
    const payload=Object.assign({},invoice,{partyName:party?partyName(party):invoice.partyName,lines:invoice.lines.map(x=>Object.assign({},x,{quantity:n(x.quantity),unitPrice:n(x.unitPrice),discount:n(x.discount)}))});
    const result=await api('', 'POST',Object.assign({action:'submitInvoice'},payload));
-   if(invoiceFile){try{const uploadResult=await upload(invoiceFile,result.id);const attachment=uploadResult.attachment||uploadResult;await api('', 'POST',{action:'addAttachment',documentId:result.id,attachment});}catch(e){setNotice('تم تسجيل الفاتورة لكن تعذر رفع المرفق أو ربطه: '+e.message);}}
-   setNotice(result.status==='pending_review'?'تم إرسال الفاتورة للمراجعة':('الفاتورة محفوظة وتحتاج تعديل: '+(result.errors||[]).join('، ')));
-   if(result.status==='pending_review'){setInvoice({id:'',type:invoice.type,date:today(),number:'',partyId:'',partyName:'',currency:'EGP',taxRate:'',taxAmount:'',discount:'',projectCode:'',lines:[{description:'',kind:'stock',itemCode:'',quantity:'1',unit:'قطعة',unitPrice:'',discount:'',accountCode:'6100',incomeAccountCode:'4100',costCenterId:'',warehouseCode:'default'}]});setInvoiceFile(null);}
-   else setInvoice(o=>Object.assign({},o,{id:result.id}));
+   let attachmentError='';
+   if(invoiceFile){
+    try{const uploadResult=await upload(invoiceFile,result.id);const attachment=uploadResult.attachment||uploadResult;await api('', 'POST',{action:'addAttachment',documentId:result.id,attachment});}
+    catch(e){attachmentError=e.message||String(e);}
+   }
+   if(attachmentError)setError('تم حفظ بيانات الفاتورة، لكن تعذر رفع الصورة أو ربطها: '+attachmentError);
+   else setNotice(result.status==='pending_review'?'تم حفظ الفاتورة وإرسالها للمراجعة. سيتم إنشاء وترحيل القيد بعد الاعتماد.':('الفاتورة محفوظة وتحتاج تصحيح: '+(result.errors||[]).join('، ')));
+   if(result.status==='pending_review'){
+    setInvoice({id:'',type:invoice.type,date:today(),number:'',partyId:'',partyName:'',currency:'EGP',taxRate:'',taxAmount:'',discount:'',projectCode:'',lines:[{description:'',kind:'stock',itemCode:'',quantity:'1',unit:'قطعة',unitPrice:'',discount:'',accountCode:'6100',incomeAccountCode:'4100',costCenterId:'',warehouseCode:'default'}]});
+    setInvoiceFile(null);setInvoicePartySearch('');setOcrSuggestions({party:null,items:[]});
+   }else setInvoice(o=>Object.assign({},o,{id:result.id}));
    await refresh();
-  }catch(e){setError(e.message||String(e));}finally{setBusy(false);}
+  }catch(e){setError(e.message||String(e));}
+  finally{setBusy(false);}
  };
  const readImage=async file=>{
-  setInvoiceFile(file);if(!file||!file.type.startsWith('image/'))return;
-  setBusy(true);setError('');
-  try{const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=reject;reader.readAsDataURL(file);});const r=await api('', 'POST',{action:'ocr',image:data});const x=r.extracted||{};setInvoice(o=>Object.assign({},o,{type:x.type==='sales'?'sales':o.type,number:x.number||o.number,date:x.date||o.date,partyName:x.partyName||o.partyName,taxAmount:x.taxAmount==null?o.taxAmount:String(x.taxAmount),lines:Array.isArray(x.items)&&x.items.length?x.items.map(y=>({description:y.description||'',kind:'stock',itemCode:'',quantity:String(y.quantity||1),unit:y.unit||'قطعة',unitPrice:String(y.unitPrice||''),discount:String(y.discount||''),accountCode:'6100',incomeAccountCode:'4100',costCenterId:'',warehouseCode:'default'})):o.lines}));setNotice('تم استخراج بيانات مبدئية. راجع كل بند واربطه بكود مخزني أو اختره كخدمة.');}
-  catch(e){setError('تعذرت قراءة الصورة آليًا: '+e.message+' ويمكنك استكمال البيانات يدويًا.');}finally{setBusy(false);}
+  const selectedFile=file||invoiceFile;
+  if(!selectedFile) {setError('اختر صورة الفاتورة أولاً.');return;}
+  if(!String(selectedFile.type||'').startsWith('image/')) {setError('القراءة الآلية متاحة لصور JPG وPNG وWebP. يمكن إرفاق PDF مع إدخال بياناته يدويًا.');return;}
+  setBusy(true);setError('');setNotice('');
+  try{
+   const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=reject;reader.readAsDataURL(selectedFile);});
+   const result=await api('', 'POST',{action:'ocr',image:data}),x=result.extracted||{};
+   const nextType=x.type==='sales'?'sales':x.type==='purchase'?'purchase':invoice.type;
+   const targetPartyType=nextType==='purchase'?'vendor':'customer',partyList=targetPartyType==='vendor'?allVendors:allClients;
+   const extractedParty=String(x.partyName||'').trim(),taxNumber=String(x.taxNumber||'').trim();
+   const matchedParty=partyList.find(p=>taxNumber&&String(p.taxNumber||'').trim()===taxNumber)||partyList.find(p=>normalizeMatch(partyName(p))===normalizeMatch(extractedParty));
+   const unmatchedItems=[];
+   const extractedLines=Array.isArray(x.items)?x.items.map((line,index)=>{
+    const description=String(line.description||'').trim();
+    const matchedItem=items.find(item=>normalizeMatch(item.code)===normalizeMatch(line.itemCode)||normalizeMatch(item.name)===normalizeMatch(description));
+    if(description&&!matchedItem)unmatchedItems.push({index,name:description,code:nextCode('ITM',items)});
+    return {description,kind:'stock',itemCode:matchedItem?matchedItem.code:'',quantity:String(line.quantity||1),unit:line.unit||'قطعة',unitPrice:String(line.unitPrice==null?'':line.unitPrice),discount:String(line.discount||''),accountCode:'6100',incomeAccountCode:'4100',costCenterId:'',warehouseCode:'default'};
+   }):[];
+   setInvoice(old=>Object.assign({},old,{
+    type:nextType,number:x.number||old.number,date:x.date||old.date,partyId:matchedParty?(matchedParty.code||matchedParty.id):'',
+    partyName:extractedParty||old.partyName,currency:x.currency||old.currency,taxRate:x.taxRate==null?old.taxRate:String(x.taxRate),
+    taxAmount:x.taxAmount==null?old.taxAmount:String(x.taxAmount),discount:x.discount==null?old.discount:String(x.discount),
+    lines:extractedLines.length?extractedLines:old.lines
+   }));
+   setInvoicePartySearch(extractedParty);
+   setOcrSuggestions({party:extractedParty&&!matchedParty?{name:extractedParty,taxNumber,partyType:targetPartyType,code:nextCode(targetPartyType==='vendor'?'VND':'CUS',partyList)}:null,items:unmatchedItems});
+   setNotice('اكتملت القراءة الأولية. راجع التاريخ ورقم الفاتورة والمبالغ، واختر الأكواد الموجودة أو وافق على تكويد المقترحات قبل الحفظ.');
+  }catch(e){setError('تعذرت قراءة الصورة آليًا: '+e.message+' ويمكنك استكمال البيانات يدويًا.');}
+  finally{setBusy(false);}
  };
  const reviewAction=async(decision)=>{
   if(!selected)return;setBusy(true);setError('');
@@ -268,7 +302,10 @@ function FinanceModule(props){
    field('نسبة الضريبة %',invoice.taxRate,function(v){setInvoice(function(old){return Object.assign({},old,{taxRate:v,taxAmount:''});});},'number'),
    field('الضريبة (قيمة ثابتة اختيارية)',invoice.taxAmount,function(v){setInvoice(function(old){return Object.assign({},old,{taxAmount:v});});},'number'),
    field('خصم الفاتورة',invoice.discount,function(v){setInvoice(function(old){return Object.assign({},old,{discount:v});});},'number'),
-   h('label',{className:'block text-sm font-bold'},'صورة / PDF الفاتورة',h('input',{type:'file',accept:'image/*,application/pdf',onChange:function(e){const file=e.target.files&&e.target.files[0];if(file)readImage(file);},className:'block mt-1 text-sm'}))
+   h('div',{className:'md:col-span-3 flex flex-wrap items-end gap-3 p-3 border rounded-xl bg-blue-50/50'},
+    h('label',{className:'block text-sm font-bold flex-1 min-w-[220px]'},'صورة / PDF الفاتورة',h('input',{type:'file',accept:'image/jpeg,image/png,image/webp,application/pdf',onChange:function(e){const file=e.target.files&&e.target.files[0]||null;setInvoiceFile(file);setOcrSuggestions({party:null,items:[]});setNotice('');setError('');},className:'block mt-1 w-full text-sm'}),invoiceFile?h('small',{className:'block mt-1 text-slate-600 font-normal'},invoiceFile.name):null),
+    button(busy?'جارٍ قراءة الفاتورة...':'قراءة الفاتورة وملء الحقول',()=>readImage(invoiceFile),'primary',busy||!invoiceFile||!String(invoiceFile.type||'').startsWith('image/'))
+   )
   );
   const invoiceHead = panel('بيانات الفاتورة','صورة الفاتورة تساعد في استخراج البيانات. راجعها بنفسك قبل الإرسال للمراجعة.',headFields);
   const invoiceRows = invoice.lines.map(function(line,index) {
