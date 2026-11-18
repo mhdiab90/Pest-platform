@@ -366,8 +366,8 @@ test("invoice remains in review when its Drive attachment upload is pending", as
   assert.equal(read("reviewQueue/"+submitted.id).attachmentUploadStatus,"pending","reviewers can see that the attachment still needs uploading");
   const uploaded=await invoke("POST","",{action:"setAttachmentUploadStatus",documentId:submitted.id,status:"uploaded"});
   assert.equal(uploaded.success,true);
-  assert.equal(read("documents/"+submitted.id).attachmentUploadStatus,null,"successful retry clears the pending marker");
-  assert.equal(read("reviewQueue/"+submitted.id).attachmentUploadStatus,null);
+  assert.equal(read("documents/"+submitted.id).attachmentUploadStatus,undefined,"successful retry removes the pending marker");
+  assert.equal(read("reviewQueue/"+submitted.id).attachmentUploadStatus,undefined);
   assert.ok(read("reviewQueue/"+submitted.id),"successful attachment retry does not remove the invoice from review");
 });
 
