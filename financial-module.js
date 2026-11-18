@@ -1026,7 +1026,7 @@ function FinanceModule(props){
    h('td',{className:'p-2'},status(x.status)),
    h('td',{className:'p-2'},x.attachmentUploadStatus==='pending'?'المرفق يحتاج إعادة رفع':x.attachmentFileName||'—'),
    h('td',{className:'p-2'},button('فتح',()=>{void openReviewItem(x);},'muted'))
-  ))))
+  )))
  ));
  const renderCash=()=>{
   const movementLabels={customer_receipt:"تحصيل من عميل",supplier_payment:"سداد إلى مورد",other_receipt:"استلام نقدية / إيراد آخر",other_payment:"مصروف / مدفوعات أخرى",cash_to_bank:"إيداع نقدية بالبنك",bank_to_cash:"سحب نقدية من البنك",employee_custody:"تسليم عهدة لموظف",employee_custody_return:"استرداد عهدة من موظف",employee_advance:"صرف سلفة لموظف",employee_advance_recovery:"تحصيل سلفة من موظف"};
