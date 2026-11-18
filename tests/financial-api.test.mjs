@@ -144,6 +144,30 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
   assert.equal(purchase.status,"pending_review");
   assert.equal(purchase.totals.net,90,"invoice-level discount is allocated across lines");
   assert.equal(purchase.totals.tax,12.6);
+  await invoke("POST","",{
+    action:"saveMaster",kind:"bankAccounts",
+    item:{code:"1120",name:"Main Test Bank",accountCode:"1120"}
+  });
+  assert.equal(read("bankAccounts/1120").accountCode,"1120","bank account master is linked to a valid ledger account");
+
+  const correction = await invoke("POST","",{
+    action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-CORR-01",
+    partyId:"SUP-IMPORT-01",partyName:"Imported Supplier One",
+    lines:[{description:"Missing stock code",kind:"stock",itemCode:"",quantity:1,unitPrice:20}]
+  });
+  assert.equal(correction.status,"needs_correction");
+  await invoke("POST","",{
+    action:"addAttachment",documentId:correction.id,
+    attachment:{id:"ATTACH-ORIGINAL",fileName:"invoice-original.jpg",mimeType:"image/jpeg",size:100}
+  });
+  const corrected = await invoke("POST","",{
+    action:"submitInvoice",id:correction.id,type:"purchase",date:"2026-11-18",number:"PUR-CORR-01",
+    partyId:"SUP-IMPORT-01",partyName:"Imported Supplier One",
+    lines:[{description:"Corrected stock code",kind:"stock",itemCode:"ITEM-001",quantity:1,unitPrice:20}]
+  });
+  assert.equal(corrected.status,"pending_review");
+  assert.equal(read("documents/"+correction.id+"/attachments/ATTACH-ORIGINAL").fileName,"invoice-original.jpg","editing a correction keeps its original scanned invoice attachment");
+
   const purchasePosted = await invoke("POST","",{
     action:"review",id:purchase.id,decision:"approve",reason:"purchase approval"
   });
