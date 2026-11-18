@@ -160,6 +160,11 @@ export async function handleFinancialRequest(ctx){
   if(body.id){
    const previous=await adminRead("documents/"+inv.id);
    if(previous&&(!(previous.status==="needs_correction"||previous.status==="draft")||previous.createdBy!==claims.sub))throw new Error("لا يمكن تعديل هذا المستند بعد إرساله أو اعتماده.");
+   if(previous){
+    inv.createdAt=previous.createdAt||inv.createdAt;
+    inv.createdBy=previous.createdBy||inv.createdBy;
+    if(previous.attachments)inv.attachments=previous.attachments;
+   }
   }
   const totals=invoiceTotals(inv);inv.totals=totals;inv.total=totals.total;inv.errors=errors;inv.fingerprint=await sha([inv.invoiceType,inv.partyId,inv.number,inv.date,totals.total.toFixed(2)].join("|").toLowerCase());const duplicate=await adminRead("documentFingerprints/"+inv.fingerprint);inv.warnings=duplicate?["مستند مشابه مسجل سابقًا: "+duplicate.documentId]:[];inv.status=errors.length?"needs_correction":"pending_review";
   const u={};u["documents/"+inv.id]=inv;if(!errors.length)u["reviewQueue/"+inv.id]=reviewRecord(inv);u["audit/"+uid("AUD")]={action:"submit_invoice",documentId:inv.id,status:inv.status,uid:claims.sub,createdAt:now};await adminPatch(u);return {success:true,id:inv.id,status:inv.status,errors,warnings:inv.warnings,totals};
