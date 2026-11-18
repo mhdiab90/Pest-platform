@@ -201,19 +201,20 @@ function FinanceModule(props){
  const readImage=async file=>{
   const selectedFile=file||invoiceFile;
   if(!selectedFile){setError('اختر صورة أو ملف PDF للفاتورة أولاً.');return;}
-  const isPdf=selectedFile.type==='application/pdf'||/\\.pdf$/i.test(selectedFile.name||'');
+  const isPdf=selectedFile.type==='application/pdf'||/\.pdf$/i.test(selectedFile.name||'');
   const isImage=['image/jpeg','image/png','image/webp'].includes(String(selectedFile.type||'').toLowerCase());
   if(!isPdf&&!isImage){setError('الصيغ المدعومة للقراءة: PDF وJPG وPNG وWebP.');return;}
   setBusy(true);setError('');setNotice(isPdf?'جارٍ فتح ملف PDF وتحليل صفحاته...':'جارٍ قراءة صورة الفاتورة...');
   try{
    const expenseAccounts=posting.filter(account=>account.type==='expense').map(account=>({code:account.code,name:account.name}));
-   const pageResults=[];
+   const pageResults=[];let totalPdfPages=0,pagesRead=0;
    if(isPdf){
     const pdfjs=await loadInvoicePdfJs();
     pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     const pdf=await pdfjs.getDocument({data:new Uint8Array(await selectedFile.arrayBuffer())}).promise;
     if(!pdf.numPages)throw new Error('ملف PDF لا يحتوي على صفحات.');
-    const pagesToRead=Math.min(pdf.numPages,12);
+    totalPdfPages=pdf.numPages;
+    const pagesToRead=Math.min(pdf.numPages,12);pagesRead=pagesToRead;
     for(let pageNumber=1;pageNumber<=pagesToRead;pageNumber++){
      setNotice('جارٍ تحليل صفحة '+pageNumber+' من '+pagesToRead+'...');
      const page=await pdf.getPage(pageNumber);
@@ -268,8 +269,8 @@ function FinanceModule(props){
    }));
    setInvoicePartySearch(extractedParty);
    setOcrSuggestions({party:extractedParty&&!matchedParty?{name:extractedParty,taxNumber,partyType:targetPartyType,code:nextCode(targetPartyType==='vendor'?'VND':'CUS',partyList)}:null,items:unmatchedItems});
-   const truncated=isPdf&&selectedFile&&pageResults.length<Number((await Promise.resolve(pageResults.length)));
-   setNotice('اكتملت القراءة الأولية لـ '+pageResults.length+' صفحة. راجع كل بند وحدد هل هو صنف مخزني أم مصروف/خدمة، وتأكد من الحساب المقترح قبل الإرسال.'+(isPdf?' تم الاحتفاظ بملف PDF الأصلي لربطه بالفاتورة.':''));
+   const pageSummary=isPdf?'اكتملت قراءة '+pagesRead+' من '+totalPdfPages+' صفحة PDF.':'اكتملت قراءة صورة الفاتورة.';
+   setNotice(pageSummary+' راجع كل بند وحدد هل هو صنف مخزني أم مصروف/خدمة، وتأكد من الحساب المقترح قبل الإرسال.'+(isPdf?' تم الاحتفاظ بملف PDF الأصلي لربطه بالفاتورة.':'')+(isPdf&&totalPdfPages>pagesRead?' تنبيه: تم تحليل أول 12 صفحة فقط؛ راجع الصفحات المتبقية يدويًا.':''));
   }catch(e){setError('تعذرت قراءة الفاتورة آليًا: '+(e.message||String(e))+' ويمكنك استكمال البيانات يدويًا.');}
   finally{setBusy(false);}
  };
@@ -465,7 +466,8 @@ function FinanceModule(props){
   const invoiceHead = panel('بيانات الفاتورة','صورة الفاتورة تساعد في استخراج البيانات. راجعها بنفسك قبل الإرسال للمراجعة.',headFields);
   const invoiceRows = invoice.lines.map(function(line,index) {
    const itemOptions=[{value:'',label:'اختر الصنف'}].concat(items.map(function(x){return {value:x.code,label:x.code+' — '+x.name+' '+(x.version||'')};}));
-   const expectedAccountType=invoice.type==='purchase'?'expense':'revenue';\n   const accountOptions=posting.filter(function(a){return a.type===expectedAccountType;}).map(function(a){return {value:a.code,label:a.code+' — '+a.name};});
+   const expectedAccountType=invoice.type==='purchase'?'expense':'revenue';
+   const accountOptions=posting.filter(function(a){return a.type===expectedAccountType;}).map(function(a){return {value:a.code,label:a.code+' — '+a.name};});
    const centerOptions=[{value:'',label:'بدون'}].concat(centers.map(function(x){return {value:x.code,label:x.code+' — '+x.name};}));
    return h('div',{key:index,className:'grid grid-cols-1 md:grid-cols-12 gap-2 p-3 border bg-slate-50 rounded-xl'},
     h('div',{className:'md:col-span-3'},field('وصف البند',line.description,function(v){updateI(index,'description',v);})),
