@@ -78,7 +78,18 @@ const metadata = [
 ];
 for (const line of metadata) {
   const key = line.match(/android:name="([^"]+)"/)[1];
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\for (const line of metadata) {
+  const key = line.match(/android:name="([^"]+)"/)[1];
   if (!manifest.includes(key)) {
+    if (!manifest.includes('</application>')) throw new Error('AndroidManifest.xml has no application closing tag.');
+    manifest = manifest.replace('</application>', '        ' + line + '\n    </application>');
+  }
+}');
+  const existing = new RegExp('<meta-data\\b(?=[^>]*\\bandroid:name="' + escapedKey + '")[^>]*/>');
+  if (existing.test(manifest)) {
+    // Update any existing Firebase metadata rather than silently retaining a stale channel or icon.
+    manifest = manifest.replace(existing, line);
+  } else {
     if (!manifest.includes('</application>')) throw new Error('AndroidManifest.xml has no application closing tag.');
     manifest = manifest.replace('</application>', '        ' + line + '\n    </application>');
   }
