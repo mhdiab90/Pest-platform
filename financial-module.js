@@ -680,35 +680,7 @@ function FinanceModule(props){
   const detail=panel('استكمال فاتورة '+(inv.number||selectedAssignment.invoiceId||''),(purchase?'فاتورة مشتريات من مورد: ':'فاتورة مبيعات لعميل: ')+(inv.partyName||'')+' · '+(selectedAssignment.instruction||''),h('div',{className:'space-y-3'},h('div',{className:'grid md:grid-cols-3 gap-3'},metric('التاريخ',inv.date||'—'),metric('الإجمالي',fmt(inv.total||0)+' ج.م'),metric('عدد البنود',String(assignmentLines.length))),...lineCards,h('div',{className:'flex flex-wrap items-center gap-2'},button('إرجاع المسودة لصاحبها بعد الاستكمال',completeAssignment,'success',assignmentBusy||assignmentLines.length===0),button('إغلاق التفاصيل',()=>setSelectedAssignmentId(''),'muted'))));
   return h('div',{className:'space-y-4'},inbox,detail);
  };
- const renderAssignments=()=>{
-  const selectedAssignment=assignmentItems.find(x=>x.id===selectedAssignmentId);
-  const invoiceType=selectedAssignment&&selectedAssignment.invoice&&selectedAssignment.invoice.invoiceType||"purchase";
-  const expectedType=invoiceType==="purchase"?"expense":"revenue";
-  const availableAccounts=posting.filter(a=>a.type===expectedType).map(a=>({value:a.code,label:a.code+" — "+a.name}));
-  const updateAssignedLine=(index,key,value)=>setAssignmentLines(old=>old.map((line,i)=>i===index?Object.assign({},line,{[key]:value}):line));
-  const assignmentCards=assignmentItems.map(item=>h("article",{key:item.id,className:"rounded-xl border bg-white p-3 space-y-2"},
-   h("div",{className:"flex flex-wrap items-center justify-between gap-2"},h("b",null,"فاتورة "+(item.invoiceNumber||item.invoice&&item.invoice.number||item.invoiceId)),h("span",{className:"text-xs text-slate-500"},item.invoiceType==="purchase"?"مشتريات من مورد":"مبيعات لعميل")),
-   h("p",{className:"text-sm text-slate-600"},"الطرف: "+(item.partyName||item.invoice&&item.invoice.partyName||"—")+" · "+(item.date||item.invoice&&item.invoice.date||"")),
-   h("p",{className:"text-sm"},h("b",null,"المطلوب: "),item.instruction||"استكمال تصنيف البنود والأكواد"),
-   h("div",{className:"flex flex-wrap gap-2"},button(selectedAssignmentId===item.id?"محدد":"فتح واستكمال",()=>openAssignment(item),selectedAssignmentId===item.id?"primary":"muted"))
-  ));
-  const lineCards=assignmentLines.map((line,index)=>{
-   const itemOptions=[{value:"",label:"اختر الصنف / الكود المخزني"}].concat(items.map(x=>({value:x.code,label:x.code+" — "+x.name+" "+(x.version||"")})));
-   const groupOptions=[{value:"",label:"اختر مجموعة الأصناف"}].concat(rows(master.itemGroups).map(x=>({value:x.code,label:x.code+" — "+x.name})));
-   return h("div",{key:index,className:"grid grid-cols-1 md:grid-cols-12 gap-2 p-3 border rounded-xl bg-slate-50"},
-    h("div",{className:"md:col-span-3"},h("b",{className:"text-sm"},line.description||"بند بدون وصف"),h("small",{className:"block text-slate-500"}, "الكمية: "+(line.quantity||1)+" · الوحدة: "+(line.unit||"—"))),
-    h("div",{className:"md:col-span-2"},select("طبيعة البند",line.kind||"",v=>updateAssignedLine(index,"kind",v),[{value:"",label:"حدد التصنيف"},{value:"stock",label:"بضاعة تدخل المخزون"},{value:"service",label:"مصروف أو خدمة"}])),
-    h("div",{className:"md:col-span-4"},line.kind==="stock"?selectWithAdd("كود الصنف",line.itemCode||"",v=>updateAssignedLine(index,"itemCode",v),itemOptions,"items",{code:nextCode("ITM",items),name:line.description||"",itemType:"stock",unit:line.unit||"قطعة",groupCode:line.groupCode||"",warehouseCode:line.warehouseCode||"default"}):line.kind==="service"?selectWithAdd(invoiceType==="purchase"?"حساب المصروف":"حساب الإيراد",invoiceType==="purchase"?(line.accountCode||""):(line.incomeAccountCode||""),v=>updateAssignedLine(index,invoiceType==="purchase"?"accountCode":"incomeAccountCode",v),availableAccounts,"chartOfAccounts",{type:expectedType,nature:expectedType==="expense"?"debit":"credit",parentCode:expectedType==="expense"?"6":"4"}):h("p",{className:"text-xs text-amber-700"},"حدد طبيعة البند أولاً")),
-    line.kind==="stock"?h("div",{className:"md:col-span-2"},selectWithAdd("مجموعة الصنف",line.groupCode||"",v=>updateAssignedLine(index,"groupCode",v),groupOptions,"itemGroups",{code:nextCode("GRP",rows(master.itemGroups)),name:line.description||"",groupType:"other"})):h("div",{className:"md:col-span-2 flex items-center text-xs text-slate-500"},"لن يتأثر المخزون عند اختيار مصروف/خدمة"),
-    line.kind==="stock"?h("div",{className:"md:col-span-1"},field("المخزن",line.warehouseCode||"default",v=>updateAssignedLine(index,"warehouseCode",v))):null
-   );
-  });
-  return h("div",{className:"space-y-4"},
-   panel("الإجراءات المحولة إليّ","تظهر هنا الفواتير التي أحالها مستخدم آخر لاستكمال تصنيفها أو أكوادها. لا تظهر لك بقية فواتير الشركة.",h("div",{className:"space-y-3"},assignmentCards.length?assignmentCards:h("p",{className:"text-sm text-slate-500"},"لا توجد إجراءات محولة مفتوحة لحسابك."))),
-   selectedAssignment?panel("استكمال الفاتورة "+(selectedAssignment.invoice.number||selectedAssignment.invoiceId),"أكمل تصنيف كل بند وحدد الصنف أو حساب المصروف/الإيراد. عند الإرسال ستعود المسودة لصاحبها، ولن يتم ترحيلها من هنا.",h("div",{className:"space-y-3"},h("div",{className:"rounded-lg bg-blue-50 p-3 text-sm"},"الجهة: "+(selectedAssignment.invoice.partyName||"—")+" · نوع الفاتورة: "+(invoiceType==="purchase"?"مشتريات":"مبيعات")+" · المطلوب: "+selectedAssignment.instruction),...lineCards,h("div",{className:"flex flex-wrap gap-2"},button("إرجاع المسودة لصاحبها بعد الاستكمال",completeAssignment,"primary",assignmentBusy||!assignmentLines.length),button("إلغاء التحديد",()=>{setSelectedAssignmentId("");setAssignmentLines([]);},"muted")))):null
-  );
- };
- const renderPartyStatements = function() {
+  const renderPartyStatements = function() {
   const staff=(userDirectory||[]).filter(u=>u.uid).map(u=>Object.assign({},u,{id:u.uid,code:u.uid,name:u.fullName||u.username||u.email||u.uid}));
   const staffType=["employeeCustody","employeeAdvance"].includes(partyStatement.type);
   const list=partyStatement.type==="customer"?allClients:partyStatement.type==="vendor"?allVendors:staff;
