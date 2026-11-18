@@ -32,6 +32,21 @@ function FinanceModule(props){
   if(!response.ok)throw new Error(data.error||('HTTP '+response.status));
   return data;
  };
+ const downloadFinancialAttachment=async(documentId,attachment)=>{
+  setBusy(true);setError('');
+  try{
+   const auth=window.PEST_FIREBASE_AUTH&&window.PEST_FIREBASE_AUTH.currentUser;
+   if(!auth)throw new Error('جلسة الدخول انتهت. أعد تسجيل الدخول.');
+   const token=await auth.getIdToken();
+   const url=base+'/attachments/file?entityType=financial&entityId='+encodeURIComponent(documentId)+'&id='+encodeURIComponent(attachment.id);
+   const response=await fetch(url,{headers:{Authorization:'Bearer '+token}});
+   if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error||'تعذر تحميل المرفق.');}
+   const blob=await response.blob(),objectUrl=URL.createObjectURL(blob);
+   const link=document.createElement('a');link.href=objectUrl;link.download=attachment.fileName||'invoice-attachment';document.body.appendChild(link);link.click();link.remove();
+   setTimeout(function(){URL.revokeObjectURL(objectUrl);},60000);
+  }catch(error){setError(error.message||String(error));}
+  finally{setBusy(false);}
+ };
  const upload=async(file,entityId)=>{
   const auth=window.PEST_FIREBASE_AUTH&&window.PEST_FIREBASE_AUTH.currentUser,token=await auth.getIdToken();
   const response=await fetch(base+'/attachments/upload',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':file.type||'application/octet-stream','X-Attachment-Entity-Type':'financial','X-Attachment-Entity-Id':entityId,'X-Attachment-File-Name':encodeURIComponent(file.name)},body:file});
@@ -323,6 +338,7 @@ function FinanceModule(props){
    h('p',{className:'text-sm'},'القيمة: '+fmt(selected.total||selected.amount||0)),
    (selected.errors||[]).length?h('ul',{className:'list-disc pr-5 text-rose-700'},selected.errors.map((x,i)=>h('li',{key:i},x))):null,
    (selected.warnings||[]).length?h('ul',{className:'list-disc pr-5 text-amber-700'},selected.warnings.map((x,i)=>h('li',{key:i},x))):null,
+   Object.keys(selected.attachments||{}).length?panel('مرفقات المستند','الملفات محفوظة في مساحة المرفقات المالية المرتبطة بالفاتورة.',table(['اسم الملف','النوع','الحجم','الإجراء'],Object.values(selected.attachments||{}).map(function(attachment){return h('tr',{key:attachment.id,className:'border-t'},h('td',{className:'p-2'},attachment.fileName||'—'),h('td',{className:'p-2'},attachment.mimeType||'—'),h('td',{className:'p-2'},fmt((Number(attachment.size)||0)/1024)+' KB'),h('td',{className:'p-2'},button('تحميل المرفق',function(){downloadFinancialAttachment(selected.id,attachment);},'muted')));}))) : null,
    selected.type==='bankLine'?select('الحساب المقابل',offset,v=>setOffset(v),posting.map(a=>({value:a.code,label:a.code+' — '+a.name}))):null,
    selected.type==='bankLine'?button('حفظ الحساب المقابل',async()=>{try{await api('', 'POST',{action:'setBankOffset',id:selected.id,offsetAccountCode:offset});setNotice('تم حفظ الحساب المقابل');}catch(e){setError(e.message);}}):null,
    h('div',{className:'flex flex-wrap gap-2'},button('اعتماد وترحيل',()=>reviewAction(selected.status==='duplicate_review'?'approveDuplicate':'approve'),'success',busy),button('إعادة للتصحيح',()=>reviewAction('return'),'muted',busy),button('رفض',()=>reviewAction('reject'),'danger',busy))
