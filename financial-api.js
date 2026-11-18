@@ -25,7 +25,7 @@ export const DEFAULT_FINANCE_ACCOUNTS = [
 {code:"6400",name:"عمولات ومصاريف بنكية",type:"expense",nature:"debit",parentCode:"6",statementGroup:"finance"}
 ];
 const txt=(v,n=2000)=>{const s=String(v==null?"":v).trim();if(s.length>n)throw new Error("A financial field is too long.");return s;};
-const id=v=>{const s=txt(v,120);if(!s||/[.#$[\]\/]/.test(s))throw new Error("Invalid financial identifier.");return s;};
+const id=v=>{const s=txt(v,120);if(!s||/[.#$\/\[\]]/.test(s))throw new Error("Invalid financial identifier.");return s;};
 const num=v=>{const n=Number(v);if(!Number.isFinite(n)||n<0||n>1e15)throw new Error("Invalid amount.");return Math.round(n*10000)/10000;};
 const rnd=v=>Math.round((Number(v)||0)*100)/100;
 const month=d=>String(d||"").slice(0,7);
@@ -54,7 +54,9 @@ export async function handleFinancialRequest(ctx){
   if(res==="bootstrap"){
    let chart=(await adminRead("chartOfAccounts"))||{};
    if(!Object.keys(chart).length){const u={};DEFAULT_FINANCE_ACCOUNTS.forEach(a=>u["chartOfAccounts/"+a.code]={...a,active:true,createdAt:Date.now(),createdBy:claims.sub});u["settings/baseCurrency"]="EGP";u["settings/seedVersion"]=1;await adminPatch(u);chart=Object.fromEntries(DEFAULT_FINANCE_ACCOUNTS.map(a=>[a.code,{...a,active:true}]));}
-   const out={chartOfAccounts:chart};for(const k of ["costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties","settings"])out[k]=(await adminRead(k))||{};return out;
+   const out={chartOfAccounts:chart};for(const k of ["costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties","settings"])out[k]=(await adminRead(k))||{};
+   out.inventory={balances:(await adminRead("inventory/balances"))||{}};
+   return out;
   }
   if(res==="review"||res==="journals"||res==="documents"||res==="inventory"||res==="tax"||res==="audit")return {items:(await adminRead(res==="review"?"reviewQueue":res))||{}};
   if(res==="bank")return {items:(await adminRead("bankImports"))||{},accounts:(await adminRead("bankAccounts"))||{}};
@@ -76,12 +78,20 @@ export async function handleFinancialRequest(ctx){
  }
  if(action==="submitJournal"){
   requirePermission(profile,"financial","add");const j={id:id(body.id||uid("DOC")),type:"journal",date:date(body.date),description:txt(body.description,500),reference:txt(body.reference,120),currency:txt(body.currency||"EGP",3),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120)};
+  if(body.id){
+   const previous=await adminRead("documents/"+j.id);
+   if(previous&&(!(previous.status==="needs_correction"||previous.status==="draft")||previous.createdBy!==claims.sub))throw new Error("لا يمكن تعديل هذا القيد بعد إرساله أو اعتماده.");
+  }
   const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{},v=validateJournal(j,chart,centers);j.errors=v.errors;j.balance=v.balance;j.status=v.errors.length?"needs_correction":"pending_review";const u={};u["documents/"+j.id]=j;if(!v.errors.length)u["reviewQueue/"+j.id]=reviewRecord(j);u["audit/"+uid("AUD")]={action:"submit_journal",documentId:j.id,status:j.status,uid:claims.sub,createdAt:now};await adminPatch(u);return {success:true,id:j.id,status:j.status,errors:v.errors,balance:v.balance};
  }
  if(action==="submitInvoice"){
   requirePermission(profile,"financial","add");const inv={...body,id:id(body.id||uid("INV")),type:body.type==="purchase"?"purchase":"sales",date:date(body.date),number:txt(body.number,120),partyId:txt(body.partyId,120),partyName:txt(body.partyName,180),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:now,createdBy:claims.sub},errors=[];
   if(!inv.partyId)errors.push("اختيار العميل أو المورد مطلوب");if(!inv.number)errors.push("رقم الفاتورة مطلوب");if(!inv.lines.length)errors.push("أضف بندًا واحدًا على الأقل");
   inv.lines.forEach((l,i)=>{if(!txt(l.description,250))errors.push("وصف البند "+(i+1)+" مطلوب");if(!(Number(l.quantity)>0))errors.push("الكمية غير صحيحة في البند "+(i+1));if(l.kind==="stock"&&!l.itemCode)errors.push("حدد الصنف المخزني في البند "+(i+1));if(l.kind==="service"&&!l.accountCode)errors.push("حدد حساب البند "+(i+1));});
+  if(body.id){
+   const previous=await adminRead("documents/"+inv.id);
+   if(previous&&(!(previous.status==="needs_correction"||previous.status==="draft")||previous.createdBy!==claims.sub))throw new Error("لا يمكن تعديل هذا المستند بعد إرساله أو اعتماده.");
+  }
   const totals=invoiceTotals(inv);inv.totals=totals;inv.total=totals.total;inv.errors=errors;inv.fingerprint=await sha([inv.type,inv.partyId,inv.number,inv.date,totals.total.toFixed(2)].join("|").toLowerCase());const duplicate=await adminRead("documentFingerprints/"+inv.fingerprint);inv.warnings=duplicate?["مستند مشابه مسجل سابقًا: "+duplicate.documentId]:[];inv.status=errors.length?"needs_correction":"pending_review";
   const u={};u["documents/"+inv.id]=inv;if(!errors.length)u["reviewQueue/"+inv.id]=reviewRecord(inv);u["audit/"+uid("AUD")]={action:"submit_invoice",documentId:inv.id,status:inv.status,uid:claims.sub,createdAt:now};await adminPatch(u);return {success:true,id:inv.id,status:inv.status,errors,warnings:inv.warnings,totals};
  }
@@ -93,6 +103,16 @@ export async function handleFinancialRequest(ctx){
   for(const row of rows){const d=date(row.date),amount=num(row.amount);if(!amount)continue;const fingerprint=await sha([txt(body.bankAccountCode||"1120",32),d,amount.toFixed(2),txt(row.reference,100),txt(row.description,500).toLowerCase().replace(/\s+/g," ")].join("|")),prev=await adminRead("bankFingerprints/"+fingerprint),docId=uid("BNK"),doc={id:docId,type:"bankLine",importId,date:d,amount,description:txt(row.description,500),reference:txt(row.reference,100),direction:row.direction==="in"?"in":"out",bankAccountCode:txt(body.bankAccountCode||"1120",32),fingerprint,status:prev?"duplicate_review":"pending_review",warnings:prev?["تكرار محتمل لحركة "+prev.documentId]:[],duplicateOf:prev&&prev.documentId||"",createdAt:now,createdBy:claims.sub};if(prev)duplicates.push(docId);else u["bankFingerprints/"+fingerprint]={documentId:docId,importId,createdAt:now};u["documents/"+docId]=doc;u["reviewQueue/"+docId]=reviewRecord(doc);count++;}
   u["bankImports/"+importId]={id:importId,bankAccountCode:body.bankAccountCode||"1120",fileName:txt(body.fileName,180),rowCount:count,duplicateCount:duplicates.length,createdAt:now,createdBy:claims.sub};u["audit/"+uid("AUD")]={action:"bank_import",importId,rowCount:count,duplicates:duplicates.length,uid:claims.sub,createdAt:now};await adminPatch(u);return {success:true,importId,rows:count,duplicates:duplicates.length};
  }
+ if(action==="setBankOffset"){
+  requirePermission(profile,"financial","edit");
+  const docId=id(body.id),doc=await adminRead("documents/"+docId);
+  if(!doc||doc.type!=="bankLine"||!["pending_review","duplicate_review"].includes(doc.status))throw new Error("حركة البنك غير متاحة للتعديل");
+  const offset=id(body.offsetAccountCode),account=await adminRead("chartOfAccounts/"+offset);
+  if(!account||account.isGroup||account.active===false)throw new Error("اختر حسابًا تحليليًا فعالًا");
+  const updates={};updates["documents/"+docId+"/offsetAccountCode"]=offset;updates["reviewQueue/"+docId+"/offsetAccountCode"]=offset;
+  updates["audit/"+uid("AUD")]={action:"set_bank_offset",documentId:docId,accountCode:offset,uid:claims.sub,createdAt:now};
+  await adminPatch(updates);return {success:true};
+ }
  if(action==="review"){
   if(!hasPermission(profile,"financial","approve"))throw new Error("Permission denied: financial.approve.");const docId=id(body.id),decision=txt(body.decision,20),doc=await adminRead("documents/"+docId);if(!doc)throw new Error("مستند المراجعة غير موجود");if(!["pending_review","duplicate_review"].includes(doc.status))throw new Error("المستند ليس في قائمة المراجعة");
   if(decision==="reject"||decision==="return"){const status=decision==="reject"?"rejected":"needs_correction",u={};u["documents/"+docId+"/status"]=status;u["documents/"+docId+"/reviewReason"]=txt(body.reason,1000);u["documents/"+docId+"/reviewedBy"]=claims.sub;u["documents/"+docId+"/reviewedAt"]=now;u["reviewQueue/"+docId]=null;u["audit/"+uid("AUD")]={action:status,documentId:docId,uid:claims.sub,createdAt:now};await adminPatch(u);return {success:true,status};}
@@ -102,6 +122,8 @@ export async function handleFinancialRequest(ctx){
   else if(doc.type==="bankLine"){if(!doc.offsetAccountCode)throw new Error("حدد الحساب المقابل قبل الاعتماد");const amount=num(doc.amount),bank=txt(doc.bankAccountCode||"1120",32),offset=txt(doc.offsetAccountCode,32),incoming=doc.direction==="in",lines=incoming?[{accountCode:bank,debit:amount,credit:0,description:doc.description},{accountCode:offset,debit:0,credit:amount,description:doc.description,partyType:doc.partyType||"",partyId:doc.partyId||"",costCenterId:doc.costCenterId||""}]:[{accountCode:offset,debit:amount,credit:0,description:doc.description,partyType:doc.partyType||"",partyId:doc.partyId||"",costCenterId:doc.costCenterId||""},{accountCode:bank,debit:0,credit:amount,description:doc.description}];j={id:uid("JRN"),date:doc.date,description:"حركة بنك: "+doc.description,reference:doc.reference||"",sourceType:"bankLine",sourceId:doc.id,currency:"EGP",lines,status:"posted",createdAt:doc.createdAt,createdBy:doc.createdBy,approvedAt:now,approvedBy:claims.sub,postedAt:now};Object.assign(updates,journalUpdates(j));updates["bankFingerprints/"+doc.fingerprint+"/journalId"]=j.id;}
   else if(doc.type==="invoice"){
    const inv=doc,tot=invoiceTotals(inv),purchase=inv.type==="purchase",partyId=id(inv.partyId),lines=[],items=(await adminRead("items"))||{};
+   const lock=await adminRead("documentFingerprints/"+inv.fingerprint);
+   if(lock&&lock.documentId!==doc.id)throw new Error("الفاتورة مكررة ومربوطة بالمستند "+lock.documentId+"؛ ارفضها أو راجع المستند الأصلي قبل الترحيل.");
    for(const l of inv.lines||[]){const value=rnd(num(l.quantity)*num(l.unitPrice)-num(l.discount||0));if(l.kind==="stock"&&!items[l.itemCode])throw new Error("الصنف "+l.itemCode+" غير معرف بالمخزون. أضفه أو اربطه بكود موجود.");lines.push(purchase?{accountCode:l.kind==="stock"?"1300":txt(l.accountCode||"6100",32),debit:value,credit:0,description:l.description,costCenterId:l.costCenterId||"",itemCode:l.kind==="stock"?l.itemCode:"",quantity:num(l.quantity),warehouseCode:l.warehouseCode||"default"}:{accountCode:l.kind==="stock"?"4100":txt(l.incomeAccountCode||"4200",32),debit:0,credit:value,description:l.description,costCenterId:l.costCenterId||"",itemCode:l.kind==="stock"?l.itemCode:"",quantity:num(l.quantity),warehouseCode:l.warehouseCode||"default"});}
    if(purchase&&tot.tax)lines.push({accountCode:"1410",debit:tot.tax,credit:0,description:"ضريبة مدخلات"});if(!purchase&&tot.tax)lines.push({accountCode:"2110",debit:0,credit:tot.tax,description:"ضريبة مخرجات"});lines.push(purchase?{accountCode:"281",debit:0,credit:tot.total,description:"فاتورة مشتريات",partyType:"vendor",partyId}:{accountCode:"1210",debit:tot.total,credit:0,description:"فاتورة مبيعات",partyType:"customer",partyId});
    const bal=(await adminRead("inventory/balances"))||{};
