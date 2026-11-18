@@ -18,8 +18,8 @@ for (const file of ["index.html", ...requiredAssets, "assets/icon.png", "assets/
   }
 }
 
-let html = await readFile("index.html", "utf8");
-const babelScripts = [...html.matchAll(/<script\\b[^>]*type=["']text\\/babel["'][^>]*>([\\s\\S]*?)<\\/script>/gi)];
+const htmlSource = await readFile("index.html", "utf8");
+const babelScripts = [...htmlSource.matchAll(/<script\b[^>]*type=["']text\/babel["'][^>]*>([\s\S]*?)<\/script>/gi)];
 if (babelScripts.length !== 1) {
   throw new Error("Expected exactly one React JSX source script; found " + babelScripts.length + ".");
 }
@@ -33,18 +33,18 @@ const compiled = await transform(babelScripts[0][1], {
 const bundleHash = createHash("sha256").update(compiled.code).digest("hex").slice(0, 16);
 const bundleName = "app." + bundleHash + ".js";
 
-html = html.replace(babelScripts[0][0], '<script defer src="./' + bundleName + '"></script>');
-html = html.replace(/<script\\b[^>]*babel-standalone[^>]*><\\/script>/i, "");
+let html = htmlSource.replace(babelScripts[0][0], '<script defer src="./' + bundleName + '"></script>');
+html = html.replace(/<script\b[^>]*babel-standalone[^>]*><\/script>/i, "");
 html = html.replace(
-  /<script\\b([^>]*\\bsrc=["']\\.\\/(?:capacitor-bridge|pest-crm-module|financial-module)\\.js["'][^>]*)><\\/script>/gi,
-  (tag) => /\\bdefer\\b/i.test(tag) ? tag : tag.replace("<script", "<script defer")
+  /<script\b([^>]*\bsrc=["']\.\/(?:capacitor-bridge|pest-crm-module|financial-module)\.js["'][^>]*)><\/script>/gi,
+  (tag) => /\bdefer\b/i.test(tag) ? tag : tag.replace("<script", "<script defer")
 );
 html = html.replace(
-  /<link\\s+rel=["']stylesheet["']\\s+href=["'](https:\\/\\/cdnjs\\.cloudflare\\.com\\/ajax\\/libs\\/font-awesome\\/6\\.4\\.0\\/css\\/all\\.min\\.css)["']\\s*\\/?>/i,
+  /<link\s+rel=["']stylesheet["']\s+href=["'](https:\/\/cdnjs\.cloudflare\.com\/ajax\/libs\/font-awesome\/6\.4\.0\/css\/all\.min\.css)["']\s*\/?>/i,
   '<link rel="preload" as="style" href="$1" onload="this.onload=null;this.rel=\'stylesheet\'" />'
 );
 html = html.replace(
-  /<link\\s+href=["'](https:\\/\\/fonts\\.googleapis\\.com\\/css2\\?family=Cairo[^"']+)["']\\s+rel=["']stylesheet["']\\s*\\/?>/i,
+  /<link\s+href=["'](https:\/\/fonts\.googleapis\.com\/css2\?family=Cairo[^"']+)["']\s+rel=["']stylesheet["']\s*\/?>/i,
   '<link rel="preload" as="style" href="$1" onload="this.onload=null;this.rel=\'stylesheet\'" />'
 );
 
