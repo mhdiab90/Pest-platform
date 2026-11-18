@@ -394,7 +394,7 @@ async function sendFcmToDevice(deviceToken, accessToken, eventType, eventId, dev
   const appBase = isAllowedOrigin(deviceOrigin)
     ? (deviceOrigin === ALLOWED_ORIGIN ? APP_PUBLIC_URL : deviceOrigin + "/")
     : APP_PUBLIC_URL;
-  const route = eventType === "cashCustody" ? "cashCustody" : eventType === "userRequest" ? "userRequests" : "messages";
+  const route = eventType === "cashCustody" ? "cashCustody" : eventType === "userRequest" ? "userRequests" : (eventType === "financialAssignment" || eventType === "financialAssignmentReturned") ? "financialAssignments" : "messages";
   const clickUrl = new URL(appBase);
   clickUrl.searchParams.set("pushType", eventType);
   clickUrl.searchParams.set("pushId", String(eventId || ""));
