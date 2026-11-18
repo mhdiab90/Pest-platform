@@ -349,6 +349,28 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
 
 });
 
+test("invoice remains in review when its Drive attachment upload is pending", async () => {
+  await invoke("GET","?resource=bootstrap");
+  write("vendors/VENDOR-ATTACH-01",{code:"VENDOR-ATTACH-01",name:"Attachment Supplier",partyType:"vendor"});
+  write("parties/VENDOR-ATTACH-01",{code:"VENDOR-ATTACH-01",name:"Attachment Supplier",partyType:"vendor"});
+  const submitted=await invoke("POST","",{action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-ATTACH-01",partyId:"VENDOR-ATTACH-01",partyName:"Attachment Supplier",currency:"EGP",taxCode:"VAT-IN-14",taxRate:14,lines:[
+    {description:"Maintenance service",kind:"service",accountCode:"6100",quantity:1,unitPrice:100}
+  ]});
+  assert.equal(submitted.status,"pending_review");
+  assert.ok(read("reviewQueue/"+submitted.id),"invoice is placed in the review queue before any Drive upload is attempted");
+  const pending=await invoke("POST","",{action:"setAttachmentUploadStatus",documentId:submitted.id,status:"pending",fileName:"invoice.jpg",error:"Google Drive is not configured"});
+  assert.equal(pending.success,true);
+  assert.equal(read("documents/"+submitted.id).status,"pending_review","attachment failure must not change the invoice's review status");
+  assert.equal(read("documents/"+submitted.id).attachmentUploadStatus,"pending");
+  assert.equal(read("documents/"+submitted.id).attachmentFileName,"invoice.jpg");
+  assert.equal(read("reviewQueue/"+submitted.id).attachmentUploadStatus,"pending","reviewers can see that the attachment still needs uploading");
+  const uploaded=await invoke("POST","",{action:"setAttachmentUploadStatus",documentId:submitted.id,status:"uploaded"});
+  assert.equal(uploaded.success,true);
+  assert.equal(read("documents/"+submitted.id).attachmentUploadStatus,null,"successful retry clears the pending marker");
+  assert.equal(read("reviewQueue/"+submitted.id).attachmentUploadStatus,null);
+  assert.ok(read("reviewQueue/"+submitted.id),"successful attachment retry does not remove the invoice from review");
+});
+
 test("supplier linking, delegated invoice completion, staff custody and advances", async () => {
   await invoke("GET","?resource=bootstrap");
   write("vendors/VENDOR-LEGACY",{code:"VENDOR-LEGACY",name:"Legacy Supplier",taxRegistrationNumber:"TX-8899",phone:"01000000000"});
