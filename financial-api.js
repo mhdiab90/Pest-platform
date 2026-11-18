@@ -1,3 +1,69 @@
+
+const DEFAULT_EXPENSE_ACCOUNTS = [
+ {code:"65",name:"مصروفات الصيانة والإصلاحات",type:"expense",nature:"debit",isGroup:true,parentCode:"6"},
+ {code:"6501",name:"صيانة وإصلاح الآلات والمعدات",type:"expense",nature:"debit",parentCode:"65",statementGroup:"operating"},
+ {code:"6502",name:"صيانة المباني والمنشآت",type:"expense",nature:"debit",parentCode:"65",statementGroup:"operating"},
+ {code:"6503",name:"صيانة الكهرباء والسباكة والتكييف",type:"expense",nature:"debit",parentCode:"65",statementGroup:"operating"},
+ {code:"6504",name:"قطع غيار ومستلزمات صيانة مستهلكة",type:"expense",nature:"debit",parentCode:"65",statementGroup:"operating"},
+ {code:"6505",name:"مقاولات وخدمات صيانة خارجية",type:"expense",nature:"debit",parentCode:"65",statementGroup:"operating"},
+ {code:"66",name:"مصروفات التدريب والتطوير",type:"expense",nature:"debit",isGroup:true,parentCode:"6"},
+ {code:"6601",name:"دورات تدريبية وتأهيل العاملين",type:"expense",nature:"debit",parentCode:"66",statementGroup:"administrative"},
+ {code:"6602",name:"مؤتمرات وندوات وورش عمل",type:"expense",nature:"debit",parentCode:"66",statementGroup:"administrative"},
+ {code:"6603",name:"كتب ومراجع ومواد تعليمية",type:"expense",nature:"debit",parentCode:"66",statementGroup:"administrative"},
+ {code:"67",name:"مصروفات النظافة والصحة العامة",type:"expense",nature:"debit",isGroup:true,parentCode:"6"},
+ {code:"6701",name:"مواد ومستلزمات النظافة",type:"expense",nature:"debit",parentCode:"67",statementGroup:"operating"},
+ {code:"6702",name:"خدمات وعقود النظافة",type:"expense",nature:"debit",parentCode:"67",statementGroup:"operating"},
+ {code:"6703",name:"مكافحة الحشرات والتطهير والتعقيم",type:"expense",nature:"debit",parentCode:"67",statementGroup:"operating"},
+ {code:"6704",name:"جمع المخلفات والتخلص الآمن منها",type:"expense",nature:"debit",parentCode:"67",statementGroup:"operating"},
+ {code:"68",name:"مصروفات البوفيه والضيافة",type:"expense",nature:"debit",isGroup:true,parentCode:"6"},
+ {code:"6801",name:"مشتريات البوفيه والأغذية",type:"expense",nature:"debit",parentCode:"68",statementGroup:"administrative"},
+ {code:"6802",name:"مشروبات وقهوة وشاي ومياه",type:"expense",nature:"debit",parentCode:"68",statementGroup:"administrative"},
+ {code:"6803",name:"ضيافة واستقبال الزوار والعملاء",type:"expense",nature:"debit",parentCode:"68",statementGroup:"administrative"},
+ {code:"6804",name:"تموين الاجتماعات والفعاليات",type:"expense",nature:"debit",parentCode:"68",statementGroup:"administrative"},
+ {code:"69",name:"مصروفات الأدوات والمستلزمات المكتبية",type:"expense",nature:"debit",isGroup:true,parentCode:"6"},
+ {code:"6901",name:"أدوات كتابية وقرطاسية",type:"expense",nature:"debit",parentCode:"69",statementGroup:"administrative"},
+ {code:"6902",name:"طباعة وتصوير ومستندات",type:"expense",nature:"debit",parentCode:"69",statementGroup:"administrative"},
+ {code:"6903",name:"أحبار وتونر ومستلزمات الطابعات",type:"expense",nature:"debit",parentCode:"69",statementGroup:"administrative"},
+ {code:"6904",name:"أدوات ومستلزمات مكتبية صغيرة",type:"expense",nature:"debit",parentCode:"69",statementGroup:"administrative"},
+ {code:"70",name:"مصروفات المرافق والطاقة",type:"expense",nature:"debit",isGroup:true,parentCode:"6"},
+ {code:"7001",name:"استهلاك الكهرباء",type:"expense",nature:"debit",parentCode:"70",statementGroup:"operating"},
+ {code:"7002",name:"استهلاك المياه",type:"expense",nature:"debit",parentCode:"70",statementGroup:"operating"},
+ {code:"7003",name:"الغاز والوقود التشغيلي",type:"expense",nature:"debit",parentCode:"70",statementGroup:"operating"},
+ {code:"71",name:"مصروفات الاتصالات وتقنية المعلومات",type:"expense",nature:"debit",isGroup:true,parentCode:"6"},
+ {code:"7101",name:"إنترنت وخدمات نقل البيانات",type:"expense",nature:"debit",parentCode:"71",statementGroup:"administrative"},
+ {code:"7102",name:"هواتف واتصالات محمولة وثابتة",type:"expense",nature:"debit",parentCode:"71",statementGroup:"administrative"},
+ {code:"7103",name:"اشتراكات البرامج والتراخيص السحابية",type:"expense",nature:"debit",parentCode:"71",statementGroup:"administrative"},
+ {code:"7104",name:"صيانة ودعم أجهزة الحاسب والشبكات",type:"expense",nature:"debit",parentCode:"71",statementGroup:"administrative"},
+ {code:"72",name:"المصروفات المهنية والاستشارية",type:"expense",nature:"debit",isGroup:true,parentCode:"6"},
+ {code:"7201",name:"استشارات إدارية وفنية وهندسية",type:"expense",nature:"debit",parentCode:"72",statementGroup:"administrative"},
+ {code:"7202",name:"مراجعة ومحاسبة واستشارات ضريبية",type:"expense",nature:"debit",parentCode:"72",statementGroup:"administrative"},
+ {code:"7203",name:"خدمات قانونية ومحاماة",type:"expense",nature:"debit",parentCode:"72",statementGroup:"administrative"},
+ {code:"7204",name:"رسوم حكومية وتراخيص وتجديدات",type:"expense",nature:"debit",parentCode:"72",statementGroup:"administrative"},
+ {code:"73",name:"مصروفات الانتقالات والسفر والإقامة",type:"expense",nature:"debit",isGroup:true,parentCode:"6"},
+ {code:"7301",name:"انتقالات العاملين ومأموريات داخلية",type:"expense",nature:"debit",parentCode:"73",statementGroup:"administrative"},
+ {code:"7302",name:"سفر وانتقالات عمل خارجية",type:"expense",nature:"debit",parentCode:"73",statementGroup:"administrative"},
+ {code:"7303",name:"إقامة وانتقالات سفر",type:"expense",nature:"debit",parentCode:"73",statementGroup:"administrative"},
+ {code:"74",name:"مصروفات السلامة والصحة المهنية والبيئة",type:"expense",nature:"debit",isGroup:true,parentCode:"6"},
+ {code:"7401",name:"ملابس ومهمات الوقاية الشخصية",type:"expense",nature:"debit",parentCode:"74",statementGroup:"operating"},
+ {code:"7402",name:"مستلزمات السلامة والإطفاء المستهلكة",type:"expense",nature:"debit",parentCode:"74",statementGroup:"operating"},
+ {code:"7403",name:"فحوصات وخدمات الصحة المهنية",type:"expense",nature:"debit",parentCode:"74",statementGroup:"administrative"},
+ {code:"7404",name:"خدمات حماية البيئة والقياسات البيئية",type:"expense",nature:"debit",parentCode:"74",statementGroup:"operating"},
+ {code:"75",name:"مصروفات المعامل والجودة والاختبارات",type:"expense",nature:"debit",isGroup:true,parentCode:"6"},
+ {code:"7501",name:"كيماويات وخامات ومستهلكات المعامل",type:"expense",nature:"debit",parentCode:"75",statementGroup:"operating"},
+ {code:"7502",name:"اختبارات وتحاليل ومعايرة خارجية",type:"expense",nature:"debit",parentCode:"75",statementGroup:"operating"},
+ {code:"7503",name:"اعتمادات وشهادات الجودة والمواصفات",type:"expense",nature:"debit",parentCode:"75",statementGroup:"operating"},
+ {code:"76",name:"مصروفات العاملين والرعاية الاجتماعية",type:"expense",nature:"debit",isGroup:true,parentCode:"6"},
+ {code:"7601",name:"رعاية وأنشطة اجتماعية للعاملين",type:"expense",nature:"debit",parentCode:"76",statementGroup:"administrative"},
+ {code:"7602",name:"وجبات ومياه للعاملين",type:"expense",nature:"debit",parentCode:"76",statementGroup:"administrative"},
+ {code:"7603",name:"رعاية طبية ومستلزمات إسعافات أولية",type:"expense",nature:"debit",parentCode:"76",statementGroup:"administrative"},
+ {code:"77",name:"مصروفات التأمين والاشتراكات",type:"expense",nature:"debit",isGroup:true,parentCode:"6"},
+ {code:"7701",name:"أقساط التأمين على الممتلكات والمسؤولية",type:"expense",nature:"debit",parentCode:"77",statementGroup:"administrative"},
+ {code:"7702",name:"اشتراكات ورسوم عضوية مهنية",type:"expense",nature:"debit",parentCode:"77",statementGroup:"administrative"},
+ {code:"78",name:"مصروفات الدعاية والتسويق",type:"expense",nature:"debit",isGroup:true,parentCode:"6"},
+ {code:"7801",name:"دعاية وإعلان وتسويق",type:"expense",nature:"debit",parentCode:"78",statementGroup:"administrative"},
+ {code:"7802",name:"معارض ومطبوعات ومواد ترويجية",type:"expense",nature:"debit",parentCode:"78",statementGroup:"administrative"}
+];
+
 export const DEFAULT_FINANCE_ACCOUNTS = [
 {code:"1",name:"الأصول",type:"asset",nature:"debit",isGroup:true},
 {code:"11",name:"الأصول المتداولة",type:"asset",nature:"debit",isGroup:true,parentCode:"1"},
@@ -22,7 +88,8 @@ export const DEFAULT_FINANCE_ACCOUNTS = [
 {code:"6100",name:"مصروفات تشغيلية عامة",type:"expense",nature:"debit",parentCode:"6",statementGroup:"operating"},
 {code:"6200",name:"مصروفات إدارية وعمومية",type:"expense",nature:"debit",parentCode:"6",statementGroup:"administrative"},
 {code:"6300",name:"مصروفات نقل وشحن",type:"expense",nature:"debit",parentCode:"6",statementGroup:"operating"},
-{code:"6400",name:"عمولات ومصاريف بنكية",type:"expense",nature:"debit",parentCode:"6",statementGroup:"finance"}
+{code:"6400",name:"عمولات ومصاريف بنكية",type:"expense",nature:"debit",parentCode:"6",statementGroup:"finance"},
+...DEFAULT_EXPENSE_ACCOUNTS
 ];
 const txt=(v,n=2000)=>{const s=String(v==null?"":v).trim();if(s.length>n)throw new Error("A financial field is too long.");return s;};
 const id=v=>{const s=txt(v,120);if(!s||/[.#$\/\[\]]/.test(s))throw new Error("Invalid financial identifier.");return s;};
@@ -69,6 +136,21 @@ export async function handleFinancialRequest(ctx){
     if(profile.role!=="admin")throw new Error("يجب على مدير النظام تهيئة دليل الحسابات أولاً.");
     const u={};DEFAULT_FINANCE_ACCOUNTS.forEach(a=>u["chartOfAccounts/"+a.code]={...a,active:true,createdAt:Date.now(),createdBy:claims.sub});u["settings/baseCurrency"]="EGP";u["settings/seedVersion"]=1;await adminPatch(u);chart=Object.fromEntries(DEFAULT_FINANCE_ACCOUNTS.map(a=>[a.code,{...a,active:true}]));
    }
+   // Idempotent migration: add only missing expense groups/accounts without overwriting existing account data.
+   if(profile.role==="admin"){
+    const migrated={};
+    const updates={};
+    for(const account of DEFAULT_EXPENSE_ACCOUNTS){
+     if(chart[account.code])continue;
+     const parent=account.parentCode?(chart[account.parentCode]||migrated[account.parentCode]):null;
+     if(account.parentCode&&(!parent||!parent.isGroup))continue;
+     const saved={...account,active:true,createdAt:Date.now(),createdBy:claims.sub};
+     migrated[account.code]=saved;
+     chart[account.code]=saved;
+     updates["chartOfAccounts/"+account.code]=saved;
+    }
+    if(Object.keys(updates).length)await adminPatch(updates);
+   }
    const out={chartOfAccounts:chart};for(const k of ["costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","settings"])out[k]=(await adminRead(k))||{};
    const parties=(await adminRead("parties"))||{};
    const crmClients=adminReadRoot?(await adminReadRoot("clients"))||{}:{};
@@ -86,11 +168,29 @@ export async function handleFinancialRequest(ctx){
   throw new Error("Unknown financial data resource.");
  }
  if(request.method!=="POST")throw new Error("Method not allowed.");const action=txt(body.action,40),now=Date.now();
- if(action==="ocr"){
-  requirePermission(profile,"financial","add");if(!env.AI)throw new Error("Workers AI is not enabled.");const image=String(body.image||"");if(!/^data:image\/(png|jpeg|webp);base64,/i.test(image)||image.length>12*1024*1024)throw new Error("ارفع صورة JPG أو PNG أو WebP لا تتجاوز 9 MB.");
-  const prompt="Extract invoice data from this image. Return only JSON with fields type (purchase or sales), number, date YYYY-MM-DD, partyName, taxNumber, currency, netTotal, taxRate, taxAmount, total, discount, items array with description, quantity, unit, unitPrice, discount. Preserve Arabic and English text. Do not guess unreadable values. Human verification is required.";
-  const out=await env.AI.run("@cf/meta/llama-4-scout-17b-16e-instruct",{messages:[{role:"user",content:[{type:"text",text:prompt},{type:"image_url",image_url:{url:image}}]}],max_tokens:1800,temperature:0.1});
-  let raw=String(out&&out.response||"").trim();const a=raw.indexOf("{"),b=raw.lastIndexOf("}");if(a<0||b<=a)throw new Error("تعذر استخراج بيانات واضحة من الصورة. أدخل البيانات يدويًا.");let data;try{data=JSON.parse(raw.slice(a,b+1));}catch(_){throw new Error("نتيجة قراءة الصورة غير مكتملة. أدخل البيانات يدويًا.");}return {success:true,extracted:data,needsHumanReview:true,model:"llama-4-scout-17b-16e-instruct"};
+ if(action==="ocr"||action==="ocrText"){
+  requirePermission(profile,"financial","add");
+  if(!env.AI)throw new Error("Workers AI is not enabled.");
+  const textOnly=action==="ocrText",pageNumber=Math.max(1,Math.floor(Number(body.pageNumber)||1)),totalPages=Math.max(pageNumber,Math.floor(Number(body.totalPages)||pageNumber));
+  let content;
+  if(textOnly){
+   const invoiceText=String(body.text||"").trim();
+   if(invoiceText.length<20||invoiceText.length>36000)throw new Error("نص صفحة PDF فارغ أو أكبر من الحد المسموح.");
+   content=[{type:"text",text:"PDF page text:\n"+invoiceText}];
+  }else{
+   const image=String(body.image||"");
+   if(!/^data:image\\/(png|jpeg|webp);base64,/i.test(image)||image.length>12*1024*1024)throw new Error("ارفع صورة JPG أو PNG أو WebP لا تتجاوز 9 MB.");
+   content=[{type:"image_url",image_url:{url:image}}];
+  }
+  const accounts=Array.isArray(body.expenseAccounts)?body.expenseAccounts.slice(0,80).map(x=>({code:txt(x&&x.code,32),name:txt(x&&x.name,120)})).filter(x=>x.code&&x.name):[];
+  const prompt="Read this invoice page "+pageNumber+" of "+totalPages+". Return only valid JSON with fields type (purchase or sales), number, date YYYY-MM-DD, partyName, taxNumber, currency, netTotal, taxRate, taxAmount, total, discount, items array. Each item must include description, quantity, unit, unitPrice, discount, kind (stock or service), itemCode if printed, and suggestedExpenseCode if it is an expense and a matching code exists in the allowed account list. Classify as stock ONLY goods that should enter inventory for resale or production. Classify maintenance, repairs, training, cleaning, pantry, hospitality, stationery, office supplies, transport, utilities, consulting and similar consumed services/costs as service. Allowed expense accounts: "+JSON.stringify(accounts)+". Select suggestedExpenseCode only from this list. This is one page of a possibly multi-page invoice: extract header fields when visible and only the line items actually visible on this page. Do not invent unreadable values. Preserve Arabic and English. Human review is mandatory.";
+  const messages=[{role:"user",content:[{type:"text",text:prompt},...content]}];
+  const out=await env.AI.run("@cf/meta/llama-4-scout-17b-16e-instruct",{messages,max_tokens:2200,temperature:0.1});
+  let raw=String(out&&out.response||"").trim();const first=raw.indexOf("{"),last=raw.lastIndexOf("}");
+  if(first<0||last<=first)throw new Error("تعذر استخراج بيانات واضحة من الفاتورة. أدخل البيانات يدويًا.");
+  let data;try{data=JSON.parse(raw.slice(first,last+1));}catch(_){throw new Error("نتيجة قراءة الفاتورة غير مكتملة. أدخل البيانات يدويًا.");}
+  if(!data||typeof data!=="object"||Array.isArray(data))throw new Error("نتيجة قراءة الفاتورة غير صالحة.");
+  return {success:true,extracted:data,needsHumanReview:true,pageNumber,totalPages,model:"llama-4-scout-17b-16e-instruct"};
  }
  if(action==="saveMaster"){
   requirePermission(profile,"financial","add");const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties"];if(!allowed.includes(kind))throw new Error("Unsupported master data type.");const item=body.item||{},code=id(item.code);if(!txt(item.name,180))throw new Error("الاسم مطلوب");const existingCode=await adminRead(kind+"/"+code);if(existingCode)throw new Error("هذا الكود مسجل بالفعل. اختر كودًا آخر حتى لا يتم استبدال بياناته.");
@@ -157,7 +257,18 @@ export async function handleFinancialRequest(ctx){
  if(action==="submitInvoice"){
   requirePermission(profile,"financial","add");const inv={...body,id:id(body.id||uid("INV")),type:"invoice",invoiceType:body.type==="purchase"?"purchase":"sales",date:date(body.date),number:txt(body.number,120),partyId:txt(body.partyId,120),partyName:txt(body.partyName,180),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:now,createdBy:claims.sub},errors=[];
   if(!inv.partyId)errors.push("اختيار العميل أو المورد مطلوب");if(!inv.number)errors.push("رقم الفاتورة مطلوب");if(!inv.lines.length)errors.push("أضف بندًا واحدًا على الأقل");
-  inv.lines.forEach((l,i)=>{if(!txt(l.description,250))errors.push("وصف البند "+(i+1)+" مطلوب");if(!(Number(l.quantity)>0))errors.push("الكمية غير صحيحة في البند "+(i+1));if(l.kind==="stock"&&!l.itemCode)errors.push("حدد الصنف المخزني في البند "+(i+1));if(l.kind==="service"&&!l.accountCode)errors.push("حدد حساب البند "+(i+1));});
+  const invoiceChart=(await adminRead("chartOfAccounts"))||{};
+  inv.lines.forEach((l,i)=>{
+   if(!txt(l.description,250))errors.push("وصف البند "+(i+1)+" مطلوب");
+   if(!(Number(l.quantity)>0))errors.push("الكمية غير صحيحة في البند "+(i+1));
+   if(l.kind==="stock"&&!l.itemCode)errors.push("حدد الصنف المخزني في البند "+(i+1));
+   if(l.kind==="service"){
+    const expectedType=inv.invoiceType==="purchase"?"expense":"revenue";
+    const code=txt(inv.invoiceType==="purchase"?(l.accountCode||"6100"):(l.incomeAccountCode||"4200"),32);
+    const account=invoiceChart[code];
+    if(!account||account.isGroup||account.active===false||account.type!==expectedType)errors.push("حدد حساب "+(expectedType==="expense"?"مصروف صحيح":"إيراد صحيح")+" للبند "+(i+1));
+   }
+  });
   if(body.id){
    const previous=await adminRead("documents/"+inv.id);
    if(previous&&(!(previous.status==="needs_correction"||previous.status==="draft")||previous.createdBy!==claims.sub))throw new Error("لا يمكن تعديل هذا المستند بعد إرساله أو اعتماده.");
