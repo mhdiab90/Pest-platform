@@ -5,8 +5,14 @@ on:
     branches: [main]
     paths:
       - "cloudflare/worker.js"
+      - "financial-api.js"
+      - "financial-module.js"
+      - "scripts/build-mobile.mjs"
       - "firebase-messaging-sw.js"
       - "index.html"
+      - "financial-api.js"
+      - "financial-module.js"
+      - "scripts/build-mobile.mjs"
       - "wrangler.jsonc"
       - ".github/scripts/check-app-babel.mjs"
       - ".github/workflows/worker-check.yml"
