@@ -184,7 +184,7 @@ function FinanceModule(props){
  const button=(label,fn,kind,disabled)=>h('button',{type:'button',onClick:fn,disabled:!!disabled,className:'rounded-xl px-3 py-2 text-sm font-bold border '+(kind==='primary'?'bg-blue-700 text-white border-blue-700':kind==='success'?'bg-emerald-600 text-white border-emerald-600':kind==='danger'?'bg-rose-50 text-rose-700 border-rose-200':'bg-white text-slate-700 border-slate-200')},label);
  const field=(label,value,onChange,type,extra)=>h('label',{className:'block text-sm font-bold text-slate-700'},label,h('input',Object.assign({type:type||'text',value:value==null?'':value,onChange:e=>onChange(e.target.value),className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal bg-white',step:'any'},extra||{})));
  const select=(label,value,onChange,options)=>h('label',{className:'block text-sm font-bold text-slate-700'},label,h('select',{value:value||'',onChange:e=>onChange(e.target.value),className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal bg-white'},options.map(x=>h('option',{key:x.value,value:x.value},x.label))));
- const openQuickAdd=(kind,onCreated,defaults)=>{if(quickAddType)setQuickAddParent({type:quickAddType,form:quickAddForm,target:quickAddTarget});else setQuickAddParent(null);setQuickAddType(kind);setQuickAddTarget(()=>onCreated||null);setQuickAddForm(Object.assign({code:'',name:'',type:'expense',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',unit:'قطعة',groupCode:'',version:'',warehouseCode:'default',projectCode:'',taxType:'vat_output',rate:'0',effectiveFrom:today(),partyType:'customer',phone:'',taxNumber:'',email:'',address:''},defaults||{}));};
+ const openQuickAdd=(kind,onCreated,defaults)=>{if(quickAddType)setQuickAddParent({type:quickAddType,form:quickAddForm,target:quickAddTarget});else setQuickAddParent(null);setQuickAddType(kind);setQuickAddTarget(()=>onCreated||null);setQuickAddForm(Object.assign({code:'',name:'',type:'expense',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',unit:'قطعة',groupCode:'',groupType:'other',itemType:'stock',version:'',warehouseCode:'default',projectCode:'',taxType:'vat_output',rate:'0',effectiveFrom:today(),partyType:'customer',phone:'',taxNumber:'',email:'',address:''},defaults||{}));};
  const selectWithAdd=(label,value,onChange,options,kind,defaults)=>select(label,value,function(next){if(next==='__quick_add__'){openQuickAdd(kind,onChange,defaults);}else onChange(next);},(options||[]).concat([{value:'__quick_add__',label:'＋ إضافة كود جديد'}]));
  const partyPicker=(label,list,value,onChange,query,setQuery,partyType)=>{
   const term=normalizeMatch(query),matches=(list||[]).filter(p=>!term||normalizeMatch([p.code,p.name,p.companyName,p.legalName,p.phone,p.mobile,p.taxNumber].join(' ')).includes(term)).slice(0,8);
@@ -201,7 +201,7 @@ function FinanceModule(props){
   setBusy(true);setError('');
   try{
    const f=quickAddForm,kind=quickAddType;
-   const item=kind==='parties'?{code:f.code,name:f.name,partyType:f.partyType,phone:f.phone,taxNumber:f.taxNumber,email:f.email,address:f.address}:{code:f.code,name:f.name,type:f.type,nature:f.nature,parentCode:f.parentCode,isGroup:f.isGroup,subledgerType:f.subledgerType,unit:f.unit,groupCode:f.groupCode,version:f.version,warehouseCode:f.warehouseCode,projectCode:f.projectCode,taxType:f.taxType,rate:n(f.rate),effectiveFrom:f.effectiveFrom,accountCode:kind==='bankAccounts'?(f.accountCode||f.code):undefined};
+   const item=kind==='parties'?{code:f.code,name:f.name,partyType:f.partyType,phone:f.phone,taxNumber:f.taxNumber,email:f.email,address:f.address}:{code:f.code,name:f.name,type:f.type,nature:f.nature,parentCode:f.parentCode,isGroup:f.isGroup,subledgerType:f.subledgerType,unit:f.unit,groupCode:f.groupCode,groupType:f.groupType,itemType:f.itemType,version:f.version,warehouseCode:f.warehouseCode,projectCode:f.projectCode,taxType:f.taxType,rate:n(f.rate),effectiveFrom:f.effectiveFrom,accountCode:kind==='bankAccounts'?(f.accountCode||f.code):undefined};
    const result=await api('', 'POST',{action:'saveMaster',kind,item});
    setNotice(kind==='parties'?'تم تسجيل الطرف في سجل العملاء/الموردين.':'تم إضافة الكود بنجاح.');
    const parent=quickAddParent,target=quickAddTarget;
@@ -768,10 +768,14 @@ function FinanceModule(props){
    fields.push(select('المشروع المرتبط',quickAddForm.projectCode,function(v){change('projectCode',v);},[{value:'',label:'بدون مشروع'}].concat(projects.map(function(x){return {value:x.code||x.id,label:x.name||x.code};}))));
   }
   if(quickAddType==='items'){
+   fields.push(select('تصنيف الصنف',quickAddForm.itemType,function(v){change('itemType',v);},[{value:'stock',label:'بضاعة / مخزون عام'},{value:'raw_material',label:'خامة'},{value:'finished_good',label:'منتج تام'},{value:'spare_part',label:'قطع غيار'},{value:'consumable',label:'مستهلكات تشغيل'},{value:'office_supply',label:'مستلزمات مكتبية'}]));
    fields.push(field('وحدة القياس',quickAddForm.unit,function(v){change('unit',v);}));
    fields.push(selectWithAdd('مجموعة الصنف',quickAddForm.groupCode,function(v){change('groupCode',v);},[{value:'',label:'بدون مجموعة'}].concat(rows(master.itemGroups).map(function(x){return {value:x.code,label:x.code+' — '+x.name};})),'itemGroups'));
    fields.push(field('الإصدار / Version',quickAddForm.version,function(v){change('version',v);}));
    fields.push(field('كود المخزن',quickAddForm.warehouseCode,function(v){change('warehouseCode',v);}));
+  }
+  if(quickAddType==='itemGroups'){
+   fields.push(select('نوع المجموعة',quickAddForm.groupType,function(v){change('groupType',v);},[{value:'raw_material',label:'خامات'},{value:'finished_good',label:'منتجات تامة'},{value:'spare_part',label:'قطع غيار'},{value:'consumable',label:'مستهلكات'},{value:'office_supply',label:'مستلزمات مكتبية'},{value:'packaging',label:'مواد تعبئة وتغليف'},{value:'other',label:'أخرى'}]));
   }
   if(quickAddType==='taxCodes'){
    fields.push(select('نوع الضريبة',quickAddForm.taxType,function(v){change('taxType',v);},[{value:'vat_input',label:'قيمة مضافة مدخلات'},{value:'vat_output',label:'قيمة مضافة مخرجات'},{value:'withholding',label:'خصم/استقطاع'},{value:'addition',label:'إضافة'}]));
