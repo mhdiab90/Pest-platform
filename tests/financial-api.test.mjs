@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { handleFinancialRequest } from "../financial-api.js";
+import { isAllowedOrigin } from "../cloudflare/worker.js";
 
 const database = {};
 const segments = path => String(path || "").split("/").filter(Boolean);
@@ -23,6 +24,13 @@ async function adminPatch(updates) {
   for (const [path, value] of Object.entries(updates)) write(path, value);
   return true;
 }
+async function adminReadRoot(path) { return read(path); }
+async function adminPatchRoot(updates) {
+  for (const [path, value] of Object.entries(updates)) {
+    write(path.startsWith("financial/") ? path.slice("financial/".length) : path, value);
+  }
+  return true;
+}
 const profile = {uid:"test-admin",role:"admin",status:"active",fullName:"Finance Test"};
 const claims = {sub:"test-admin"};
 const env = {};
@@ -33,9 +41,23 @@ async function invoke(method, path, body) {
     request:{method},
     url:new URL("https://example.test/finance" + (path || "")),
     body:body || {},
-    claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch
+    claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch,adminReadRoot,adminPatchRoot
   });
 }
+
+
+test("CORS allows both supported app clients and rejects unrelated websites", () => {
+  assert.equal(isAllowedOrigin("https://mhdiab90.github.io"), true);
+  assert.equal(isAllowedOrigin("https://pest-platform.netlify.app"), true);
+  assert.equal(isAllowedOrigin("https://pest-platform.ai-mhdiab90.workers.dev"), true);
+  assert.equal(isAllowedOrigin("https://feature-mobile-push-performance-pest-platform.ai-mhdiab90.workers.dev"), true);
+  assert.equal(isAllowedOrigin("capacitor://localhost"), true);
+  assert.equal(isAllowedOrigin("https://localhost"), true);
+  assert.equal(isAllowedOrigin("http://localhost:5173"), true);
+  assert.equal(isAllowedOrigin("https://random-account.workers.dev"), false);
+  assert.equal(isAllowedOrigin("https://attacker.example"), false);
+  assert.equal(isAllowedOrigin(""), false);
+});
 
 test("financial workflow: bootstrap, double-entry review, invoice stock costing and duplicate protection", async () => {
   await invoke("GET","?resource=bootstrap");
@@ -85,6 +107,30 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
   await assert.rejects(
     invoke("POST","",{action:"saveMaster",kind:"itemGroups",item:{code:"GROUP-1",name:"Attempted overwrite"}}),
     /مسجل بالفعل/
+  );
+
+  const customer = await invoke("POST","",{
+    action:"saveMaster",kind:"parties",
+    item:{code:"CUSTOMER-MASTER-01",name:"Customer Master Test",partyType:"customer",phone:"01000000000",taxNumber:"TAX-001"}
+  });
+  assert.equal(customer.item.code,"CUSTOMER-MASTER-01");
+  assert.equal(read("clients/CUSTOMER-MASTER-01").name,"Customer Master Test","new finance customers are also registered in the main CRM");
+  const bootstrapAfterParty = await invoke("GET","?resource=bootstrap");
+  assert.equal(bootstrapAfterParty.parties["CUSTOMER-MASTER-01"].partyType,"customer","finance picker bootstrap merges CRM clients and vendors");
+
+  const supplierImport = await invoke("POST","",{
+    action:"importMasters",kind:"parties",partyType:"vendor",
+    rows:[
+      {code:"SUP-IMPORT-01",name:"Imported Supplier One",phone:"01111111111"},
+      {code:"SUP-IMPORT-02",name:"Imported Supplier Two",taxNumber:"TAX-002"}
+    ]
+  });
+  assert.equal(supplierImport.count,2);
+  assert.equal(read("vendors/SUP-IMPORT-01").name,"Imported Supplier One");
+  assert.equal(read("parties/SUP-IMPORT-02").partyType,"vendor");
+  await assert.rejects(
+    invoke("POST","",{action:"importMasters",kind:"parties",partyType:"vendor",rows:[{code:"SUP-IMPORT-01",name:"Duplicate supplier"}]}),
+    /موجود بالفعل/
   );
   await invoke("POST","",{
     action:"saveMaster",kind:"items",
