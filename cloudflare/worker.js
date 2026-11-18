@@ -18,6 +18,8 @@ let cachedJwks = null;
 let cachedJwksUntil = 0;
 let cachedFcmAccessToken = null;
 let cachedFcmAccessTokenUntil = 0;
+let cachedFirebaseDatabaseAccessToken = null;
+let cachedFirebaseDatabaseAccessTokenUntil = 0;
 
 function corsHeaders(origin) {
   const headers = {
@@ -299,58 +301,67 @@ async function fcmSha256(value) {
   return Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function getFcmAccessToken(env) {
-  if (cachedFcmAccessToken && Date.now() < cachedFcmAccessTokenUntil - 60000) return cachedFcmAccessToken;
+async function getServiceAccountAccessToken(env, scope, cacheKey) {
+  const isDatabase = cacheKey === "database";
+  if (isDatabase && cachedFirebaseDatabaseAccessToken && Date.now() < cachedFirebaseDatabaseAccessTokenUntil - 60000) return cachedFirebaseDatabaseAccessToken;
+  if (!isDatabase && cachedFcmAccessToken && Date.now() < cachedFcmAccessTokenUntil - 60000) return cachedFcmAccessToken;
   if (!env.FCM_SERVICE_ACCOUNT_JSON) throw new Error("FCM_NOT_CONFIGURED: Add the FCM_SERVICE_ACCOUNT_JSON secret to the Cloudflare Worker.");
   let serviceAccount;
   try { serviceAccount = JSON.parse(env.FCM_SERVICE_ACCOUNT_JSON); }
-  catch (_) { throw new Error("FCM_CONFIG_INVALID: The Cloudflare FCM service account secret is not valid JSON."); }
+  catch (_) { throw new Error("FCM_CONFIG_INVALID: The Cloudflare service account secret is not valid JSON."); }
   if (!serviceAccount.client_email || !serviceAccount.private_key || serviceAccount.project_id !== PROJECT_ID) {
-    throw new Error("FCM_CONFIG_INVALID: The FCM service account must belong to the Pest Platform Firebase project.");
+    throw new Error("FCM_CONFIG_INVALID: The service account must belong to the Pest Platform Firebase project.");
   }
   const tokenUri = serviceAccount.token_uri || "https://oauth2.googleapis.com/token";
   const now = Math.floor(Date.now() / 1000);
   const header = fcmTextBase64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
   const claims = fcmTextBase64Url(JSON.stringify({
     iss: serviceAccount.client_email,
-    scope: "https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/firebase.database https://www.googleapis.com/auth/firebase.messaging",
+    scope,
     aud: tokenUri,
     iat: now,
     exp: now + 3600
   }));
   const unsigned = header + "." + claims;
-  const pem = String(serviceAccount.private_key).replace(/-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----|\s/g, "");
+  const pem = String(serviceAccount.private_key).replace(/-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----|\\s/g, "");
   let keyBytes;
   try {
     const raw = atob(pem);
     keyBytes = Uint8Array.from(raw, char => char.charCodeAt(0));
-  } catch (_) { throw new Error("FCM_CONFIG_INVALID: The FCM private key could not be decoded."); }
+  } catch (_) { throw new Error("FCM_CONFIG_INVALID: The service-account private key could not be decoded."); }
   let privateKey;
   try {
-    privateKey = await crypto.subtle.importKey(
-      "pkcs8", keyBytes,
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-      false, ["sign"]
-    );
-  } catch (_) { throw new Error("FCM_CONFIG_INVALID: The FCM private key format is not supported."); }
+    privateKey = await crypto.subtle.importKey("pkcs8", keyBytes, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
+  } catch (_) { throw new Error("FCM_CONFIG_INVALID: The service-account private key format is not supported."); }
   const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", privateKey, new TextEncoder().encode(unsigned));
   const assertion = unsigned + "." + fcmBase64Url(new Uint8Array(signature));
   const response = await fetch(tokenUri, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion
-    })
+    body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion })
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || !payload.access_token) {
-    console.error("FCM OAuth token exchange failed:", response.status);
-    throw new Error("FCM_AUTH_FAILED: Cloudflare could not obtain a Firebase messaging access token.");
+    console.error("Firebase service-account token exchange failed:", cacheKey, response.status, String(payload.error || "").slice(0, 100));
+    throw new Error("FCM_AUTH_FAILED: Cloudflare could not obtain the required Firebase service-account token.");
   }
-  cachedFcmAccessToken = payload.access_token;
-  cachedFcmAccessTokenUntil = Date.now() + Math.max(60, Number(payload.expires_in || 3600)) * 1000;
-  return cachedFcmAccessToken;
+  const expiresAt = Date.now() + Math.max(60, Number(payload.expires_in || 3600)) * 1000;
+  if (isDatabase) {
+    cachedFirebaseDatabaseAccessToken = payload.access_token;
+    cachedFirebaseDatabaseAccessTokenUntil = expiresAt;
+  } else {
+    cachedFcmAccessToken = payload.access_token;
+    cachedFcmAccessTokenUntil = expiresAt;
+  }
+  return payload.access_token;
+}
+
+async function getFcmAccessToken(env) {
+  return getServiceAccountAccessToken(env, "https://www.googleapis.com/auth/firebase.messaging", "messaging");
+}
+
+async function getFirebaseDatabaseAccessToken(env) {
+  return getServiceAccountAccessToken(env, "https://www.googleapis.com/auth/firebase.database", "database");
 }
 
 async function adminDatabaseRequest(path, accessToken, method, body) {
@@ -367,8 +378,9 @@ async function adminDatabaseRequest(path, accessToken, method, body) {
   });
   const value = await response.json().catch(() => null);
   if (!response.ok) {
-    console.error("Firebase Admin database request failed:", response.status);
-    throw new Error("FCM_DATABASE_ERROR: Secure push delivery could not read the notification records.");
+    const detail = String(value && value.error || "Firebase Realtime Database rejected the request").replace(/\\s+/g, " ").slice(0, 180);
+    console.error("Firebase Admin database request failed:", { status: response.status, path: cleanPath, detail });
+    throw new Error("FIREBASE_ADMIN_DATABASE_ERROR: RTDB rejected the " + (method || "GET") + " request (HTTP " + response.status + ") for " + (cleanPath || "/") + ". " + detail + " Check the service-account project and Firebase Realtime Database access.");
   }
   return value;
 }
@@ -435,55 +447,55 @@ async function sendFcmToDevice(deviceToken, accessToken, eventType, eventId, dev
 
 async function dispatchPushToUsers(env, recipients, eventType, eventId, dispatchPrefix, notificationContent) {
   if (!env.FCM_SERVICE_ACCOUNT_JSON) throw new Error("FCM_NOT_CONFIGURED: Add the FCM_SERVICE_ACCOUNT_JSON secret to the Cloudflare Worker.");
-  const accessToken = await getFcmAccessToken(env);
+  const [databaseAccessToken, fcmAccessToken] = await Promise.all([getFirebaseDatabaseAccessToken(env), getFcmAccessToken(env)]);
   const uniqueRecipients = [...new Set((recipients || []).filter(uid => typeof uid === "string" && uid && uid.length <= 128))].slice(0, 100);
   let sent = 0, failed = 0, skipped = 0, removedTokens = 0;
   for (const uid of uniqueRecipients) {
     const dispatchKey = await fcmSha256(dispatchPrefix + ":" + uid);
     const dispatchPath = "pushDispatches/" + dispatchKey;
-    const existing = await adminDatabaseRequest(dispatchPath, accessToken, "GET");
+    const existing = await adminDatabaseRequest(dispatchPath, databaseAccessToken, "GET");
     if (existing && existing.status === "completed") { skipped += 1; continue; }
-    await adminDatabaseRequest(dispatchPath, accessToken, "PUT", {
+    await adminDatabaseRequest(dispatchPath, databaseAccessToken, "PUT", {
       status: "sending", eventType, eventId: String(eventId || ""),
       recipientUid: uid, updatedAt: Date.now()
     });
-    const profile = await adminDatabaseRequest("users/" + uid, accessToken, "GET");
+    const profile = await adminDatabaseRequest("users/" + uid, databaseAccessToken, "GET");
     if (!active(profile)) {
-      await adminDatabaseRequest(dispatchPath, accessToken, "PUT", { status: "completed", reason: "inactive-user", updatedAt: Date.now() });
+      await adminDatabaseRequest(dispatchPath, databaseAccessToken, "PUT", { status: "completed", reason: "inactive-user", updatedAt: Date.now() });
       skipped += 1;
       continue;
     }
-    const tokens = await adminDatabaseRequest("pushTokens/" + uid, accessToken, "GET");
+    const tokens = await adminDatabaseRequest("pushTokens/" + uid, databaseAccessToken, "GET");
     const entries = tokens && typeof tokens === "object" ? Object.entries(tokens) : [];
     if (!entries.length) {
-      await adminDatabaseRequest(dispatchPath, accessToken, "PUT", { status: "completed", reason: "no-device-tokens", updatedAt: Date.now() });
+      await adminDatabaseRequest(dispatchPath, databaseAccessToken, "PUT", { status: "completed", reason: "no-device-tokens", updatedAt: Date.now() });
       skipped += 1;
       continue;
     }
     let badgeCount = Number(existing && existing.badgeCount || 0);
     if (!Number.isFinite(badgeCount) || badgeCount < 1) {
       // Increment once per recipient/event to provide an accumulated launcher badge.
-      await adminDatabaseRequest("pushBadgeCounts/" + uid, accessToken, "PUT", { ".sv": { increment: 1 } });
-      badgeCount = Number(await adminDatabaseRequest("pushBadgeCounts/" + uid, accessToken, "GET")) || 1;
+      await adminDatabaseRequest("pushBadgeCounts/" + uid, databaseAccessToken, "PUT", { ".sv": { increment: 1 } });
+      badgeCount = Number(await adminDatabaseRequest("pushBadgeCounts/" + uid, databaseAccessToken, "GET")) || 1;
       badgeCount = Math.max(1, Math.min(999, Math.floor(badgeCount)));
     }
-    await adminDatabaseRequest(dispatchPath, accessToken, "PUT", {
+    await adminDatabaseRequest(dispatchPath, databaseAccessToken, "PUT", {
       status: "sending", eventType, eventId: String(eventId || ""),
       recipientUid: uid, badgeCount, updatedAt: Date.now()
     });
     let userSent = 0, userFailed = 0;
     for (const [tokenId, record] of entries) {
       if (!record || typeof record.token !== "string" || record.token.length < 20) continue;
-      const result = await sendFcmToDevice(record.token, accessToken, eventType, eventId, record.origin, notificationContent, badgeCount);
+      const result = await sendFcmToDevice(record.token, fcmAccessToken, eventType, eventId, record.origin, notificationContent, badgeCount);
       if (result.sent) userSent += 1;
       else if (result.invalidToken) {
-        await adminDatabaseRequest("pushTokens/" + uid + "/" + tokenId, accessToken, "DELETE");
+        await adminDatabaseRequest("pushTokens/" + uid + "/" + tokenId, databaseAccessToken, "DELETE");
         removedTokens += 1;
       } else userFailed += 1;
     }
     sent += userSent;
     failed += userFailed;
-    await adminDatabaseRequest(dispatchPath, accessToken, "PUT", {
+    await adminDatabaseRequest(dispatchPath, databaseAccessToken, "PUT", {
       status: userFailed > 0 ? "retryable" : "completed",
       sent: userSent, failed: userFailed, badgeCount, updatedAt: Date.now()
     });
@@ -496,7 +508,7 @@ async function syncPushBadgeCount(body, claims, env) {
   if (!Number.isInteger(count) || count < 0 || count > 999) {
     throw new Error("Invalid notification badge count.");
   }
-  const accessToken = await getFcmAccessToken(env);
+  const accessToken = await getFirebaseDatabaseAccessToken(env);
   await adminDatabaseRequest("pushBadgeCounts/" + claims.sub, accessToken, "PUT", count);
   return { success: true, badgeCount: count };
 }
@@ -530,7 +542,7 @@ async function handlePushNotificationRequest(body, claims, token, env) {
     const recipientUid = safeSegment(body.recipientUid, "cash custody recipient");
     const notificationId = safeSegment(body.notificationId, "cash custody notification id");
     const sourceOwnerUid = safeSegment(body.sourceOwnerUid, "cash custody source owner");
-    const accessToken = await getFcmAccessToken(env);
+    const accessToken = await getFirebaseDatabaseAccessToken(env);
     const notification = await adminDatabaseRequest("cashCustodyNotifications/" + recipientUid + "/" + notificationId, accessToken, "GET");
     if (!notification || notification.senderUid !== claims.sub || notification.recipientUid !== recipientUid) {
       throw new Error("Permission denied: the cash custody notification does not belong to this sender.");
@@ -566,7 +578,7 @@ async function handlePendingUserRequestPush(claims, token, env) {
       (claims.email && String(request.email || "").toLowerCase() !== String(claims.email).toLowerCase())) {
     throw new Error("Permission denied: no matching pending account request was found.");
   }
-  const accessToken = await getFcmAccessToken(env);
+  const accessToken = await getFirebaseDatabaseAccessToken(env);
   const users = await adminDatabaseRequest("users", accessToken, "GET");
   const admins = users && typeof users === "object"
     ? Object.entries(users).filter(([, profile]) => profile && profile.role === "admin" && active(profile)).map(([uid]) => uid)
@@ -2675,16 +2687,27 @@ export default {
       const profile = await loadProfile(claims, token);
       if (url.pathname === "/finance") {
         try {
-          const accessToken = await getFcmAccessToken(env);
+          const accessToken = await getFirebaseDatabaseAccessToken(env);
           const adminRead = path => adminDatabaseRequest("financial/" + String(path || "").split("/").filter(Boolean).map(encodeURIComponent).join("/"), accessToken, "GET");
           const adminPatch = updates => adminDatabaseRequest("financial", accessToken, "PATCH", updates);
           const adminReadRoot = path => adminDatabaseRequest(path, accessToken, "GET");
           const adminPatchRoot = updates => adminDatabaseRequest("", accessToken, "PATCH", updates);
           const output = await handleFinancialRequest({request,url,body,claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch,adminReadRoot,adminPatchRoot,accessToken});
+          if(output&&output.pushNotification){
+            const push=output.pushNotification;
+            delete output.pushNotification;
+            try{
+              output.pushDelivery=await dispatchPushToUsers(env,[push.recipientUid],push.eventType,push.eventId,push.dispatchPrefix||("finance:"+push.eventType+":"+push.eventId),push.content||{title:"PEST Platform",body:"لديك إجراء مالي جديد."});
+            }catch(pushError){
+              console.error("Financial workflow push delivery failed after the database transaction was saved:",String(pushError&&pushError.message||pushError).slice(0,220));
+              output.pushDelivery={sent:0,failed:1,error:"تعذر إرسال الإشعار الفوري، لكن تم حفظ الإجراء داخل البرنامج."};
+            }
+          }
           return jsonResponse(output,200,origin);
         } catch (financeError) {
-          console.error("Financial module:",String(financeError&&financeError.message||financeError).slice(0,280));
-          return jsonResponse({error:String(financeError&&financeError.message||financeError)},400,origin);
+          const message=String(financeError&&financeError.message||financeError);
+          console.error("Financial module:",message.slice(0,320));
+          return jsonResponse({error:message},/^FIREBASE_ADMIN_DATABASE_ERROR|^FCM_AUTH_FAILED/.test(message)?503:400,origin);
         }
       }
       if (url.pathname === "/push/notify") {
