@@ -1,16 +1,25 @@
+import { handleFinancialRequest } from "../financial-api.js";
+import { isAllowedOrigin } from "./origin.js";
 const PROJECT_ID = "pest-plat-form";
 const DATABASE_URL = "https://pest-plat-form-default-rtdb.europe-west1.firebasedatabase.app";
 const ALLOWED_ORIGIN = "https://mhdiab90.github.io";
+const APP_PUBLIC_URL = ALLOWED_ORIGIN + "/Pest-platform/";
 const MODEL = "@cf/zai-org/glm-4.7-flash";
 const OPENROUTER_MODEL = "openrouter/free";
 const FIREBASE_JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 const FIREBASE_API_KEY = "AIzaSyBPrzHFEIM3AOFclTzJ1SpG_Nq6BKHgrSo";
 const SCHEDULE_TIME_ZONE = "Africa/Cairo";
+const ANDROID_NOTIFICATION_CHANNEL = "pest_alerts_v3";
+// Refresh the Preview deployment after configuring Preview-only FCM secrets.
 const MAX_PROMPT_LENGTH = 24000;
 const MAX_AGENT_ACTIONS = 5;
 
 let cachedJwks = null;
 let cachedJwksUntil = 0;
+let cachedFcmAccessToken = null;
+let cachedFcmAccessTokenUntil = 0;
+let cachedFirebaseDatabaseAccessToken = null;
+let cachedFirebaseDatabaseAccessTokenUntil = 0;
 
 function corsHeaders(origin) {
   const headers = {
@@ -19,7 +28,7 @@ function corsHeaders(origin) {
     "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Attachment-Entity-Type, X-Attachment-Entity-Id, X-Attachment-Id, X-Attachment-File-Name",
     "Access-Control-Max-Age": "86400"
   };
-  if (origin === ALLOWED_ORIGIN) headers["Access-Control-Allow-Origin"] = ALLOWED_ORIGIN;
+  if (isAllowedOrigin(origin)) headers["Access-Control-Allow-Origin"] = origin;
   return headers;
 }
 
@@ -212,6 +221,376 @@ async function loadProfile(claims, token) {
     throw new Error("This user account is not active.");
   }
   return { ...profile, uid: claims.sub };
+}
+
+
+async function getMobileOtaManifest(channel) {
+  const isPreview = channel === "preview";
+  const prefix = isPreview ? "ota-preview-" : "ota-stable-";
+  const branchName = isPreview ? "feature/mobile-push-performance" : "main";
+  const headers = {
+    "Accept": "application/vnd.github+json",
+    "User-Agent": "Pest-Platform-OTA",
+    "X-GitHub-Api-Version": "2022-11-28"
+  };
+
+  // Match the release to the current branch head, not the Releases API list
+  // order. Concurrent Android builds can publish older commits after newer ones.
+  const branchUrl = "https://api.github.com/repos/mhdiab90/Pest-platform/branches/" + encodeURIComponent(branchName);
+  const branchResponse = await fetch(branchUrl, { headers });
+  if (!branchResponse.ok) throw new Error("OTA branch lookup failed with HTTP " + branchResponse.status + ".");
+  const branch = await branchResponse.json();
+  const headSha = String(branch && branch.commit && branch.commit.sha || "").toLowerCase();
+  if (!/^[a-f0-9]{40}$/.test(headSha)) throw new Error("OTA branch head SHA is invalid.");
+
+  const releasesUrl = "https://api.github.com/repos/mhdiab90/Pest-platform/releases?per_page=100";
+  const releasesResponse = await fetch(releasesUrl, { headers });
+  if (!releasesResponse.ok) throw new Error("OTA release lookup failed with HTTP " + releasesResponse.status + ".");
+  const releases = await releasesResponse.json();
+  if (!Array.isArray(releases)) throw new Error("OTA release list is invalid.");
+
+  const expectedTag = prefix + headSha.slice(0, 12);
+  const release = releases.find(item =>
+    item && !item.draft && Boolean(item.prerelease) === isPreview &&
+    item.target_commitish === headSha && item.tag_name === expectedTag
+  );
+  // Do not fall back to an older bundle while the current commit is building.
+  if (!release) return { ok: true, updateAvailable: false, channel };
+
+  const assets = Array.isArray(release.assets) ? release.assets : [];
+  const bundleAsset = assets.find(asset =>
+    asset && asset.name === "pest-platform-ota.zip" && asset.state === "uploaded"
+  );
+  if (!bundleAsset ||
+      !String(bundleAsset.browser_download_url || "").startsWith("https://github.com/mhdiab90/Pest-platform/releases/download/")) {
+    throw new Error("OTA release is missing its uploaded bundle asset.");
+  }
+
+  // GitHub's Releases API supplies the SHA-256 digest for each uploaded asset.
+  // Use that metadata directly instead of fetching a second redirecting asset.
+  const version = String(release.tag_name || "");
+  const sha256 = String(bundleAsset.digest || "").replace(/^sha256:/i, "").toLowerCase();
+  if (!version.startsWith(prefix) || !/^[a-f0-9]{64}$/.test(sha256)) {
+    throw new Error("OTA release tag or bundle SHA-256 digest is invalid.");
+  }
+
+  return {
+    ok: true,
+    updateAvailable: true,
+    channel,
+    version,
+    sha256,
+    bundleUrl: bundleAsset.browser_download_url,
+    publishedAt: release.published_at || release.created_at || null
+  };
+}
+
+
+function fcmBase64Url(bytes) {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+function fcmTextBase64Url(value) {
+  return fcmBase64Url(new TextEncoder().encode(String(value)));
+}
+
+async function fcmSha256(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(value)));
+  return Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function getServiceAccountAccessToken(env, scope, cacheKey) {
+  const isDatabase = cacheKey === "database";
+  if (isDatabase && cachedFirebaseDatabaseAccessToken && Date.now() < cachedFirebaseDatabaseAccessTokenUntil - 60000) return cachedFirebaseDatabaseAccessToken;
+  if (!isDatabase && cachedFcmAccessToken && Date.now() < cachedFcmAccessTokenUntil - 60000) return cachedFcmAccessToken;
+  if (!env.FCM_SERVICE_ACCOUNT_JSON) throw new Error("FCM_NOT_CONFIGURED: Add the FCM_SERVICE_ACCOUNT_JSON secret to the Cloudflare Worker.");
+  let serviceAccount;
+  try { serviceAccount = JSON.parse(env.FCM_SERVICE_ACCOUNT_JSON); }
+  catch (_) { throw new Error("FCM_CONFIG_INVALID: The Cloudflare service account secret is not valid JSON."); }
+  if (!serviceAccount.client_email || !serviceAccount.private_key || serviceAccount.project_id !== PROJECT_ID) {
+    throw new Error("FCM_CONFIG_INVALID: The service account must belong to the Pest Platform Firebase project.");
+  }
+  const tokenUri = serviceAccount.token_uri || "https://oauth2.googleapis.com/token";
+  const now = Math.floor(Date.now() / 1000);
+  const header = fcmTextBase64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const claims = fcmTextBase64Url(JSON.stringify({
+    iss: serviceAccount.client_email,
+    scope,
+    aud: tokenUri,
+    iat: now,
+    exp: now + 3600
+  }));
+  const unsigned = header + "." + claims;
+  const pem = String(serviceAccount.private_key).replace(/-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----|\\s/g, "");
+  let keyBytes;
+  try {
+    const raw = atob(pem);
+    keyBytes = Uint8Array.from(raw, char => char.charCodeAt(0));
+  } catch (_) { throw new Error("FCM_CONFIG_INVALID: The service-account private key could not be decoded."); }
+  let privateKey;
+  try {
+    privateKey = await crypto.subtle.importKey("pkcs8", keyBytes, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
+  } catch (_) { throw new Error("FCM_CONFIG_INVALID: The service-account private key format is not supported."); }
+  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", privateKey, new TextEncoder().encode(unsigned));
+  const assertion = unsigned + "." + fcmBase64Url(new Uint8Array(signature));
+  const response = await fetch(tokenUri, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.access_token) {
+    console.error("Firebase service-account token exchange failed:", cacheKey, response.status, String(payload.error || "").slice(0, 100));
+    throw new Error("FCM_AUTH_FAILED: Cloudflare could not obtain the required Firebase service-account token.");
+  }
+  const expiresAt = Date.now() + Math.max(60, Number(payload.expires_in || 3600)) * 1000;
+  if (isDatabase) {
+    cachedFirebaseDatabaseAccessToken = payload.access_token;
+    cachedFirebaseDatabaseAccessTokenUntil = expiresAt;
+  } else {
+    cachedFcmAccessToken = payload.access_token;
+    cachedFcmAccessTokenUntil = expiresAt;
+  }
+  return payload.access_token;
+}
+
+async function getFcmAccessToken(env) {
+  return getServiceAccountAccessToken(env, "https://www.googleapis.com/auth/firebase.messaging", "messaging");
+}
+
+async function getFirebaseDatabaseAccessToken(env) {
+  return getServiceAccountAccessToken(env, "https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/firebase.database", "database");
+}
+
+async function adminDatabaseRequest(path, accessToken, method, body) {
+  const cleanPath = String(path || "").split("/").filter(Boolean).map(encodeURIComponent).join("/");
+  const url = DATABASE_URL + (cleanPath ? "/" + cleanPath : "") + ".json";
+  const response = await fetch(url, {
+    method: method || "GET",
+    headers: {
+      "Accept": "application/json",
+      "Authorization": "Bearer " + accessToken,
+      ...(body === undefined ? {} : { "Content-Type": "application/json" })
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) })
+  });
+  const value = await response.json().catch(() => null);
+  if (!response.ok) {
+    const detail = String(value && value.error || "Firebase Realtime Database rejected the request").replace(/\\s+/g, " ").slice(0, 180);
+    console.error("Firebase Admin database request failed:", { status: response.status, path: cleanPath, detail });
+    throw new Error("FIREBASE_ADMIN_DATABASE_ERROR: RTDB rejected the " + (method || "GET") + " request (HTTP " + response.status + ") for " + (cleanPath || "/") + ". " + detail + " Check the service-account project and Firebase Realtime Database access.");
+  }
+  return value;
+}
+
+function pushText(value, maxLength, fallback) {
+  const text = String(value == null ? "" : value).replace(/\s+/g, " ").trim();
+  return (text || String(fallback || "")).slice(0, maxLength);
+}
+
+async function sendFcmToDevice(deviceToken, accessToken, eventType, eventId, deviceOrigin, notificationContent, badgeCount) {
+  const appBase = isAllowedOrigin(deviceOrigin)
+    ? (deviceOrigin === ALLOWED_ORIGIN ? APP_PUBLIC_URL : deviceOrigin + "/")
+    : APP_PUBLIC_URL;
+  const route = eventType === "cashCustody" ? "cashCustody" : eventType === "userRequest" ? "userRequests" : (eventType === "financialAssignment" || eventType === "financialAssignmentReturned") ? "financialAssignments" : "messages";
+  const clickUrl = new URL(appBase);
+  clickUrl.searchParams.set("pushType", eventType);
+  clickUrl.searchParams.set("pushId", String(eventId || ""));
+  clickUrl.searchParams.set("pushRoute", route);
+  const title = pushText(notificationContent && notificationContent.title, 100, "PEST Platform");
+  const body = pushText(notificationContent && notificationContent.body, 180, "لديك تنبيه جديد. افتح التطبيق للاطلاع على التفاصيل.");
+  const payload = {
+    message: {
+      token: deviceToken,
+      notification: { title, body },
+      data: {
+        type: eventType,
+        eventId: String(eventId || ""),
+        route,
+        url: clickUrl.toString(),
+        title,
+        body,
+        badgeCount: String(Math.max(1, Math.min(999, Number(badgeCount) || 1)))
+      },
+      android: {
+        priority: "HIGH",
+        notification: {
+          channel_id: ANDROID_NOTIFICATION_CHANNEL,
+          sound: "pest_notification",
+          icon: "ic_stat_pest_notification",
+          color: "#14517a",
+          priority: "PRIORITY_MAX",
+          visibility: "PUBLIC",
+          notification_count: Math.max(1, Math.min(999, Number(badgeCount) || 1)),
+          default_vibrate_timings: true
+        }
+      },
+      webpush: {
+        headers: { TTL: "300", Urgency: "high" },
+        fcmOptions: { link: clickUrl.toString() }
+      }
+    }
+  };
+  const response = await fetch("https://fcm.googleapis.com/v1/projects/" + PROJECT_ID + "/messages:send", {
+    method: "POST",
+    headers: { "Authorization": "Bearer " + accessToken, "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const result = await response.json().catch(() => ({}));
+  if (response.ok) return { sent: true };
+  const errorDetails = Array.isArray(result.error && result.error.details) ? result.error.details : [];
+  const invalidToken = response.status === 404 || errorDetails.some(detail => detail && detail.errorCode === "UNREGISTERED");
+  return { sent: false, invalidToken, status: response.status };
+}
+
+async function dispatchPushToUsers(env, recipients, eventType, eventId, dispatchPrefix, notificationContent) {
+  if (!env.FCM_SERVICE_ACCOUNT_JSON) throw new Error("FCM_NOT_CONFIGURED: Add the FCM_SERVICE_ACCOUNT_JSON secret to the Cloudflare Worker.");
+  const [databaseAccessToken, fcmAccessToken] = await Promise.all([getFirebaseDatabaseAccessToken(env), getFcmAccessToken(env)]);
+  const uniqueRecipients = [...new Set((recipients || []).filter(uid => typeof uid === "string" && uid && uid.length <= 128))].slice(0, 100);
+  let sent = 0, failed = 0, skipped = 0, removedTokens = 0;
+  for (const uid of uniqueRecipients) {
+    const dispatchKey = await fcmSha256(dispatchPrefix + ":" + uid);
+    const dispatchPath = "pushDispatches/" + dispatchKey;
+    const existing = await adminDatabaseRequest(dispatchPath, databaseAccessToken, "GET");
+    if (existing && existing.status === "completed") { skipped += 1; continue; }
+    await adminDatabaseRequest(dispatchPath, databaseAccessToken, "PUT", {
+      status: "sending", eventType, eventId: String(eventId || ""),
+      recipientUid: uid, updatedAt: Date.now()
+    });
+    const profile = await adminDatabaseRequest("users/" + uid, databaseAccessToken, "GET");
+    if (!active(profile)) {
+      await adminDatabaseRequest(dispatchPath, databaseAccessToken, "PUT", { status: "completed", reason: "inactive-user", updatedAt: Date.now() });
+      skipped += 1;
+      continue;
+    }
+    const tokens = await adminDatabaseRequest("pushTokens/" + uid, databaseAccessToken, "GET");
+    const entries = tokens && typeof tokens === "object" ? Object.entries(tokens) : [];
+    if (!entries.length) {
+      await adminDatabaseRequest(dispatchPath, databaseAccessToken, "PUT", { status: "completed", reason: "no-device-tokens", updatedAt: Date.now() });
+      skipped += 1;
+      continue;
+    }
+    let badgeCount = Number(existing && existing.badgeCount || 0);
+    if (!Number.isFinite(badgeCount) || badgeCount < 1) {
+      // Increment once per recipient/event to provide an accumulated launcher badge.
+      await adminDatabaseRequest("pushBadgeCounts/" + uid, databaseAccessToken, "PUT", { ".sv": { increment: 1 } });
+      badgeCount = Number(await adminDatabaseRequest("pushBadgeCounts/" + uid, databaseAccessToken, "GET")) || 1;
+      badgeCount = Math.max(1, Math.min(999, Math.floor(badgeCount)));
+    }
+    await adminDatabaseRequest(dispatchPath, databaseAccessToken, "PUT", {
+      status: "sending", eventType, eventId: String(eventId || ""),
+      recipientUid: uid, badgeCount, updatedAt: Date.now()
+    });
+    let userSent = 0, userFailed = 0;
+    for (const [tokenId, record] of entries) {
+      if (!record || typeof record.token !== "string" || record.token.length < 20) continue;
+      const result = await sendFcmToDevice(record.token, fcmAccessToken, eventType, eventId, record.origin, notificationContent, badgeCount);
+      if (result.sent) userSent += 1;
+      else if (result.invalidToken) {
+        await adminDatabaseRequest("pushTokens/" + uid + "/" + tokenId, databaseAccessToken, "DELETE");
+        removedTokens += 1;
+      } else userFailed += 1;
+    }
+    sent += userSent;
+    failed += userFailed;
+    await adminDatabaseRequest(dispatchPath, databaseAccessToken, "PUT", {
+      status: userFailed > 0 ? "retryable" : "completed",
+      sent: userSent, failed: userFailed, badgeCount, updatedAt: Date.now()
+    });
+  }
+  return { recipients: uniqueRecipients.length, sent, failed, skipped, removedTokens };
+}
+
+async function syncPushBadgeCount(body, claims, env) {
+  const count = Number(body && body.count);
+  if (!Number.isInteger(count) || count < 0 || count > 999) {
+    throw new Error("Invalid notification badge count.");
+  }
+  const accessToken = await getFirebaseDatabaseAccessToken(env);
+  await adminDatabaseRequest("pushBadgeCounts/" + claims.sub, accessToken, "PUT", count);
+  return { success: true, badgeCount: count };
+}
+
+async function handlePushNotificationRequest(body, claims, token, env) {
+  const kind = String(body.kind || "");
+  if (kind === "message") {
+    const messageId = safeSegment(body.messageId, "message id");
+    const message = await databaseRequest("messages/" + claims.sub + "/" + messageId, token, "GET");
+    if (!message || message.senderUid !== claims.sub || message.copyType !== "sent") {
+      throw new Error("Permission denied: this account cannot send a push for that message.");
+    }
+    const recipients = Array.isArray(message.recipientUids)
+      ? message.recipientUids
+      : (message.recipientUid && message.recipientUid !== "*" ? [message.recipientUid] : []);
+    const senderName = pushText(message.senderName || message.senderEmail || "زميلك", 55, "زميلك");
+    const subject = pushText(message.subject, 80, "");
+    const excerpt = pushText(message.body, 115, "افتح التطبيق لعرض الرسالة.");
+    const messagePreview = subject
+      ? (excerpt && excerpt !== subject ? subject + " — " + excerpt : subject)
+      : excerpt;
+    const notificationContent = {
+      title: "رسالة جديدة من " + senderName,
+      body: messagePreview
+    };
+    const result = await dispatchPushToUsers(env, recipients.filter(uid => uid !== claims.sub), "message", messageId,
+      "message:" + claims.sub + ":" + messageId, notificationContent);
+    return { success: true, kind, ...result };
+  }
+  if (kind === "cashCustody") {
+    const recipientUid = safeSegment(body.recipientUid, "cash custody recipient");
+    const notificationId = safeSegment(body.notificationId, "cash custody notification id");
+    const sourceOwnerUid = safeSegment(body.sourceOwnerUid, "cash custody source owner");
+    const accessToken = await getFirebaseDatabaseAccessToken(env);
+    const notification = await adminDatabaseRequest("cashCustodyNotifications/" + recipientUid + "/" + notificationId, accessToken, "GET");
+    if (!notification || notification.senderUid !== claims.sub || notification.recipientUid !== recipientUid) {
+      throw new Error("Permission denied: the cash custody notification does not belong to this sender.");
+    }
+    const sourceId = safeSegment(notification.pairGroupId, "cash custody source transaction id");
+    const source = await adminDatabaseRequest("cashCustodies/" + sourceOwnerUid + "/transactions/" + sourceId, accessToken, "GET");
+    const mirrorId = safeSegment(notification.transactionId, "cash custody mirror transaction id");
+    const mirror = await adminDatabaseRequest("cashCustodies/" + recipientUid + "/transactions/" + mirrorId, accessToken, "GET");
+    if (!source || source.createdBy !== claims.sub || source.linkedOwnerUid !== recipientUid ||
+        source.linkedTransactionId !== mirrorId || !mirror || mirror.createdBy !== claims.sub ||
+        mirror.pairRole !== "counterparty" || mirror.linkedOwnerUid !== sourceOwnerUid ||
+        mirror.linkedTransactionId !== sourceId) {
+      throw new Error("Permission denied: linked cash custody records could not be verified.");
+    }
+    const amount = Number(notification.amount || mirror.amount || source.amount || 0);
+    const currency = pushText(notification.currency || mirror.currency || source.currency || "EGP", 8, "EGP");
+    const description = pushText(notification.description || mirror.description || source.description, 110, "افتح التطبيق لمراجعة الحركة.");
+    const senderName = pushText(notification.senderName || source.createdByName, 50, "زميلك");
+    const notificationContent = {
+      title: "حركة عهدة جديدة",
+      body: [senderName, amount > 0 ? amount.toLocaleString("en-US") + " " + currency : "", description].filter(Boolean).join(" · ")
+    };
+    const result = await dispatchPushToUsers(env, [recipientUid], "cashCustody", notificationId,
+      "cashCustody:" + claims.sub + ":" + notificationId, notificationContent);
+    return { success: true, kind, ...result };
+  }
+  throw new Error("Unsupported push notification type.");
+}
+
+async function handlePendingUserRequestPush(claims, token, env) {
+  const request = await databaseRequest("userRequests/" + claims.sub, token, "GET");
+  if (!request || request.uid !== claims.sub || String(request.status || "").toLowerCase() !== "pending" ||
+      (claims.email && String(request.email || "").toLowerCase() !== String(claims.email).toLowerCase())) {
+    throw new Error("Permission denied: no matching pending account request was found.");
+  }
+  const accessToken = await getFirebaseDatabaseAccessToken(env);
+  const users = await adminDatabaseRequest("users", accessToken, "GET");
+  const admins = users && typeof users === "object"
+    ? Object.entries(users).filter(([, profile]) => profile && profile.role === "admin" && active(profile)).map(([uid]) => uid)
+    : [];
+  const requester = pushText(request.fullName || request.username || claims.email, 65, "مستخدم جديد");
+  const notificationContent = {
+    title: "طلب مستخدم جديد",
+    body: requester + " أرسل طلبًا لإنشاء حساب على PEST Platform."
+  };
+  const result = await dispatchPushToUsers(env, admins, "userRequest", claims.sub,
+    "userRequest:" + claims.sub + ":" + String(request.createdAt || "created"), notificationContent);
+  return { success: true, kind: "userRequest", ...result };
 }
 
 async function loadAgentConfig(token) {
@@ -2022,9 +2401,9 @@ async function validateAttachmentEntity(type,id,claims,profile,token,action,owne
       // to another user's rows still requires the explicit viewOthers grant.
       if(ownerUid!==claims.sub&&!hasPermission(profile,"cashCustody","viewOthers"))throw new Error("Permission denied: viewing another user's cash custody.");
     }else if(entityType==="financial"){
-      if(!hasPermission(profile,"reports","view")&&!hasPermission(profile,"dashboard","view")&&!hasPermission(profile,"statement","view"))throw new Error("Permission denied: financial attachment access.");
-      if(action==="upload"&&!hasPermission(profile,"reports","add")&&!hasPermission(profile,"reports","edit")&&!hasPermission(profile,"statement","add")&&!hasPermission(profile,"statement","edit")&&!hasPermission(profile,"dashboard","add"))throw new Error("Permission denied: financial attachment upload.");
-      if(action==="edit"&&!hasPermission(profile,"reports","edit")&&!hasPermission(profile,"statement","edit")&&!hasPermission(profile,"dashboard","edit"))throw new Error("Permission denied: financial attachment edit.");
+      if(!hasPermission(profile,"financial","view"))throw new Error("Permission denied: financial attachment access.");
+      if(action==="upload"&&!hasPermission(profile,"financial","add")&&!hasPermission(profile,"financial","edit"))throw new Error("Permission denied: financial attachment upload.");
+      if(action==="edit"&&!hasPermission(profile,"financial","edit"))throw new Error("Permission denied: financial attachment edit.");
     }
   }
   if(action==="delete"&&ownerUid&&ownerUid!==claims.sub&&profile.role!=="admin")requirePermission(profile,"attachments","delete");
@@ -2194,7 +2573,7 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     if(!response.ok)throw new Error("Could not download file from Google Drive (HTTP "+response.status+").");
     const mime=["application/pdf","image/jpeg","image/png","image/webp","text/plain","text/csv"].includes(attachment.mimeType)?attachment.mimeType:"application/octet-stream";
     const inline=mime!=="application/octet-stream",safeName=attachment.fileName.replace(/[\r\n"]/g,"_");
-    return new Response(response.body,{status:200,headers:{"Content-Type":mime,"Content-Disposition":(inline?"inline":"attachment")+"; filename*=UTF-8''"+encodeURIComponent(safeName),"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'none'; sandbox","Access-Control-Allow-Origin":ALLOWED_ORIGIN,"Vary":"Origin"}});
+    return new Response(response.body,{status:200,headers:{"Content-Type":mime,"Content-Disposition":(inline?"inline":"attachment")+"; filename*=UTF-8''"+encodeURIComponent(safeName),"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'none'; sandbox",...corsHeaders(request.headers.get("Origin")||"")}});
   }
   if(url.pathname==="/attachments"&&request.method==="DELETE"){
     const type=cleanText(body.entityType,24),entityId=cleanText(body.entityId,120),id=safeSegment(body.id,"attachment id");
@@ -2229,14 +2608,64 @@ export default {
         models: { cloudflare: MODEL, openrouter: OPENROUTER_MODEL },
         schedulingAvailable: Boolean(env.AI_AGENT_SCHEDULER && env.AI_SCHEDULER_ENCRYPTION_KEY),
         whatsappNotificationsAvailable: Boolean(whatsappNotificationsConfigured(env) && env.AI_AGENT_SCHEDULER),
+        pushNotificationsAvailable: Boolean(env.FCM_SERVICE_ACCOUNT_JSON),
+        androidNotificationChannel: ANDROID_NOTIFICATION_CHANNEL,
+        webPushConfigured: Boolean(env.FCM_SERVICE_ACCOUNT_JSON && env.FCM_WEB_VAPID_KEY),
         googleDriveConfigured: Boolean(env.GOOGLE_DRIVE_CLIENT_ID && env.GOOGLE_DRIVE_CLIENT_SECRET && env.GOOGLE_DRIVE_TOKEN_ENCRYPTION_KEY && env.AI_AGENT_SCHEDULER)
       }, 200, origin);
     }
     if (url.pathname === "/drive/oauth/callback") return handleGoogleDriveOAuthCallback(request,env);
-    if (origin !== ALLOWED_ORIGIN) return jsonResponse({ error: "Origin is not allowed." }, 403, origin);
+    if (url.pathname.startsWith("/mobile-updates/")) {
+      if (origin && !isAllowedOrigin(origin)) return jsonResponse({ error: "Origin is not allowed." }, 403, origin);
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
+      if (url.pathname !== "/mobile-updates/latest" || request.method !== "GET") {
+        return jsonResponse({ error: "Not found." }, 404, origin);
+      }
+      const requestedChannel = url.searchParams.get("channel");
+      if (requestedChannel === "preview" && env.OTA_PREVIEW_ENABLED !== "true") {
+        return jsonResponse({ ok: false, error: "Preview OTA channel is disabled on this deployment." }, 404, origin);
+      }
+      const channel = requestedChannel === "preview" ? "preview" : "stable";
+      try {
+        const manifest = await getMobileOtaManifest(channel);
+        return new Response(JSON.stringify(manifest), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Cache-Control": "public, max-age=60",
+            ...corsHeaders(origin)
+          }
+        });
+      } catch (error) {
+        const diagnostic = String(error && error.message || error).slice(0, 240);
+        console.error("Mobile OTA manifest:", diagnostic);
+        const payload = { ok: false, error: "OTA update service is temporarily unavailable." };
+        if (url.searchParams.get("debug") === "1") payload.diagnostic = diagnostic;
+        return jsonResponse(payload, 503, origin);
+      }
+    }
+    // Same-origin GET requests may omit the Origin header. This endpoint only
+    // returns the public VAPID key and configuration flags, never credentials.
+    if (!origin && url.pathname === "/push/config" && request.method === "GET") {
+      return jsonResponse({
+        senderConfigured: Boolean(env.FCM_SERVICE_ACCOUNT_JSON),
+        webVapidKey: String(env.FCM_WEB_VAPID_KEY || ""),
+        webPushConfigured: Boolean(env.FCM_SERVICE_ACCOUNT_JSON && env.FCM_WEB_VAPID_KEY)
+      }, 200, "");
+    }
+    // Origin is optional on same-origin GETs and authenticated native requests.
+    // Enforce the allow-list whenever a browser Origin header is supplied.
+    if (origin && !isAllowedOrigin(origin)) return jsonResponse({ error: "Origin is not allowed." }, 403, origin);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
+    if (url.pathname === "/push/config" && request.method === "GET") {
+      return jsonResponse({
+        senderConfigured: Boolean(env.FCM_SERVICE_ACCOUNT_JSON),
+        webVapidKey: String(env.FCM_WEB_VAPID_KEY || ""),
+        webPushConfigured: Boolean(env.FCM_SERVICE_ACCOUNT_JSON && env.FCM_WEB_VAPID_KEY)
+      }, 200, origin);
+    }
     if (!["GET","POST","DELETE"].includes(request.method)) return jsonResponse({ error: "Method not allowed." }, 405, origin);
-    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/upload", "/attachments/attach", "/attachments/replace", "/attachments/annotate", "/attachments/file", "/attachments/usage"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
+    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/upload", "/attachments/attach", "/attachments/replace", "/attachments/annotate", "/attachments/file", "/attachments/usage", "/push/notify", "/push/request", "/push/badge/sync", "/finance"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
 
     try {
       const authorization = request.headers.get("Authorization") || "";
@@ -2251,7 +2680,45 @@ export default {
         if (!contentType.toLowerCase().includes("application/json")) return jsonResponse({ error: "Content-Type must be application/json." }, 415, origin);
         body = await request.json();
       }
+      if (url.pathname === "/push/request") {
+        const output = await handlePendingUserRequestPush(claims, token, env);
+        return jsonResponse(output, 200, origin);
+      }
       const profile = await loadProfile(claims, token);
+      if (url.pathname === "/finance") {
+        try {
+          const accessToken = await getFirebaseDatabaseAccessToken(env);
+          const adminRead = path => adminDatabaseRequest("financial/" + String(path || "").split("/").filter(Boolean).map(encodeURIComponent).join("/"), accessToken, "GET");
+          const adminPatch = updates => adminDatabaseRequest("financial", accessToken, "PATCH", updates);
+          const adminReadRoot = path => adminDatabaseRequest(path, accessToken, "GET");
+          const adminPutRoot = (path, value) => adminDatabaseRequest(path, accessToken, "PUT", value);
+          const adminPatchRoot = updates => adminDatabaseRequest("", accessToken, "PATCH", updates);
+          const output = await handleFinancialRequest({request,url,body,claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch,adminReadRoot,adminPutRoot,adminPatchRoot,accessToken});
+          if(output&&output.pushNotification){
+            const push=output.pushNotification;
+            delete output.pushNotification;
+            try{
+              output.pushDelivery=await dispatchPushToUsers(env,[push.recipientUid],push.eventType,push.eventId,push.dispatchPrefix||("finance:"+push.eventType+":"+push.eventId),push.content||{title:"PEST Platform",body:"لديك إجراء مالي جديد."});
+            }catch(pushError){
+              console.error("Financial workflow push delivery failed after the database transaction was saved:",String(pushError&&pushError.message||pushError).slice(0,220));
+              output.pushDelivery={sent:0,failed:1,error:"تعذر إرسال الإشعار الفوري، لكن تم حفظ الإجراء داخل البرنامج."};
+            }
+          }
+          return jsonResponse(output,200,origin);
+        } catch (financeError) {
+          const message=String(financeError&&financeError.message||financeError);
+          console.error("Financial module:",message.slice(0,320));
+          return jsonResponse({error:message},/^FIREBASE_ADMIN_DATABASE_ERROR|^FCM_AUTH_FAILED/.test(message)?503:400,origin);
+        }
+      }
+      if (url.pathname === "/push/notify") {
+        const output = await handlePushNotificationRequest(body, claims, token, env);
+        return jsonResponse(output, 200, origin);
+      }
+      if (url.pathname === "/push/badge/sync" && request.method === "POST") {
+        const output = await syncPushBadgeCount(body, claims, env);
+        return jsonResponse(output, 200, origin);
+      }
       if (url.pathname.startsWith("/drive/") || url.pathname.startsWith("/attachments")) {
         const output = await handleGoogleDriveRequest(request,url,body,claims,profile,token,env);
         if (output instanceof Response) return output;
@@ -2345,6 +2812,11 @@ export default {
         return jsonResponse({ error: safeMessage || "AUTH_INVALID: Firebase sign-in token was rejected.", code: "AUTH_INVALID" }, 401, origin);
       }
       if (/Permission denied/.test(message)) return jsonResponse({ error: message }, 403, origin);
+      if (url.pathname.startsWith("/push/")) {
+        const status = /^FCM_NOT_CONFIGURED|^FCM_CONFIG_INVALID|^FCM_AUTH_FAILED/.test(message) ? 503 : 400;
+        console.error("Pest Platform push request failed:", message.slice(0, 220));
+        return jsonResponse({ error: message.slice(0, 320) || "Push notification request failed." }, status, origin);
+      }
       if (url.pathname.startsWith("/drive/") || url.pathname.startsWith("/attachments")) {
         console.error("Pest Platform attachment request failed:",message.slice(0,300));
         return jsonResponse({error:message.slice(0,320)||"Attachment request failed."},/not found/i.test(message)?404:400,origin);

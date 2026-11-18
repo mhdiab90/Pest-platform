@@ -28,5 +28,40 @@
     "crons": [
       "* * * * *"
     ]
+  },
+  "assets": {
+    "directory": ".",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/health",
+      "/push/*",
+      "/mobile-updates/*", // OTA manifest is resolved by the Worker from GitHub Release metadata.
+      "/agent",
+      "/ask",
+      "/execute",
+      "/schedules",
+      "/dashboards",
+      "/whatsapp/*",
+      "/drive/*",
+      "/attachments*",
+      "/finance"
+    ]
+  },
+  "previews": {
+    "vars": {
+      "FCM_WEB_VAPID_KEY": "BKjoV8wClGv7EotLkOz0rSS0DTvUKGAJfKeRRUhj9icRzuoBVrt56_tsZrylJ8UwCqA06hVb90rdQInZ5c2n00E",
+      "OTA_PREVIEW_ENABLED": "true"
+    },
+    "ai": {
+      "binding": "AI"
+    },
+    "durable_objects": {
+      "bindings": [
+        {
+          "name": "AI_AGENT_SCHEDULER",
+          "class_name": "AIAgentScheduler"
+        }
+      ]
+    }
   }
 }

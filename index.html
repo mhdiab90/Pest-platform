@@ -3,21 +3,66 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Project, Supply & Cash Flow Management</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <title>PEST Platform | When Performance Matters</title>
+  <meta name="theme-color" content="#c6e3fb" />
+  <meta name="description" content="PEST Platform — When Performance Matters" />
+  <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin />
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="icon" type="image/png" sizes="32x32" href="./assets/icon.png" />
+  <link rel="shortcut icon" type="image/png" href="./assets/icon.png" />
+  <script src="https://cdn.tailwindcss.com" defer></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" defer></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js" async></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" async></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js" async></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet" />
   <style>
     :root{--brand:#2563eb;--brand-hover:#1d4ed8;--brand-soft:#eff6ff}
+    html{font-size:14px}
+    .app-workspace{font-size:13px;line-height:1.35}
+    .app-workspace .text-xs{font-size:.68rem}
+    .app-workspace .text-sm{font-size:.78rem}
+    .app-workspace .text-base{font-size:.86rem}
+    .app-workspace .text-lg{font-size:.96rem}
+    .app-workspace .text-xl{font-size:1.06rem}
+    .app-workspace .text-2xl{font-size:1.18rem}
+    .app-workspace .text-3xl{font-size:1.34rem}
+    .app-workspace table{font-size:.76rem;line-height:1.25}
+    .app-workspace th,.app-workspace td{padding:5px 7px}
+    .app-workspace [class~="p-1"]{padding:.18rem!important}
+    .app-workspace [class~="p-2"]{padding:.35rem!important}
+    .app-workspace [class~="p-3"]{padding:.48rem!important}
+    .app-workspace [class~="p-4"]{padding:.62rem!important}
+    .app-workspace [class~="p-5"]{padding:.72rem!important}
+    .app-workspace [class~="p-6"]{padding:.82rem!important}
+    .app-workspace [class~="px-3"]{padding-left:.5rem!important;padding-right:.5rem!important}
+    .app-workspace [class~="px-4"]{padding-left:.6rem!important;padding-right:.6rem!important}
+    .app-workspace [class~="py-2"]{padding-top:.3rem!important;padding-bottom:.3rem!important}
+    .app-workspace [class~="py-3"]{padding-top:.42rem!important;padding-bottom:.42rem!important}
+    .app-workspace [class~="gap-3"]{gap:.5rem!important}
+    .app-workspace [class~="gap-4"]{gap:.65rem!important}
+    .app-workspace [class~="space-y-3"]>*+*{margin-top:.5rem!important}
+    .app-workspace [class~="space-y-4"]>*+*{margin-top:.65rem!important}
+    .app-workspace input:not([type="checkbox"]):not([type="radio"]),.app-workspace select,.app-workspace textarea{font-size:12px!important;line-height:1.3;padding:5px 7px!important;min-height:30px;border-radius:6px}
+    .app-workspace button{font-size:12px;line-height:1.25}
+    .app-workspace .rounded-2xl{border-radius:.75rem}
+    @media(max-width:640px){
+      .app-workspace{font-size:12px}
+      .app-workspace table{font-size:.7rem}
+      .app-workspace th,.app-workspace td{padding:4px 5px}
+      .app-workspace input:not([type="checkbox"]):not([type="radio"]),.app-workspace select{min-height:28px;font-size:11px!important}
+    }
+
     .app-global-announcement{display:flex;align-items:center;gap:12px;margin:10px 14px 0;padding:11px 16px;min-height:58px;color:#fff;border:1px solid rgba(255,255,255,.28);border-radius:13px;box-shadow:0 9px 26px rgba(127,29,29,.28);overflow:hidden;position:relative}
     .app-global-announcement:before{content:"";position:absolute;inset-inline-start:0;top:0;bottom:0;width:4px;background:#fff;opacity:.8}
     .app-global-announcement-badge{flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;padding:8px 11px;border-radius:999px;background:rgba(15,23,42,.3);border:1px solid rgba(255,255,255,.3);font-size:11px;font-weight:900;letter-spacing:.04em;white-space:nowrap}
@@ -36,7 +81,7 @@
     .nav-btn{transition:.15s}.nav-btn:hover{background:#f1f5f9}.nav-btn.active{background:var(--brand-soft);color:var(--brand);font-weight:700}
     .bg-blue-600{background-color:var(--brand)!important}.text-blue-600,.text-blue-700{color:var(--brand)!important}.border-blue-600{border-color:var(--brand)!important}.bg-blue-50{background-color:var(--brand-soft)!important}.hover\:bg-blue-700:hover{background-color:var(--brand-hover)!important}
     .menu-item{display:block;width:100%;text-align:start;padding:.6rem .75rem;border-radius:.5rem}.menu-item:hover{background:#f1f5f9}
-    *{box-sizing:border-box}body{overflow-x:hidden}.app-workspace{width:100%;max-width:1600px;min-width:0;margin-inline:auto;padding:clamp(10px,1.25vw,20px)}.app-sidebar{flex:0 0 var(--sidebar-width,232px);width:var(--sidebar-width,232px);max-height:calc(100vh - 76px);overflow-y:auto}.app-sidebar-resizer{position:absolute;inset-inline-end:-7px;top:0;bottom:0;width:14px;z-index:30;display:flex;align-items:center;justify-content:center;cursor:col-resize;touch-action:none;background:transparent;border:0;padding:0}.app-sidebar-resizer span{width:4px;height:64px;border-radius:8px;background:rgba(100,116,139,.36);transition:background .15s,width .15s}.app-sidebar-resizer:hover span,.app-sidebar-resizer:focus span{width:6px;background:var(--brand)}.app-sidebar-resizer:focus{outline:2px solid var(--brand);outline-offset:-2px}.app-nav-grid{display:block}.app-nav-group{min-width:0;margin-bottom:4px}.app-nav-parent{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:10px 11px;border-radius:9px;text-align:start;font-weight:700;color:#334155}.app-nav-parent:hover{background:#f1f5f9}.app-nav-children{margin:3px 0 7px 12px;padding-inline-start:9px;border-inline-start:2px solid #e2e8f0}.app-nav-child{display:flex;align-items:center;gap:9px;width:100%;padding:9px 10px;border-radius:8px;text-align:start;font-size:.92rem;color:#475569}.app-nav-child:hover,.app-nav-child.active{background:var(--brand-soft);color:var(--brand);font-weight:700}.app-collapsible{border:1px solid #e5e7eb;border-radius:12px;background:#fff;overflow:hidden}.app-collapsible>summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 16px;font-weight:700}.app-collapsible>summary::-webkit-details-marker{display:none}.app-collapsible>summary:after{content:'⌄';font-size:1.15rem;color:#64748b;transition:transform .15s}.app-collapsible[open]>summary:after{transform:rotate(180deg)}.app-collapsible-body{padding:0 16px 16px}.app-table-scroll{width:100%;max-height:min(360px,46vh);min-height:90px;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;border:1px solid #e5e7eb;border-radius:9px;background:#fff}.app-table-scroll table{width:100%;min-width:680px;border-collapse:separate;border-spacing:0}.app-table-scroll thead th{position:sticky;top:0;z-index:3;background:#f8fafc;box-shadow:0 1px 0 #e5e7eb}.app-table-scroll th,.app-table-scroll td{white-space:nowrap}.app-list-scroll{max-height:min(360px,46vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding-inline-end:4px}.app-list-scroll>*{min-width:0}.app-messages-scroll{height:min(66vh,720px);min-height:240px;max-height:720px;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding:8px;border:1px solid #e5e7eb;border-radius:12px;background:#f8fafc}.app-message-card{touch-action:pan-y;width:min(88%,760px);padding:10px 12px!important;border-radius:14px!important;box-shadow:0 1px 2px rgba(15,23,42,.06)}.app-message-card .app-message-body{font-size:13px;line-height:1.55;overflow-wrap:anywhere;word-break:break-word}.app-message-card .app-message-subject{font-size:12px;line-height:1.4}.app-message-card .app-message-meta{font-size:10px}.app-message-card .app-message-more{border:0;background:transparent;color:#2563eb;font-size:11px;font-weight:800;padding:3px 0;cursor:pointer}.app-message-inline-files{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;margin-top:7px}.app-message-inline-file{display:flex;align-items:center;gap:7px;min-width:0;padding:6px 8px;border:1px solid rgba(148,163,184,.35);border-radius:9px;background:rgba(255,255,255,.72);font-size:11px}.app-message-inline-file img{width:48px;height:48px;object-fit:cover;border-radius:6px;flex:0 0 auto}.app-message-inline-file .file-name{min-width:0;overflow-wrap:anywhere}.app-message-reply-quote{overflow-wrap:anywhere}.app-message-reply-field{font-weight:800!important;font-size:1rem!important;line-height:1.8!important;color:#312e81!important;letter-spacing:.01em}.app-message-reply-field::placeholder{font-weight:600;color:#8186a5}.app-message-reply-composer{border-width:2px!important;border-color:#a5b4fc!important;box-shadow:0 4px 14px rgba(79,70,229,.08)}.app-contact-picker{max-height:min(300px,42vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}.app-message-mention{display:inline-block;border-radius:5px;padding:0 3px;background:#ede9fe;color:#6d28d9;font-weight:800}.app-message-project{display:inline-block;border-radius:5px;padding:0 4px;background:#dbeafe;color:#1d4ed8;font-weight:800}.app-message-task{display:inline-block;border-radius:5px;padding:0 4px;background:#d1fae5;color:#047857;font-weight:800}.app-workspace table tbody tr:nth-child(even){background-color:#edf3fa}.app-workspace table tbody tr:nth-child(odd){background-color:#fff}.app-workspace table tbody tr:hover{background-color:#e2eaf4!important}.app-table-scroll,.app-list-scroll,.app-messages-scroll,.app-contact-picker,.app-workspace [class*='overflow-y-auto']{overscroll-behavior-y:auto!important}.app-message-actions,.app-message-reaction-picker{opacity:0;visibility:hidden;pointer-events:none;max-height:0;overflow:hidden;transition:opacity .16s ease,visibility .16s ease,max-height .16s ease}.app-message-card:hover .app-message-actions,.app-message-card:focus-within .app-message-actions,.app-message-card.is-actions-open .app-message-actions,.app-message-card:hover .app-message-reaction-picker,.app-message-card:focus-within .app-message-reaction-picker,.app-message-card.is-actions-open .app-message-reaction-picker{opacity:1;visibility:visible;pointer-events:auto;max-height:220px;overflow:visible}.app-message-card .app-message-reactions:has(.app-message-reaction-summary) .app-message-reaction-picker{margin-top:5px}@media(hover:none){.app-message-card .app-message-actions,.app-message-card .app-message-reaction-picker{opacity:0;visibility:hidden;pointer-events:none;max-height:0}.app-message-card.is-actions-open .app-message-actions,.app-message-card.is-actions-open .app-message-reaction-picker,.app-message-card:focus-within .app-message-actions,.app-message-card:focus-within .app-message-reaction-picker{opacity:1;visibility:visible;pointer-events:auto;max-height:220px;overflow:visible}}@media(max-width:767px){.app-message-card{width:94%;max-width:94%;padding:8px 10px!important;margin-bottom:8px!important}.app-message-card .app-message-body{font-size:12px;line-height:1.5}.app-message-inline-files{grid-template-columns:repeat(auto-fill,minmax(110px,1fr))}.app-message-inline-file{font-size:10px}.app-table-scroll{max-height:min(300px,42vh);min-height:80px}.app-table-scroll table{min-width:640px}.app-list-scroll{max-height:min(300px,42vh)}.app-messages-scroll{height:58vh;min-height:220px;max-height:520px}}.app-workspace input,.app-workspace select,.app-workspace textarea{min-width:0;max-width:100%;font-size:.94rem}.app-workspace .rounded-xl{border-radius:11px}@media(max-width:767px){.app-workspace{padding:10px}.app-sidebar{flex:0 0 auto;width:100%;max-height:none;overflow:visible;padding:8px!important}.app-sidebar-resizer{display:none}.app-nav-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.app-nav-group{margin:0;min-width:0}.app-nav-parent{height:100%;min-height:42px;padding:8px;font-size:.86rem}.app-nav-children{margin:3px 0 5px 4px;padding-inline-start:6px}.app-nav-child{padding:8px;font-size:.82rem}.app-workspace .p-5{padding:13px}.app-workspace .p-4{padding:11px}.app-workspace .gap-5{gap:12px}.app-workspace .gap-4{gap:10px}.app-workspace input,.app-workspace select,.app-workspace textarea{font-size:16px}header{flex-wrap:wrap;min-height:58px}header>div{min-width:0}}
+    *{box-sizing:border-box}body{overflow-x:hidden}.app-workspace{width:100%;max-width:1600px;min-width:0;margin-inline:auto;padding:clamp(10px,1.25vw,20px)}.app-sidebar{flex:0 0 var(--sidebar-width,232px);width:var(--sidebar-width,232px);max-height:calc(100vh - 76px);overflow-y:auto}.app-sidebar-resizer{position:absolute;inset-inline-end:-7px;top:0;bottom:0;width:14px;z-index:30;display:flex;align-items:center;justify-content:center;cursor:col-resize;touch-action:none;background:transparent;border:0;padding:0}.app-sidebar-resizer span{width:4px;height:64px;border-radius:8px;background:rgba(100,116,139,.36);transition:background .15s,width .15s}.app-sidebar-resizer:hover span,.app-sidebar-resizer:focus span{width:6px;background:var(--brand)}.app-sidebar-resizer:focus{outline:2px solid var(--brand);outline-offset:-2px}.app-nav-grid{display:block}.app-nav-group{min-width:0;margin-bottom:4px}.app-nav-parent{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:10px 11px;border-radius:9px;text-align:start;font-weight:700;color:#334155}.app-nav-parent:hover{background:#f1f5f9}.app-nav-children{margin:3px 0 7px 12px;padding-inline-start:9px;border-inline-start:2px solid #e2e8f0}.app-nav-child{display:flex;align-items:center;gap:9px;width:100%;padding:9px 10px;border-radius:8px;text-align:start;font-size:.92rem;color:#475569}.app-nav-child:hover,.app-nav-child.active{background:var(--brand-soft);color:var(--brand);font-weight:700}.app-collapsible{border:1px solid #e5e7eb;border-radius:12px;background:#fff;overflow:hidden}.app-collapsible>summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 16px;font-weight:700}.app-collapsible>summary::-webkit-details-marker{display:none}.app-collapsible>summary:after{content:'⌄';font-size:1.15rem;color:#64748b;transition:transform .15s}.app-collapsible[open]>summary:after{transform:rotate(180deg)}.app-collapsible-body{padding:0 16px 16px}.app-table-scroll{width:100%;max-height:min(360px,46vh);min-height:90px;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;border:1px solid #e5e7eb;border-radius:9px;background:#fff}.app-table-scroll table{width:100%;min-width:680px;border-collapse:separate;border-spacing:0}.app-table-scroll thead th{position:sticky;top:0;z-index:3;background:#f8fafc;box-shadow:0 1px 0 #e5e7eb}.app-table-scroll th,.app-table-scroll td{white-space:nowrap}.app-list-scroll{max-height:min(360px,46vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding-inline-end:4px}.app-list-scroll>*{min-width:0}.app-messages-scroll{height:min(66vh,720px);min-height:240px;max-height:720px;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding:8px;border:1px solid #e5e7eb;border-radius:12px;background:#f8fafc}.app-message-card{touch-action:pan-y;width:min(88%,760px);padding:10px 12px!important;border-radius:14px!important;box-shadow:0 1px 2px rgba(15,23,42,.06)}.app-message-card .app-message-body{font-size:13px;line-height:1.55;overflow-wrap:anywhere;word-break:break-word}.app-message-card .app-message-subject{font-size:12px;line-height:1.4}.app-message-card .app-message-meta{font-size:10px}.app-message-card .app-message-more{border:0;background:transparent;color:#2563eb;font-size:11px;font-weight:800;padding:3px 0;cursor:pointer}.app-message-inline-files{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;margin-top:7px}.app-message-inline-file{display:flex;align-items:center;gap:7px;min-width:0;padding:6px 8px;border:1px solid rgba(148,163,184,.35);border-radius:9px;background:rgba(255,255,255,.72);font-size:11px}.app-message-inline-file img{width:48px;height:48px;object-fit:cover;border-radius:6px;flex:0 0 auto}.app-message-inline-file .file-name{min-width:0;overflow-wrap:anywhere}.app-message-reply-quote{overflow-wrap:anywhere}.app-message-reply-field{font-weight:800!important;font-size:1rem!important;line-height:1.8!important;color:#312e81!important;letter-spacing:.01em}.app-message-reply-field::placeholder{font-weight:600;color:#8186a5}.app-message-reply-composer{border-width:2px!important;border-color:#a5b4fc!important;box-shadow:0 4px 14px rgba(79,70,229,.08)}.app-contact-picker{max-height:min(300px,42vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}.app-message-mention{display:inline-block;border-radius:5px;padding:0 3px;background:#ede9fe;color:#6d28d9;font-weight:800}.app-message-project{display:inline-block;border-radius:5px;padding:0 4px;background:#dbeafe;color:#1d4ed8;font-weight:800}.app-message-task{display:inline-block;border-radius:5px;padding:0 4px;background:#d1fae5;color:#047857;font-weight:800}.app-workspace table tbody tr:nth-child(even){background-color:#edf3fa}.app-workspace table tbody tr:nth-child(odd){background-color:#fff}.app-workspace table tbody tr:hover{background-color:#e2eaf4!important}.app-table-scroll,.app-list-scroll,.app-messages-scroll,.app-contact-picker,.app-workspace [class*='overflow-y-auto']{overscroll-behavior-y:auto!important}.app-message-actions,.app-message-reaction-picker{opacity:0;visibility:hidden;pointer-events:none;max-height:0;overflow:hidden;transition:opacity .16s ease,visibility .16s ease,max-height .16s ease}.app-message-card:hover .app-message-actions,.app-message-card:focus-within .app-message-actions,.app-message-card.is-actions-open .app-message-actions,.app-message-card:hover .app-message-reaction-picker,.app-message-card:focus-within .app-message-reaction-picker,.app-message-card.is-actions-open .app-message-reaction-picker{opacity:1;visibility:visible;pointer-events:auto;max-height:220px;overflow:visible}.app-message-card .app-message-reactions:has(.app-message-reaction-summary) .app-message-reaction-picker{margin-top:5px}@media(hover:none){.app-message-card .app-message-actions,.app-message-card .app-message-reaction-picker{opacity:0;visibility:hidden;pointer-events:none;max-height:0}.app-message-card.is-actions-open .app-message-actions,.app-message-card.is-actions-open .app-message-reaction-picker,.app-message-card:focus-within .app-message-actions,.app-message-card:focus-within .app-message-reaction-picker{opacity:1;visibility:visible;pointer-events:auto;max-height:220px;overflow:visible}}@media(max-width:767px){.app-message-card{width:94%;max-width:94%;padding:8px 10px!important;margin-bottom:8px!important}.app-message-card .app-message-body{font-size:12px;line-height:1.5}.app-message-inline-files{grid-template-columns:repeat(auto-fill,minmax(110px,1fr))}.app-message-inline-file{font-size:10px}.app-table-scroll{max-height:min(300px,42vh);min-height:80px}.app-table-scroll table{min-width:640px}.app-list-scroll{max-height:min(300px,42vh)}.app-messages-scroll{height:58vh;min-height:220px;max-height:520px}}.app-workspace input,.app-workspace select,.app-workspace textarea{min-width:0;max-width:100%;font-size:.94rem}.app-workspace .rounded-xl{border-radius:11px}@media(max-width:767px){.app-workspace{padding:10px}.app-sidebar{flex:0 0 auto;width:100%;max-height:none;overflow:visible;padding:8px!important}.app-sidebar-resizer{display:none}.app-nav-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.app-nav-group{margin:0;min-width:0}.app-nav-parent{height:100%;min-height:42px;padding:8px;font-size:.86rem}.app-nav-children{margin:3px 0 5px 4px;padding-inline-start:6px}.app-nav-child{padding:8px;font-size:.82rem}.app-workspace .p-5{padding:13px}.app-workspace .p-4{padding:11px}.app-workspace .gap-5{gap:12px}.app-workspace .gap-4{gap:10px}.app-workspace input,.app-workspace select,.app-workspace textarea{font-size:15px}header{flex-wrap:wrap;min-height:58px}header>div{min-width:0}}
     @media print{body *{visibility:hidden!important}.print-area,.print-area *{visibility:visible!important}.print-area{position:absolute!important;inset:0!important;width:100%!important;background:#fff!important;padding:12mm!important}.no-print{display:none!important}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:6px;text-align:start;font-size:10pt}.print-area h1,.print-area h2{color:#111!important}}
   
     .app-shell-header{background:var(--brand-gradient)!important;color:#334155!important;box-shadow:0 8px 24px color-mix(in srgb,var(--brand) 13%,transparent);border-bottom:1px solid rgba(100,116,139,.12)}
@@ -863,12 +908,23 @@
   .app-dashboard-filter-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
 }
 </style>
+<style id="pest-product-brand-styles">
+    .app-shell-brand>.app-product-logo{display:block;width:150px!important;height:56px!important;flex:0 0 150px!important;object-fit:contain;border-radius:8px;background:#d9ecfc}
+    .app-shell-brand>.app-company-logo{display:block;width:36px;height:36px;flex:0 0 36px;object-fit:contain;border-radius:8px;background:#fff;padding:2px}
+    .app-login-logo{display:block;width:min(100%,280px);height:auto;max-height:150px;object-fit:contain;margin:0 auto 14px;border-radius:8px}
+    @media(max-width:767px){
+      .app-shell-brand>.app-product-logo{width:118px!important;height:44px!important;flex-basis:118px!important}
+      .app-shell-brand>.app-company-logo{width:28px;height:28px;flex-basis:28px}
+      .app-root-shell.app-mobile-header-compact .app-shell-brand>.app-product-logo{width:102px!important;height:38px!important;flex-basis:102px!important}
+    }
+  </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
   <div id="root"><div class="min-h-screen grid place-items-center text-slate-600">Loading…</div></div>
 
 <script src="./capacitor-bridge.js"></script>
 <script src="./pest-crm-module.js"></script>
+<script src="./financial-module.js"></script>
 <script type="text/babel">
 const firebaseConfig = {
   apiKey: "AIzaSyBPrzHFEIM3AOFclTzJ1SpG_Nq6BKHgrSo",
@@ -967,10 +1023,57 @@ const words = {
 
 const PestCrmModule = window.PEST_CRM_MODULE;
 
+function FinanceModuleSlot(props){
+  const [FinanceModule,setFinanceModule]=useState(()=>window.PEST_FINANCE_MODULE||null);
+  const [loadError,setLoadError]=useState('');
+  useEffect(()=>{
+    if(window.PEST_FINANCE_MODULE){setFinanceModule(()=>window.PEST_FINANCE_MODULE);return;}
+    let active=true;
+    const script=document.createElement('script');
+    script.src=new URL('./financial-module.js',window.location.href).href;
+    script.async=true;
+    script.onload=()=>{
+      if(!active)return;
+      if(typeof window.PEST_FINANCE_MODULE==='function'){
+        setFinanceModule(()=>window.PEST_FINANCE_MODULE);
+        setLoadError('');
+      }else{
+        setLoadError('تم تحميل الملف لكن وحدة الحسابات لم تبدأ. أعد تحميل البرنامج.');
+      }
+    };
+    script.onerror=()=>{
+      if(active)setLoadError('تعذر تحميل ملف واجهة الحسابات (financial-module.js). تحقق من اتصال الإنترنت أو افتح المعاينة بعد اكتمال النشر.');
+    };
+    document.head.appendChild(script);
+    return ()=>{active=false;script.onload=null;script.onerror=null;};
+  },[]);
+  if(!FinanceModule){
+    return <section dir="rtl" className="m-3 rounded-2xl border border-amber-300 bg-amber-50 p-5 text-amber-950 space-y-3">
+      <h2 className="font-extrabold text-lg">تعذر فتح النظام المالي</h2>
+      <p className="text-sm">{loadError||'جارٍ تحميل مكوّن الحسابات...'}</p>
+      <button type="button" onClick={()=>window.location.reload()} className="rounded-lg bg-amber-700 px-4 py-2 text-white font-bold">إعادة تحميل البرنامج</button>
+    </section>;
+  }
+  return <FinanceModule {...props}/>;
+}
+
 function App(){
   const [lang,setLang] = useState(()=>localStorage.getItem('pestLang') || 'ar');
   const tr = key => words[lang][key] || key;
   const rtl = lang === 'ar';
+  useEffect(()=>{
+    if(window.PEST_NATIVE?.isNative && typeof window.PEST_NATIVE.initializeOtaUpdates==='function'){
+      void window.PEST_NATIVE.initializeOtaUpdates();
+    }
+  },[]);
+  // Use the isolated Worker Preview as both the web host and API for preview deployments.
+  const isCloudflareWorkerPreview = window.location.hostname.endsWith('-pest-platform.ai-mhdiab90.workers.dev');
+  const PUSH_WORKER_BASE = window.PEST_OTA_CONFIG?.workerBase
+    || (window.location.hostname === 'deploy-preview-4--pest-platform.netlify.app'
+      ? 'https://feature-mobile-push-performance-pest-platform.ai-mhdiab90.workers.dev'
+      : isCloudflareWorkerPreview
+        ? window.location.origin
+        : 'https://pest-platform.ai-mhdiab90.workers.dev');
   const [currentUser,setCurrentUser] = useState(null);
   const [authReady,setAuthReady] = useState(false);
   const [busy,setBusy] = useState(false);
@@ -989,8 +1092,11 @@ function App(){
   const [userRequests,setUserRequests] = useState([]);
   const [pendingNotificationRequests,setPendingNotificationRequests] = useState([]);
   const [unreadNotificationMessages,setUnreadNotificationMessages] = useState([]);
+  const [notificationBadgeReadyUid,setNotificationBadgeReadyUid] = useState('');
+  const notificationBadgeStreamsRef=useRef({uid:'',messages:false,custody:false,pending:false});
   const [activeUsers,setActiveUsers] = useState([]);
   const [onlinePresenceByUid,setOnlinePresenceByUid] = useState({});
+  const [onlinePresenceError,setOnlinePresenceError] = useState('');
   const [onlineUsersOpen,setOnlineUsersOpen] = useState(false);
   const [onlineChatUid,setOnlineChatUid] = useState('');
   const [onlineChatDraft,setOnlineChatDraft] = useState('');
@@ -1115,6 +1221,8 @@ function App(){
   const [sidebarWidth,setSidebarWidth] = useState(()=>{const saved=Number(localStorage.getItem('pestSidebarWidth'));return Number.isFinite(saved)&&saved>=210&&saved<=440?saved:260;});
   const [expandedNavGroup,setExpandedNavGroup] = useState('');
   const [notificationOpen,setNotificationOpen] = useState(false);
+  const [pushStatus,setPushStatus] = useState('');
+  const [pushBusy,setPushBusy] = useState(false);
   const [seenRequestIds,setSeenRequestIds] = useState([]);
   const [showRequests,setShowRequests] = useState(false);
   const [account,setAccount] = useState({type:'client',code:''});
@@ -1122,7 +1230,10 @@ function App(){
   const [master,setMaster] = useState(blankMaster());
   const [editingMasterCode,setEditingMasterCode] = useState('');
   const [masterFormOpen,setMasterFormOpen] = useState(false);
+  const [financialModuleMounted,setFinancialModuleMounted] = useState(false);
+  const [financialPartyReturn,setFinancialPartyReturn] = useState(null);
   const [masterFilter,setMasterFilter] = useState('');
+  useEffect(()=>{if(tab==='financial')setFinancialModuleMounted(true);},[tab]);
   const blankProject = () => ({code:'',name:'',contractNo:'',purchaseOrderNo:'',projectType:'supply',status:'جاري',clientCode:'',clientCodes:[],vendorCodes:[],projectManager:'',startDate:'',expectedEndDate:'',actualEndDate:'',location:'',deliveryAddress:'',currency:'EGP',amount:'',costBudget:'',paymentTerms:'',scope:'',notes:''});
   const [project,setProject] = useState(blankProject());
   const [editingProjectCode,setEditingProjectCode] = useState('');
@@ -1409,8 +1520,7 @@ function App(){
           await auth.signOut();
           return;
         }
-        const state = String(profile.status || '').toLowerCase();
-        if(!['active','نشط','مفعل','enabled'].includes(state)){
+        if(!isActiveAccountStatus(profile.status)){
           setAuthError(tr('notActive'));
           await auth.signOut();
           return;
@@ -1434,23 +1544,158 @@ function App(){
     return ()=>{mounted=false;unsubscribe();};
   },[]);
 
+
+  useEffect(()=>{
+    let mounted=true;
+    const loadConfig=async()=>{
+      try{
+        const response=await fetch(PUSH_WORKER_BASE+'/push/config',{method:'GET',cache:'no-store'});
+        const config=await response.json().catch(()=>({}));
+        if(!response.ok)throw new Error(config.error||'Push configuration is unavailable.');
+        if(mounted)window.PEST_PUSH_CONFIG=config;
+      }catch(error){
+        if(mounted)window.PEST_PUSH_CONFIG={senderConfigured:false,webVapidKey:'',webPushConfigured:false};
+        console.warn('Push configuration check:',error);
+      }
+    };
+    void loadConfig();
+    const onToken=event=>{
+      const detail=event.detail||{};
+      if(!detail.token)return;
+      if(!currentUser?.uid){window.PEST_PENDING_PUSH_TOKEN=detail;return;}
+      persistPushToken(detail.token,detail.platform||'android')
+        .then(()=>setPushStatus(rtl?'تم تسجيل هذا الجهاز لاستقبال الإشعارات.':'This device is registered for push notifications.'))
+        .catch(error=>{console.warn('Saving the FCM token failed:',error);setPushStatus(rtl?'تعذر حفظ رمز الجهاز في Firebase Rules.':'Could not save the device token. Check Firebase Rules.');});
+    };
+    const onOpened=event=>{
+      if(!currentUser?.uid)return;
+      const detail=event.detail||{};
+      setNotificationOpen(false);
+      if(detail.type==='message'||detail.route==='messages')navigateToTab('messages');
+      else if(detail.type==='cashCustody'||detail.route==='cashCustody')navigateToTab('cashCustody');
+      else if(detail.type==='financialAssignment'){
+        window.PEST_PENDING_FINANCE_ASSIGNMENT_ID=detail.eventId||detail.id||'';
+        window.dispatchEvent(new Event('pest-finance-route'));
+        navigateToTab('financial');
+      }
+      else if(detail.type==='financialAssignmentReturned'){
+        window.PEST_PENDING_FINANCE_INVOICE_ID=detail.eventId||detail.invoiceId||'';
+        window.dispatchEvent(new Event('pest-finance-route'));
+        navigateToTab('financial');
+      }
+      else if(detail.route==='financialAssignments'){
+        window.PEST_PENDING_FINANCE_ASSIGNMENT_ID=detail.eventId||detail.id||'';
+        window.dispatchEvent(new Event('pest-finance-route'));
+        navigateToTab('financial');
+      }
+      else if((detail.type==='userRequest'||detail.route==='userRequests')&&isAdmin)navigateToTab('userRequests');
+    };
+    const onError=event=>{
+      const message=event.detail?.message||'Push registration failed.';
+      console.warn('Native push registration:',message);
+      setPushStatus(rtl?'تعذر تسجيل الإشعارات: '+message:'Push registration failed: '+message);
+    };
+    window.addEventListener('pest-push-token',onToken);
+    window.addEventListener('pest-push-opened',onOpened);
+    window.addEventListener('pest-push-error',onError);
+    const pending=window.PEST_PENDING_PUSH_TOKEN;
+    if(pending&&currentUser?.uid){
+      window.PEST_PENDING_PUSH_TOKEN=null;
+      onToken({detail:pending});
+    }
+    const pendingOpened=window.PEST_PENDING_PUSH_OPENED;
+    if(pendingOpened&&currentUser?.uid){
+      window.PEST_PENDING_PUSH_OPENED=null;
+      onOpened({detail:pendingOpened});
+    }
+    if(currentUser?.uid){
+      const optedInPushTokenId=localStorage.getItem('pestPushTokenId:'+currentUser.uid);
+      if(optedInPushTokenId){
+        if(window.PEST_NATIVE?.isNative&&typeof window.PEST_NATIVE.refreshPushRegistration==='function'){
+          void window.PEST_NATIVE.refreshPushRegistration().catch(error=>console.warn('Restoring Android push registration:',error));
+        }else if(typeof Notification!=='undefined'&&Notification.permission==='granted'){
+          void setupWebPushForCurrentUser(false).catch(error=>console.warn('Restoring web push registration:',error));
+        }
+      }
+      const params=new URLSearchParams(window.location.search);
+      const type=params.get('pushType');
+      if(type){
+        if(type==='message')navigateToTab('messages');
+        else if(type==='cashCustody')navigateToTab('cashCustody');
+        else if(type==='financialAssignment'){
+          window.PEST_PENDING_FINANCE_ASSIGNMENT_ID=params.get('pushId')||'';
+          window.dispatchEvent(new Event('pest-finance-route'));
+          navigateToTab('financial');
+        }
+        else if(type==='financialAssignmentReturned'){
+          window.PEST_PENDING_FINANCE_INVOICE_ID=params.get('pushId')||'';
+          window.dispatchEvent(new Event('pest-finance-route'));
+          navigateToTab('financial');
+        }
+        else if(params.get('pushRoute')==='financialAssignments'){
+          window.PEST_PENDING_FINANCE_ASSIGNMENT_ID=params.get('pushId')||'';
+          window.dispatchEvent(new Event('pest-finance-route'));
+          navigateToTab('financial');
+        }
+        else if(type==='userRequest'&&isAdmin)navigateToTab('userRequests');
+        params.delete('pushType');params.delete('pushId');params.delete('pushRoute');
+        const cleanUrl=window.location.pathname+(params.toString()?'?'+params.toString():'')+window.location.hash;
+        window.history.replaceState({},document.title,cleanUrl);
+      }
+    }
+    return ()=>{
+      mounted=false;
+      window.removeEventListener('pest-push-token',onToken);
+      window.removeEventListener('pest-push-opened',onOpened);
+      window.removeEventListener('pest-push-error',onError);
+    };
+  },[currentUser?.uid]);
+
   useEffect(()=>{
     const uid=currentUser?.uid||'';
-    if(!uid){setOnlinePresenceByUid({});setOnlineUsersOpen(false);setOnlineChatUid('');return;}
+    if(!uid){
+      setOnlinePresenceByUid({});
+      setOnlinePresenceError('');
+      setOnlineUsersOpen(false);
+      setOnlineChatUid('');
+      return;
+    }
+    let mounted=true;
+    let wasConnected=false;
+    setOnlinePresenceError('');
+    const reportPresenceError=(context,error)=>{
+      if(!mounted)return;
+      console.error(context,error);
+      setOnlinePresenceError(firebaseErrorMessage(error,tr));
+    };
     const presenceRef=db.ref('presence');
-    const presenceHandler=snapshot=>setOnlinePresenceByUid(snapshot.val()||{});
-    presenceRef.on('value',presenceHandler,error=>console.error('Online presence listener:',error));
+    const presenceHandler=snapshot=>{
+      if(!mounted)return;
+      setOnlinePresenceByUid(snapshot.val()||{});
+      setOnlinePresenceError('');
+    };
+    presenceRef.on('value',presenceHandler,error=>reportPresenceError('Online presence read:',error));
     const connectionRef=db.ref('.info/connected');
     const ownPresenceRef=db.ref('presence/'+uid).push();
     const connectionHandler=snapshot=>{
-      if(snapshot.val()!==true)return;
-      ownPresenceRef.onDisconnect().remove().then(()=>ownPresenceRef.set({state:'online',lastChanged:firebase.database.ServerValue.TIMESTAMP})).catch(error=>console.error('Online presence registration:',error));
+      const connected=snapshot.val()===true;
+      if(!connected){wasConnected=false;return;}
+      if(wasConnected)return;
+      wasConnected=true;
+      ownPresenceRef.onDisconnect().remove()
+        .then(()=>ownPresenceRef.set({
+          state:'online',
+          lastChanged:firebase.database.ServerValue.TIMESTAMP
+        }))
+        .then(()=>{if(mounted)setOnlinePresenceError('');})
+        .catch(error=>reportPresenceError('Online presence registration:',error));
     };
-    connectionRef.on('value',connectionHandler,error=>console.error('Firebase connection listener:',error));
+    connectionRef.on('value',connectionHandler,error=>reportPresenceError('Firebase connection listener:',error));
     return ()=>{
+      mounted=false;
       presenceRef.off('value',presenceHandler);
       connectionRef.off('value',connectionHandler);
-      ownPresenceRef.remove().catch(()=>{});
+      ownPresenceRef.remove().catch(error=>console.warn('Online presence cleanup:',error));
     };
   },[currentUser?.uid]);
 
@@ -1460,6 +1705,19 @@ function App(){
   useEffect(()=>{
     const uid=currentUser?.uid||'';
     const subscriptions=dataSubscriptionsRef.current;
+    if(!uid){
+      notificationBadgeStreamsRef.current={uid:'',messages:false,custody:false,pending:false};
+      setNotificationBadgeReadyUid('');
+    }else if(notificationBadgeStreamsRef.current.uid!==uid){
+      notificationBadgeStreamsRef.current={uid,messages:false,custody:false,pending:!isAdmin};
+      setNotificationBadgeReadyUid('');
+    }
+    const markNotificationBadgeStreamReady=key=>{
+      const streams=notificationBadgeStreamsRef.current;
+      if(streams.uid!==uid)return;
+      streams[key]=true;
+      if(streams.messages&&streams.custody&&streams.pending)setNotificationBadgeReadyUid(uid);
+    };
     const detachAll=()=>{
       subscriptions.forEach(subscription=>{
         try{
@@ -1639,6 +1897,7 @@ function App(){
           unreadMessageIdsRef.current=new Set(next.map(m=>m.id));
         }
         setUnreadNotificationMessages(next);
+        markNotificationBadgeStreamReady('messages');
       });
       if(isAdmin){
         const updatePending=kind=>snapshot=>{
@@ -1647,6 +1906,7 @@ function App(){
           const merged=[...notificationRequestRowsRef.current.pending,...notificationRequestRowsRef.current.deferred];
           setPendingNotificationRequests(merged);
           if(notificationRequestReadyRef.current.pending&&notificationRequestReadyRef.current.deferred){
+            markNotificationBadgeStreamReady('pending');
             if(requestIdsRef.current===null)requestIdsRef.current=new Set(merged.map(item=>item.uid));
             else{
               merged.forEach(request=>{
@@ -1673,11 +1933,31 @@ function App(){
     });
     watchArray('cashCustodyNotifications:'+uid,'cashCustodyNotifications/'+uid,setCashCustodyNotifications,(eventType,item)=>{
       if(eventType==='added'&&item&&item.read!==true&&Number(item.createdAt||0)>=sessionStartedAtRef.current){
-        notifyUserOfIncoming({id:'cashCustody:'+item.id,type:'cashCustody',cashCustody:item});
+        const notificationType=item.type||'cashCustody';
+        notifyUserOfIncoming({id:'cashCustody:'+item.id,type:notificationType,cashCustody:item,assignment:item});
       }
     });
+    // The child listeners above stay incremental; this one small initial read only
+    // marks the notification stream ready so we do not clear a badge before hydration.
+    void db.ref('cashCustodyNotifications/'+uid).once('value')
+      .then(()=>markNotificationBadgeStreamReady('custody'))
+      .catch(error=>{
+        console.warn('Initial badge notification read:',error);
+        markNotificationBadgeStreamReady('custody');
+      });
   },[currentUser?.uid,tab,assistantOpen,attachmentEntityType]);
 
+  function closeHeaderPopoversOnOutside(event){
+    unlockNotificationAudio();
+    const group=event.target&&typeof event.target.closest==='function'
+      ?event.target.closest('[data-header-popover]')
+      :null;
+    const activeGroup=group?.getAttribute('data-header-popover')||'';
+    if(activeGroup!=='notifications')setNotificationOpen(false);
+    if(activeGroup!=='presence')setOnlineUsersOpen(false);
+    if(activeGroup!=='theme')setShowThemeMenu(false);
+    if(activeGroup!=='user')setShowUserMenu(false);
+  }
   function unlockNotificationAudio(){
     if(!notificationPreferencesRef.current.sound||typeof window==='undefined')return;
     const AudioContextClass=window.AudioContext||window.webkitAudioContext;
@@ -1688,7 +1968,7 @@ function App(){
     }catch(err){console.warn('Notification audio is unavailable:',err);}
   }
   function playIncomingNotificationSound(){
-    if(!notificationPreferencesRef.current.sound)return;
+    if(!notificationPreferencesRef.current.sound||window.PEST_NATIVE?.isNative)return;
     const context=notificationAudioRef.current;
     if(!context||context.state!=='running')return;
     try{
@@ -1729,14 +2009,24 @@ function App(){
   function notifyUserOfIncoming(item){
     playIncomingNotificationSound();
     const prefs=notificationPreferencesRef.current;
+    const assignmentNotice=item.type==='financialAssignment'||item.type==='financialAssignmentReturned';
+    const title=assignmentNotice?(item.assignment.title||(item.type==='financialAssignment'?(rtl?'فاتورة محولة إليك':'Invoice assigned to you'):(rtl?'اكتمل استكمال الفاتورة':'Invoice completion returned'))):item.type==='cashCustody'?(rtl?'حركة مالية جديدة تخص عهدتك':'New financial movement for your custody'):item.type==='message'?(rtl?'رسالة جديدة من '+(item.message.senderName||'مستخدم'):'New message from '+(item.message.senderName||'user')):(rtl?'طلب مستخدم جديد':'New user request');
+    const body=assignmentNotice?(item.assignment.description||item.assignment.invoiceId||'') :item.type==='cashCustody'?[item.cashCustody.senderName,money(item.cashCustody.amount)+' '+(item.cashCustody.currency||'EGP'),item.cashCustody.description].filter(Boolean).join(' · '):item.type==='message'?String(item.message.body||item.message.subject||'').slice(0,160):String(item.request.fullName||item.request.username||item.request.email||'');
+    if(window.PEST_NATIVE?.isNative&&typeof window.PEST_NATIVE.showForegroundNotification==='function'){
+      window.PEST_NATIVE.showForegroundNotification({id:item.id,type:item.type,title,body})
+        .catch(error=>console.warn('Android foreground notification:',error));
+    }
     if(!prefs.desktop||typeof Notification==='undefined'||Notification.permission!=='granted')return;
     try{
-      const title=item.type==='cashCustody'?(rtl?'حركة مالية جديدة تخص عهدتك':'New financial movement for your custody'):item.type==='message'?(rtl?'رسالة جديدة من '+(item.message.senderName||'مستخدم'):'New message from '+(item.message.senderName||'user')):(rtl?'طلب مستخدم جديد':'New user request');
-      const body=item.type==='cashCustody'?[item.cashCustody.senderName,money(item.cashCustody.amount)+' '+(item.cashCustody.currency||'EGP'),item.cashCustody.description].filter(Boolean).join(' · '):item.type==='message'?String(item.message.body||item.message.subject||'').slice(0,160):String(item.request.fullName||item.request.username||item.request.email||'');
       const popup=new Notification(title,{body,tag:'pest-'+item.id,renotify:true,silent:true});
       popup.onclick=()=>{
         window.focus();
-        if(item.type==='cashCustody'){
+        if(item.type==='financialAssignment'||item.type==='financialAssignmentReturned'){
+          setNotificationOpen(false);
+          if(item.type==='financialAssignment')window.PEST_PENDING_FINANCE_ASSIGNMENT_ID=item.assignment.assignmentId||item.assignment.id;
+          else window.PEST_PENDING_FINANCE_INVOICE_ID=item.assignment.invoiceId||'';
+          window.dispatchEvent(new Event('pest-finance-route'));navigateToTab('financial');
+        }else if(item.type==='cashCustody'){
           setNotificationOpen(false);setCashCustodyTargetUid(currentUser.uid);setCashCustodyBookScope(item.cashCustody.bookScope==='company'?'company':'personal');setCashCustodyCurrencyFilter(item.cashCustody.currency||'EGP');setTab('cashCustody');
         }else if(item.type==='message'){
           setAssistantOpen(false);setMessageShortcutOpen(true);setMessageShortcutSearch('');
@@ -1760,6 +2050,9 @@ function App(){
     startMessageReply(message);
   }
 
+  function isActiveAccountStatus(value){
+    return ['active','نشط','مفعل','enabled'].includes(String(value||'').trim().toLowerCase());
+  }
   function firebaseErrorMessage(err,tfn){
     const code=err && err.code ? err.code : '';
     if(code==='auth/invalid-email') return tfn('invalidEmail');
@@ -1775,7 +2068,7 @@ function App(){
   const omarUsername=String(currentUser?.username||'').trim().toLowerCase();
   const omarEmailLocal=String(currentUser?.email||'').split('@')[0].trim().toLowerCase();
   const isOmarProjectUser=omarUsername==='omar'||omarEmailLocal==='omar'||String(currentUser?.fullName||'').trim().toLowerCase()==='omar';
-  const permissionModules=[{id:'dashboard',label:rtl?'لوحة التحكم':'Dashboard'},{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors'},{id:'pestCrm',label:rtl?'إدارة العملاء والمبيعات (PEST CRM)':'Sales & Customer CRM (PEST)'},{id:'projects',label:rtl?'المشروعات وملفاتها':'Projects & Project files'},{id:'attachments',label:rtl?'المرفقات':'Attachments'},{id:'statement',label:rtl?'التدفقات النقدية':'Cash flow'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody'},{id:'reports',label:rtl?'التقارير':'Reports'},{id:'messages',label:rtl?'الرسائل وWhatsApp':'Messages & WhatsApp'},{id:'tasks',label:rtl?'المهام':'Tasks'},{id:'announcements',label:rtl?'الإعلانات العامة':'Global Announcements'},{id:'aiAgent',label:rtl?'المساعد الذكي (استخدام)':'AI Agent (Use)'},{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data'}];
+  const permissionModules=[{id:'dashboard',label:rtl?'لوحة التحكم':'Dashboard'},{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors'},{id:'pestCrm',label:rtl?'إدارة العملاء والمبيعات (PEST CRM)':'Sales & Customer CRM (PEST)'},{id:'projects',label:rtl?'المشروعات وملفاتها':'Projects & Project files'},{id:'attachments',label:rtl?'المرفقات':'Attachments'},{id:'financial',label:rtl?'النظام المالي والمحاسبي':'Financial Accounting',icon:'fa-calculator'},{id:'statement',label:rtl?'التدفقات النقدية':'Cash flow'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody'},{id:'reports',label:rtl?'التقارير':'Reports'},{id:'messages',label:rtl?'الرسائل وWhatsApp':'Messages & WhatsApp'},{id:'tasks',label:rtl?'المهام':'Tasks'},{id:'announcements',label:rtl?'الإعلانات العامة':'Global Announcements'},{id:'aiAgent',label:rtl?'المساعد الذكي (استخدام)':'AI Agent (Use)'},{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data'}];
   const permissionActions=[{id:'view',label:rtl?'عرض':'View'},{id:'add',label:rtl?'إضافة':'Add'},{id:'edit',label:rtl?'تعديل':'Edit'},{id:'delete',label:rtl?'حذف':'Delete'},{id:'approve',label:rtl?'اعتماد':'Approve'},{id:'export',label:rtl?'تصدير':'Export'},{id:'manage',label:rtl?'إدارة':'Manage'},{id:'viewOthers',label:rtl?'عرض عهد الآخرين':'View others'}];
   const hasPermission=(moduleId,action='view')=>isAdmin||moduleId==='profile'&&action==='view'||(isOmarProjectUser&&moduleId==='projects'&&['view','add','edit'].includes(action))||moduleId==='cashCustody'&&['view','add','edit'].includes(action)&&currentUser?.permissions?.cashCustody?.[action]!==false||currentUser?.permissions?.[moduleId]?.[action]===true;
   const canAccessTab=tabId=>tabId==='appLauncher'?true:['companySettings','aiSettings','userRequests','userPermissions','userManagement','auditLogs'].includes(tabId)?Boolean(isAdmin):tabId==='announcements'?hasPermission('announcements','manage'):tabId==='custodyStatement'?hasPermission('cashCustody','view'):hasPermission(tabId==='projectDetail'?'projects':tabId,'view');
@@ -1789,7 +2082,7 @@ function App(){
       const headers={'Authorization':'Bearer '+idToken,...(extraHeaders||{})};
       const options={method,headers,cache:'no-store'};
       if(body!==undefined){if(rawBody)options.body=body;else{headers['Content-Type']='application/json';options.body=JSON.stringify(body);}}
-      return fetch('https://pest-platform.ai-mhdiab90.workers.dev'+path,options);
+      return fetch(PUSH_WORKER_BASE+path,options);
     };
     let response=await send(false);
     if(response.status===401){
@@ -2820,6 +3113,7 @@ function App(){
       const requestData={uid,email,username,fullName:request.fullName.trim(),jobTitle:request.jobTitle.trim(),whatsapp:String(request.whatsapp||'').trim(),avatar:requestAvatar||'',status:'pending',createdAt:firebase.database.ServerValue.TIMESTAMP};
       await db.ref('userRequests/'+uid).set(requestData);
       requestSaved=true;
+      try{await sendPushWorkerRequest('/push/request',{});}catch(pushError){console.warn('Admin account-request push notification failed:',pushError);}
       try{if(auth.currentUser && auth.currentUser.uid===uid) await auth.signOut();}
       catch(signOutErr){signOutWarning=true;console.warn('Request saved; sign-out failed:',signOutErr);}
       setRequest({email:'',password:'',username:'',fullName:'',jobTitle:'',whatsapp:''});setRequestAvatar('');
@@ -2851,6 +3145,14 @@ function App(){
     setShowUserMenu(false);setShowThemeMenu(false);setNotificationOpen(false);
     // Start audit logging while the user is still authenticated; it must never block sign-out.
     if(leavingUser) void addLog('تسجيل خروج',leavingUser);
+    if(leavingUser){
+      const savedPushTokenId=localStorage.getItem('pestPushTokenId:'+leavingUser.uid);
+      if(savedPushTokenId){
+        try{await db.ref('pushTokens/'+leavingUser.uid+'/'+savedPushTokenId).remove();}
+        catch(error){console.warn('Could not unregister this device push token:',error);}
+        localStorage.removeItem('pestPushTokenId:'+leavingUser.uid);
+      }
+    }
     try{
       await auth.signOut();
       setCurrentUser(null);setMessages([]);setUserRequests([]);setPendingNotificationRequests([]);setUnreadNotificationMessages([]);setActiveUsers([]);
@@ -3199,7 +3501,16 @@ function App(){
       }
       await db.ref().update(updates);
       let notificationSent=false,notificationError='';
-      if(notificationToCreate){try{await db.ref('cashCustodyNotifications/'+notificationToCreate.ownerUid+'/'+notificationToCreate.notificationId).set(notificationToCreate.record);notificationSent=true;}catch(error){notificationError=String(error.message||error);console.warn('Cash custody notification could not be delivered:',error);}}
+      if(notificationToCreate){
+        try{
+          await db.ref('cashCustodyNotifications/'+notificationToCreate.ownerUid+'/'+notificationToCreate.notificationId).set(notificationToCreate.record);
+          notificationSent=true;
+          try{
+            const pushConfig=window.PEST_PUSH_CONFIG||await loadPushConfig();
+            if(pushConfig.senderConfigured)await sendPushWorkerRequest('/push/notify',{kind:'cashCustody',recipientUid:notificationToCreate.ownerUid,notificationId:notificationToCreate.notificationId,sourceOwnerUid});
+          }catch(pushError){console.warn('Cash custody push delivery failed:',pushError);}
+        }catch(error){notificationError=String(error.message||error);console.warn('Cash custody notification could not be delivered:',error);}
+      }
       let linkResult={ok:true};
       if(cashCustodyStagedAttachments.length){
         const transactionOwnerUid=sourceOwnerUid;
@@ -3852,6 +4163,21 @@ function App(){
     }
   }
 
+  function openFinancialPartyMaster(payload){
+    if(!requirePermission('master','add'))return;
+    const type=payload&&payload.partyType==='vendor'?'vendor':'client';
+    const defaults=Object.assign({},payload&&payload.defaults||{});
+    delete defaults.partyType;
+    setFinancialPartyReturn(payload||null);
+    setMaster({...blankMaster(type),...defaults,type,code:defaults.code||'',name:defaults.name||''});
+    setMasterPendingAttachments([]);
+    setEditingMasterCode('');
+    setMasterFormOpen(true);
+    setFinancialModuleMounted(true);
+    setTab('master');
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+
   async function addMaster(e){
     e.preventDefault();if(!requirePermission('master',editingMasterCode?'edit':'add'))return;
     const type=master.type;const path=type==='client'?'clients':'vendors';
@@ -3870,7 +4196,13 @@ function App(){
       try{if(masterPendingAttachments.length)await uploadInlineAttachments(masterPendingAttachments,type,code,setMasterPendingAttachments);}
       catch(attachmentError){setMaster({...record,type});setEditingMasterCode(code);setMasterFormOpen(true);alert((rtl?'تم حفظ البيانات، لكن تعذر رفع بعض المرفقات. أصلح الاتصال ثم اضغط حفظ مرة أخرى لإكمال الرفع.\n':'The record was saved, but some attachments could not be uploaded. Fix the connection and press Save again to finish uploading.\n')+String(attachmentError.message||attachmentError));return;}
       await addLog((editingMasterCode?'تعديل ':'إضافة ')+(type==='client'?'عميل: ':'مورد: ')+name,currentUser,{entityType:type,entityId:code,changes:auditChanges(previousRecord,record),metadata:{oldCode:editingMasterCode||''}});
-      setMaster(blankMaster(type));setMasterPendingAttachments([]);setEditingMasterCode('');setMasterFormOpen(false);alert(tr('saved'));
+      const returnContext=financialPartyReturn;
+      setMaster(blankMaster(type));setMasterPendingAttachments([]);setEditingMasterCode('');setMasterFormOpen(false);
+      if(returnContext&&typeof returnContext.onSaved==='function'&&(type==='client'||type==='vendor')){
+        setFinancialPartyReturn(null);
+        setTab('financial');
+        await returnContext.onSaved(Object.assign({},record,{type,partyType:type==='vendor'?'vendor':'customer'}));
+      }else alert(tr('saved'));
     }catch(err){alert(firebaseErrorMessage(err,tr));}
   }
 
@@ -4077,7 +4409,127 @@ function App(){
     if(form&&typeof form.requestSubmit==='function')form.requestSubmit();
   }
 
+
+  async function loadPushConfig(forceRefresh=false){
+    if(!forceRefresh&&window.PEST_PUSH_CONFIG)return window.PEST_PUSH_CONFIG;
+    const response=await fetch(PUSH_WORKER_BASE+'/push/config',{method:'GET',cache:'no-store'});
+    const config=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(config.error||'Push service configuration could not be loaded.');
+    window.PEST_PUSH_CONFIG=config;
+    return config;
+  }
+  function pushTokenRecordId(token){
+    return btoa(String(token)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  }
+  async function persistPushToken(token,platform){
+    const uid=currentUser?.uid||auth.currentUser?.uid||'';
+    if(!uid||!token)throw new Error('Sign in before registering this device.');
+    const tokenId=pushTokenRecordId(token);
+    await db.ref('pushTokens/'+uid+'/'+tokenId).set({
+      token:String(token),
+      platform:platform==='android'?'android':'web',
+      ...(platform==='web'?{origin:window.location.origin}:{}),
+      updatedAt:firebase.database.ServerValue.TIMESTAMP
+    });
+    try{localStorage.setItem('pestPushTokenId:'+uid,tokenId);}catch(_){}
+    return tokenId;
+  }
+  function loadFirebaseMessagingCompat(){
+    if(window.firebase&&window.firebase.messaging)return Promise.resolve();
+    if(window.PEST_FIREBASE_MESSAGING_SCRIPT)return window.PEST_FIREBASE_MESSAGING_SCRIPT;
+    window.PEST_FIREBASE_MESSAGING_SCRIPT=new Promise((resolve,reject)=>{
+      const script=document.createElement('script');
+      script.src='https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js';
+      script.async=true;
+      script.onload=()=>resolve();
+      script.onerror=()=>reject(new Error('Could not load Firebase Messaging for web push.'));
+      document.head.appendChild(script);
+    });
+    return window.PEST_FIREBASE_MESSAGING_SCRIPT;
+  }
+  async function setupWebPushForCurrentUser(requestPermission=false,knownConfig=null){
+    if(!('serviceWorker' in navigator)||typeof Notification==='undefined')throw new Error(rtl?'المتصفح لا يدعم Web Push.':'This browser does not support Web Push.');
+    const config=knownConfig||await loadPushConfig(true);
+    if(!config.webVapidKey)throw new Error(rtl?'مفتاح Web Push العام غير مضبوط في Cloudflare بعد.':'The public Web Push VAPID key is not configured in Cloudflare yet.');
+    let permission=Notification.permission;
+    if(permission==='default'&&requestPermission)permission=await Notification.requestPermission();
+    if(permission!=='granted'){
+      if(requestPermission)throw new Error(rtl?'لم يتم السماح بإشعارات المتصفح. فعّلها من إعدادات الموقع.':'Browser notification permission was not granted. Enable it in site settings.');
+      return null;
+    }
+    await loadFirebaseMessagingCompat();
+    if(typeof firebase.messaging.isSupported==='function'&&!await firebase.messaging.isSupported())throw new Error(rtl?'هذا المتصفح لا يدعم Firebase Web Push في إعداداته الحالية.':'Firebase Web Push is not supported in this browser configuration.');
+    const appBase=new URL('./',window.location.href);
+    const serviceWorkerUrl=new URL('firebase-messaging-sw.js',appBase).toString();
+    await navigator.serviceWorker.register(serviceWorkerUrl,{scope:appBase.pathname});
+    // register() can resolve while the new worker is still installing. Firebase
+    // PushManager.subscribe requires an active worker, so wait for the matching
+    // scope to become ready before requesting the FCM token.
+    const registration=await navigator.serviceWorker.ready;
+    if(!registration.active)throw new Error(rtl?'لم يكتمل تشغيل خدمة الإشعارات في المتصفح. أعد المحاولة بعد لحظات.':'The notification service worker is not active yet. Please retry in a moment.');
+    const messaging=firebase.messaging();
+    if(!window.PEST_WEB_PUSH_FOREGROUND_LISTENER){
+      messaging.onMessage(payload=>window.dispatchEvent(new CustomEvent('pest-push-received',{detail:payload?.data||{}})));
+      window.PEST_WEB_PUSH_FOREGROUND_LISTENER=true;
+    }
+    const token=await messaging.getToken({vapidKey:config.webVapidKey,serviceWorkerRegistration:registration});
+    if(!token)throw new Error(rtl?'لم يرجع Firebase رمزًا لهذا المتصفح.':'Firebase did not return a browser registration token.');
+    await persistPushToken(token,'web');
+    return {token,config};
+  }
+  async function enableDeviceNotifications(){
+    if(pushBusy||!currentUser?.uid)return;
+    setPushBusy(true);
+    setPushStatus(rtl?'جاري تجهيز إشعارات هذا الجهاز...':'Preparing this device for push notifications...');
+    try{
+      let config=window.PEST_PUSH_CONFIG||{senderConfigured:false,webVapidKey:'',webPushConfigured:false};
+      try{config=await loadPushConfig(true);}
+      catch(configError){console.warn('Push sender configuration is not available yet:',configError);config={senderConfigured:false,webVapidKey:'',webPushConfigured:false};}
+      if(window.PEST_NATIVE?.isNative){
+        const result=await window.PEST_NATIVE.enablePushNotifications();
+        if(!result?.granted){
+          setPushStatus(rtl?'لم يتم منح إذن الإشعارات من إعدادات Android.':'Android notification permission was not granted.');
+          return;
+        }
+        setPushStatus(config.senderConfigured
+          ?(rtl?'تم طلب تسجيل الجهاز؛ سيتم حفظ رمز FCM تلقائيًا.':'Device registration requested; the FCM token will be saved automatically.')
+          :(rtl?'تم طلب تسجيل الجهاز. تبقى خطوة إعداد خدمة الإرسال على Cloudflare.':'Device registration requested. Cloudflare sender setup is still required.'));
+        return;
+      }
+      const result=await setupWebPushForCurrentUser(true,config);
+      if(!result)return;
+      setPushStatus(config.senderConfigured
+        ?(rtl?'تم تفعيل إشعارات هذا المتصفح بنجاح.':'Browser push notifications are enabled.')
+        :(rtl?'تم تسجيل المتصفح. تبقى خطوة إعداد خدمة الإرسال على Cloudflare.':'Browser token saved. Cloudflare sender setup is still required.'));
+    }catch(error){
+      console.warn('Enable push notifications:',error);
+      setPushStatus(String(error.message||error));
+    }finally{setPushBusy(false);}
+  }
+  async function sendPushWorkerRequest(path,body){
+    const user=auth.currentUser;
+    if(!user)throw new Error('No authenticated Firebase session.');
+    const send=async(forceRefresh)=>{
+      const idToken=await user.getIdToken(Boolean(forceRefresh));
+      return fetch(PUSH_WORKER_BASE+path,{
+        method:'POST',
+        headers:{'Authorization':'Bearer '+idToken,'Content-Type':'application/json'},
+        body:JSON.stringify(body||{}),
+        cache:'no-store'
+      });
+    };
+    let response=await send(false);
+    if(response.status===401)response=await send(true);
+    const payload=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(payload.error||('Push service returned HTTP '+response.status+'.'));
+    return payload;
+  }
+
   async function notifyWhatsAppAfterMessage(messageId){
+    try{
+      const config=window.PEST_PUSH_CONFIG||await loadPushConfig();
+      if(config.senderConfigured)await sendPushWorkerRequest('/push/notify',{kind:'message',messageId:String(messageId||'')});
+    }catch(pushError){console.warn('Pest Platform push notification failed:',pushError);}
     if(window.pestWhatsAppNotificationsAvailable!==true||typeof window.pestWhatsAppNotifyMessage!=='function')return null;
     try{return await window.pestWhatsAppNotifyMessage(messageId);}
     catch(error){console.warn('Company WhatsApp notification failed:',error);return {error:String(error&&error.message||error)};}
@@ -4188,7 +4640,7 @@ function App(){
 
   function openOnlineChat(uid){
     if(!hasPermission('messages','view'))return alert(rtl?'ليس لديك صلاحية عرض الرسائل.':'You do not have permission to view messages.');
-    const target=userDirectory.find(u=>u.uid===uid&&u.status==='active');
+    const target=userDirectory.find(u=>u.uid===uid&&isActiveAccountStatus(u.status));
     if(!target)return;
     setOnlineUsersOpen(false);
     setMessageShortcutOpen(false);
@@ -4201,7 +4653,7 @@ function App(){
   async function sendOnlineChatMessage(e){
     e.preventDefault();
     if(!onlineChatUid||!requirePermission('messages','add'))return;
-    const target=userDirectory.find(u=>u.uid===onlineChatUid&&u.status==='active');
+    const target=userDirectory.find(u=>u.uid===onlineChatUid&&isActiveAccountStatus(u.status));
     const body=String(onlineChatDraft||'').trim();
     if(!target||(!body&&!onlineChatPendingAttachments.length))return;
     setOnlineChatSending(true);
@@ -4217,6 +4669,7 @@ function App(){
       updates['messages/'+target.uid+'/'+messageId]={...base,id:messageId,recipientUid:target.uid,mailboxUid:target.uid,read:false};
       updates['messages/'+currentUser.uid+'/'+messageId]={...base,id:messageId,recipientUid:target.uid,mailboxUid:currentUser.uid,read:true,copyType:'sent'};
       await db.ref().update(updates);
+      void sendPushWorkerRequest('/push/notify',{kind:'message',messageId:String(messageId)}).catch(error=>console.warn('Direct chat push dispatch failed:',error));
       setOnlineChatDraft('');
       if(onlineChatPendingAttachments.length){
         try{
@@ -4395,12 +4848,61 @@ function App(){
   const unreadMessages=unreadNotificationMessages.filter(m=>m.read!==true);
   const notificationItems=[
     ...unreadMessages.map(m=>({id:'message:'+m.id,type:'message',title:m.subject|| (rtl?'رسالة جديدة':'New message'),description:(rtl?'من: ':'From: ')+(m.senderName||m.senderUid||''),createdAt:Number(m.createdAt||0),message:m})),
-    ...cashCustodyNotifications.filter(n=>n.read!==true).map(n=>({id:'cashCustody:'+n.id,type:'cashCustody',title:rtl?'حركة مالية تخص عهدتك':'Financial movement for your custody',description:[n.senderName,money(n.amount)+' '+(n.currency||'EGP'),n.description].filter(Boolean).join(' · '),createdAt:Number(n.createdAt||0),cashCustody:n})),
+    ...cashCustodyNotifications.filter(n=>n.read!==true).map(n=>{
+      const type=n.type||'cashCustody';
+      const title=n.title||(type==='financialAssignment'?(rtl?'فاتورة محولة إليك للاستكمال':'Invoice assigned to you'):type==='financialAssignmentReturned'?(rtl?'اكتمل استكمال الفاتورة وعادت إليك':'Invoice completion returned to you'):(rtl?'حركة مالية تخص عهدتك':'Financial movement for your custody'));
+      const description=n.description||[n.senderName,n.amount!=null?money(n.amount)+' '+(n.currency||'EGP'):'',n.description].filter(Boolean).join(' · ');
+      return {id:'cashCustody:'+n.id,type,title,description,createdAt:Number(n.createdAt||0),cashCustody:n,assignment:n};
+    }),
     ...(isAdmin?pendingRequests.filter(r=>!seenRequestIds.includes(r.uid)).map(r=>({id:'request:'+r.uid,type:'request',title:rtl?'طلب مستخدم جديد':'New user request',description:(r.fullName||r.username||r.email||r.uid),createdAt:Number(r.createdAt||0),request:r})):[])
   ].sort((a,b)=>b.createdAt-a.createdAt);
+
+  useEffect(()=>{
+    const uid=currentUser?.uid||'';
+    const count=Math.max(0,Math.min(999,notificationItems.length));
+    if(!uid){
+      if(window.PEST_NATIVE?.setAppBadgeCount){
+        void window.PEST_NATIVE.setAppBadgeCount(0).catch(error=>console.warn('Clearing app badge:',error));
+      }
+      return;
+    }
+    if(notificationBadgeReadyUid!==uid)return;
+    let cancelled=false;
+    const updateLocalBadge=async()=>{
+      try{
+        if(window.PEST_NATIVE?.setAppBadgeCount){
+          await window.PEST_NATIVE.setAppBadgeCount(count);
+        }
+      }catch(error){console.warn('Updating app icon badge:',error);}
+    };
+    void updateLocalBadge();
+    // Let the push worker finish its increment for this event before the
+    // app writes the exact unread total back to the shared per-user counter.
+    const timer=window.setTimeout(()=>{
+      if(cancelled)return;
+      void sendPushWorkerRequest('/push/badge/sync',{count})
+        .catch(error=>console.warn('Syncing app badge count:',error));
+    },900);
+    return ()=>{
+      cancelled=true;
+      window.clearTimeout(timer);
+    };
+  },[currentUser?.uid,notificationBadgeReadyUid,notificationItems.length]);
+
   function markRequestNotificationSeen(uid){setSeenRequestIds(old=>{const next=old.includes(uid)?old:[...old,uid];try{localStorage.setItem('pestSeenAdminRequests:'+currentUser.uid,JSON.stringify(next));}catch(err){console.warn('Could not save notification read state:',err);}return next;});}
   async function openNotification(item){
     setNotificationOpen(false);
+    if(item.type==='financialAssignment'||item.type==='financialAssignmentReturned'){
+      try{
+        const notification=item.assignment||item.cashCustody;
+        await db.ref('cashCustodyNotifications/'+currentUser.uid+'/'+notification.id).update({read:true,readAt:firebase.database.ServerValue.TIMESTAMP});
+        setCashCustodyNotifications(old=>old.map(n=>n.id===notification.id?{...n,read:true}:n));
+        if(item.type==='financialAssignment')window.PEST_PENDING_FINANCE_ASSIGNMENT_ID=notification.assignmentId||notification.id;
+        else window.PEST_PENDING_FINANCE_INVOICE_ID=notification.invoiceId||'';
+        window.dispatchEvent(new Event('pest-finance-route'));navigateToTab('financial');
+      }catch(err){alert(firebaseErrorMessage(err,tr));}
+      return;
+    }
     if(item.type==='cashCustody'){
       try{await db.ref('cashCustodyNotifications/'+currentUser.uid+'/'+item.cashCustody.id).update({read:true,readAt:firebase.database.ServerValue.TIMESTAMP});setCashCustodyNotifications(old=>old.map(n=>n.id===item.cashCustody.id?{...n,read:true}:n));setCashCustodyTargetUid(currentUser.uid);setCashCustodyBookScope(item.cashCustody.bookScope==='company'?'company':'personal');setCashCustodyCurrencyFilter(item.cashCustody.currency||'EGP');setCashCustodySearch('');navigateToTab('cashCustody');}
       catch(err){alert(firebaseErrorMessage(err,tr));}
@@ -4473,8 +4975,8 @@ function App(){
   const requestStatusLabel=v=>{const x=requestStatusValue(v);return x==='approved'?tr('approvedLabel'):x==='rejected'?tr('rejectedLabel'):tr('pendingLabel');};
   const filteredRequests=userRequests.filter(r=>(requestFilter==='all'||requestStatusValue(r.status)===requestFilter) && includesText([r.fullName,r.email,r.username,r.jobTitle,r.uid].join(' '),globalSearch));
   const themeNames={red:'themeRed',blue:'themeBlue',green:'themeGreen',teal:'themeTeal',purple:'themePurple',orange:'themeOrange',charcoal:'themeCharcoal',sky:'themeSky',rose:'themeRose',amber:'themeAmber',indigo:'themeIndigo',navy:'themeNavy'};
-  const onlinePeople=userDirectory.filter(u=>u.uid&&u.uid!==currentUser?.uid&&u.status==='active'&&Object.values(onlinePresenceByUid[u.uid]||{}).some(connection=>connection?.state==='online')).sort((a,b)=>String(a.fullName||a.username||'').localeCompare(String(b.fullName||b.username||'')));
-  const onlineChatUser=userDirectory.find(u=>u.uid===onlineChatUid&&u.status==='active')||null;
+  const onlinePeople=userDirectory.filter(u=>u.uid&&u.uid!==currentUser?.uid&&isActiveAccountStatus(u.status)&&Object.values(onlinePresenceByUid[u.uid]||{}).some(connection=>connection?.state==='online')).sort((a,b)=>String(a.fullName||a.username||'').localeCompare(String(b.fullName||b.username||'')));
+  const onlineChatUser=userDirectory.find(u=>u.uid===onlineChatUid&&isActiveAccountStatus(u.status))||null;
   const onlineChatMessages=onlineChatUid&&currentUser?.uid?messages.filter(m=>{
     if(!m||m.visibility==='public')return false;
     const recipientIds=Array.isArray(m.recipientUids)?m.recipientUids:(m.recipientUid?[m.recipientUid]:[]);
@@ -4768,7 +5270,7 @@ function App(){
     {id:'masterGroup',label:tr('master'),icon:'fa-database',children:[{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors',icon:'fa-address-book'}]},
     {id:'pestCrmGroup',label:rtl?'إدارة المبيعات والعملاء':'Sales & Customer CRM',icon:'fa-handshake',children:[{id:'pestCrm',label:rtl?'PEST CRM — العملاء والعروض':'PEST CRM — Customers & Offers',icon:'fa-address-card'}]},
     {id:'projectsGroup',label:tr('projects'),icon:'fa-diagram-project',children:[{id:'projects',label:rtl?'قائمة المشروعات':'Project list',icon:'fa-list'},...(selectedProjectCode?[{id:'projectDetail',label:rtl?'ملف المشروع الحالي':'Current project file',icon:'fa-folder-open'}]:[])]},
-    {id:'financeGroup',label:rtl?'المالية':'Finance',icon:'fa-coins',children:[{id:'statement',label:tr('statement'),icon:'fa-file-invoice-dollar'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody',icon:'fa-wallet'},{id:'custodyStatement',label:rtl?'كشف حساب العهد':'Custody Statement',icon:'fa-book-open'},{id:'reports',label:tr('reportCenter'),icon:'fa-chart-pie'}]},
+    {id:'financeGroup',label:rtl?'المالية':'Finance',icon:'fa-coins',children:[{id:'financial',label:rtl?'النظام المالي والمحاسبي':'Financial Accounting',icon:'fa-calculator'},{id:'statement',label:tr('statement'),icon:'fa-file-invoice-dollar'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody',icon:'fa-wallet'},{id:'custodyStatement',label:rtl?'كشف حساب العهد':'Custody Statement',icon:'fa-book-open'},{id:'reports',label:tr('reportCenter'),icon:'fa-chart-pie'}]},
     {id:'communicationGroup',label:rtl?'التواصل والمهام':'Communication & Tasks',icon:'fa-comments',children:[{id:'messages',label:tr('messages'),icon:'fa-envelope'},{id:'tasks',label:rtl?'المهام':'Tasks',icon:'fa-list-check'},{id:'announcements',label:rtl?'الإعلانات العامة':'Global Announcements',icon:'fa-bullhorn'}]},
     {id:'settingsGroup',label:tr('settings'),icon:'fa-sliders',children:[{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data',icon:'fa-database'},{id:'attachments',label:rtl?'المرفقات':'Attachments',icon:'fa-paperclip'},{id:'profile',label:tr('profile'),icon:'fa-user-gear'},...(isAdmin?[{id:'companySettings',label:tr('companySettings'),icon:'fa-building'},{id:'aiSettings',label:rtl?'إعدادات AI Agent':'AI Agent Settings',icon:'fa-wand-magic-sparkles'}]:[])]},
     ...(isAdmin?[{id:'adminGroup',label:rtl?'إدارة النظام':'Administration',icon:'fa-user-shield',children:[{id:'userRequests',label:tr('requestsReport'),icon:'fa-user-clock'},{id:'userManagement',label:rtl?'إدارة بيانات المستخدمين':'User Management',icon:'fa-users-gear'},{id:'userPermissions',label:rtl?'صلاحيات المستخدمين':'User Permissions',icon:'fa-user-lock'},{id:'auditLogs',label:rtl?'سجل نشاط المستخدمين':'User Activity Log',icon:'fa-clipboard-list'}]}]:[])
@@ -4777,7 +5279,7 @@ function App(){
   useEffect(()=>{if(tab==='auditLogs'&&!isAdmin)setTab('appLauncher');},[tab,isAdmin]);
   useEffect(()=>{if(tab==='announcements'&&!hasPermission('announcements','manage'))setTab('appLauncher');},[tab,currentUser?.role,currentUser?.permissions?.announcements?.manage]);
   useEffect(()=>{if(tab==='custodyStatement'&&!hasPermission('cashCustody','view'))setTab('appLauncher');},[tab,currentUser?.role,currentUser?.permissions?.cashCustody?.view]);
-  const navGroupByTab={master:'masterGroup',pestCrm:'pestCrmGroup',attachments:'settingsGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',cashCustody:'financeGroup',custodyStatement:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',announcements:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',aiSettings:'settingsGroup',userRequests:'adminGroup',userManagement:'adminGroup',userPermissions:'adminGroup',auditLogs:'adminGroup'};
+  const navGroupByTab={master:'masterGroup',pestCrm:'pestCrmGroup',attachments:'settingsGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',financial:'financeGroup',cashCustody:'financeGroup',custodyStatement:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',announcements:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',aiSettings:'settingsGroup',userRequests:'adminGroup',userManagement:'adminGroup',userPermissions:'adminGroup',auditLogs:'adminGroup'};
   const visibleNavGroups=navGroups.map(group=>group.tab?group:({...group,children:(group.children||[]).filter(item=>canAccessTab(item.id))})).filter(group=>group.tab?canAccessTab(group.tab):(group.children||[]).length>0);
   const navCatalog=visibleNavGroups.flatMap(group=>group.tab?[{id:group.tab,label:group.label,icon:group.icon}]:((group.children||[]).map(item=>({...item}))));
   const navMode=navPreferences.uid===(currentUser&&currentUser.uid)?navPreferences.mode:'side';
@@ -5531,7 +6033,9 @@ function App(){
     return <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
       <div className="absolute top-4 left-4"><button onClick={()=>setLang(rtl?'en':'ar')} className="bg-white text-slate-900 px-4 py-2 rounded-lg font-bold">{tr('language')}</button></div>
       <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-7">
-        <div className="text-center mb-6">{companyInfo.logo?<img src={companyInfo.logo} alt="Company logo" className="h-20 max-w-48 object-contain mx-auto mb-3"/>:<div className="w-16 h-16 rounded-full bg-blue-600 text-white grid place-items-center mx-auto mb-3 text-2xl"><i className="fas fa-building"></i></div>}
+        <div className="text-center mb-6">
+          <img src="./assets/pest-logo-horizontal.webp" alt="PEST — When Performance Matters" className="app-login-logo"/>
+          {companyInfo.logo&&<img src={companyInfo.logo} alt="Company logo" className="h-10 max-w-32 object-contain mx-auto mb-3"/>}
           <h1 className="text-xl font-bold text-slate-800">{companyInfo.name || tr('app')}</h1><p className="text-sm text-gray-500 mt-2">{tr('app')}</p></div>
         {authError && <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-lg mb-3 text-sm">{authError}</div>}
         {authSuccess && <div className="bg-green-50 border border-green-200 text-green-700 p-3 rounded-lg mb-3 text-sm">{authSuccess}</div>}
@@ -5571,19 +6075,33 @@ function App(){
     </div>;
   }
 
-  return <div className={'app-root-shell min-h-screen flex flex-col bg-gray-100 '+(tab==='appLauncher'?'app-is-launcher ':'')+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?'app-mobile-header-compact':'')} onClickCapture={unlockNotificationAudio}>
+  return <div className={'app-root-shell min-h-screen flex flex-col bg-gray-100 '+(tab==='appLauncher'?'app-is-launcher ':'')+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?'app-mobile-header-compact':'')} onClickCapture={unlockNotificationAudio} onPointerDownCapture={closeHeaderPopoversOnOutside}>
     <header className={'app-shell-header text-white p-3 px-5 flex justify-between items-center gap-3 shadow-lg '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?'app-mobile-header-compact':'')}>
-      <div className="app-shell-brand flex items-center gap-3">{companyInfo.logo?<img src={companyInfo.logo} alt="Logo" className="h-10 w-10 object-contain bg-white rounded p-1"/>:<i className="fas fa-cubes text-white text-2xl"></i>}<div><h1 className="font-bold">{companyInfo.name || tr('app')}</h1><p className="text-xs text-white/75">{tr('app')}</p></div></div>
+      <div className="app-shell-brand flex items-center gap-3">
+        <img src="./assets/pest-logo-horizontal.webp" alt="PEST — When Performance Matters" className="app-product-logo"/>
+        {companyInfo.logo&&<img src={companyInfo.logo} alt="Company logo" className="app-company-logo"/>}
+        <div><h1 className="font-bold">{companyInfo.name || tr('app')}</h1><p className="text-xs text-white/75">{tr('app')}</p></div>
+      </div>
       <div className="app-shell-actions flex items-center gap-3">
         <button onClick={()=>setLang(rtl?'en':'ar')} className="bg-black/20 px-3 py-2 rounded-lg text-sm">{tr('language')}</button><input value={globalSearch} onChange={e=>setGlobalSearch(e.target.value)} placeholder={tr('searchAll')} className="hidden lg:block rounded-lg px-3 py-2 text-slate-900 text-sm w-56" />
-        <div className="relative">
+        <div className="relative" data-header-popover="notifications">
           <button type="button" aria-expanded={notificationOpen} onClick={()=>setNotificationOpen(old=>!old)} className="relative p-2 rounded-lg hover:bg-black/10" title={rtl?'التنبيهات':'Notifications'}><i className="fas fa-bell text-xl"></i>{notificationItems.length>0&&<span className="absolute -top-1 -right-1 rounded-full bg-red-600 text-xs min-w-5 px-1.5 text-center">{notificationItems.length}</span>}</button>
-          {notificationOpen&&<div className="absolute end-0 top-12 z-[80] w-[min(92vw,370px)] max-h-[70vh] overflow-y-auto bg-white text-slate-800 rounded-xl shadow-2xl border">
-            <div className="p-3 border-b flex items-center justify-between"><b>{rtl?'مركز التنبيهات':'Notification center'}</b><span className="text-xs text-gray-500">{notificationItems.length} {rtl?'غير مقروء':'unread'}</span></div>
-            {notificationItems.length===0?<p className="p-5 text-sm text-gray-500 text-center">{rtl?'لا توجد تنبيهات جديدة.':'No new notifications.'}</p>:notificationItems.map(item=><button key={item.id} type="button" onClick={()=>openNotification(item)} className="w-full text-start p-3 border-b hover:bg-slate-50 flex items-start gap-3"><span className={'w-9 h-9 shrink-0 rounded-full grid place-items-center '+(item.type==='cashCustody'?'bg-emerald-50 text-emerald-700':item.type==='message'?'bg-blue-50 text-blue-700':'bg-amber-50 text-amber-700')}><i className={'fas '+(item.type==='cashCustody'?'fa-money-bill-transfer':item.type==='message'?'fa-envelope':'fa-user-plus')}></i></span><span className="min-w-0 flex-1"><b className="block text-sm">{item.title}</b><span className="block text-xs text-gray-500 mt-1 truncate">{item.description}</span><span className="block text-[11px] text-gray-400 mt-1">{item.type==='message'?(rtl?'اضغط لفتح الرسالة واعتبارها مقروءة': 'Open and mark as read'):item.type==='cashCustody'?(rtl?'اضغط لفتح حركة العهدة':'Open the linked custody movement'):(rtl?'اضغط لفتح طلب المستخدم واعتباره تمت مراجعته':'Open and mark request as seen')}</span></span><i className="fas fa-chevron-left text-xs text-gray-400 mt-2"></i></button>)}
-          </div>}
+          {notificationOpen&&<>
+            <button type="button" aria-label={rtl?'إغلاق التنبيهات':'Close notifications'} onClick={()=>setNotificationOpen(false)} className="fixed inset-0 z-[79] bg-transparent cursor-default"></button>
+            <div className="fixed end-2 top-[calc(env(safe-area-inset-top)+4.25rem)] z-[80] w-[min(94vw,390px)] max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-5.5rem)] overflow-y-auto overscroll-contain bg-white text-slate-800 rounded-xl shadow-2xl border md:absolute md:end-0 md:top-12 md:w-[min(92vw,390px)] md:max-h-[min(70vh,680px)]">
+              <div className="sticky top-0 z-10 p-3 border-b flex items-center justify-between bg-white"><b>{rtl?'مركز التنبيهات':'Notification center'}</b><div className="flex items-center gap-2"><span className="text-xs text-gray-500">{notificationItems.length} {rtl?'غير مقروء':'unread'}</span><button type="button" onClick={()=>setNotificationOpen(false)} className="w-8 h-8 rounded-lg hover:bg-slate-100" aria-label={rtl?'إغلاق':'Close'}><i className="fas fa-times"></i></button></div></div>
+              <div className="px-3 py-2 border-b bg-slate-50">
+                <button type="button" disabled={pushBusy} onClick={enableDeviceNotifications} className="w-full rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-3 py-2 text-xs font-bold flex items-center justify-center gap-2">
+                  <i className={'fas '+(pushBusy?'fa-spinner fa-spin':'fa-bell')}></i>
+                  {pushBusy?(rtl?'جاري التفعيل...':'Enabling...'):(rtl?'تفعيل إشعارات الجهاز / المتصفح':'Enable device / browser push notifications')}
+                </button>
+                {pushStatus&&<p className="mt-2 text-[11px] leading-5 text-slate-600 whitespace-normal break-words">{pushStatus}</p>}
+              </div>
+              {notificationItems.length===0?<p className="p-5 text-sm text-gray-500 text-center">{rtl?'لا توجد تنبيهات جديدة.':'No new notifications.'}</p>:notificationItems.map(item=><button key={item.id} type="button" onClick={()=>openNotification(item)} className="w-full text-start p-3 border-b hover:bg-slate-50 flex items-start gap-3"><span className={'w-9 h-9 shrink-0 rounded-full grid place-items-center '+(item.type==='cashCustody'?'bg-emerald-50 text-emerald-700':item.type==='message'?'bg-blue-50 text-blue-700':'bg-amber-50 text-amber-700')}><i className={'fas '+(item.type==='cashCustody'?'fa-money-bill-transfer':item.type==='message'?'fa-envelope':'fa-user-plus')}></i></span><span className="min-w-0 flex-1"><b className="block text-sm leading-6 whitespace-normal break-words">{item.title}</b><span className="block text-xs text-gray-600 mt-1 leading-6 whitespace-normal break-words">{item.description}</span><span className="block text-[11px] text-gray-500 mt-1 leading-5 whitespace-normal break-words">{item.type==='message'?(rtl?'اضغط لفتح الرسالة واعتبارها مقروءة': 'Open and mark as read'):item.type==='cashCustody'?(rtl?'اضغط لفتح حركة العهدة':'Open the linked custody movement'):(rtl?'اضغط لفتح طلب المستخدم واعتباره تمت مراجعته':'Open and mark request as seen')}</span></span><i className="fas fa-chevron-left text-xs text-gray-400 mt-2 shrink-0"></i></button>)}
+            </div>
+          </>}
         </div>
-        <div className="relative app-online-presence" onMouseEnter={()=>setOnlineUsersOpen(true)} onMouseLeave={()=>setOnlineUsersOpen(false)}>
+        <div className="relative app-online-presence" data-header-popover="presence" onMouseEnter={()=>setOnlineUsersOpen(true)} onMouseLeave={()=>setOnlineUsersOpen(false)}>
           <button type="button" onClick={()=>setOnlineUsersOpen(true)} aria-expanded={onlineUsersOpen} className="app-online-presence-trigger" title={rtl?'المستخدمون المتصلون الآن':'Users online now'}>
             <span className={'app-online-led '+(onlinePeople.length?'is-online':'is-idle')}></span>
             <i className="fas fa-users"></i>
@@ -5591,17 +6109,18 @@ function App(){
           </button>
           {onlineUsersOpen&&<div className="app-online-presence-popover">
             <div className="flex items-center justify-between gap-2 px-3 py-2 border-b"><b className="text-sm">{rtl?'المستخدمون المتصلون':'Online users'} ({onlinePeople.length})</b><button type="button" className="text-gray-400 hover:text-gray-700" onClick={()=>setOnlineUsersOpen(false)} aria-label={rtl?'إغلاق':'Close'}><i className="fas fa-times"></i></button></div>
-            {onlinePeople.length===0?<p className="p-4 text-xs text-gray-500 text-center">{rtl?'لا يوجد مستخدمون آخرون متصلون حاليًا.':'No other users are online right now.'}</p>:onlinePeople.map(user=><button type="button" key={user.uid} onClick={()=>openOnlineChat(user.uid)} className="app-online-user-row"><span className="app-online-avatar">{String(user.fullName||user.username||'?').trim().slice(0,1)}</span><span className="min-w-0 flex-1 text-start"><b className="block text-sm truncate">{user.fullName||user.username||user.uid}</b><small className="block text-xs text-gray-500 truncate">{user.jobTitle||user.username||''}</small></span><span className="app-online-led is-online"></span></button>)}
+            {onlinePresenceError&&<p role="alert" className="mx-3 my-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800 whitespace-normal break-words">{rtl?'تعذر قراءة حالة الاتصال: ':'Could not load online presence: '}{onlinePresenceError}</p>}
+            {!onlinePresenceError&&onlinePeople.length===0?<p className="p-4 text-xs text-gray-500 text-center">{rtl?'لا يوجد مستخدمون آخرون متصلون حاليًا.':'No other users are online right now.'}</p>:onlinePeople.map(user=><button type="button" key={user.uid} onClick={()=>openOnlineChat(user.uid)} className="app-online-user-row"><span className="app-online-avatar">{String(user.fullName||user.username||'?').trim().slice(0,1)}</span><span className="min-w-0 flex-1 text-start"><b className="block text-sm truncate">{user.fullName||user.username||user.uid}</b><small className="block text-xs text-gray-500 truncate">{user.jobTitle||user.username||''}</small></span><span className="app-online-led is-online"></span></button>)}
           </div>}
         </div>
-        <div className="relative"><button onClick={()=>{setShowThemeMenu(!showThemeMenu);setShowUserMenu(false);}} className="p-2" title={tr('theme')}><i className="fas fa-palette text-xl"></i></button>
+        <div className="relative" data-header-popover="theme"><button onClick={()=>{setShowThemeMenu(!showThemeMenu);setShowUserMenu(false);}} className="p-2" title={tr('theme')}><i className="fas fa-palette text-xl"></i></button>
           {showThemeMenu&&<div className="absolute top-10 right-0 z-50 w-56 max-h-[70vh] overflow-y-auto bg-white text-slate-800 rounded-xl shadow-xl border border-slate-100 p-3"><p className="font-bold text-sm mb-2">{tr('chooseTheme')}</p>{Object.keys(themeOptions).map(k=><button key={k} onClick={()=>{setTheme(k);setShowThemeMenu(false);}} className={`w-full flex items-center gap-3 px-2 py-2 rounded-xl text-sm text-slate-700 hover:bg-slate-50 transition-colors ${theme===k?'bg-slate-100':''}`}><span className="w-6 h-6 shrink-0 rounded-full shadow-sm grid place-items-center" style={{background:themeOptions[k].main}}>{theme===k&&<i className="fas fa-check text-white text-xs"></i>}</span><span className="flex-1 text-start">{tr(themeNames[k])}</span>{k==='red'&&<span className="text-[11px] font-semibold bg-slate-900 text-white rounded-md px-2 py-1">{tr('themeDefault')}</span>}</button>)}</div>}
         </div>
         <button type="button" onClick={toggleNavigationMode} title={navMode==='side'?(rtl?'تحويل القائمة إلى علوية':'Switch to top navigation'):(rtl?'تحويل القائمة إلى جانبية':'Switch to sidebar navigation')} aria-label={navMode==='side'?(rtl?'تحويل القائمة إلى علوية':'Switch to top navigation'):(rtl?'تحويل القائمة إلى جانبية':'Switch to sidebar navigation')} className="app-layout-toggle p-2 rounded-lg hover:bg-black/10"><i className={'fas '+(navMode==='side'?'fa-bars-staggered':'fa-table-columns')+' text-lg'}></i></button>
         <button type="button" onClick={toggleDesktopNavigation} aria-expanded={!(desktopNavState.uid===(currentUser&&currentUser.uid)&&desktopNavState.hidden)} aria-label={desktopNavState.uid===(currentUser&&currentUser.uid)&&desktopNavState.hidden?(rtl?'توسيع القائمة':'Expand navigation'):(rtl?'تصغير القائمة إلى أيقونات':'Collapse navigation to icons')} title={desktopNavState.uid===(currentUser&&currentUser.uid)&&desktopNavState.hidden?(rtl?'توسيع القائمة كاملة':'Expand full navigation'):(rtl?'تصغير القائمة إلى شريط أيقونات':'Collapse navigation to an icon rail')} className="app-desktop-nav-toggle rounded-lg"><i className={'fas '+(desktopNavState.uid===(currentUser&&currentUser.uid)&&desktopNavState.hidden?'fa-angles-right':'fa-table-list')}></i><span>{desktopNavState.uid===(currentUser&&currentUser.uid)&&desktopNavState.hidden?(rtl?'توسيع القائمة':'Expand menu'):(rtl?'قائمة أيقونات':'Icon menu')}</span></button>
         <button type="button" onClick={toggleMobileHeaderSize} aria-label={mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?(rtl?'تكبير عنوان البرنامج':'Use normal header size'):(rtl?'تصغير عنوان البرنامج':'Use compact header size')} title={mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?(rtl?'حجم الرأس العادي':'Normal header size'):(rtl?'تصغير رأس البرنامج':'Compact header size')} className="app-mobile-only-control app-mobile-size-toggle rounded-lg"><i className={'fas '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?'fa-expand-alt':'fa-compress-alt')}></i><span>{mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.compactHeader?(rtl?'عادي':'Normal'):(rtl?'مصغر':'Small')}</span></button>
         <button type="button" onClick={toggleMobileNavigation} aria-expanded={!(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden)} aria-label={mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden?(rtl?'إظهار القائمة':'Show navigation'):(rtl?'إخفاء القائمة':'Hide navigation')} title={mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden?(rtl?'إظهار القائمة':'Show navigation'):(rtl?'إخفاء القائمة':'Hide navigation')} className="app-mobile-only-control app-mobile-nav-toggle rounded-lg"><i className={'fas '+(mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden?'fa-bars':'fa-eye-slash')}></i><span>{mobileUi.uid===(currentUser&&currentUser.uid)&&mobileUi.navHidden?(rtl?'إظهار القائمة':'Show menu'):(rtl?'إخفاء القائمة':'Hide menu')}</span></button>
-        <div className="relative"><button onClick={()=>{setShowUserMenu(!showUserMenu);setShowThemeMenu(false);}} className="flex items-center gap-2 p-1 rounded-lg hover:bg-black/10"><span className="app-header-identity">{currentUser.avatar?<img src={currentUser.avatar} alt=""/>:<span className="app-user-fallback">{(currentUser.fullName||'?').charAt(0)}</span>}<span className="hidden sm:block text-end"><b className="block text-sm">{currentUser.fullName}</b><small className="text-white/75">{currentUser.jobTitle}</small></span></span><i className="fas fa-cog text-xl"></i></button>
+        <div className="relative" data-header-popover="user"><button onClick={()=>{setShowUserMenu(!showUserMenu);setShowThemeMenu(false);}} className="flex items-center gap-2 p-1 rounded-lg hover:bg-black/10"><span className="app-header-identity">{currentUser.avatar?<img src={currentUser.avatar} alt=""/>:<span className="app-user-fallback">{(currentUser.fullName||'?').charAt(0)}</span>}<span className="hidden sm:block text-end"><b className="block text-sm">{currentUser.fullName}</b><small className="text-white/75">{currentUser.jobTitle}</small></span></span><i className="fas fa-cog text-xl"></i></button>
           {showUserMenu&&<div className="absolute top-11 end-0 z-50 w-72 bg-white text-slate-800 rounded-xl shadow-xl border p-3"><div className="flex items-center gap-3 border-b pb-3 mb-2">{currentUser.avatar?<img src={currentUser.avatar} alt="Profile" className="w-12 h-12 rounded-full object-cover"/>:<div className="w-12 h-12 rounded-full bg-blue-600 text-white grid place-items-center font-bold">{(currentUser.fullName||'?').charAt(0)}</div>}<div className="min-w-0"><b className="block truncate">{currentUser.fullName}</b><small className="block text-gray-500 truncate">{currentUser.email}</small><small className="block text-gray-500 truncate">@{currentUser.username} · {currentUser.jobTitle}</small></div></div><p className="text-xs font-bold text-gray-400 px-2 py-1">{tr('accountDetails')}</p><button className="menu-item" onClick={()=>{setTab('profile');setProfileSection('personal');setShowUserMenu(false);}}><i className="fas fa-user ml-2"></i>{tr('personalDetails')}</button><button className="menu-item" onClick={()=>{setTab('profile');setProfileSection('security');setShowUserMenu(false);}}><i className="fas fa-key ml-2"></i>{tr('savePassword')}</button><button className="menu-item" onClick={()=>{setTab('profile');setProfileSection('photo');setShowUserMenu(false);}}><i className="fas fa-image ml-2"></i>{tr('changePhoto')}</button><button className="menu-item" onClick={()=>{setTab('messages');setShowUserMenu(false);}}><i className="fas fa-envelope ml-2"></i>{tr('messages')}</button></div>}
         </div>
         <button onClick={logout} title={tr('logout')} className="p-2 rounded-lg hover:bg-black/10 text-white"><i className="fas fa-sign-out-alt text-xl"></i></button>
@@ -5644,6 +6163,7 @@ function App(){
           </div>}
         </div>}
         {tab==='pestCrm'&&canAccessTab('pestCrm')&&PestCrmModule&&<PestCrmModule db={db} currentUser={currentUser} rtl={rtl} can={hasPermission} addLog={addLog}/>}
+        {financialModuleMounted&&canAccessTab('financial')&&<div className={tab==='financial'?'':'hidden'}><FinanceModuleSlot db={db} currentUser={currentUser} rtl={rtl} workerBase={PUSH_WORKER_BASE} userDirectory={userDirectory} addLog={addLog} onOpenPartyMaster={openFinancialPartyMaster}/></div>}
         {tab==='dashboard'&&<div className="space-y-5 print-area">
           <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="font-bold text-xl">{tr('dashboard')} · {tr('cashFlow')}</h2><div className="flex gap-2 no-print"><button onClick={()=>setTab('reports')} className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-bold">{tr('reportCenter')}</button><button onClick={()=>window.print()} className="bg-gray-800 text-white rounded-lg px-4 py-2 text-sm">{tr('printPdf')}</button></div></div>
           <section className="app-dashboard-filterbar no-print">
@@ -5796,7 +6316,7 @@ function App(){
 
         {tab==='master'&&<div className="space-y-5">
           <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="font-bold text-xl">{tr('master')}</h2><input className="border rounded-lg p-2 min-w-64" placeholder={tr('searchAll')} value={masterFilter} onChange={e=>setMasterFilter(e.target.value)}/></div>
-          <section className="bg-white p-5 rounded-xl border shadow-sm"><div className="flex flex-wrap justify-between items-center gap-3 mb-3"><h3 className="font-bold">{editingMasterCode?(rtl?'تعديل بيانات':'Edit record'):(rtl?'إضافة بيانات عميل أو مورد':'Add client or vendor')}</h3><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={()=>{setMasterPendingAttachments([]);setEditingMasterCode('');setMaster(blankMaster('client'));setMasterFormOpen(true);}} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold">{rtl?'إضافة عميل':'Add client'}</button><button type="button" onClick={()=>{setMasterPendingAttachments([]);setEditingMasterCode('');setMaster(blankMaster('vendor'));setMasterFormOpen(true);}} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold">{rtl?'إضافة مورد':'Add vendor'}</button><button type="button" aria-expanded={masterFormOpen} onClick={()=>setMasterFormOpen(old=>!old)} className="w-10 h-10 rounded-lg bg-gray-100 text-gray-700" title={rtl?'فتح أو إغلاق النموذج':'Expand or collapse form'}><i className={masterFormOpen?'fas fa-chevron-up':'fas fa-chevron-down'}></i></button>{editingMasterCode&&<button type="button" className="text-red-600 text-sm" onClick={()=>{setMasterPendingAttachments([]);setMaster(blankMaster());setEditingMasterCode('');setMasterFormOpen(false);}}>{tr('clear')}</button>}</div></div>
+          <section className="bg-white p-5 rounded-xl border shadow-sm"><div className="flex flex-wrap justify-between items-center gap-3 mb-3"><h3 className="font-bold">{editingMasterCode?(rtl?'تعديل بيانات':'Edit record'):(rtl?'إضافة بيانات عميل أو مورد':'Add client or vendor')}</h3><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={()=>{setMasterPendingAttachments([]);setEditingMasterCode('');setMaster(blankMaster('client'));setMasterFormOpen(true);}} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold">{rtl?'إضافة عميل':'Add client'}</button><button type="button" onClick={()=>{setMasterPendingAttachments([]);setEditingMasterCode('');setMaster(blankMaster('vendor'));setMasterFormOpen(true);}} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold">{rtl?'إضافة مورد':'Add vendor'}</button><button type="button" aria-expanded={masterFormOpen} onClick={()=>setMasterFormOpen(old=>!old)} className="w-10 h-10 rounded-lg bg-gray-100 text-gray-700" title={rtl?'فتح أو إغلاق النموذج':'Expand or collapse form'}><i className={masterFormOpen?'fas fa-chevron-up':'fas fa-chevron-down'}></i></button>{financialPartyReturn&&<button type="button" className="px-3 py-2 rounded-lg bg-amber-100 text-amber-900 text-xs font-bold" onClick={()=>{setFinancialPartyReturn(null);setMaster(blankMaster());setMasterPendingAttachments([]);setEditingMasterCode('');setMasterFormOpen(false);setTab('financial');}}>{rtl?'العودة إلى الفاتورة دون حفظ':'Return to invoice without saving'}</button>}{editingMasterCode&&<button type="button" className="text-red-600 text-sm" onClick={()=>{setMasterPendingAttachments([]);setMaster(blankMaster());setEditingMasterCode('');setMasterFormOpen(false);}}>{tr('clear')}</button>}</div></div>
             {masterFormOpen&&<form onSubmit={addMaster} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
               <input required className="border rounded-lg p-3" placeholder={tr('code')} value={master.code} onChange={e=>setMaster({...master,code:e.target.value})}/>
               <input required className="border rounded-lg p-3" placeholder={tr('name')} value={master.name} onChange={e=>setMaster({...master,name:e.target.value})}/>
@@ -6062,7 +6582,7 @@ function App(){
             </section>
           </div></section>
         </div>}
-        {tab==='tasks'&&<div className="space-y-5"><div className="flex items-center justify-between gap-3"><h2 className="font-bold text-xl">{rtl?'المهام من الرسائل':'Tasks from messages'}</h2><span className="text-sm text-gray-500">{tasks.filter(t=>t.status!=='completed').length} {rtl?'مفتوحة':'open'}</span></div>{taskEditingId&&<form onSubmit={saveTaskRecord} className="bg-white border rounded-xl p-4 space-y-3"><b>{rtl?'تعديل المهمة':'Edit task'}</b><input required className="w-full border rounded-lg p-3" value={taskEditDraft.title} onChange={e=>setTaskEditDraft(old=>({...old,title:e.target.value}))} placeholder={rtl?'عنوان المهمة':'Task title'}/><textarea rows="3" className="w-full border rounded-lg p-3" value={taskEditDraft.description} onChange={e=>setTaskEditDraft(old=>({...old,description:e.target.value}))} placeholder={rtl?'تفاصيل المهمة':'Task description'}/><div className="flex flex-wrap gap-2"><button disabled={taskEditBusy} className="rounded-lg bg-blue-600 text-white px-4 py-2 font-bold">{taskEditBusy?(rtl?'جارٍ الحفظ...':'Saving...'):(rtl?'حفظ':'Save')}</button><button type="button" onClick={()=>setTaskEditingId('')} className="rounded-lg bg-slate-100 px-4 py-2">{rtl?'إلغاء':'Cancel'}</button></div>{taskEditNotice&&<p className="text-sm text-slate-600">{taskEditNotice}</p>}</form>}<details open className="app-collapsible"><summary><span>{rtl?'قائمة المهام':'Task list'}</span></summary><div className="app-collapsible-body"><div className="app-list-scroll">{tasks.length===0?<p className="text-sm text-gray-500">{rtl?'لا توجد مهام بعد. حوّل أي رسالة إلى مهمة من شاشة المراسلات.':'No tasks yet. Convert a message into a task from Messages.'}</p>:tasks.slice().sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0)).map(task=><article key={task.id} className="border rounded-xl p-4 flex flex-col md:flex-row md:items-start gap-3"><div className="flex-1"><button type="button" className="attachment-open-record font-bold text-start" title={rtl?'اضغط لفتح مرفقات المهمة':'Click to open task attachments'} onClick={()=>void openRecordAttachmentPreview('task',task.id)}>{task.title}</button><button type="button" className="attachment-open-record block text-sm whitespace-pre-wrap text-gray-600 mt-2" title={rtl?'اضغط لفتح مرفقات المهمة':'Click to open task attachments'} onClick={()=>void openRecordAttachmentPreview('task',task.id)}>{task.description}</button><div className="mt-2">{task.sourceSenderName?userIdentity(task.sourceSenderUid,task.sourceSenderName,true):null}</div>{renderRecordAttachments('task',task.id)}</div><div className="flex flex-wrap gap-2"><button onClick={()=>updateTaskStatus(task,task.status==='completed'?'open':'completed')} className={'rounded-lg px-4 py-2 text-sm font-bold '+(task.status==='completed'?'bg-gray-100 text-gray-600':'bg-green-600 text-white')}>{task.status==='completed'?(rtl?'إعادة فتح':'Reopen'):(rtl?'إنهاء المهمة':'Complete')}</button>{hasPermission('tasks','edit')&&<button type="button" onClick={()=>editTaskRecord(task)} className="rounded-lg px-4 py-2 text-sm font-bold bg-blue-50 text-blue-700">{rtl?'تعديل':'Edit'}</button>}{hasPermission('tasks','delete')&&<button type="button" onClick={()=>void deleteTaskRecord(task)} className="rounded-lg px-4 py-2 text-sm font-bold bg-rose-50 text-rose-700">{rtl?'حذف':'Delete'}</button>}</div></article>)}</div></div></details></div>}
+        {tab==='tasks'&&<div className="space-y-5"><div className="flex items-center justify-between gap-3"><h2 className="font-bold text-xl">{rtl?'المهام من الرسائل':'Tasks from messages'}</h2><span className="text-sm text-gray-500">{tasks.filter(t=>t.status!=='completed').length} {rtl?'مفتوحة':'open'}</span></div>{taskEditingId&&<form onSubmit={saveTaskRecord} className="bg-white border rounded-xl p-4 space-y-3"><b>{rtl?'تعديل المهمة':'Edit task'}</b><input required className="w-full border rounded-lg p-3" value={taskEditDraft.title} onChange={e=>setTaskEditDraft(old=>({...old,title:e.target.value}))} placeholder={rtl?'عنوان المهمة':'Task title'}/><textarea rows="3" className="w-full border rounded-lg p-3" value={taskEditDraft.description} onChange={e=>setTaskEditDraft(old=>({...old,description:e.target.value}))} placeholder={rtl?'تفاصيل المهمة':'Task description'}/><div className="flex flex-wrap gap-2"><button disabled={taskEditBusy} className="rounded-lg bg-blue-600 text-white px-4 py-2 font-bold">{taskEditBusy?(rtl?'جارٍ الحفظ...':'Saving...'):(rtl?'حفظ':'Save')}</button><button type="button" onClick={()=>setTaskEditingId('')} className="rounded-lg bg-slate-100 px-4 py-2">{rtl?'إلغاء':'Cancel'}</button></div>{taskEditNotice&&<p className="text-sm text-slate-600">{taskEditNotice}</p>}</form>}<details open className="app-collapsible"><summary><span>{rtl?'قائمة المهام':'Task list'}</span></summary><div className="app-collapsible-body"><div className="app-list-scroll">{tasks.length===0?<p className="text-sm text-gray-500">{rtl?'لا توجد مهام بعد. حوّل أي رسالة إلى مهمة من شاشة المراسلات.':'No tasks yet. Convert a message into a task from Messages.'}</p>:tasks.slice().sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0)).map(task=><article key={task.id} className="border rounded-xl p-4 flex flex-col md:flex-row md:items-start gap-3"><div className="flex-1"><button type="button" className="attachment-open-record font-bold text-start" title={rtl?'اضغط لفتح مرفقات المهمة':'Click to open task attachments'} onClick={()=>{if(task.kind==='financialAssignment'){window.PEST_PENDING_FINANCE_ASSIGNMENT_ID=task.financialAssignmentId||task.id;window.dispatchEvent(new Event('pest-finance-route'));navigateToTab('financial');}else if(task.kind==='financialAssignmentReturned'){window.PEST_PENDING_FINANCE_INVOICE_ID=task.sourceInvoiceId||'';window.dispatchEvent(new Event('pest-finance-route'));navigateToTab('financial');}else void openRecordAttachmentPreview('task',task.id);}}>{task.title}</button><button type="button" className="attachment-open-record block text-sm whitespace-pre-wrap text-gray-600 mt-2" title={rtl?'اضغط لفتح مرفقات المهمة':'Click to open task attachments'} onClick={()=>{if(task.kind==='financialAssignment'){window.PEST_PENDING_FINANCE_ASSIGNMENT_ID=task.financialAssignmentId||task.id;navigateToTab('financial');}else if(task.kind==='financialAssignmentReturned'){window.PEST_PENDING_FINANCE_INVOICE_ID=task.sourceInvoiceId||'';navigateToTab('financial');}else void openRecordAttachmentPreview('task',task.id);}}>{task.description}</button><div className="mt-2">{task.sourceSenderName?userIdentity(task.sourceSenderUid,task.sourceSenderName,true):null}</div>{renderRecordAttachments('task',task.id)}</div><div className="flex flex-wrap gap-2"><button onClick={()=>task.kind==='financialAssignment'? (window.PEST_PENDING_FINANCE_ASSIGNMENT_ID=task.financialAssignmentId||task.id,navigateToTab('financial')):task.kind==='financialAssignmentReturned'?(window.PEST_PENDING_FINANCE_INVOICE_ID=task.sourceInvoiceId||'',navigateToTab('financial')):updateTaskStatus(task,task.status==='completed'?'open':'completed')} className={'rounded-lg px-4 py-2 text-sm font-bold '+(task.status==='completed'?'bg-gray-100 text-gray-600':'bg-green-600 text-white')}>{task.kind==='financialAssignment'?(rtl?'استكمال الفاتورة':'Complete invoice'):task.kind==='financialAssignmentReturned'?(rtl?'مراجعة المسودة':'Review draft'):task.status==='completed'?(rtl?'إعادة فتح':'Reopen'):(rtl?'إنهاء المهمة':'Complete')}</button>{hasPermission('tasks','edit')&&<button type="button" onClick={()=>editTaskRecord(task)} className="rounded-lg px-4 py-2 text-sm font-bold bg-blue-50 text-blue-700">{rtl?'تعديل':'Edit'}</button>}{hasPermission('tasks','delete')&&<button type="button" onClick={()=>void deleteTaskRecord(task)} className="rounded-lg px-4 py-2 text-sm font-bold bg-rose-50 text-rose-700">{rtl?'حذف':'Delete'}</button>}</div></article>)}</div></div></details></div>}
 
         {tab==='cashCustody'&&hasPermission('cashCustody','view')&&<div className="print-area space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-xl">{rtl?'إدارة النقدية الشخصية – العهدة':'Personal Cash Custody'}</h2><p className="text-sm text-gray-500">{rtl?'كشف حساب لكل مستخدم، والرصيد يحتسب من الحركات المعتمدة فقط.':'A separate ledger for each user. The cash balance includes approved movements only.'}</p></div><div className="flex flex-wrap gap-2 no-print"><button type="button" onClick={exportCurrentScreenExcel} className="rounded-lg bg-emerald-600 text-white px-4 py-2 font-bold"><i className="fas fa-file-excel me-2"></i>{rtl?'تصدير Excel':'Export Excel'}</button><button type="button" onClick={()=>window.print()} className="rounded-lg bg-slate-700 text-white px-4 py-2 font-bold"><i className="fas fa-print me-2"></i>{rtl?'طباعة':'Print'}</button></div></div>
@@ -6469,7 +6989,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(<AppErrorBoundary><A
 </script>
 <script>
 (()=>{
-  const WORKER_URL='https://pest-platform.ai-mhdiab90.workers.dev';
+  const WORKER_URL=window.location.hostname.endsWith('-pest-platform.ai-mhdiab90.workers.dev')
+    ? window.location.origin
+    : 'https://pest-platform.ai-mhdiab90.workers.dev';
   const agentRequest=async(path,method='POST',body)=>{
     const firebaseAuth=window.PEST_FIREBASE_AUTH;
     const user=firebaseAuth&&firebaseAuth.currentUser;

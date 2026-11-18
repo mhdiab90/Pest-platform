@@ -5,13 +5,25 @@ on:
     branches: [main]
     paths:
       - "cloudflare/worker.js"
+      - "cloudflare/origin.js"
+      - "financial-api.js"
+      - "financial-module.js"
+      - "tests/**"
+      - "scripts/build-mobile.mjs"
+      - "firebase-messaging-sw.js"
       - "index.html"
+      - "wrangler.jsonc"
       - ".github/scripts/check-app-babel.mjs"
       - ".github/workflows/worker-check.yml"
   pull_request:
     paths:
+      - "tests/**"
       - "cloudflare/worker.js"
+      - "financial-api.js"
+      - "financial-module.js"
+      - "scripts/build-mobile.mjs"
       - "index.html"
+      - "wrangler.jsonc"
       - ".github/scripts/check-app-babel.mjs"
       - ".github/workflows/worker-check.yml"
   workflow_dispatch:
@@ -29,6 +41,17 @@ jobs:
       - name: Install JSX parser
         run: npm install --no-save @babel/parser
       - name: Validate Worker JavaScript syntax
-        run: node --input-type=module --check < cloudflare/worker.js
+        run: |
+          node --input-type=module --check < cloudflare/worker.js
+          node --check cloudflare/origin.js
+          node --check financial-api.js
+          node --check financial-module.js
+          node --check scripts/build-mobile.mjs
+      - name: Run financial accounting tests
+        run: node --test tests/financial-api.test.mjs
+      - name: Bundle Worker with Wrangler (dry run only)
+        run: npx --yes wrangler@4 deploy --dry-run --outdir .wrangler-dry-run
+      - name: Validate Firebase Messaging service worker syntax
+        run: node --check firebase-messaging-sw.js
       - name: Validate React and JSX syntax
         run: node .github/scripts/check-app-babel.mjs

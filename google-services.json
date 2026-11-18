@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "237071041951",
+    "firebase_url": "https://pest-plat-form-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "pest-plat-form",
+    "storage_bucket": "pest-plat-form.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:237071041951:android:6ed0fbff6765e02465a9aa",
+        "android_client_info": {
+          "package_name": "com.mhdiab90.pestplatform"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCmyLkADXdCDNIID4OTnjuW5D61WeZ0IOg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
