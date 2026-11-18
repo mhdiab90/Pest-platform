@@ -179,7 +179,7 @@ export async function handleFinancialRequest(ctx){
    content=[{type:"text",text:"PDF page text:\n"+invoiceText}];
   }else{
    const image=String(body.image||"");
-   if(!/^data:image\\/(png|jpeg|webp);base64,/i.test(image)||image.length>12*1024*1024)throw new Error("ارفع صورة JPG أو PNG أو WebP لا تتجاوز 9 MB.");
+   if(!/^data:image\/(png|jpeg|webp);base64,/i.test(image)||image.length>12*1024*1024)throw new Error("ارفع صورة JPG أو PNG أو WebP لا تتجاوز 9 MB.");
    content=[{type:"image_url",image_url:{url:image}}];
   }
   const accounts=Array.isArray(body.expenseAccounts)?body.expenseAccounts.slice(0,80).map(x=>({code:txt(x&&x.code,32),name:txt(x&&x.name,120)})).filter(x=>x.code&&x.name):[];
@@ -260,6 +260,7 @@ export async function handleFinancialRequest(ctx){
   const invoiceChart=(await adminRead("chartOfAccounts"))||{};
   inv.lines.forEach((l,i)=>{
    if(!txt(l.description,250))errors.push("وصف البند "+(i+1)+" مطلوب");
+   if(!["stock","service"].includes(l.kind))errors.push("حدد طبيعة البند "+(i+1)+" هل هو مخزني أم مصروف/خدمة");
    if(!(Number(l.quantity)>0))errors.push("الكمية غير صحيحة في البند "+(i+1));
    if(l.kind==="stock"&&!l.itemCode)errors.push("حدد الصنف المخزني في البند "+(i+1));
    if(l.kind==="service"){
@@ -318,13 +319,20 @@ export async function handleFinancialRequest(ctx){
   else if(doc.type==="cash"){const amount=num(doc.amount),receipt=doc.direction==="in",cash=txt(doc.cashAccountCode||"1110",32),party=txt(doc.partyAccountCode||(receipt?"1210":"281"),32);if(!doc.partyId)throw new Error("يجب اختيار العميل أو المورد لضمان تحديث حسابه التحليلي.");const lines=receipt?[{accountCode:cash,debit:amount,credit:0,description:doc.description},{accountCode:party,debit:0,credit:amount,description:doc.description,partyType:doc.partyType||"",partyId:doc.partyId||""}]:[{accountCode:party,debit:amount,credit:0,description:doc.description,partyType:doc.partyType||"",partyId:doc.partyId||""},{accountCode:cash,debit:0,credit:amount,description:doc.description}];j={id:uid("JRN"),date:doc.date,description:doc.description,reference:doc.reference||"",sourceType:"cash",sourceId:doc.id,currency:doc.currency||"EGP",lines,status:"posted",createdAt:doc.createdAt,createdBy:doc.createdBy,approvedAt:now,approvedBy:claims.sub,postedAt:now};Object.assign(updates,journalUpdates(j));}
   else if(doc.type==="bankLine"){if(!doc.offsetAccountCode)throw new Error("حدد الحساب المقابل قبل الاعتماد");const amount=num(doc.amount),bank=txt(doc.bankAccountCode||"1120",32),offset=txt(doc.offsetAccountCode,32),incoming=doc.direction==="in",lines=incoming?[{accountCode:bank,debit:amount,credit:0,description:doc.description},{accountCode:offset,debit:0,credit:amount,description:doc.description,partyType:doc.partyType||"",partyId:doc.partyId||"",costCenterId:doc.costCenterId||""}]:[{accountCode:offset,debit:amount,credit:0,description:doc.description,partyType:doc.partyType||"",partyId:doc.partyId||"",costCenterId:doc.costCenterId||""},{accountCode:bank,debit:0,credit:amount,description:doc.description}];j={id:uid("JRN"),date:doc.date,description:"حركة بنك: "+doc.description,reference:doc.reference||"",sourceType:"bankLine",sourceId:doc.id,currency:"EGP",lines,status:"posted",createdAt:doc.createdAt,createdBy:doc.createdBy,approvedAt:now,approvedBy:claims.sub,postedAt:now};Object.assign(updates,journalUpdates(j));updates["bankFingerprints/"+doc.fingerprint+"/journalId"]=j.id;}
   else if(doc.type==="invoice"){
-   const inv=doc,tot=invoiceTotals(inv),purchase=inv.invoiceType==="purchase",partyId=id(inv.partyId),lines=[],items=(await adminRead("items"))||{},centers=(await adminRead("costCenters"))||{};
+   const inv=doc,tot=invoiceTotals(inv),purchase=inv.invoiceType==="purchase",partyId=id(inv.partyId),lines=[],items=(await adminRead("items"))||{},centers=(await adminRead("costCenters"))||{},chart=(await adminRead("chartOfAccounts"))||{};
    const projectCenter=inv.projectCode?Object.values(centers).find(function(center){return center&&(center.projectCode===inv.projectCode||center.code===inv.projectCode);}):null;
 
    const lock=await adminRead("documentFingerprints/"+inv.fingerprint);
    if(lock&&lock.documentId!==doc.id)throw new Error("الفاتورة مكررة ومربوطة بالمستند "+lock.documentId+"؛ ارفضها أو راجع المستند الأصلي قبل الترحيل.");
    const invoiceAmounts=invoiceLineAmounts(inv);
-   for(const amountRow of invoiceAmounts){const l=amountRow.line,value=amountRow.amount;if(l.kind==="stock"&&!items[l.itemCode])throw new Error("الصنف "+l.itemCode+" غير معرف بالمخزون. أضفه أو اربطه بكود موجود.");lines.push(purchase?{accountCode:l.kind==="stock"?"1300":txt(l.accountCode||"6100",32),debit:value,credit:0,description:l.description,costCenterId:l.costCenterId||(projectCenter&&projectCenter.code)||"",projectCode:inv.projectCode||"",itemCode:l.kind==="stock"?l.itemCode:"",quantity:num(l.quantity),warehouseCode:l.warehouseCode||"default"}:{accountCode:l.kind==="stock"?"4100":txt(l.incomeAccountCode||"4200",32),debit:0,credit:value,description:l.description,costCenterId:l.costCenterId||(projectCenter&&projectCenter.code)||"",projectCode:inv.projectCode||"",itemCode:l.kind==="stock"?l.itemCode:"",quantity:num(l.quantity),warehouseCode:l.warehouseCode||"default"});}
+   for(const amountRow of invoiceAmounts){const l=amountRow.line,value=amountRow.amount;
+    if(!["stock","service"].includes(l.kind))throw new Error("طبيعة بند الفاتورة غير صحيحة.");
+    if(l.kind==="stock"&&!items[l.itemCode])throw new Error("الصنف "+l.itemCode+" غير معرف بالمخزون. أضفه أو اربطه بكود موجود.");
+    if(l.kind==="service"){
+     const expectedType=purchase?"expense":"revenue",accountCode=txt(purchase?(l.accountCode||"6100"):(l.incomeAccountCode||"4200"),32),account=chart[accountCode];
+     if(!account||account.isGroup||account.active===false||account.type!==expectedType)throw new Error("حساب بند الفاتورة غير صالح: "+accountCode);
+    }
+    lines.push(purchase?{accountCode:l.kind==="stock"?"1300":txt(l.accountCode||"6100",32),debit:value,credit:0,description:l.description,costCenterId:l.costCenterId||(projectCenter&&projectCenter.code)||"",projectCode:inv.projectCode||"",itemCode:l.kind==="stock"?l.itemCode:"",quantity:num(l.quantity),warehouseCode:l.warehouseCode||"default"}:{accountCode:l.kind==="stock"?"4100":txt(l.incomeAccountCode||"4200",32),debit:0,credit:value,description:l.description,costCenterId:l.costCenterId||(projectCenter&&projectCenter.code)||"",projectCode:inv.projectCode||"",itemCode:l.kind==="stock"?l.itemCode:"",quantity:num(l.quantity),warehouseCode:l.warehouseCode||"default"});}
    if(purchase&&tot.tax)lines.push({accountCode:"1410",debit:tot.tax,credit:0,description:"ضريبة مدخلات"});if(!purchase&&tot.tax)lines.push({accountCode:"2110",debit:0,credit:tot.tax,description:"ضريبة مخرجات"});lines.push(purchase?{accountCode:"281",debit:0,credit:tot.total,description:"فاتورة مشتريات",partyType:"vendor",partyId}:{accountCode:"1210",debit:tot.total,credit:0,description:"فاتورة مبيعات",partyType:"customer",partyId});
    const bal=(await adminRead("inventory/balances"))||{};
    if(!purchase){for(const l of lines.filter(x=>x.itemCode)){const stock=bal[l.warehouseCode]&&bal[l.warehouseCode][l.itemCode]||{quantity:0,averageCost:0};if(Number(stock.quantity||0)<l.quantity)throw new Error("الرصيد غير كافٍ للصنف "+l.itemCode);const cost=rnd(l.quantity*Number(stock.averageCost||0));lines.push({accountCode:"5100",debit:cost,credit:0,description:"تكلفة مبيعات "+l.description,itemCode:l.itemCode,quantity:l.quantity,warehouseCode:l.warehouseCode,costCenterId:l.costCenterId},{accountCode:"1300",debit:0,credit:cost,description:"صرف مخزون "+l.description,itemCode:l.itemCode,quantity:l.quantity,warehouseCode:l.warehouseCode});}}
