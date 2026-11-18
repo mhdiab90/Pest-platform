@@ -118,6 +118,15 @@ export async function handleFinancialRequest(ctx){
   for(const row of rows){const d=date(row.date),amount=num(row.amount);if(!amount)continue;const fingerprint=await sha([txt(body.bankAccountCode||"1120",32),d,amount.toFixed(2),txt(row.reference,100),txt(row.description,500).toLowerCase().replace(/\s+/g," ")].join("|")),prev=await adminRead("bankFingerprints/"+fingerprint),docId=uid("BNK"),doc={id:docId,type:"bankLine",importId,date:d,amount,description:txt(row.description,500),reference:txt(row.reference,100),direction:row.direction==="in"?"in":"out",bankAccountCode:txt(body.bankAccountCode||"1120",32),fingerprint,status:prev?"duplicate_review":"pending_review",warnings:prev?["تكرار محتمل لحركة "+prev.documentId]:[],duplicateOf:prev&&prev.documentId||"",createdAt:now,createdBy:claims.sub};if(prev)duplicates.push(docId);else u["bankFingerprints/"+fingerprint]={documentId:docId,importId,createdAt:now};u["documents/"+docId]=doc;u["reviewQueue/"+docId]=reviewRecord(doc);count++;}
   u["bankImports/"+importId]={id:importId,bankAccountCode:body.bankAccountCode||"1120",fileName:txt(body.fileName,180),rowCount:count,duplicateCount:duplicates.length,createdAt:now,createdBy:claims.sub};u["audit/"+uid("AUD")]={action:"bank_import",importId,rowCount:count,duplicates:duplicates.length,uid:claims.sub,createdAt:now};await adminPatch(u);return {success:true,importId,rows:count,duplicates:duplicates.length};
  }
+ if(action==="addAttachment"){
+  requirePermission(profile,"financial","add");
+  const documentId=id(body.documentId),document=await adminRead("documents/"+documentId),attachment=body.attachment||{},attachmentId=id(attachment.id);
+  if(!document)throw new Error("الفاتورة أو المستند غير موجود.");
+  if(document.createdBy!==claims.sub&&profile.role!=="admin"&&!hasPermission(profile,"financial","edit"))throw new Error("ليس لديك صلاحية ربط المرفقات بهذا المستند.");
+  const metadata={id:attachmentId,fileName:txt(attachment.fileName||attachment.name,240),mimeType:txt(attachment.mimeType||attachment.contentType,120),size:num(attachment.size||0),createdAt:now,uploadedBy:claims.sub};
+  const updates={};updates["documents/"+documentId+"/attachments/"+attachmentId]=metadata;updates["audit/"+uid("AUD")]={action:"attach_financial_document",documentId,attachmentId,uid:claims.sub,createdAt:now};
+  await adminPatch(updates);return {success:true,attachment:metadata};
+ }
  if(action==="setBankOffset"){
   if(!hasPermission(profile,"financial","approve"))throw new Error("Permission denied: financial.approve.");
   const docId=id(body.id),doc=await adminRead("documents/"+docId);
