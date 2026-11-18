@@ -181,14 +181,72 @@ function FinanceModule(props){
   }catch(e){setError(e.message||String(e));}
   finally{setBusy(false);}
  };
+ const loadInvoicePdfJs=async()=>{
+  if(window.pdfjsLib)return window.pdfjsLib;
+  if(!window.__pestInvoicePdfJsPromise){
+   window.__pestInvoicePdfJsPromise=new Promise((resolve,reject)=>{
+    const script=document.createElement('script');
+    script.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    script.async=true;
+    script.onload=()=>window.pdfjsLib?resolve(window.pdfjsLib):reject(new Error('مكتبة PDF لم تكتمل.'));
+    script.onerror=()=>reject(new Error('تعذر تحميل قارئ PDF. تحقق من الاتصال بالإنترنت ثم أعد المحاولة.'));
+    document.head.appendChild(script);
+   });
+  }
+  return window.__pestInvoicePdfJsPromise;
+ };
+ const readInvoiceFileAsDataUrl=file=>new Promise((resolve,reject)=>{
+  const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(new Error('تعذرت قراءة ملف الفاتورة.'));reader.readAsDataURL(file);
+ });
  const readImage=async file=>{
   const selectedFile=file||invoiceFile;
-  if(!selectedFile) {setError('اختر صورة الفاتورة أولاً.');return;}
-  if(!String(selectedFile.type||'').startsWith('image/')) {setError('القراءة الآلية متاحة لصور JPG وPNG وWebP. يمكن إرفاق PDF مع إدخال بياناته يدويًا.');return;}
-  setBusy(true);setError('');setNotice('');
+  if(!selectedFile){setError('اختر صورة أو ملف PDF للفاتورة أولاً.');return;}
+  const isPdf=selectedFile.type==='application/pdf'||/\\.pdf$/i.test(selectedFile.name||'');
+  const isImage=['image/jpeg','image/png','image/webp'].includes(String(selectedFile.type||'').toLowerCase());
+  if(!isPdf&&!isImage){setError('الصيغ المدعومة للقراءة: PDF وJPG وPNG وWebP.');return;}
+  setBusy(true);setError('');setNotice(isPdf?'جارٍ فتح ملف PDF وتحليل صفحاته...':'جارٍ قراءة صورة الفاتورة...');
   try{
-   const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=reject;reader.readAsDataURL(selectedFile);});
-   const result=await api('', 'POST',{action:'ocr',image:data}),x=result.extracted||{};
+   const expenseAccounts=posting.filter(account=>account.type==='expense').map(account=>({code:account.code,name:account.name}));
+   const pageResults=[];
+   if(isPdf){
+    const pdfjs=await loadInvoicePdfJs();
+    pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const pdf=await pdfjs.getDocument({data:new Uint8Array(await selectedFile.arrayBuffer())}).promise;
+    if(!pdf.numPages)throw new Error('ملف PDF لا يحتوي على صفحات.');
+    const pagesToRead=Math.min(pdf.numPages,12);
+    for(let pageNumber=1;pageNumber<=pagesToRead;pageNumber++){
+     setNotice('جارٍ تحليل صفحة '+pageNumber+' من '+pagesToRead+'...');
+     const page=await pdf.getPage(pageNumber);
+     const textContent=await page.getTextContent();
+     const pageText=(textContent.items||[]).map(item=>item.str||'').filter(Boolean).join(' ').replace(/\\s+/g,' ').trim();
+     let result;
+     if(pageText.length>=100){
+      result=await api('', 'POST',{action:'ocrText',text:pageText,pageNumber,totalPages:pdf.numPages,expenseAccounts});
+     }else{
+      const baseViewport=page.getViewport({scale:1});
+      const scale=Math.min(2.25,1500/Math.max(baseViewport.width,baseViewport.height));
+      const viewport=page.getViewport({scale:Math.max(1,scale)});
+      const canvas=document.createElement('canvas');
+      canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+      const context=canvas.getContext('2d',{alpha:false});
+      if(!context)throw new Error('تعذر تجهيز صفحة PDF للتحليل.');
+      await page.render({canvasContext:context,viewport}).promise;
+      const image=canvas.toDataURL('image/jpeg',0.86);
+      canvas.width=0;canvas.height=0;
+      result=await api('', 'POST',{action:'ocr',image,pageNumber,totalPages:pdf.numPages,expenseAccounts});
+     }
+     pageResults.push(result.extracted||{});
+    }
+   }else{
+    const image=await readInvoiceFileAsDataUrl(selectedFile);
+    const result=await api('', 'POST',{action:'ocr',image,pageNumber:1,totalPages:1,expenseAccounts});
+    pageResults.push(result.extracted||{});
+   }
+   const x={items:[]};
+   ['type','number','date','partyName','taxNumber','currency','netTotal','taxRate','taxAmount','total','discount'].forEach(key=>{
+    pageResults.forEach(page=>{if(page&&page[key]!==undefined&&page[key]!==null&&page[key]!=='')x[key]=page[key];});
+   });
+   pageResults.forEach(page=>{if(Array.isArray(page&&page.items))x.items.push(...page.items);});
    const nextType=x.type==='sales'?'sales':x.type==='purchase'?'purchase':invoice.type;
    const targetPartyType=nextType==='purchase'?'vendor':'customer',partyList=targetPartyType==='vendor'?allVendors:allClients;
    const extractedParty=String(x.partyName||'').trim(),taxNumber=String(x.taxNumber||'').trim();
@@ -196,9 +254,11 @@ function FinanceModule(props){
    const unmatchedItems=[];
    const extractedLines=Array.isArray(x.items)?x.items.map((line,index)=>{
     const description=String(line.description||'').trim();
-    const matchedItem=items.find(item=>normalizeMatch(item.code)===normalizeMatch(line.itemCode)||normalizeMatch(item.name)===normalizeMatch(description));
-    if(description&&!matchedItem)unmatchedItems.push({index,name:description,code:nextCode('ITM',items)});
-    return {description,kind:'stock',itemCode:matchedItem?matchedItem.code:'',quantity:String(line.quantity||1),unit:line.unit||'قطعة',unitPrice:String(line.unitPrice==null?'':line.unitPrice),discount:String(line.discount||''),accountCode:'6100',incomeAccountCode:'4100',costCenterId:'',warehouseCode:'default'};
+    const service=line.kind==='service'||line.suggestedKind==='service';
+    const suggestedExpense=posting.find(account=>account.type==='expense'&&String(account.code)===String(line.suggestedExpenseCode||line.expenseAccountCode||''));
+    const matchedItem=!service&&items.find(item=>normalizeMatch(item.code)===normalizeMatch(line.itemCode)||normalizeMatch(item.name)===normalizeMatch(description));
+    if(description&&!service&&!matchedItem)unmatchedItems.push({index,name:description,code:nextCode('ITM',items)});
+    return {description,kind:service?'service':'stock',itemCode:matchedItem?matchedItem.code:'',quantity:String(line.quantity||1),unit:line.unit||'قطعة',unitPrice:String(line.unitPrice==null?'':line.unitPrice),discount:String(line.discount||''),accountCode:suggestedExpense?suggestedExpense.code:'6100',incomeAccountCode:'4200',costCenterId:'',warehouseCode:'default'};
    }):[];
    setInvoice(old=>Object.assign({},old,{
     type:nextType,number:x.number||old.number,date:x.date||old.date,partyId:matchedParty?(matchedParty.code||matchedParty.id):'',
@@ -208,8 +268,9 @@ function FinanceModule(props){
    }));
    setInvoicePartySearch(extractedParty);
    setOcrSuggestions({party:extractedParty&&!matchedParty?{name:extractedParty,taxNumber,partyType:targetPartyType,code:nextCode(targetPartyType==='vendor'?'VND':'CUS',partyList)}:null,items:unmatchedItems});
-   setNotice('اكتملت القراءة الأولية. راجع التاريخ ورقم الفاتورة والمبالغ، واختر الأكواد الموجودة أو وافق على تكويد المقترحات قبل الحفظ.');
-  }catch(e){setError('تعذرت قراءة الصورة آليًا: '+e.message+' ويمكنك استكمال البيانات يدويًا.');}
+   const truncated=isPdf&&selectedFile&&pageResults.length<Number((await Promise.resolve(pageResults.length)));
+   setNotice('اكتملت القراءة الأولية لـ '+pageResults.length+' صفحة. راجع كل بند وحدد هل هو صنف مخزني أم مصروف/خدمة، وتأكد من الحساب المقترح قبل الإرسال.'+(isPdf?' تم الاحتفاظ بملف PDF الأصلي لربطه بالفاتورة.':''));
+  }catch(e){setError('تعذرت قراءة الفاتورة آليًا: '+(e.message||String(e))+' ويمكنك استكمال البيانات يدويًا.');}
   finally{setBusy(false);}
  };
  const reviewAction=async(decision)=>{
@@ -397,19 +458,19 @@ function FinanceModule(props){
    field('الضريبة (قيمة ثابتة اختيارية)',invoice.taxAmount,function(v){setInvoice(function(old){return Object.assign({},old,{taxAmount:v});});},'number'),
    field('خصم الفاتورة',invoice.discount,function(v){setInvoice(function(old){return Object.assign({},old,{discount:v});});},'number'),
    h('div',{className:'md:col-span-3 flex flex-wrap items-end gap-3 p-3 border rounded-xl bg-blue-50/50'},
-    h('label',{className:'block text-sm font-bold flex-1 min-w-[220px]'},'صورة / PDF الفاتورة',h('input',{type:'file',accept:'image/jpeg,image/png,image/webp,application/pdf',onChange:function(e){const file=e.target.files&&e.target.files[0]||null;setInvoiceFile(file);setOcrSuggestions({party:null,items:[]});setNotice('');setError('');},className:'block mt-1 w-full text-sm'}),invoiceFile?h('small',{className:'block mt-1 text-slate-600 font-normal'},invoiceFile.name,invoiceFile.type==='application/pdf'?' — PDF سيتم حفظه كمرفق ويحتاج إدخال البيانات يدويًا':''):null),
-    button(busy?'جارٍ قراءة الفاتورة...':'رفع الصورة وقراءتها وملء الحقول',()=>readImage(invoiceFile),'primary',busy||!invoiceFile||!String(invoiceFile.type||'').startsWith('image/'))
+    h('label',{className:'block text-sm font-bold flex-1 min-w-[220px]'},'صورة / PDF الفاتورة',h('input',{type:'file',accept:'image/jpeg,image/png,image/webp,application/pdf',onChange:function(e){const file=e.target.files&&e.target.files[0]||null;setInvoiceFile(file);setOcrSuggestions({party:null,items:[]});setNotice('');setError('');},className:'block mt-1 w-full text-sm'}),invoiceFile?h('small',{className:'block mt-1 text-slate-600 font-normal'},invoiceFile.name,invoiceFile.type==='application/pdf'?' — سيتم تحليل صفحات PDF وإرفاق الملف الأصلي':' — جاهز للقراءة'):null),
+    button(busy?'جارٍ قراءة الفاتورة...':'قراءة الصورة / PDF وملء الحقول',()=>readImage(invoiceFile),'primary',busy||!invoiceFile)
    )
   );
   const invoiceHead = panel('بيانات الفاتورة','صورة الفاتورة تساعد في استخراج البيانات. راجعها بنفسك قبل الإرسال للمراجعة.',headFields);
   const invoiceRows = invoice.lines.map(function(line,index) {
    const itemOptions=[{value:'',label:'اختر الصنف'}].concat(items.map(function(x){return {value:x.code,label:x.code+' — '+x.name+' '+(x.version||'')};}));
-   const accountOptions=posting.map(function(a){return {value:a.code,label:a.code+' — '+a.name};});
+   const expectedAccountType=invoice.type==='purchase'?'expense':'revenue';\n   const accountOptions=posting.filter(function(a){return a.type===expectedAccountType;}).map(function(a){return {value:a.code,label:a.code+' — '+a.name};});
    const centerOptions=[{value:'',label:'بدون'}].concat(centers.map(function(x){return {value:x.code,label:x.code+' — '+x.name};}));
    return h('div',{key:index,className:'grid grid-cols-1 md:grid-cols-12 gap-2 p-3 border bg-slate-50 rounded-xl'},
     h('div',{className:'md:col-span-3'},field('وصف البند',line.description,function(v){updateI(index,'description',v);})),
-    h('div',{className:'md:col-span-2'},select('النوع',line.kind,function(v){updateI(index,'kind',v);},[{value:'stock',label:'صنف مخزني'},{value:'service',label:'خدمة / مصروف'}])),
-    h('div',{className:'md:col-span-2'},line.kind==='stock'?selectWithAdd('كود الصنف',line.itemCode,function(v){updateI(index,'itemCode',v);},itemOptions,'items'):selectWithAdd('الحساب',line.accountCode,function(v){updateI(index,'accountCode',v);},accountOptions,'chartOfAccounts')),
+    h('div',{className:'md:col-span-2'},select('طبيعة البند',line.kind,function(v){updateI(index,'kind',v);},[{value:'stock',label:'بضاعة / صنف يدخل المخزون'},{value:'service',label:'مصروف أو خدمة لا تدخل المخزون'}])),
+    h('div',{className:'md:col-span-2'},line.kind==='stock'?selectWithAdd('كود الصنف',line.itemCode,function(v){updateI(index,'itemCode',v);},itemOptions,'items'):selectWithAdd(invoice.type==='purchase'?'حساب المصروف':'حساب الإيراد',invoice.type==='purchase'?line.accountCode:line.incomeAccountCode,function(v){updateI(index,invoice.type==='purchase'?'accountCode':'incomeAccountCode',v);},accountOptions,'chartOfAccounts',{type:invoice.type==='purchase'?'expense':'revenue',nature:invoice.type==='purchase'?'debit':'credit',parentCode:invoice.type==='purchase'?'6':'4'})),
     h('div',{className:'md:col-span-1'},field('الكمية',line.quantity,function(v){updateI(index,'quantity',v);},'number')),
     h('div',{className:'md:col-span-1'},field('السعر',line.unitPrice,function(v){updateI(index,'unitPrice',v);},'number')),
     h('div',{className:'md:col-span-1'},field('الخصم',line.discount,function(v){updateI(index,'discount',v);},'number')),
@@ -418,7 +479,7 @@ function FinanceModule(props){
    );
   });
   const addInvoiceLine = button('إضافة بند',function(){setInvoice(function(old){return Object.assign({},old,{lines:old.lines.concat([{description:'',kind:'stock',itemCode:'',quantity:'1',unit:'قطعة',unitPrice:'',discount:'',accountCode:'6100',incomeAccountCode:'4100',costCenterId:'',warehouseCode:'default'}])});});});
-  const invoiceLines = panel('بنود الفاتورة','اختر صنفًا موجودًا أو صنف البند كخدمة/مصروف.',h('div',{className:'space-y-3'},...invoiceRows,addInvoiceLine));
+  const invoiceLines = panel('تصنيف بنود الفاتورة','يمكن أن تحتوي الفاتورة الواحدة على بضاعة تدخل المخزون ومصروفات أو خدمات. حدّد طبيعة كل بند بشكل مستقل، ثم اختر حساب المصروف المناسب.',h('div',{className:'space-y-3'},...invoiceRows,addInvoiceLine));
   const suggestionCards=[];
   if(ocrSuggestions.party)suggestionCards.push(h('div',{className:'flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl border bg-amber-50'},h('div',null,h('b',null,'طرف غير مسجل: '+ocrSuggestions.party.name),h('p',{className:'text-xs text-slate-600'},'الكود المقترح '+ocrSuggestions.party.code+' — لن يتم حفظه إلا بعد موافقتك')),button('تكويد الطرف واختياره',()=>openQuickAdd('parties',code=>{setInvoice(old=>Object.assign({},old,{partyId:code,partyName:ocrSuggestions.party.name}));setInvoicePartySearch(ocrSuggestions.party.name);setOcrSuggestions(old=>Object.assign({},old,{party:null}));},{code:ocrSuggestions.party.code,name:ocrSuggestions.party.name,partyType:ocrSuggestions.party.partyType,taxNumber:ocrSuggestions.party.taxNumber}), 'primary')));
   ocrSuggestions.items.forEach(function(item){
