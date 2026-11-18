@@ -421,4 +421,7 @@ test("foreign-currency posting is blocked until exchange rates and revaluation e
     invoke("POST","",{action:"submitCash",movementType:"other_payment",date:"2026-11-18",amount:100,currency:"USD",cashAccountCode:"1110",offsetAccountCode:"6100",description:"USD cash payment"}),
     /عملات/
   );
+  const foreignInvoice=await invoke("POST","",{action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-USD-TEST",partyId:"VENDOR-001",partyName:"Supplier Test",currency:"USD",taxRate:0,lines:[{description:"Foreign currency item",kind:"stock",itemCode:"ITEM-001",quantity:1,unitPrice:10}]});
+  assert.equal(foreignInvoice.status,"needs_correction","foreign invoice is retained as a draft requiring correction, not posted");
+  assert.equal(read("documents/"+foreignInvoice.id).currency,"USD","original invoice currency is preserved until the user deliberately converts it");
 });
