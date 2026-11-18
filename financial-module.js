@@ -670,6 +670,7 @@ function FinanceModule(props){
  const renderInvoices = function() {
   const headFields = h('div',{className:'grid md:grid-cols-3 gap-3'},
    select('نوع الفاتورة',invoice.type,function(v){setInvoiceTypeManuallySelected(true);const taxCode=findVatCode(v,14);setInvoice(function(old){return Object.assign({},old,{type:v,partyId:'',partyName:'',partyTaxNumber:'',taxCode:taxCode?taxCode.code:defaultVatCodeForInvoice(v),taxRate:taxCode?String(taxCode.rate):'14',taxAmount:''});});},[{value:'purchase',label:'مشتريات / مورد'},{value:'sales',label:'مبيعات / عميل'}]),
+   select('العملة',invoice.currency||'EGP',function(v){setInvoice(old=>Object.assign({},old,{currency:v}));},[{value:'EGP',label:'EGP — جنيه مصري'}].concat(invoice.currency&&invoice.currency!=='EGP'?[{value:invoice.currency,label:invoice.currency+' — موقوف حتى تفعيل أسعار الصرف'}]:[])),
    field('رقم الفاتورة',invoice.number,function(v){setInvoice(function(old){return Object.assign({},old,{number:v});});}),
    field('التاريخ',invoice.date,function(v){setInvoice(function(old){return Object.assign({},old,{date:v});});},'date'),
    partyPicker(invoice.type==='purchase'?'المورد':'العميل',parties,invoice.partyId,function(p){setInvoice(old=>Object.assign({},old,{partyId:p.code||p.id,partyName:partyName(p),partyTaxNumber:partyTaxNumber(p)}));},invoicePartySearch,setInvoicePartySearch,invoice.type==='purchase'?'vendor':'customer'),
