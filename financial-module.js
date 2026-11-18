@@ -94,7 +94,7 @@ function FinanceModule(props){
  const parties=invoice.type==='purchase'?allVendors:allClients;
  const partyName=p=>p.name||p.companyName||p.legalName||p.code||p.id;
  const nextCode=(prefix,list)=>{const used=new Set((list||[]).map(x=>String(x.code||x.id||'')));let i=1,code='';do{code=prefix+'-'+String(i++).padStart(3,'0');}while(used.has(code));return code;};
- const normalizeMatch=v=>String(v||'').toLowerCase().replace(/[\\s\\-_.،,]+/g,'').trim();
+ const normalizeMatch=v=>String(v||'').toLowerCase().replace(/[\s\-_.،,]+/g,'').trim();
 
  const updateJ=(i,k,v)=>setJournal(o=>Object.assign({},o,{lines:o.lines.map((x,j)=>j===i?Object.assign({},x,{[k]:v}):x)}));
  const updateI=(i,k,v)=>setInvoice(o=>Object.assign({},o,{lines:o.lines.map((x,j)=>j===i?Object.assign({},x,{[k]:v}):x)}));
@@ -120,7 +120,7 @@ function FinanceModule(props){
    h('input',{type:'search',value:query||'',onChange:e=>setQuery(e.target.value),placeholder:'ابحث بالاسم أو الكود أو رقم التسجيل الضريبي',className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal bg-white'}),
    selected?h('div',{className:'mt-1 text-xs text-emerald-700'},'المحدد: '+partyName(selected)+' ('+(selected.code||selected.id)+')'):null,
    h('div',{className:'mt-1 max-h-36 overflow-auto rounded-lg border bg-white'},matches.length?matches.map(p=>h('button',{key:String(p.code||p.id),type:'button',onClick:()=>{onChange(p);setQuery(partyName(p)+' ('+(p.code||p.id)+')');},className:'block w-full text-start px-3 py-2 text-sm hover:bg-blue-50 border-b last:border-0'},h('b',null,p.code||p.id),' — ',partyName(p),p.taxNumber?h('small',{className:'block text-slate-500'},'رقم ضريبي: '+p.taxNumber):null)):h('div',{className:'p-2 text-xs text-slate-500'},'لا توجد نتيجة مطابقة')),
-   h('button',{type:'button',onClick:()=>openQuickAdd('parties',code=>{const p={code,name:query,partyType};onChange(p);setQuery((query||'')+' ('+code+')');},{code:nextCode(partyType==='vendor'?'VND':'CUS',list),name:String(query||'').replace(/\\s*\\([^)]*\\)\\s*$/,''),partyType}),className:'mt-2 text-xs font-bold text-blue-700 underline'},'＋ تكويد '+(partyType==='vendor'?'مورد':'عميل')+' جديد')
+   h('button',{type:'button',onClick:()=>openQuickAdd('parties',code=>{const p={code,name:query,partyType};onChange(p);setQuery((query||'')+' ('+code+')');},{code:nextCode(partyType==='vendor'?'VND':'CUS',list),name:String(query||'').replace(/\s*\([^)]*\)\s*$/,''),partyType}),className:'mt-2 text-xs font-bold text-blue-700 underline'},'＋ تكويد '+(partyType==='vendor'?'مورد':'عميل')+' جديد')
   );
  };
  const saveQuickAdd=async()=>{
@@ -489,7 +489,7 @@ function FinanceModule(props){
  const renderQuickAdd = function() {
   if(!quickAddType)return null;
   const change=function(key,value){setQuickAddForm(function(old){return Object.assign({},old,{[key]:value});});};
-  const typeLabels={chartOfAccounts:'حساب جديد',costCenters:'مركز تكلفة جديد',items:'صنف مخزني جديد',itemGroups:'مجموعة أصناف جديدة',warehouses:'مخزن جديد',bankAccounts:'حساب بنك جديد',taxCodes:'كود ضريبي جديد'};
+  const typeLabels={chartOfAccounts:'حساب جديد',costCenters:'مركز تكلفة جديد',items:'صنف مخزني جديد',itemGroups:'مجموعة أصناف جديدة',warehouses:'مخزن جديد',bankAccounts:'حساب بنك جديد',taxCodes:'كود ضريبي جديد',parties:'عميل / مورد جديد'};
   const fields=[
    field('الكود',quickAddForm.code,function(v){change('code',v);}),
    field('الاسم',quickAddForm.name,function(v){change('name',v);})
@@ -514,11 +514,18 @@ function FinanceModule(props){
    fields.push(field('النسبة %',quickAddForm.rate,function(v){change('rate',v);},'number'));
    fields.push(field('بداية السريان',quickAddForm.effectiveFrom,function(v){change('effectiveFrom',v);},'date'));
   }
-  return h('div',{className:'fixed inset-0 z-[100] bg-slate-950/50 flex items-center justify-center p-3',onClick:function(){setQuickAddType('');}},
+  if(quickAddType==='parties'){
+   fields.push(select('نوع الطرف',quickAddForm.partyType,function(v){change('partyType',v);},[{value:'customer',label:'عميل'},{value:'vendor',label:'مورد'}]));
+   fields.push(field('رقم التسجيل الضريبي',quickAddForm.taxNumber,function(v){change('taxNumber',v);}));
+   fields.push(field('رقم الهاتف',quickAddForm.phone,function(v){change('phone',v);}));
+   fields.push(field('البريد الإلكتروني',quickAddForm.email,function(v){change('email',v);},'email'));
+   fields.push(field('العنوان',quickAddForm.address,function(v){change('address',v);}));
+  }
+  return h('div',{className:'fixed inset-0 z-[100] bg-slate-950/50 flex items-center justify-center p-3',onClick:function(){setQuickAddType('');setQuickAddTarget(null);}},
    h('section',{className:'bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-5 max-h-[90vh] overflow-auto',onClick:function(e){e.stopPropagation();}},
-    h('div',{className:'flex items-center justify-between gap-3 mb-4'},h('h3',{className:'font-bold text-lg'},typeLabels[quickAddType]||'إضافة كود'),button('إغلاق',function(){setQuickAddType('');},'muted')),
+    h('div',{className:'flex items-center justify-between gap-3 mb-4'},h('h3',{className:'font-bold text-lg'},typeLabels[quickAddType]||'إضافة كود'),button('إغلاق',function(){setQuickAddType('');setQuickAddTarget(null);},'muted')),
     h('div',{className:'grid md:grid-cols-2 gap-3'},...fields),
-    h('div',{className:'flex justify-end gap-2 mt-4'},button('إلغاء',function(){setQuickAddType('');},'muted'),button('حفظ الكود',saveQuickAdd,'primary',busy))
+    h('div',{className:'flex justify-end gap-2 mt-4'},button('إلغاء',function(){setQuickAddType('');setQuickAddTarget(null);},'muted'),button('حفظ الكود',saveQuickAdd,'primary',busy))
    )
   );
  };
