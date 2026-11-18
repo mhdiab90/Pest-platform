@@ -179,7 +179,7 @@ export async function handleFinancialRequest(ctx){
    return {entries:(await adminRead("partyLedger/"+requested+"/"+partyId))||{}};
   }
   if(res==="assignments"){
-   requirePermission(profile,"financial","edit");
+   requirePermission(profile,"financial","view");
    const assigned=(await adminRead("assignments/"+claims.sub))||{};
    const output=[];
    for(const [assignmentId,record] of Object.entries(assigned)){
@@ -362,7 +362,7 @@ export async function handleFinancialRequest(ctx){
   return {success:true,id:invoiceId,assignmentId,taskId,status:"assigned",pushNotification:{recipientUid:assigneeUid,eventType:"financialAssignment",eventId:assignmentId,content:{title:"فاتورة محولة إليك",body:"مطلوب: "+instruction}}};
  }
  if(action==="completeInvoiceAssignment"){
-  requirePermission(profile,"financial","edit");
+  if(!hasPermission(profile,"financial","add")&&!hasPermission(profile,"financial","edit"))throw new Error("Permission denied: financial.add or financial.edit.");
   const assignmentId=id(body.assignmentId),assignment=await adminRead("assignments/"+claims.sub+"/"+assignmentId);
   if(!assignment||assignment.assigneeUid!==claims.sub||assignment.status!=="open")throw new Error("المهمة غير موجودة أو تم إغلاقها بالفعل.");
   const invoice=await adminRead("documents/"+id(assignment.invoiceId));
@@ -449,6 +449,7 @@ export async function handleFinancialRequest(ctx){
   if(!doc.amount)throw new Error("أدخل مبلغًا صحيحًا.");
   const chart=(await adminRead("chartOfAccounts"))||{};
   const requirePosting=(code,expected)=>{const account=chart[code];if(!account||account.isGroup||account.active===false||account.type!==expected)throw new Error("الحساب "+code+" غير صالح لهذه الحركة.");return account;};
+  requirePosting(doc.cashAccountCode,"asset");
   if(["customer_receipt","supplier_payment"].includes(movementType)){
    doc.partyType=movementType==="customer_receipt"?"customer":"vendor";
    doc.partyId=id(body.partyId);
