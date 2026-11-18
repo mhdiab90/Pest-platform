@@ -1,3 +1,4 @@
+import { handleFinancialRequest } from "../financial-api.js";
 const PROJECT_ID = "pest-plat-form";
 const DATABASE_URL = "https://pest-plat-form-default-rtdb.europe-west1.firebasedatabase.app";
 const ALLOWED_ORIGIN = "https://mhdiab90.github.io";
@@ -2658,7 +2659,7 @@ export default {
       }, 200, origin);
     }
     if (!["GET","POST","DELETE"].includes(request.method)) return jsonResponse({ error: "Method not allowed." }, 405, origin);
-    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/upload", "/attachments/attach", "/attachments/replace", "/attachments/annotate", "/attachments/file", "/attachments/usage", "/push/notify", "/push/request", "/push/badge/sync"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
+    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/upload", "/attachments/attach", "/attachments/replace", "/attachments/annotate", "/attachments/file", "/attachments/usage", "/push/notify", "/push/request", "/push/badge/sync", "/finance"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
 
     try {
       const authorization = request.headers.get("Authorization") || "";
@@ -2678,6 +2679,18 @@ export default {
         return jsonResponse(output, 200, origin);
       }
       const profile = await loadProfile(claims, token);
+      if (url.pathname === "/finance") {
+        try {
+          const accessToken = await getFcmAccessToken(env);
+          const adminRead = path => adminDatabaseRequest("financial/" + String(path || "").split("/").filter(Boolean).map(encodeURIComponent).join("/"), accessToken, "GET");
+          const adminPatch = updates => adminDatabaseRequest("financial", accessToken, "PATCH", updates);
+          const output = await handleFinancialRequest({request,url,body,claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch,accessToken});
+          return jsonResponse(output,200,origin);
+        } catch (financeError) {
+          console.error("Financial module:",String(financeError&&financeError.message||financeError).slice(0,280));
+          return jsonResponse({error:String(financeError&&financeError.message||financeError)},400,origin);
+        }
+      }
       if (url.pathname === "/push/notify") {
         const output = await handlePushNotificationRequest(body, claims, token, env);
         return jsonResponse(output, 200, origin);
