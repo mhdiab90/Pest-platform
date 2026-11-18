@@ -812,7 +812,9 @@ function FinanceModule(props){
   return h('div',{className:'space-y-4'},groupPanel,detailsPanel);
  };
  const renderMasters=()=>{
-  const config=masterImportConfig[masterImportKind],preview=masterImportRows.slice(0,12);
+  const config=masterImportConfig[masterImportKind];
+  const preview=masterImportRows.slice(0,12);
+  const importRows=preview.map((row,index)=>h("tr",{key:index,className:"border-t"},config.columns.map(key=>h("td",{key,className:"p-2"},String(row[key]==null?"":row[key])))));
   const importPanel=panel("استيراد البيانات والأكواد","اختر نوع السجل، نزّل النموذج، املأ البيانات ثم ارفع الملف. راجع المعاينة قبل تنفيذ الاستيراد.",h("div",{className:"space-y-3"},
    h("div",{className:"grid md:grid-cols-3 gap-3 items-end"},
     select("نوع البيانات",masterImportKind,v=>{setMasterImportKind(v);setMasterImportRows([]);setMasterImportName("");},Object.keys(masterImportConfig).map(key=>({value:key,label:masterImportConfig[key].label}))),
@@ -820,48 +822,69 @@ function FinanceModule(props){
     h("label",{className:"block text-sm font-bold text-slate-700"},"رفع ملف Excel أو CSV",h("input",{type:"file",accept:".xlsx,.xls,.csv",onChange:e=>parseMasterImport(e.target.files&&e.target.files[0]),className:"block mt-1 w-full rounded-lg border p-2 font-normal bg-white"}))
    ),
    masterImportName?h("p",{className:"text-xs text-slate-600"},"الملف: "+masterImportName):null,
-   masterImportRows.length?panel("معاينة أول 12 صفًا","لم يتم حفظ أي سجل بعد. راجع الأكواد والأسماء قبل التنفيذ.",h("div",{className:"max-h-64 overflow-y-auto"},table(config.columns.map(x=>x),preview.map((row,index)=>h("tr",{key:index,className:"border-t"},config.columns.map(key=>h("td",{key,className:"p-2"},String(row[key]==null?"":row[key])))))))):null,
+   masterImportRows.length?panel("معاينة أول 12 صفًا","لن يتم الحفظ قبل الضغط على تنفيذ الاستيراد.",h("div",{className:"max-h-64 overflow-y-auto"},table(config.columns,importRows))):null,
    masterImportRows.length?h("div",{className:"flex flex-wrap items-center gap-3"},h("b",{className:"text-sm"},"عدد السجلات: "+masterImportRows.length),button("تنفيذ الاستيراد",submitMasterImport,"primary",busy),button("إلغاء الملف",()=>{setMasterImportRows([]);setMasterImportName("");},"muted")):null
   ));
-  const masterTabs=[["customers","العملاء"],["suppliers","الموردون"],["items","الأصناف المخزنية"],["itemGroups","مجموعات الأصناف"],["chartOfAccounts","دليل الحسابات"],["costCenters","مراكز التكلفة"],["warehouses","المخازن"],["bankAccounts","حسابات البنوك"],["taxCodes","الأكواد الضريبية"]];
+  const tabs=[["customers","العملاء"],["suppliers","الموردون"],["items","الأصناف المخزنية"],["itemGroups","مجموعات الأصناف"],["chartOfAccounts","دليل الحسابات"],["costCenters","مراكز التكلفة"],["warehouses","المخازن"],["bankAccounts","حسابات البنوك"],["taxCodes","الأكواد الضريبية"]];
   const partyType=masterViewKind==="suppliers"?"vendor":"customer";
-  const partiesList=masterViewKind==="suppliers"?allVendors:allClients;
+  const partyList=masterViewKind==="suppliers"?allVendors:allClients;
   const taxNo=p=>p.taxNumber||p.taxRegistrationNumber||p.registrationNumber||p.registrationNo||p.vatNumber||p.taxId||"—";
-  const visibleParties=partiesList.filter(p=>!masterPartySearch||normalizeMatch([p.code,p.name,p.companyName,p.legalName,p.phone,p.mobile,taxNo(p)].join(" ")).includes(normalizeMatch(masterPartySearch)));
-  const itemRows=rows(master.items).filter(x=>!masterPartySearch||normalizeMatch([x.code,x.name,x.itemType,x.groupCode,x.version].join(" ")).includes(normalizeMatch(masterPartySearch)));
-  const groupRows=rows(master.itemGroups).filter(x=>!masterPartySearch||normalizeMatch([x.code,x.name,x.groupType].join(" ")).includes(normalizeMatch(masterPartySearch)));
-  const tableScroll=child=>h("div",{className:"max-h-[58vh] overflow-y-auto rounded-xl border bg-white"},child);
-  let activePanel=null;
+  const searchTerm=normalizeMatch(masterPartySearch);
+  const matches=row=>!searchTerm||normalizeMatch([row.code,row.name,row.companyName,row.legalName,row.phone,row.mobile,taxNo(row),row.type,row.parentCode,row.projectCode,row.taxType,row.itemType,row.groupCode,row.version].join(" ")).includes(searchTerm);
+  const scroll=child=>h("div",{className:"max-h-[58vh] overflow-y-auto rounded-xl border bg-white"},child);
+  let title="البيانات الأساسية";
+  let headers=["الكود","الاسم","التفاصيل"];
+  let visibleRows=[];
+  let quickKind=masterViewKind;
+  let quickDefaults={};
   if(masterViewKind==="customers"||masterViewKind==="suppliers"){
-   activePanel=panel(masterViewKind==="suppliers"?"دليل الموردين":"دليل العملاء","بيانات السجل الأساسي المرتبط بالعملاء والموردين في نظام المشروعات. رقم التسجيل الضريبي معروض من حقول السجل المختلفة.",h("div",{className:"space-y-3"},
-    h("div",{className:"flex flex-wrap gap-2"},button(masterViewKind==="suppliers"?"＋ مورد جديد":"＋ عميل جديد",()=>openQuickAdd("parties",null,{code:nextCode(masterViewKind==="suppliers"?"VND":"CUS",partiesList),partyType}),"primary"),field("بحث بالكود أو الاسم أو الهاتف أو رقم التسجيل الضريبي",masterPartySearch,setMasterPartySearch)),
-    tableScroll(table(["الكود","الاسم","الهاتف","رقم التسجيل الضريبي","البريد الإلكتروني","العنوان"],visibleParties.map(p=>h("tr",{key:p.code||p.id,className:"border-t"},h("td",{className:"p-2 font-bold"},p.code||p.id),h("td",{className:"p-2"},partyName(p)),h("td",{className:"p-2"},p.phone||p.mobile||"—"),h("td",{className:"p-2"},taxNo(p)),h("td",{className:"p-2"},p.email||"—"),h("td",{className:"p-2"},p.address||"—")))))
+   title=masterViewKind==="suppliers"?"دليل الموردين":"دليل العملاء";
+   headers=["الكود","الاسم","الهاتف","رقم التسجيل الضريبي","البريد الإلكتروني","العنوان"];
+   visibleRows=partyList.filter(matches).map(p=>h("tr",{key:p.code||p.id,className:"border-t"},
+    h("td",{className:"p-2 font-bold"},p.code||p.id),
+    h("td",{className:"p-2"},partyName(p)),
+    h("td",{className:"p-2"},p.phone||p.mobile||"—"),
+    h("td",{className:"p-2"},taxNo(p)),
+    h("td",{className:"p-2"},p.email||"—"),
+    h("td",{className:"p-2"},p.address||"—")
    ));
+   quickKind="parties";
+   quickDefaults={code:nextCode(partyType==="vendor"?"VND":"CUS",partyList),partyType};
   }else if(masterViewKind==="items"){
-   activePanel=panel("الأصناف المخزنية","يمكن تصنيف الصنف كخامة أو منتج تام أو قطع غيار أو مستهلكات أو مستلزمات مكتبية.",h("div",{className:"space-y-3"},
-    h("div",{className:"flex flex-wrap gap-2"},button("＋ صنف جديد",()=>openQuickAdd("items",null,{code:nextCode("ITM",items),itemType:"stock"}),"primary"),field("بحث",masterPartySearch,setMasterPartySearch)),
-    tableScroll(table(["الكود","الاسم","التصنيف","المجموعة","الإصدار","الوحدة","المخزن"],itemRows.map(x=>h("tr",{key:x.code,className:"border-t"},h("td",{className:"p-2 font-bold"},x.code),h("td",{className:"p-2"},x.name),h("td",{className:"p-2"},({stock:"بضاعة",raw_material:"خامة",finished_good:"منتج تام",spare_part:"قطع غيار",consumable:"مستهلكات",office_supply:"مستلزمات مكتبية"}[x.itemType]||x.itemType||"—")),h("td",{className:"p-2"},x.groupCode||"—"),h("td",{className:"p-2"},x.version||"—"),h("td",{className:"p-2"},x.unit||"—"),h("td",{className:"p-2"},x.warehouseCode||"default")))))
+   title="الأصناف المخزنية";
+   headers=["الكود","الاسم","التصنيف","المجموعة","الإصدار","الوحدة","المخزن"];
+   visibleRows=items.filter(matches).map(x=>h("tr",{key:x.code,className:"border-t"},
+    h("td",{className:"p-2 font-bold"},x.code),h("td",{className:"p-2"},x.name),
+    h("td",{className:"p-2"},({stock:"بضاعة",raw_material:"خامة",finished_good:"منتج تام",spare_part:"قطع غيار",consumable:"مستهلكات",office_supply:"مستلزمات مكتبية"}[x.itemType]||x.itemType||"—")),
+    h("td",{className:"p-2"},x.groupCode||"—"),h("td",{className:"p-2"},x.version||"—"),h("td",{className:"p-2"},x.unit||"—"),h("td",{className:"p-2"},x.warehouseCode||"default")
    ));
+   quickKind="items";quickDefaults={code:nextCode("ITM",items),itemType:"stock"};
   }else if(masterViewKind==="itemGroups"){
-   activePanel=panel("مجموعات الأصناف","حدد نوع المجموعة حتى يسهل تصنيف الأصناف ومراجعة أرصدتها.",h("div",{className:"space-y-3"},
-    button("＋ مجموعة أصناف جديدة",()=>openQuickAdd("itemGroups",null,{code:nextCode("GRP",rows(master.itemGroups))}),"primary"),
-    tableScroll(table(["الكود","اسم المجموعة","نوع المجموعة"],groupRows.map(x=>h("tr",{key:x.code,className:"border-t"},h("td",{className:"p-2 font-bold"},x.code),h("td",{className:"p-2"},x.name),h("td",{className:"p-2"},({raw_material:"خامات",finished_good:"منتجات تامة",spare_part:"قطع غيار",consumable:"مستهلكات",office_supply:"مستلزمات مكتبية",packaging:"تعبئة وتغليف",other:"أخرى"}[x.groupType]||x.groupType||"—")))))
+   title="مجموعات الأصناف";headers=["الكود","اسم المجموعة","نوع المجموعة"];
+   visibleRows=rows(master.itemGroups).filter(matches).map(x=>h("tr",{key:x.code,className:"border-t"},
+    h("td",{className:"p-2 font-bold"},x.code),h("td",{className:"p-2"},x.name),
+    h("td",{className:"p-2"},({raw_material:"خامات",finished_good:"منتجات تامة",spare_part:"قطع غيار",consumable:"مستهلكات",office_supply:"مستلزمات مكتبية",packaging:"تعبئة وتغليف",other:"أخرى"}[x.groupType]||x.groupType||"—"))
    ));
+   quickKind="itemGroups";quickDefaults={code:nextCode("GRP",rows(master.itemGroups)),groupType:"other"};
   }else{
-   const kindMap={chartOfAccounts:"accounts",costCenters:"centers"};
-   const kind=kindMap[masterViewKind];
    const data=masterViewKind==="chartOfAccounts"?accounts:masterViewKind==="costCenters"?centers:rows(master[masterViewKind]);
-   const labels={chartOfAccounts:"دليل الحسابات",costCenters:"مراكز التكلفة",warehouses:"المخازن",bankAccounts:"حسابات البنوك",taxCodes:"الأكواد الضريبية"};
-   const quickKind=masterViewKind;
-   activePanel=panel(labels[masterViewKind]||"البيانات الأساسية","أنشئ الأكواد وراجعها داخل مساحة تمرير منفصلة.",h("div",{className:"space-y-3"},
-    h("div",{className:"flex flex-wrap items-center gap-2"},button("＋ إضافة "+(labels[masterViewKind]||"كود"),()=>openQuickAdd(quickKind,null,{code:nextCode(masterViewKind==="chartOfAccounts"?"ACC":masterViewKind==="costCenters"?"CC":masterViewKind==="warehouses"?"WH":masterViewKind==="bankAccounts"?"BANK":"TAX",data)}),"primary"),field("بحث",masterPartySearch,setMasterPartySearch)),
-    tableScroll(table(["الكود","الاسم","التفاصيل"],data.filter(x=>!masterPartySearch||normalizeMatch([x.code,x.name,x.type,x.parentCode,x.projectCode,x.taxType].join(" ")).includes(normalizeMatch(masterPartySearch))).map(x=>h("tr",{key:x.code,className:"border-t"},h("td",{className:"p-2 font-bold"},x.code),h("td",{className:"p-2"},x.name),h("td",{className:"p-2"},masterViewKind==="chartOfAccounts"?(x.isGroup?"حساب تجميعي":x.type+" / "+x.nature):masterViewKind==="costCenters"?(x.projectCode||"—"):masterViewKind==="taxCodes"?(x.taxType||"")+" / "+(x.rate||0)+"%":masterViewKind==="bankAccounts"?(x.accountCode||x.code):"—")))))
+   title=({chartOfAccounts:"دليل الحسابات",costCenters:"مراكز التكلفة",warehouses:"المخازن",bankAccounts:"حسابات البنوك",taxCodes:"الأكواد الضريبية"})[masterViewKind]||"البيانات الأساسية";
+   visibleRows=data.filter(matches).map(x=>h("tr",{key:x.code,className:"border-t"},
+    h("td",{className:"p-2 font-bold"},x.code),h("td",{className:"p-2"},x.name),
+    h("td",{className:"p-2"},masterViewKind==="chartOfAccounts"?(x.isGroup?"حساب تجميعي":x.type+" / "+x.nature):masterViewKind==="costCenters"?(x.projectCode||"—"):masterViewKind==="taxCodes"?(x.taxType||"")+" / "+(x.rate||0)+"%":masterViewKind==="bankAccounts"?(x.accountCode||x.code):"—")
    ));
+   const prefixes={chartOfAccounts:"ACC",costCenters:"CC",warehouses:"WH",bankAccounts:"BANK",taxCodes:"TAX"};
+   quickDefaults={code:nextCode(prefixes[masterViewKind]||"NEW",data)};
   }
+  const addButton=button("＋ إضافة "+title.replace("دليل ",""),()=>openQuickAdd(quickKind,null,quickDefaults),"primary");
+  const listPanel=panel(title,"استخدم البحث لعرض السجلات المطلوبة. القائمة داخل مساحة تمرير ثابتة.",h("div",{className:"space-y-3"},
+   h("div",{className:"flex flex-wrap items-center gap-2"},addButton,field("بحث بالكود أو الاسم أو البيانات",masterPartySearch,setMasterPartySearch)),
+   scroll(table(headers,visibleRows))
+  ));
   return h("div",{className:"space-y-4"},
    importPanel,
-   panel("أنواع البيانات الأساسية","اختر نوع التكويد لعرض السجلات الخاصة به فقط. استخدم البحث داخل قائمة البيانات.",h("div",{className:"flex flex-wrap gap-2"},masterTabs.map(([key,label])=>button(label,()=>{setMasterViewKind(key);setMasterPartySearch("");},masterViewKind===key?"primary":"muted")))),
-   activePanel
+   panel("أنواع البيانات الأساسية","اختر نوع التكويد لعرض السجلات الخاصة به فقط.",h("div",{className:"flex flex-wrap gap-2"},tabs.map(([key,label])=>button(label,()=>{setMasterViewKind(key);setMasterPartySearch("");},masterViewKind===key?"primary":"muted")))),
+   listPanel
   );
  };
  const renderTax=()=>panel('تقارير الضرائب','ملخص الحسابات الضريبية من القيود المرحلة. نسب الضرائب الفعلية حسب إعدادات الشركة والتشريعات.',h('div',{className:'space-y-3'},
