@@ -4,6 +4,7 @@ import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { CapacitorUpdater } from '@capgo/capacitor-updater';
+import { Badge } from '@capawesome/capacitor-badge';
 
 const isNative = Capacitor.isNativePlatform();
 const ANDROID_NOTIFICATION_CHANNEL = 'pest_alerts_v3';
@@ -243,6 +244,28 @@ async function ensureNotificationPermission() {
   return permission.display === 'granted';
 }
 
+async function setAppBadgeCount(value) {
+  const count = Math.max(0, Math.min(999, Math.floor(Number(value) || 0)));
+  if (isNative) {
+    const supported = await Badge.isSupported().catch(() => ({ isSupported: false }));
+    if (!supported?.isSupported) return { supported: false, count };
+    if (count > 0) await Badge.set({ count });
+    else await Badge.clear();
+    return { supported: true, count };
+  }
+  if (typeof navigator !== 'undefined') {
+    if (count > 0 && typeof navigator.setAppBadge === 'function') {
+      await navigator.setAppBadge(count);
+      return { supported: true, count };
+    }
+    if (count === 0 && typeof navigator.clearAppBadge === 'function') {
+      await navigator.clearAppBadge();
+      return { supported: true, count: 0 };
+    }
+  }
+  return { supported: false, count };
+}
+
 async function scheduleReminder({ id, title, body, at }) {
   if (!isNative || !at) return false;
   const allowed = await ensureNotificationPermission();
@@ -311,6 +334,7 @@ window.PEST_NATIVE = {
   isNative,
   initializeOtaUpdates,
   ensureNotificationPermission,
+  setAppBadgeCount,
   showForegroundNotification,
   enablePushNotifications,
   refreshPushRegistration,
