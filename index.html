@@ -987,7 +987,40 @@ const words = {
 };
 
 const PestCrmModule = window.PEST_CRM_MODULE;
-const PestFinanceModule = window.PEST_FINANCE_MODULE;
+
+function FinanceModuleSlot(props){
+  const [FinanceModule,setFinanceModule]=useState(()=>window.PEST_FINANCE_MODULE||null);
+  const [loadError,setLoadError]=useState('');
+  useEffect(()=>{
+    if(window.PEST_FINANCE_MODULE){setFinanceModule(()=>window.PEST_FINANCE_MODULE);return;}
+    let active=true;
+    const script=document.createElement('script');
+    script.src=new URL('./financial-module.js',window.location.href).href;
+    script.async=true;
+    script.onload=()=>{
+      if(!active)return;
+      if(typeof window.PEST_FINANCE_MODULE==='function'){
+        setFinanceModule(()=>window.PEST_FINANCE_MODULE);
+        setLoadError('');
+      }else{
+        setLoadError('تم تحميل الملف لكن وحدة الحسابات لم تبدأ. أعد تحميل البرنامج.');
+      }
+    };
+    script.onerror=()=>{
+      if(active)setLoadError('تعذر تحميل ملف واجهة الحسابات (financial-module.js). تحقق من اتصال الإنترنت أو افتح المعاينة بعد اكتمال النشر.');
+    };
+    document.head.appendChild(script);
+    return ()=>{active=false;script.onload=null;script.onerror=null;};
+  },[]);
+  if(!FinanceModule){
+    return <section dir="rtl" className="m-3 rounded-2xl border border-amber-300 bg-amber-50 p-5 text-amber-950 space-y-3">
+      <h2 className="font-extrabold text-lg">تعذر فتح النظام المالي</h2>
+      <p className="text-sm">{loadError||'جارٍ تحميل مكوّن الحسابات...'}</p>
+      <button type="button" onClick={()=>window.location.reload()} className="rounded-lg bg-amber-700 px-4 py-2 text-white font-bold">إعادة تحميل البرنامج</button>
+    </section>;
+  }
+  return <FinanceModule {...props}/>;
+}
 
 function App(){
   const [lang,setLang] = useState(()=>localStorage.getItem('pestLang') || 'ar');
@@ -6018,7 +6051,7 @@ function App(){
           </div>}
         </div>}
         {tab==='pestCrm'&&canAccessTab('pestCrm')&&PestCrmModule&&<PestCrmModule db={db} currentUser={currentUser} rtl={rtl} can={hasPermission} addLog={addLog}/>}
-        {tab==='financial'&&canAccessTab('financial')&&PestFinanceModule&&<PestFinanceModule db={db} currentUser={currentUser} rtl={rtl} workerBase={PUSH_WORKER_BASE} addLog={addLog}/>}
+        {tab==='financial'&&canAccessTab('financial')&&<FinanceModuleSlot db={db} currentUser={currentUser} rtl={rtl} workerBase={PUSH_WORKER_BASE} addLog={addLog}/>}
         {tab==='dashboard'&&<div className="space-y-5 print-area">
           <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="font-bold text-xl">{tr('dashboard')} · {tr('cashFlow')}</h2><div className="flex gap-2 no-print"><button onClick={()=>setTab('reports')} className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-bold">{tr('reportCenter')}</button><button onClick={()=>window.print()} className="bg-gray-800 text-white rounded-lg px-4 py-2 text-sm">{tr('printPdf')}</button></div></div>
           <section className="app-dashboard-filterbar no-print">
