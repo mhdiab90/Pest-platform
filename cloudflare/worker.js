@@ -282,14 +282,23 @@ async function getMobileOtaManifest(channel) {
   };
 }
 
-function isAllowedOrigin(origin) {
+export function isAllowedOrigin(origin) {
   if (!origin) return false;
-  if (origin === ALLOWED_ORIGIN || origin === "https://pest-platform.netlify.app" ||
-      origin === "https://localhost" || origin === "capacitor://localhost" ||
-      origin === "http://localhost") return true;
-  if (/^https:\/\/deploy-preview-\d+--pest-platform\.netlify\.app$/.test(origin)) return true;
-  // Allow only this account's Cloudflare Worker preview hosts, not arbitrary origins.
-  return /^https:\/\/[a-z0-9-]+-pest-platform\.ai-mhdiab90\.workers\.dev$/.test(origin);
+  let parsed;
+  try { parsed = new URL(origin); } catch (_) { return false; }
+  const protocol = parsed.protocol.toLowerCase();
+  const host = parsed.hostname.toLowerCase();
+  // Local Capacitor/WebView and local development origins.
+  if (["localhost", "127.0.0.1", "::1"].includes(host) &&
+      ["http:", "https:", "capacitor:"].includes(protocol)) return true;
+  if (protocol !== "https:") return false;
+  if (origin === ALLOWED_ORIGIN ||
+      origin === "https://pest-platform.netlify.app" ||
+      origin === "https://pest-platform.ai-mhdiab90.workers.dev") return true;
+  if (/^deploy-preview-\\d+--pest-platform\\.netlify\\.app$/.test(host)) return true;
+  // The named production Worker and this account's generated Preview Worker
+  // hosts are both first-party application origins.
+  return /^(?:[a-z0-9-]+-)?pest-platform\\.ai-mhdiab90\\.workers\\.dev$/.test(host);
 }
 
 function fcmBase64Url(bytes) {
@@ -2649,7 +2658,9 @@ export default {
         webPushConfigured: Boolean(env.FCM_SERVICE_ACCOUNT_JSON && env.FCM_WEB_VAPID_KEY)
       }, 200, "");
     }
-    if (!isAllowedOrigin(origin)) return jsonResponse({ error: "Origin is not allowed." }, 403, origin);
+    // Origin is optional on same-origin GETs and authenticated native requests.
+    // Enforce the allow-list whenever a browser Origin header is supplied.
+    if (origin && !isAllowedOrigin(origin)) return jsonResponse({ error: "Origin is not allowed." }, 403, origin);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(origin) });
     if (url.pathname === "/push/config" && request.method === "GET") {
       return jsonResponse({
@@ -2684,7 +2695,9 @@ export default {
           const accessToken = await getFcmAccessToken(env);
           const adminRead = path => adminDatabaseRequest("financial/" + String(path || "").split("/").filter(Boolean).map(encodeURIComponent).join("/"), accessToken, "GET");
           const adminPatch = updates => adminDatabaseRequest("financial", accessToken, "PATCH", updates);
-          const output = await handleFinancialRequest({request,url,body,claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch,accessToken});
+          const adminReadRoot = path => adminDatabaseRequest(path, accessToken, "GET");
+          const adminPatchRoot = updates => adminDatabaseRequest("", accessToken, "PATCH", updates);
+          const output = await handleFinancialRequest({request,url,body,claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch,adminReadRoot,adminPatchRoot,accessToken});
           return jsonResponse(output,200,origin);
         } catch (financeError) {
           console.error("Financial module:",String(financeError&&financeError.message||financeError).slice(0,280));
