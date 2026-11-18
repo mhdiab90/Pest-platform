@@ -7,6 +7,7 @@ const OPENROUTER_MODEL = "openrouter/free";
 const FIREBASE_JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 const FIREBASE_API_KEY = "AIzaSyBPrzHFEIM3AOFclTzJ1SpG_Nq6BKHgrSo";
 const SCHEDULE_TIME_ZONE = "Africa/Cairo";
+const ANDROID_NOTIFICATION_CHANNEL = "pest_alerts_v3";
 // Refresh the Preview deployment after configuring Preview-only FCM secrets.
 const MAX_PROMPT_LENGTH = 24000;
 const MAX_AGENT_ACTIONS = 5;
@@ -410,7 +411,7 @@ async function sendFcmToDevice(deviceToken, accessToken, eventType, eventId, dev
       android: {
         priority: "HIGH",
         notification: {
-          channel_id: "pest_alerts_v3",
+          channel_id: ANDROID_NOTIFICATION_CHANNEL,
           sound: "pest_notification",
           icon: "ic_stat_pest_notification",
           color: "#14517a",
@@ -2579,6 +2580,7 @@ export default {
         schedulingAvailable: Boolean(env.AI_AGENT_SCHEDULER && env.AI_SCHEDULER_ENCRYPTION_KEY),
         whatsappNotificationsAvailable: Boolean(whatsappNotificationsConfigured(env) && env.AI_AGENT_SCHEDULER),
         pushNotificationsAvailable: Boolean(env.FCM_SERVICE_ACCOUNT_JSON),
+        androidNotificationChannel: ANDROID_NOTIFICATION_CHANNEL,
         webPushConfigured: Boolean(env.FCM_SERVICE_ACCOUNT_JSON && env.FCM_WEB_VAPID_KEY),
         googleDriveConfigured: Boolean(env.GOOGLE_DRIVE_CLIENT_ID && env.GOOGLE_DRIVE_CLIENT_SECRET && env.GOOGLE_DRIVE_TOKEN_ENCRYPTION_KEY && env.AI_AGENT_SCHEDULER)
       }, 200, origin);
