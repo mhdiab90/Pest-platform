@@ -219,6 +219,9 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
   assert.equal(purchase.totals.net,90,"invoice-level discount is allocated across lines");
   assert.equal(purchase.totals.tax,12.6);
   assert.equal(read("documents/"+purchase.id).taxCode,"VAT-IN-14","input VAT code is retained on the purchase invoice");
+  const earlySpecialRate=await invoke("POST","",{action:"submitInvoice",type:"purchase",date:"2026-07-01",number:"PUR-5-EARLY",partyId:"VENDOR-001",partyName:"Supplier Test",currency:"EGP",taxCode:"VAT-IN-05",lines:[{description:"Production machine",kind:"stock",itemCode:"ITEM-001",quantity:1,unitPrice:100}]});
+  assert.equal(earlySpecialRate.status,"needs_correction","the 5% special rate cannot be used before its effective date");
+  assert.ok(earlySpecialRate.errors.some(x=>x.includes("غير سارٍ بتاريخ الفاتورة")));
   await invoke("POST","",{
     action:"saveMaster",kind:"bankAccounts",
     item:{code:"1120",name:"Main Test Bank",accountCode:"1120"}
