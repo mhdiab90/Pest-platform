@@ -385,7 +385,7 @@ function pushText(value, maxLength, fallback) {
   return (text || String(fallback || "")).slice(0, maxLength);
 }
 
-async function sendFcmToDevice(deviceToken, accessToken, eventType, eventId, deviceOrigin, notificationContent) {
+async function sendFcmToDevice(deviceToken, accessToken, eventType, eventId, deviceOrigin, notificationContent, badgeCount) {
   const appBase = isAllowedOrigin(deviceOrigin)
     ? (deviceOrigin === ALLOWED_ORIGIN ? APP_PUBLIC_URL : deviceOrigin + "/")
     : APP_PUBLIC_URL;
@@ -406,7 +406,8 @@ async function sendFcmToDevice(deviceToken, accessToken, eventType, eventId, dev
         route,
         url: clickUrl.toString(),
         title,
-        body
+        body,
+        badgeCount: String(Math.max(1, Math.min(999, Number(badgeCount) || 1)))
       },
       android: {
         priority: "HIGH",
@@ -417,6 +418,7 @@ async function sendFcmToDevice(deviceToken, accessToken, eventType, eventId, dev
           color: "#14517a",
           priority: "PRIORITY_MAX",
           visibility: "PUBLIC",
+          notification_count: Math.max(1, Math.min(999, Number(badgeCount) || 1)),
           default_vibrate_timings: true
         }
       },
@@ -465,10 +467,21 @@ async function dispatchPushToUsers(env, recipients, eventType, eventId, dispatch
       skipped += 1;
       continue;
     }
+    let badgeCount = Number(existing && existing.badgeCount || 0);
+    if (!Number.isFinite(badgeCount) || badgeCount < 1) {
+      // Increment once per recipient/event to provide an accumulated launcher badge.
+      await adminDatabaseRequest("pushBadgeCounts/" + uid, accessToken, "PUT", { ".sv": { increment: 1 } });
+      badgeCount = Number(await adminDatabaseRequest("pushBadgeCounts/" + uid, accessToken, "GET")) || 1;
+      badgeCount = Math.max(1, Math.min(999, Math.floor(badgeCount)));
+    }
+    await adminDatabaseRequest(dispatchPath, accessToken, "PUT", {
+      status: "sending", eventType, eventId: String(eventId || ""),
+      recipientUid: uid, badgeCount, updatedAt: Date.now()
+    });
     let userSent = 0, userFailed = 0;
     for (const [tokenId, record] of entries) {
       if (!record || typeof record.token !== "string" || record.token.length < 20) continue;
-      const result = await sendFcmToDevice(record.token, accessToken, eventType, eventId, record.origin, notificationContent);
+      const result = await sendFcmToDevice(record.token, accessToken, eventType, eventId, record.origin, notificationContent, badgeCount);
       if (result.sent) userSent += 1;
       else if (result.invalidToken) {
         await adminDatabaseRequest("pushTokens/" + uid + "/" + tokenId, accessToken, "DELETE");
@@ -482,6 +495,12 @@ async function dispatchPushToUsers(env, recipients, eventType, eventId, dispatch
     });
   }
   return { recipients: uniqueRecipients.length, sent, failed, skipped, removedTokens };
+}
+
+async function clearPushBadgeCount(claims, env) {
+  const accessToken = await getFcmAccessToken(env);
+  await adminDatabaseRequest("pushBadgeCounts/" + claims.sub, accessToken, "PUT", 0);
+  return { success: true, badgeCount: 0 };
 }
 
 async function handlePushNotificationRequest(body, claims, token, env) {
@@ -2634,7 +2653,7 @@ export default {
       }, 200, origin);
     }
     if (!["GET","POST","DELETE"].includes(request.method)) return jsonResponse({ error: "Method not allowed." }, 405, origin);
-    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/upload", "/attachments/attach", "/attachments/replace", "/attachments/annotate", "/attachments/file", "/attachments/usage", "/push/notify", "/push/request"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
+    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/upload", "/attachments/attach", "/attachments/replace", "/attachments/annotate", "/attachments/file", "/attachments/usage", "/push/notify", "/push/request", "/push/badge/clear"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
 
     try {
       const authorization = request.headers.get("Authorization") || "";
@@ -2656,6 +2675,10 @@ export default {
       const profile = await loadProfile(claims, token);
       if (url.pathname === "/push/notify") {
         const output = await handlePushNotificationRequest(body, claims, token, env);
+        return jsonResponse(output, 200, origin);
+      }
+      if (url.pathname === "/push/badge/clear" && request.method === "POST") {
+        const output = await clearPushBadgeCount(claims, env);
         return jsonResponse(output, 200, origin);
       }
       if (url.pathname.startsWith("/drive/") || url.pathname.startsWith("/attachments")) {
