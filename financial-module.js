@@ -264,13 +264,15 @@ function FinanceModule(props){
  );
  const renderJournal = function() {
   const lineCards = journal.lines.map(function(line,index) {
+   const analyticType=line.partyType||((accounts.find(a=>a.code===line.accountCode)||{}).subledgerType)||'customer';
+   const analyticList=analyticType==='vendor'?allVendors:allClients;
    return h('div',{key:index,className:'grid grid-cols-1 md:grid-cols-12 gap-2 rounded-xl bg-slate-50 p-3 border'},
     h('div',{className:'md:col-span-3'},selectWithAdd('الحساب',line.accountCode,function(v){updateJ(index,'accountCode',v);},posting.map(function(a){return {value:a.code,label:a.code+' — '+a.name};}),'chartOfAccounts')),
     h('div',{className:'md:col-span-2'},field('البيان',line.description,function(v){updateJ(index,'description',v);})),
     h('div',{className:'md:col-span-1'},field('مدين',line.debit,function(v){updateJ(index,'debit',v);},'number')),
     h('div',{className:'md:col-span-1'},field('دائن',line.credit,function(v){updateJ(index,'credit',v);},'number')),
     h('div',{className:'md:col-span-2'},selectWithAdd('مركز التكلفة',line.costCenterId,function(v){updateJ(index,'costCenterId',v);},[{value:'',label:'بدون'}].concat(centers.map(function(x){return {value:x.code,label:x.code+' — '+x.name};})),'costCenters')),
-    h('div',{className:'md:col-span-2'},select('الطرف التحليلي',(line.partyType||'')+'|'+(line.partyId||''),function(v){const parts=v.split('|');updateJ(index,'partyType',parts[0]);updateJ(index,'partyId',parts[1]);},[{value:'|',label:'بدون'}].concat(clients.map(function(x){return {value:'customer|'+(x.code||x.id),label:'عميل '+partyName(x)};}),vendors.map(function(x){return {value:'vendor|'+(x.code||x.id),label:'مورد '+partyName(x)};})))),
+    h('div',{className:'md:col-span-2'},selectWithAdd('الطرف التحليلي',line.partyId||'',function(v){updateJ(index,'partyType',analyticType);updateJ(index,'partyId',v);},[{value:'',label:'بدون'}].concat(analyticList.map(function(x){return {value:x.code||x.id,label:(analyticType==='vendor'?'مورد ':'عميل ')+partyName(x)+' ('+(x.code||x.id)+')'};})),'parties',{partyType:analyticType,code:nextCode(analyticType==='vendor'?'VND':'CUS',analyticList)})),
     h('div',{className:'md:col-span-1 flex items-end'},button('حذف',function(){setJournal(function(old){return Object.assign({},old,{lines:old.lines.filter(function(x,j){return j!==index;})});});},'danger'))
    );
   });
@@ -297,7 +299,7 @@ function FinanceModule(props){
    select('نوع الفاتورة',invoice.type,function(v){setInvoice(function(old){return Object.assign({},old,{type:v,partyId:'',partyName:''});});},[{value:'purchase',label:'مشتريات / مورد'},{value:'sales',label:'مبيعات / عميل'}]),
    field('رقم الفاتورة',invoice.number,function(v){setInvoice(function(old){return Object.assign({},old,{number:v});});}),
    field('التاريخ',invoice.date,function(v){setInvoice(function(old){return Object.assign({},old,{date:v});});},'date'),
-   select(invoice.type==='purchase'?'المورد':'العميل',invoice.partyId,function(v){const p=parties.find(function(x){return (x.code||x.id)===v;});setInvoice(function(old){return Object.assign({},old,{partyId:v,partyName:p?partyName(p):''});});},[{value:'',label:'اختر الطرف'}].concat(parties.map(function(p){return {value:p.code||p.id,label:partyName(p)+' ('+(p.code||p.id)+')'};}))),
+   partyPicker(invoice.type==='purchase'?'المورد':'العميل',parties,invoice.partyId,function(p){setInvoice(old=>Object.assign({},old,{partyId:p.code||p.id,partyName:partyName(p)}));},invoicePartySearch,setInvoicePartySearch,invoice.type==='purchase'?'vendor':'customer'),
    select('المشروع المرتبط',invoice.projectCode,function(v){setInvoice(function(old){return Object.assign({},old,{projectCode:v});});},[{value:'',label:'بدون مشروع'}].concat(projects.map(function(p){return {value:p.code||p.id,label:(p.name||p.code)+' ('+(p.code||p.id)+')'};}))),
    field('نسبة الضريبة %',invoice.taxRate,function(v){setInvoice(function(old){return Object.assign({},old,{taxRate:v,taxAmount:''});});},'number'),
    field('الضريبة (قيمة ثابتة اختيارية)',invoice.taxAmount,function(v){setInvoice(function(old){return Object.assign({},old,{taxAmount:v});});},'number'),
@@ -325,12 +327,18 @@ function FinanceModule(props){
   });
   const addInvoiceLine = button('إضافة بند',function(){setInvoice(function(old){return Object.assign({},old,{lines:old.lines.concat([{description:'',kind:'stock',itemCode:'',quantity:'1',unit:'قطعة',unitPrice:'',discount:'',accountCode:'6100',incomeAccountCode:'4100',costCenterId:'',warehouseCode:'default'}])});});});
   const invoiceLines = panel('بنود الفاتورة','اختر صنفًا موجودًا أو صنف البند كخدمة/مصروف.',h('div',{className:'space-y-3'},...invoiceRows,addInvoiceLine));
+  const suggestionCards=[];
+  if(ocrSuggestions.party)suggestionCards.push(h('div',{className:'flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl border bg-amber-50'},h('div',null,h('b',null,'طرف غير مسجل: '+ocrSuggestions.party.name),h('p',{className:'text-xs text-slate-600'},'الكود المقترح '+ocrSuggestions.party.code+' — لن يتم حفظه إلا بعد موافقتك')),button('تكويد الطرف واختياره',()=>openQuickAdd('parties',code=>{setInvoice(old=>Object.assign({},old,{partyId:code,partyName:ocrSuggestions.party.name}));setInvoicePartySearch(ocrSuggestions.party.name+' ('+code+')');setOcrSuggestions(old=>Object.assign({},old,{party:null}));},{code:ocrSuggestions.party.code,name:ocrSuggestions.party.name,partyType:ocrSuggestions.party.partyType,taxNumber:ocrSuggestions.party.taxNumber}), 'primary')));
+  ocrSuggestions.items.forEach(function(item){
+   suggestionCards.push(h('div',{key:'suggest-'+item.index,className:'flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl border bg-amber-50'},h('div',null,h('b',null,'صنف غير مسجل: '+item.name),h('p',{className:'text-xs text-slate-600'},'الكود المقترح '+item.code+' — يمكنك أيضًا اختيار خدمة/مصروف بدلًا من الصنف المخزني')),button('تكويد الصنف واختياره',()=>openQuickAdd('items',code=>{setInvoice(old=>Object.assign({},old,{lines:old.lines.map((line,index)=>index===item.index?Object.assign({},line,{itemCode:code}):line)}));setOcrSuggestions(old=>Object.assign({},old,{items:old.items.filter(x=>x.index!==item.index)}));},{code:item.code,name:item.name,unit:'قطعة',warehouseCode:'default'}),'primary')));
+  });
+  const suggestionsPanel=suggestionCards.length?panel('اقتراحات التكويد بعد قراءة الفاتورة','هذه اقتراحات فقط. لا يتم إنشاء عميل أو مورد أو صنف إلا بعد ضغط المستخدم على زر التكويد.',h('div',{className:'space-y-2'},...suggestionCards)):null;
   const totalsBox = h('div',{className:'flex flex-wrap items-center gap-4 p-3 bg-white border rounded-xl'},h('b',null,'الصافي: '+fmt(net)),h('b',null,'الضريبة: '+fmt(tax)),h('b',null,'الإجمالي: '+fmt(total)),button('حفظ وإرسال للمراجعة',submitInvoice,'primary',busy));
   const correctionRows=documents.filter(function(x){return x.type==='invoice'&&['needs_correction','draft'].includes(x.status);}).map(function(x){
    return h('tr',{key:x.id,className:'border-t'},h('td',{className:'p-2'},x.number||x.id),h('td',{className:'p-2'},x.partyName),h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},status(x.status)),h('td',{className:'p-2'},button('تعديل',function(){editDoc(x);},'muted')));
   });
   const correctionPanel = panel('فواتير تحتاج تصحيح','',table(['الفاتورة','الطرف','التاريخ','الحالة','إجراء'],correctionRows));
-  return h('div',{className:'space-y-4'},invoiceHead,invoiceLines,totalsBox,correctionPanel);
+  return h('div',{className:'space-y-4'},invoiceHead,suggestionsPanel,invoiceLines,totalsBox,correctionPanel);
  };
  const renderMaster=kind=>{
   const opts=[['chartOfAccounts','حساب عام'],['costCenters','مركز تكلفة'],['itemGroups','مجموعة أصناف'],['items','صنف مخزني / إصدار'],['warehouses','مخزن'],['bankAccounts','حساب بنك'],['taxCodes','كود ضريبي']];
@@ -358,7 +366,7 @@ function FinanceModule(props){
   );
  };
  const renderPartyStatements = function() {
-  const list=partyStatement.type==='customer'?clients:vendors;
+  const list=partyStatement.type==='customer'?allClients:allVendors;
   let running=0;
   const displayRows=partyRows.map(function(line,index){
    const movement=partyStatement.type==='vendor'?n(line.credit)-n(line.debit):n(line.debit)-n(line.credit);
@@ -377,7 +385,7 @@ function FinanceModule(props){
   return panel('كشف حساب العميل / المورد','الحركة مستخرجة من الأستاذ الفرعي ومربوطة بالحساب الرقابي.',h('div',{className:'space-y-3'},
    h('div',{className:'grid md:grid-cols-3 gap-3'},
     select('نوع الطرف',partyStatement.type,function(v){setPartyStatement({type:v,id:''});setPartyRows([]);},[{value:'customer',label:'عميل'},{value:'vendor',label:'مورد'}]),
-    select('الطرف',partyStatement.id,function(v){setPartyStatement(function(old){return Object.assign({},old,{id:v});});},[{value:'',label:'اختر الطرف'}].concat(list.map(function(p){return {value:p.code||p.id,label:partyName(p)+' ('+(p.code||p.id)+')'};}))),
+    partyPicker('الطرف',list,partyStatement.id,function(p){setPartyStatement(old=>Object.assign({},old,{id:p.code||p.id}));},statementPartySearch,setStatementPartySearch,partyStatement.type==='vendor'?'vendor':'customer'),
     button('عرض كشف الحساب',loadParty,'primary',busy)
    ),
    selectedParty?metric('الطرف المحدد',partyName(selectedParty)):null,
@@ -416,7 +424,7 @@ function FinanceModule(props){
  const renderCash=()=>panel('سند قبض أو صرف','يؤثر على حساب الطرف والخزينة/البنك فقط بعد الاعتماد.',h('div',{className:'grid md:grid-cols-3 gap-3'},
   select('نوع الحركة',cash.direction,v=>setCash(o=>Object.assign({},o,{direction:v,partyType:v==='in'?'customer':'vendor',partyAccountCode:v==='in'?'1210':'281',partyId:''})),[{value:'in',label:'تحصيل عميل'},{value:'out',label:'سداد مورد'}]),
   field('التاريخ',cash.date,v=>setCash(o=>Object.assign({},o,{date:v})),'date'),field('المبلغ',cash.amount,v=>setCash(o=>Object.assign({},o,{amount:v})),'number'),
-  select('الطرف',cash.partyId,v=>setCash(o=>Object.assign({},o,{partyId:v})),[{value:'',label:'اختر الطرف'},...(cash.direction==='in'?clients:vendors).map(p=>({value:p.code||p.id,label:partyName(p)}))]),
+  partyPicker('الطرف',cash.direction==='in'?allClients:allVendors,cash.partyId,p=>setCash(o=>Object.assign({},o,{partyId:p.code||p.id})),cashPartySearch,setCashPartySearch,cash.direction==='in'?'customer':'vendor'),
   select('الخزينة أو البنك',cash.cashAccountCode,v=>setCash(o=>Object.assign({},o,{cashAccountCode:v})),[{value:'1110',label:'1110 — الخزينة'},{value:'1120',label:'1120 — البنوك'},...posting.filter(a=>a.code!=='1210'&&a.code!=='281'&&a.code!=='1300').map(a=>({value:a.code,label:a.code+' — '+a.name}))]),
   field('رقم مرجع / شيك',cash.reference,v=>setCash(o=>Object.assign({},o,{reference:v}))),area('البيان',cash.description,v=>setCash(o=>Object.assign({},o,{description:v}))),
   button('حفظ وإرسال للمراجعة',submitCash,'primary',busy)
