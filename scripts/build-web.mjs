@@ -52,6 +52,7 @@ await rm(outputDirectory, { recursive: true, force: true });
 await mkdir(outputDirectory, { recursive: true });
 await writeFile(outputDirectory + "/" + bundleName, compiled.code, "utf8");
 await writeFile(outputDirectory + "/index.html", html, "utf8");
+await writeFile(outputDirectory + "/_headers", "/index.html\\n  Cache-Control: no-cache, must-revalidate\\n\\n/app.*.js\\n  Cache-Control: public, max-age=31536000, immutable\\n\\n/assets/*\\n  Cache-Control: public, max-age=604800\\n", "utf8");
 for (const file of requiredAssets) {
   await copyFile(file, outputDirectory + "/" + file);
 }
