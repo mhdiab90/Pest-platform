@@ -488,7 +488,8 @@ export async function handleFinancialRequest(ctx){
   requirePermission(profile,"financial","add");if(!["purchase","sales"].includes(body.type))throw new Error("حدد هل الفاتورة مشتريات من مورد أم مبيعات لعميل.");const inv={...body,id:id(body.id||uid("INV")),type:"invoice",invoiceType:body.type,date:date(body.date),number:txt(body.number,120),partyId:txt(body.partyId,120),partyName:txt(body.partyName,180),currency:txt(body.currency||"EGP",3),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:now,createdBy:claims.sub},errors=[];
   if(body.taxCode){
    const taxCode=await adminRead("taxCodes/"+id(body.taxCode)),expectedTaxType=inv.invoiceType==="purchase"?"vat_input":"vat_output";
-   if(!taxCode||taxCode.taxType!==expectedTaxType)errors.push("كود ضريبة القيمة المضافة لا يتوافق مع نوع الفاتورة.");
+   if(!taxCode||taxCode.active===false||taxCode.taxType!==expectedTaxType)errors.push("كود ضريبة القيمة المضافة لا يتوافق مع نوع الفاتورة أو أنه غير نشط.");
+   else if(taxCode.effectiveFrom&&inv.date<String(taxCode.effectiveFrom))errors.push("كود الضريبة "+taxCode.code+" غير سارٍ بتاريخ الفاتورة. تاريخ بداية السريان: "+taxCode.effectiveFrom);
    else{inv.taxCode=taxCode.code||body.taxCode;inv.taxType=taxCode.taxType;inv.taxRate=num(taxCode.rate||0);}
   }
   if(inv.currency!=="EGP")errors.push("لا يمكن ترحيل فاتورة بعملة أجنبية قبل تفعيل أسعار الصرف وإعادة تقييم أرصدة العملات. اختر الجنيه المصري أو اترك المستند مسودة.");
