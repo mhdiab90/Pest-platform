@@ -432,7 +432,7 @@ export async function handleFinancialRequest(ctx){
    if(!["stock","service"].includes(line.kind))inv.errors.push("حدد طبيعة البند "+(index+1));
    if(line.kind==="stock"&&!line.itemCode)inv.errors.push("يحتاج البند "+(index+1)+" إلى كود مخزني");
   });
-  const updates={};updates["documents/"+draftId]=inv;
+  const updates={};updates["documents/"+draftId]=inv;updates["reviewQueue/"+draftId]=null;
   updates["audit/"+uid("AUD")]={action:"save_invoice_draft",documentId:draftId,uid:claims.sub,createdAt:now};
   await adminPatch(updates);
   return {success:true,id:draftId,status:"draft",errors:inv.errors};
@@ -455,12 +455,13 @@ export async function handleFinancialRequest(ctx){
   updates["documents/"+invoiceId+"/assignedTo"]=assigneeUid;
   updates["documents/"+invoiceId+"/assignmentId"]=assignmentId;
   updates["documents/"+invoiceId+"/assignedAt"]=now;
+  updates["reviewQueue/"+invoiceId]=null;
   updates["assignments/"+assigneeUid+"/"+assignmentId]=assignment;
   updates["audit/"+uid("AUD")]={action:"assign_invoice",documentId:invoiceId,assignmentId,assigneeUid,uid:claims.sub,createdAt:now};
   if(!adminPatchRoot)throw new Error("خدمة تحويل المهام غير متاحة.");
   updates["tasks/"+assigneeUid+"/"+taskId]=task;
   updates["cashCustodyNotifications/"+assigneeUid+"/"+assignmentId]={id:assignmentId,type:"financialAssignment",recipientUid:assigneeUid,assignmentId,invoiceId,senderUid:claims.sub,senderName:createdByName,title:"فاتورة محولة إليك",description:instruction,createdAt:now,read:false};
-  const globalUpdates={};Object.entries(updates).forEach(([key,value])=>globalUpdates[key.startsWith("documents/")||key.startsWith("assignments/")||key.startsWith("audit/")?"financial/"+key:key]=value);
+  const globalUpdates={};Object.entries(updates).forEach(([key,value])=>globalUpdates[key.startsWith("documents/")||key.startsWith("reviewQueue/")||key.startsWith("assignments/")||key.startsWith("audit/")?"financial/"+key:key]=value);
   await adminPatchRoot(globalUpdates);
   return {success:true,id:invoiceId,assignmentId,taskId,status:"assigned",pushNotification:{recipientUid:assigneeUid,eventType:"financialAssignment",eventId:assignmentId,content:{title:"فاتورة محولة إليك",body:"مطلوب: "+instruction}}};
  }
@@ -498,6 +499,7 @@ export async function handleFinancialRequest(ctx){
   const rootUpdates={};
   rootUpdates["financial/documents/"+invoice.id+"/lines"]=nextLines;
   rootUpdates["financial/documents/"+invoice.id+"/status"]="returned_to_creator";
+  rootUpdates["financial/reviewQueue/"+invoice.id]=null;
   rootUpdates["financial/documents/"+invoice.id+"/assignedTo"]=null;
   rootUpdates["financial/documents/"+invoice.id+"/assignmentReturnedAt"]=nowCompleted;
   rootUpdates["financial/documents/"+invoice.id+"/lastAssignedTo"]=claims.sub;
@@ -828,6 +830,6 @@ export async function handleFinancialRequest(ctx){
   }else throw new Error("نوع المستند غير مدعوم في الترحيل");
   updates["documents/"+docId+"/status"]="posted";updates["documents/"+docId+"/journalId"]=j.id;updates["documents/"+docId+"/approvedAt"]=now;updates["documents/"+docId+"/approvedBy"]=claims.sub;updates["documents/"+docId+"/postedAt"]=now;updates["reviewQueue/"+docId]=null;updates["audit/"+uid("AUD")]={action:"approve_and_post",documentId:docId,journalId:j.id,uid:claims.sub,createdAt:now};await adminPatch(updates);return {success:true,status:"posted",journalId:j.id};
  }
- if(action==="returnToReview"){requirePermission(profile,"financial","edit");const docId=id(body.id),doc=await adminRead("documents/"+docId);if(!doc||!["draft","needs_correction"].includes(doc.status))throw new Error("المستند غير متاح لإعادة الإرسال");const u={};u["documents/"+docId+"/status"]="pending_review";u["documents/"+docId+"/errors"]=[];u["reviewQueue/"+docId]=reviewRecord({...doc,status:"pending_review"});await adminPatch(u);return {success:true,status:"pending_review"};}
+ if(action==="returnToReview"){requirePermission(profile,"financial","edit");throw new Error("إعادة الإرسال المباشر غير مسموح بها لأنها تتجاوز التحقق المحاسبي. أعد حفظ القيد أو الفاتورة من الشاشة المخصصة ليُعاد احتساب الأخطاء والتحقق من البيانات قبل دخول قائمة المراجعة.");}
  throw new Error("Unknown financial action.");
 }
