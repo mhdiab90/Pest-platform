@@ -483,7 +483,7 @@ function FinanceModule(props){
   else if(doc.type==='invoice'){setInvoice({id:doc.id,type:doc.invoiceType||(doc.type==='purchase'?'purchase':'sales'),date:doc.date,number:doc.number,partyId:doc.partyId,partyName:doc.partyName,currency:doc.currency||'EGP',taxRate:String(doc.taxRate||''),taxAmount:doc.taxAmount==null?'':String(doc.taxAmount),discount:String(doc.discount||''),projectCode:doc.projectCode||'',lines:(doc.lines||[]).map(x=>Object.assign({},x))});setTab('invoices');}
  };
  const nav=[
- ['overview','ملخص مالي'],['journal','القيود اليومية'],['review','المراجعة والاعتماد'],['invoices','فواتير العملاء والموردين'],['partyStatements','كشف حساب عميل / مورد'],['masters','البيانات الأساسية والاستيراد'],['accounts','دليل الحسابات'],['centers','مراكز التكلفة'],['inventory','المخزون والأكواد'],['cash','الخزينة والتحصيل والسداد'],['bank','كشوف البنوك'],['tax','الضرائب'],['reports','القوائم المالية']
+ ['overview','ملخص مالي'],['journal','القيود اليومية'],['review','المراجعة والاعتماد'],['invoices','فواتير العملاء والموردين'],['assignments','الإجراءات المحولة إليّ'],['partyStatements','كشوف الأطراف والعاملين'],['masters','البيانات الأساسية والاستيراد'],['accounts','دليل الحسابات'],['centers','مراكز التكلفة'],['inventory','المخزون والأكواد'],['cash','الخزينة والتحصيل والسداد'],['bank','كشوف البنوك'],['tax','الضرائب'],['reports','القوائم المالية']
  ];
  const renderOverview=()=>h('div',{className:'space-y-4'},
   h('div',{className:'grid grid-cols-2 xl:grid-cols-4 gap-3'},metric('إجمالي المدين',fmt(trial.reduce((s,x)=>s+x.amount.debit,0))+' ج.م'),metric('إجمالي الدائن',fmt(trial.reduce((s,x)=>s+x.amount.credit,0))+' ج.م'),metric('صافي الربح / الخسارة',fmt(profit)+' ج.م'),metric('بانتظار المراجعة',String(review.length))),
@@ -582,7 +582,7 @@ function FinanceModule(props){
    button('حفظ المسودة وتحويلها',assignInvoiceToUser,'primary',busy||!assignmentUserUid)
   ));
   const totalsBox = h('div',{className:'flex flex-wrap items-center gap-4 p-3 bg-white border rounded-xl'},h('b',null,'الصافي: '+fmt(net)),h('b',null,'الضريبة: '+fmt(tax)),h('b',null,'الإجمالي: '+fmt(total)),button('إرسال للمراجعة',submitInvoice,'primary',busy));
-  const correctionRows=documents.filter(function(x){return x.type==='invoice'&&['needs_correction','draft'].includes(x.status);}).map(function(x){
+  const correctionRows=documents.filter(function(x){return x.type==='invoice'&&['needs_correction','draft','returned_to_creator'].includes(x.status);}).map(function(x){
    return h('tr',{key:x.id,className:'border-t'},h('td',{className:'p-2'},x.number||x.id),h('td',{className:'p-2'},x.partyName),h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},status(x.status)),h('td',{className:'p-2'},button('تعديل',function(){editDoc(x);},'muted')));
   });
   const correctionPanel = panel('فواتير تحتاج تصحيح','',table(['الفاتورة','الطرف','التاريخ','الحالة','إجراء'],correctionRows));
@@ -612,6 +612,31 @@ function FinanceModule(props){
    )),
    panel(kind==='accounts'?'قائمة الحسابات':kind==='centers'?'قائمة مراكز التكلفة':'قائمة الأصناف', '',table(['الكود','الاسم','تفاصيل'],data.filter(x=>!search||[x.code,x.name,x.version,x.groupCode].join(' ').toLowerCase().includes(search.toLowerCase())).map(x=>h('tr',{key:x.code,className:'border-t'},h('td',{className:'p-2'},x.code),h('td',{className:'p-2'},x.name),h('td',{className:'p-2'},kind==='accounts'?(x.isGroup?'تجميعي':x.type+' / '+x.nature):kind==='centers'?(x.projectCode||'—'):[x.groupCode,x.version].filter(Boolean).join(' / '))))))
   );
+ };
+ const renderAssignments=()=>{
+  const selectedAssignment=assignmentItems.find(item=>item.id===selectedAssignmentId);
+  const inbox=panel('الإجراءات المحولة إليّ','تظهر هنا الفواتير المحولة لهذا المستخدم فقط. بعد استكمال الأكواد والتصنيف تعود المسودة إلى صاحبها.',h('div',{className:'space-y-2'},assignmentItems.length?assignmentItems.map(item=>h('div',{key:item.id,className:'border rounded-xl p-3 flex flex-wrap items-center justify-between gap-3'},h('div',{className:'min-w-0'},h('b',{className:'block'},'فاتورة '+(item.invoiceNumber||item.invoice&&item.invoice.number||'بدون رقم')),h('p',{className:'text-xs text-slate-600'},(item.invoiceType==='purchase'?'مورد: ':'عميل: ')+(item.partyName||item.invoice&&item.invoice.partyName||'')+' · '+(item.date||item.invoice&&item.invoice.date||'')),h('p',{className:'text-xs text-slate-500 mt-1'},item.instruction||'')),button(selectedAssignmentId===item.id?'مفتوحة':'فتح الإجراء',()=>openAssignment(item),selectedAssignmentId===item.id?'primary':'muted'))):h('p',{className:'text-sm text-slate-500'},'لا توجد إجراءات مفتوحة محولة إليك.')));
+  if(!selectedAssignment)return h('div',{className:'space-y-4'},inbox);
+  const inv=selectedAssignment.invoice||{},purchase=inv.invoiceType==='purchase';
+  const lineCards=assignmentLines.map((line,index)=>{
+   const itemOptions=[{value:'',label:'اختر الصنف المخزني'},...items.map(item=>({value:item.code,label:item.code+' — '+item.name+' '+(item.version||'')}))];
+   const groupOptions=[{value:'',label:'بدون مجموعة'},...rows(master.itemGroups).map(group=>({value:group.code,label:group.code+' — '+group.name}))];
+   const expenseType=purchase?'expense':'revenue';
+   const accountOptions=posting.filter(account=>account.type===expenseType).map(account=>({value:account.code,label:account.code+' — '+account.name}));
+   const change=(key,value)=>setAssignmentLines(old=>old.map((x,i)=>i===index?Object.assign({},x,{[key]:value}):x));
+   return h('div',{key:index,className:'grid grid-cols-1 md:grid-cols-12 gap-2 rounded-xl border bg-slate-50 p-3'},
+    h('div',{className:'md:col-span-3'},field('وصف البند',line.description||'',value=>change('description',value))),
+    h('div',{className:'md:col-span-2'},select('تصنيف البند',line.kind||'stock',value=>change('kind',value),[{value:'stock',label:'بضاعة / مخزون'},{value:'service',label:'مصروف / خدمة'}])),
+    line.kind==='service'
+     ?h('div',{className:'md:col-span-4'},selectWithAdd('حساب '+(purchase?'المصروف':'الإيراد'),purchase?(line.accountCode||''):(line.incomeAccountCode||''),value=>change(purchase?'accountCode':'incomeAccountCode',value),accountOptions,'chartOfAccounts',{type:expenseType,nature:purchase?'debit':'credit',parentCode:purchase?'6':'4'}))
+     :h('div',{className:'md:col-span-3'},selectWithAdd('كود الصنف',line.itemCode||'',value=>change('itemCode',value),itemOptions,'items',{code:nextCode('ITM',items),name:line.description||'',itemType:'stock',unit:line.unit||'قطعة',warehouseCode:'default'})),
+    line.kind==='stock'?h('div',{className:'md:col-span-3'},selectWithAdd('مجموعة الصنف',line.groupCode||'',value=>change('groupCode',value),groupOptions,'itemGroups',{code:nextCode('GRP',rows(master.itemGroups)),name:line.description||'',groupType:'other'})):null,
+    line.kind==='stock'?h('div',{className:'md:col-span-2'},select('نوع الصنف',line.itemType||'stock',value=>change('itemType',value),[{value:'stock',label:'مخزون عام'},{value:'raw_material',label:'خامة'},{value:'finished_good',label:'منتج تام'},{value:'spare_part',label:'قطعة غيار'},{value:'consumable',label:'مستهلك'},{value:'office_supply',label:'مكتبي'}])):null,
+    h('div',{className:'md:col-span-2'},h('span',{className:'text-xs text-slate-500 block'},'الكمية × السعر'),h('b',{className:'text-sm'},fmt(n(line.quantity)*n(line.unitPrice))))
+   );
+  });
+  const detail=panel('استكمال فاتورة '+(inv.number||selectedAssignment.invoiceId||''),(purchase?'فاتورة مشتريات من مورد: ':'فاتورة مبيعات لعميل: ')+(inv.partyName||'')+' · '+(selectedAssignment.instruction||''),h('div',{className:'space-y-3'},h('div',{className:'grid md:grid-cols-3 gap-3'},metric('التاريخ',inv.date||'—'),metric('الإجمالي',fmt(inv.total||0)+' ج.م'),metric('عدد البنود',String(assignmentLines.length))),...lineCards,h('div',{className:'flex flex-wrap items-center gap-2'},button('إرجاع المسودة لصاحبها بعد الاستكمال',completeAssignment,'success',assignmentBusy||assignmentLines.length===0),button('إغلاق التفاصيل',()=>setSelectedAssignmentId(''),'muted'))));
+  return h('div',{className:'space-y-4'},inbox,detail);
  };
  const renderPartyStatements = function() {
   const list=partyStatement.type==='customer'?allClients:allVendors;
@@ -811,6 +836,7 @@ function FinanceModule(props){
  if(tab==='journal')content=renderJournal();
  if(tab==='review')content=renderReview();
  if(tab==='invoices')content=renderInvoices();
+ if(tab==='assignments')content=renderAssignments();
  if(tab==='partyStatements')content=renderPartyStatements();
  if(tab==='masters')content=renderMasters();
  if(tab==='accounts')content=renderMaster('accounts');
