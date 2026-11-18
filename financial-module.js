@@ -39,7 +39,7 @@ function FinanceModule(props){
  const [quickAddType,setQuickAddType]=React.useState(''),[quickAddTarget,setQuickAddTarget]=React.useState(null),[quickAddParent,setQuickAddParent]=React.useState(null),[quickAddForm,setQuickAddForm]=React.useState({code:'',name:'',type:'expense',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',unit:'قطعة',groupCode:'',groupType:'other',itemType:'stock',version:'',warehouseCode:'default',projectCode:'',taxType:'vat_output',rate:'0',effectiveFrom:today(),partyType:'customer',phone:'',taxNumber:'',email:'',address:''});
  const [masterForm,setMasterForm]=React.useState({kind:'chartOfAccounts',code:'',name:'',type:'asset',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',unit:'قطعة',groupCode:'',groupType:'other',itemType:'stock',version:'',projectCode:'',warehouseCode:'default',taxType:'vat',rate:'0',effectiveFrom:today()});
  const [journal,setJournal]=React.useState({id:'',date:today(),description:'',reference:'',currency:'EGP',lines:[{accountCode:'6100',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''},{accountCode:'1110',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''}]});
- const [invoice,setInvoice]=React.useState({id:'',type:'purchase',date:today(),number:'',partyId:'',partyName:'',currency:'EGP',taxRate:'',taxAmount:'',discount:'',projectCode:'',lines:[{description:'',kind:'stock',itemCode:'',quantity:'1',unit:'قطعة',unitPrice:'',discount:'',accountCode:'6100',incomeAccountCode:'4100',costCenterId:'',warehouseCode:'default'}]});
+ const [invoice,setInvoice]=React.useState({id:'',type:'purchase',date:today(),number:'',partyId:'',partyName:'',partyTaxNumber:'',currency:'EGP',taxCode:'VAT-IN-14',taxRate:'14',taxAmount:'',discount:'',projectCode:'',lines:[{description:'',kind:'stock',itemCode:'',quantity:'1',unit:'قطعة',unitPrice:'',discount:'',accountCode:'6100',incomeAccountCode:'4100',costCenterId:'',warehouseCode:'default'}]});
  const [invoiceTypeManuallySelected,setInvoiceTypeManuallySelected]=React.useState(false);
  const [invoiceFile,setInvoiceFile]=React.useState(null),[invoicePartySearch,setInvoicePartySearch]=React.useState(''),[cashPartySearch,setCashPartySearch]=React.useState(''),[statementPartySearch,setStatementPartySearch]=React.useState(''),[ocrSuggestions,setOcrSuggestions]=React.useState({party:null,items:[]}),[cash,setCash]=React.useState({movementType:'customer_receipt',date:today(),amount:'',description:'',reference:'',partyType:'customer',partyId:'',partyName:'',employeeUid:'',employeeName:'',cashAccountCode:'1110',bankAccountCode:'1120',offsetAccountCode:'6100',projectCode:'',currency:'EGP'});
  const [cashHistorySearch,setCashHistorySearch]=React.useState(''),[masterViewKind,setMasterViewKind]=React.useState('customers');
@@ -129,7 +129,7 @@ function FinanceModule(props){
  },[]);
  const invoicePayload=()=>{
   const party=parties.find(x=>String(x.code||x.id)===String(invoice.partyId));
-  return Object.assign({},invoice,{partyName:party?partyName(party):invoice.partyName,lines:invoice.lines.map(x=>Object.assign({},x,{quantity:n(x.quantity),unitPrice:n(x.unitPrice),discount:n(x.discount)}))});
+  return Object.assign({},invoice,{partyName:party?partyName(party):invoice.partyName,partyTaxNumber:party?partyTaxNumber(party):invoice.partyTaxNumber,lines:invoice.lines.map(x=>Object.assign({},x,{quantity:n(x.quantity),unitPrice:n(x.unitPrice),discount:n(x.discount)}))});
  };
  const saveInvoiceDraftRecord=async()=>{
   const payload=invoicePayload();
@@ -209,6 +209,9 @@ function FinanceModule(props){
  const allClients=mergePartyRows(clients,'customer'),allVendors=mergePartyRows(vendors,'vendor');
  const parties=invoice.type==='purchase'?allVendors:allClients;
  const partyTaxNumber=p=>p.taxNumber||p.taxRegistrationNumber||p.registrationNumber||p.registrationNo||p.vatNumber||p.taxId||'';
+ const vatTypeForInvoice=type=>type==='purchase'?'vat_input':'vat_output';
+ const defaultVatCodeForInvoice=type=>type==='purchase'?'VAT-IN-14':'VAT-OUT-14';
+ const findVatCode=(type,rate)=>rows(master.taxCodes).find(x=>x.taxType===vatTypeForInvoice(type)&&Number(x.rate)===Number(rate))||rows(master.taxCodes).find(x=>x.code===defaultVatCodeForInvoice(type))||null;
  const partyName=p=>p.name||p.companyName||p.legalName||p.supplierName||p.vendorName||p.customerName||p.clientName||p.title||p.code||p.id;
  const nextCode=(prefix,list)=>{const used=new Set((list||[]).map(x=>String(x.code||x.id||'')));let i=1,code='';do{code=prefix+'-'+String(i++).padStart(3,'0');}while(used.has(code));return code;};
  const normalizeMatch=v=>String(v||'').toLowerCase().replace(/[\s\-_.،,]+/g,'').trim();
@@ -246,17 +249,22 @@ function FinanceModule(props){
   try{
    const f=quickAddForm,kind=quickAddType;
    const item=kind==='parties'?{code:f.code,name:f.name,partyType:f.partyType,phone:f.phone,taxNumber:f.taxNumber,email:f.email,address:f.address}:{code:f.code,name:f.name,type:f.type,nature:f.nature,parentCode:f.parentCode,isGroup:f.isGroup,subledgerType:f.subledgerType,unit:f.unit,groupCode:f.groupCode,groupType:f.groupType,itemType:f.itemType,version:f.version,warehouseCode:f.warehouseCode,projectCode:f.projectCode,taxType:f.taxType,rate:n(f.rate),effectiveFrom:f.effectiveFrom,accountCode:kind==='bankAccounts'?(f.accountCode||f.code):undefined};
+   if(kind==='parties'&&(!String(f.code||'').trim()||!String(f.name||'').trim()))throw new Error('أدخل كود واسم المورد/العميل أولاً.');
    const result=await api('', 'POST',{action:'saveMaster',kind,item});
-   setNotice(kind==='parties'?'تم تسجيل الطرف في سجل العملاء/الموردين.':'تم إضافة الكود بنجاح.');
+   if(!result||result.success!==true||!result.item)throw new Error('لم يؤكد النظام حفظ سجل المورد/العميل. لم يتم إغلاق شاشة الإضافة.');
    const parent=quickAddParent,target=quickAddTarget;
    await refresh();
+   setError('');
+   setNotice(kind==='parties'
+    ?(result.linkedExisting?'تم ربط المورد/العميل بالسجل الرئيسي بنجاح.':'تمت إضافة '+(f.partyType==='vendor'?'المورد':'العميل')+' بنجاح إلى البيانات الأساسية.')
+    :'تمت إضافة الكود بنجاح.');
    if(parent){
     setQuickAddType(parent.type);setQuickAddForm(parent.form);setQuickAddTarget(()=>parent.target||null);
-    if(target&&result.item)target(result.item.code);
+    if(target&&result.item)target(result.item.code,result.item);
     setQuickAddParent(null);
    }else{
     setQuickAddType('');
-    if(target&&result.item)target(result.item.code);
+    if(target&&result.item)target(result.item.code,result.item);
     setQuickAddTarget(null);setQuickAddParent(null);
    }
   }catch(error){setError(error.message||String(error));}
@@ -289,7 +297,8 @@ function FinanceModule(props){
    if(result.status==='pending_review')setNotice('تم حفظ الفاتورة وإرسالها للمراجعة. سيتم إنشاء وترحيل القيد بعد الاعتماد.');
    else setNotice('الفاتورة محفوظة وتحتاج تصحيح: '+(result.errors||[]).join('، '));
    if(result.status==='pending_review'){
-    setInvoice({id:'',type:invoice.type,date:today(),number:'',partyId:'',partyName:'',currency:'EGP',taxRate:'',taxAmount:'',discount:'',projectCode:'',lines:[{description:'',kind:'stock',itemCode:'',quantity:'1',unit:'قطعة',unitPrice:'',discount:'',accountCode:'6100',incomeAccountCode:'4100',costCenterId:'',warehouseCode:'default'}]});
+    const resetTaxCode=findVatCode(invoice.type,14);
+    setInvoice({id:'',type:invoice.type,date:today(),number:'',partyId:'',partyName:'',partyTaxNumber:'',currency:'EGP',taxCode:resetTaxCode?resetTaxCode.code:defaultVatCodeForInvoice(invoice.type),taxRate:resetTaxCode?String(resetTaxCode.rate):'14',taxAmount:'',discount:'',projectCode:'',lines:[{description:'',kind:'stock',itemCode:'',quantity:'1',unit:'قطعة',unitPrice:'',discount:'',accountCode:'6100',incomeAccountCode:'4100',costCenterId:'',warehouseCode:'default'}]});
     setInvoiceTypeManuallySelected(false);
      setInvoiceFile(null);setInvoicePartySearch('');setOcrSuggestions({party:null,items:[]});
    }else setInvoice(o=>Object.assign({},o,{id:result.id}));
@@ -386,7 +395,9 @@ function FinanceModule(props){
    }):[];
    setInvoice(old=>Object.assign({},old,{
     type:nextType,number:x.number||old.number,date:x.date||old.date,partyId:matchedParty?(matchedParty.code||matchedParty.id):'',
-    partyName:extractedParty||old.partyName,currency:x.currency||old.currency,taxRate:x.taxRate==null?old.taxRate:String(x.taxRate),
+    partyName:extractedParty||old.partyName,partyTaxNumber:matchedParty?partyTaxNumber(matchedParty):taxNumber||old.partyTaxNumber,currency:x.currency||old.currency,
+    taxCode:(findVatCode(nextType,x.taxRate==null?old.taxRate:x.taxRate)||{}).code||defaultVatCodeForInvoice(nextType),
+    taxRate:x.taxRate==null?old.taxRate:String(x.taxRate),
     taxAmount:x.taxAmount==null?old.taxAmount:String(x.taxAmount),discount:x.discount==null?old.discount:String(x.discount),
     lines:extractedLines.length?extractedLines:old.lines
    }));
@@ -551,7 +562,7 @@ function FinanceModule(props){
  const editDoc=doc=>{
   setSelected(null);
   if(doc.type==='journal'){setJournal({id:doc.id,date:doc.date,description:doc.description||'',reference:doc.reference||'',currency:doc.currency||'EGP',lines:(doc.lines||[]).map(x=>Object.assign({},x))});setTab('journal');}
-  else if(doc.type==='invoice'){setInvoice({id:doc.id,type:doc.invoiceType||(doc.type==='purchase'?'purchase':'sales'),date:doc.date,number:doc.number,partyId:doc.partyId,partyName:doc.partyName,currency:doc.currency||'EGP',taxRate:String(doc.taxRate||''),taxAmount:doc.taxAmount==null?'':String(doc.taxAmount),discount:String(doc.discount||''),projectCode:doc.projectCode||'',lines:(doc.lines||[]).map(x=>Object.assign({},x))});setTab('invoices');}
+  else if(doc.type==='invoice'){setInvoice({id:doc.id,type:doc.invoiceType||(doc.type==='purchase'?'purchase':'sales'),date:doc.date,number:doc.number,partyId:doc.partyId,partyName:doc.partyName,partyTaxNumber:doc.partyTaxNumber||'',currency:doc.currency||'EGP',taxCode:doc.taxCode||'',taxRate:String(doc.taxRate==null?'':doc.taxRate),taxAmount:doc.taxAmount==null?'':String(doc.taxAmount),discount:String(doc.discount||''),projectCode:doc.projectCode||'',lines:(doc.lines||[]).map(x=>Object.assign({},x))});setInvoiceTypeManuallySelected(true);setTab('invoices');}
  };
  const nav=[
  ['overview','ملخص مالي'],['journal','القيود اليومية'],['review','المراجعة والاعتماد'],['invoices','فواتير العملاء والموردين'],['assignments','الإجراءات المحولة إليّ'],['partyStatements','كشوف الأطراف والعاملين'],['masters','البيانات الأساسية والاستيراد'],['accounts','دليل الحسابات'],['centers','مراكز التكلفة'],['inventory','المخزون والأكواد'],['cash','الخزينة والتحصيل والسداد'],['bank','كشوف البنوك'],['tax','الضرائب'],['reports','القوائم المالية']
@@ -596,12 +607,13 @@ function FinanceModule(props){
  };
  const renderInvoices = function() {
   const headFields = h('div',{className:'grid md:grid-cols-3 gap-3'},
-   select('نوع الفاتورة',invoice.type,function(v){setInvoiceTypeManuallySelected(true);setInvoice(function(old){return Object.assign({},old,{type:v,partyId:'',partyName:''});});},[{value:'purchase',label:'مشتريات / مورد'},{value:'sales',label:'مبيعات / عميل'}]),
+   select('نوع الفاتورة',invoice.type,function(v){setInvoiceTypeManuallySelected(true);const taxCode=findVatCode(v,14);setInvoice(function(old){return Object.assign({},old,{type:v,partyId:'',partyName:'',partyTaxNumber:'',taxCode:taxCode?taxCode.code:defaultVatCodeForInvoice(v),taxRate:taxCode?String(taxCode.rate):'14',taxAmount:''});});},[{value:'purchase',label:'مشتريات / مورد'},{value:'sales',label:'مبيعات / عميل'}]),
    field('رقم الفاتورة',invoice.number,function(v){setInvoice(function(old){return Object.assign({},old,{number:v});});}),
    field('التاريخ',invoice.date,function(v){setInvoice(function(old){return Object.assign({},old,{date:v});});},'date'),
-   partyPicker(invoice.type==='purchase'?'المورد':'العميل',parties,invoice.partyId,function(p){setInvoice(old=>Object.assign({},old,{partyId:p.code||p.id,partyName:partyName(p)}));},invoicePartySearch,setInvoicePartySearch,invoice.type==='purchase'?'vendor':'customer'),
+   partyPicker(invoice.type==='purchase'?'المورد':'العميل',parties,invoice.partyId,function(p){setInvoice(old=>Object.assign({},old,{partyId:p.code||p.id,partyName:partyName(p),partyTaxNumber:partyTaxNumber(p)}));},invoicePartySearch,setInvoicePartySearch,invoice.type==='purchase'?'vendor':'customer'),
    select('المشروع المرتبط',invoice.projectCode,function(v){setInvoice(function(old){return Object.assign({},old,{projectCode:v});});},[{value:'',label:'بدون مشروع'}].concat(projects.map(function(p){return {value:p.code||p.id,label:(p.name||p.code)+' ('+(p.code||p.id)+')'};}))),
-   field('نسبة الضريبة %',invoice.taxRate,function(v){setInvoice(function(old){return Object.assign({},old,{taxRate:v,taxAmount:''});});},'number'),
+   selectWithAdd('كود ضريبة القيمة المضافة',invoice.taxCode||'',function(v,item){const selected=item||rows(master.taxCodes).find(x=>x.code===v);setInvoice(old=>Object.assign({},old,{taxCode:v,taxRate:selected?String(selected.rate):'',taxAmount:''}));},[{value:'',label:'بدون كود — أدخل النسبة يدويًا'}].concat(rows(master.taxCodes).filter(x=>x.taxType===vatTypeForInvoice(invoice.type)).map(x=>({value:x.code,label:x.code+' — '+x.name+' ('+x.rate+'%)'}))),'taxCodes',{code:defaultVatCodeForInvoice(invoice.type),taxType:vatTypeForInvoice(invoice.type),rate:14,effectiveFrom:'2017-07-01'}),
+   field('نسبة الضريبة %',invoice.taxRate,function(v){setInvoice(function(old){return Object.assign({},old,{taxCode:'',taxRate:v,taxAmount:''});});},'number'),
    field('الضريبة (قيمة ثابتة اختيارية)',invoice.taxAmount,function(v){setInvoice(function(old){return Object.assign({},old,{taxAmount:v});});},'number'),
    field('خصم الفاتورة',invoice.discount,function(v){setInvoice(function(old){return Object.assign({},old,{discount:v});});},'number'),
    h('div',{className:'md:col-span-3 flex flex-wrap items-end gap-3 p-3 border rounded-xl bg-blue-50/50'},
@@ -915,10 +927,44 @@ function FinanceModule(props){
    listPanel
   );
  };
- const renderTax=()=>panel('تقارير الضرائب','ملخص الحسابات الضريبية من القيود المرحلة. نسب الضرائب الفعلية حسب إعدادات الشركة والتشريعات.',h('div',{className:'space-y-3'},
-  h('div',{className:'grid md:grid-cols-3 gap-3'},metric('ضريبة مدخلات',fmt((balances['1410']||{}).debit-(balances['1410']||{}).credit)+' ج.م'),metric('ضريبة مخرجات',fmt((balances['2110']||{}).credit-(balances['2110']||{}).debit)+' ج.م'),metric('صافي الضريبة',fmt(((balances['2110']||{}).credit-(balances['2110']||{}).debit)-((balances['1410']||{}).debit-(balances['1410']||{}).credit))+' ج.م')),
-  table(['الكود','اسم الضريبة','النوع','النسبة','بداية السريان'],rows(master.taxCodes).map(x=>h('tr',{key:x.code},h('td',{className:'p-2'},x.code),h('td',{className:'p-2'},x.name),h('td',{className:'p-2'},x.taxType),h('td',{className:'p-2'},x.rate),h('td',{className:'p-2'},x.effectiveFrom))))
- ));
+ const renderTax=()=>{
+  const inPeriod=documents.filter(doc=>doc&&doc.type==='invoice'&&String(doc.date||'')>=period.from+'-01'&&String(doc.date||'')<=period.to+'-31');
+  const posted=inPeriod.filter(doc=>doc.status==='posted');
+  const purchaseInvoices=posted.filter(doc=>doc.invoiceType==='purchase').sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))||String(a.number||'').localeCompare(String(b.number||'')));
+  const salesInvoices=posted.filter(doc=>doc.invoiceType==='sales').sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))||String(a.number||'').localeCompare(String(b.number||'')));
+  const amounts=doc=>{
+   const tax=doc.totals&&doc.totals.tax!=null?Number(doc.totals.tax):doc.taxAmount!==undefined&&doc.taxAmount!==null&&String(doc.taxAmount).trim()!==''?n(doc.taxAmount):n(doc.totals&&doc.totals.net!=null?doc.totals.net:doc.total)*n(doc.taxRate)/100;
+   const net=doc.totals&&doc.totals.net!=null?Number(doc.totals.net):Math.max(0,n(doc.total)-tax);
+   const total=doc.totals&&doc.totals.total!=null?Number(doc.totals.total):n(doc.total||net+tax);
+   return {net,tax,total};
+  };
+  const byCurrency={};
+  posted.forEach(doc=>{
+   const currency=String(doc.currency||'EGP').toUpperCase(),a=amounts(doc),g=byCurrency[currency]||(byCurrency[currency]={currency,purchasesBase:0,inputTax:0,salesBase:0,outputTax:0});
+   if(doc.invoiceType==='purchase'){g.purchasesBase+=a.net;g.inputTax+=a.tax;}
+   else if(doc.invoiceType==='sales'){g.salesBase+=a.net;g.outputTax+=a.tax;}
+  });
+  const summaries=Object.values(byCurrency).sort((a,b)=>a.currency.localeCompare(b.currency));
+  const pendingCount=inPeriod.filter(doc=>doc.status!=='posted').length;
+  const codeName=code=>{const found=rows(master.taxCodes).find(x=>x.code===code);return found?found.name:code||'—';};
+  const partyTax=doc=>doc.partyTaxNumber||partyTaxNumber((allVendors.concat(allClients)).find(p=>String(p.code||p.id)===String(doc.partyId||''))||{})||'—';
+  const formatRows=list=>list.map(doc=>{
+   const a=amounts(doc);
+   return h('tr',{key:doc.id,className:'border-t'},h('td',{className:'p-2'},doc.number||doc.id),h('td',{className:'p-2'},doc.date||'—'),h('td',{className:'p-2'},doc.partyName||'—'),h('td',{className:'p-2'},partyTax(doc)),h('td',{className:'p-2'},doc.taxCode||'—'),h('td',{className:'p-2'},codeName(doc.taxCode)),h('td',{className:'p-2'},fmt(doc.taxRate||0)+'%'),h('td',{className:'p-2'},fmt(a.net)),h('td',{className:'p-2 font-bold'},fmt(a.tax)),h('td',{className:'p-2'},fmt(a.total)),h('td',{className:'p-2'},doc.currency||'EGP'));
+  });
+  const headers=['رقم الفاتورة','التاريخ','المورد / العميل','الرقم الضريبي','كود الضريبة','اسم الكود','النسبة','الوعاء الضريبي','قيمة الضريبة','الإجمالي','العملة'];
+  const csvCell=value=>'"'+String(value==null?'':value).replace(/"/g,'""')+'"';
+  const exportInvoices=(list,name)=>{const content='\uFEFF'+[headers,...list.map(doc=>{const a=amounts(doc);return [doc.number||doc.id,doc.date,doc.partyName,partyTax(doc),doc.taxCode,codeName(doc.taxCode),doc.taxRate||0,a.net,a.tax,a.total,doc.currency||'EGP'];})].map(row=>row.map(csvCell).join(',')).join('\r\n');dl(name,content);};
+  return panel('إقرار ومراجعة ضريبة القيمة المضافة','الكشف التفصيلي للفواتير المعتمدة والمرحّلة فقط. لا تدخل الفواتير المعلقة أو المسودات في صافي الضريبة المستحق.',h('div',{className:'space-y-4'},
+   h('div',{className:'grid md:grid-cols-3 gap-3 items-end'},field('من شهر',period.from,v=>setPeriod(o=>Object.assign({},o,{from:v})),'month'),field('إلى شهر',period.to,v=>setPeriod(o=>Object.assign({},o,{to:v})),'month'),button('تحديث البيانات',async()=>{await refresh();await loadPeriod();},'primary',busy)),
+   h('div',{className:'flex flex-wrap gap-2 text-xs'},h('b',null,'الفواتير المعتمدة: '+posted.length),h('b',null,'فواتير لم تدخل الحساب: '+pendingCount)),
+   summaries.length?h('div',{className:'space-y-2'},...summaries.map(g=>{const due=g.outputTax-g.inputTax;return h('section',{key:g.currency,className:'grid grid-cols-2 md:grid-cols-5 gap-2 p-3 border rounded-xl bg-white'},metric('العملة',g.currency),metric('ضريبة مدخلات المشتريات',fmt(g.inputTax)),metric('ضريبة مخرجات المبيعات',fmt(g.outputTax)),metric('صافي الوعاء (مبيعات - مشتريات)',fmt(g.salesBase-g.purchasesBase)),metric(due>=0?'ضريبة مستحقة مبدئيًا':'رصيد ضريبي دائن مبدئيًا',fmt(Math.abs(due))+' '+(due>=0?'مستحق':'رصيد'));})):h('div',{className:'p-4 rounded-xl border text-center text-slate-500'},'لا توجد فواتير معتمدة في الفترة المحددة.'),
+   panel('فواتير المشتريات — ضريبة المدخلات','يتم عرض اسم المورد ورقمه الضريبي والوعاء والضريبة والإجمالي وكود الضريبة.',h('div',{className:'space-y-2'},button('تصدير فواتير المشتريات CSV',()=>exportInvoices(purchaseInvoices,'vat-purchases.csv'),'muted'),table(headers,formatRows(purchaseInvoices)))),
+   panel('فواتير المبيعات — ضريبة المخرجات','يتم عرض اسم العميل ورقمه الضريبي والوعاء والضريبة والإجمالي وكود الضريبة.',h('div',{className:'space-y-2'},button('تصدير فواتير المبيعات CSV',()=>exportInvoices(salesInvoices,'vat-sales.csv'),'muted'),table(headers,formatRows(salesInvoices)))),
+   panel('الأكواد الضريبية المستخدمة','افصل أكواد مدخلات المشتريات عن أكواد مخرجات المبيعات. النسبة الافتراضية العامة 14%، ويمكن إضافة أكواد أخرى للنسب والمعاملات الخاصة.',table(['الكود','اسم الضريبة','النوع','النسبة','بداية السريان'],rows(master.taxCodes).map(x=>h('tr',{key:x.code},h('td',{className:'p-2'},x.code),h('td',{className:'p-2'},x.name),h('td',{className:'p-2'},x.taxType),h('td',{className:'p-2'},x.rate+'%'),h('td',{className:'p-2'},x.effectiveFrom||'—'))))),
+   h('p',{className:'text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3'},'تنبيه محاسبي: صافي المخرجات ناقص المدخلات هو مؤشر ضريبة الفترة من الفواتير المرحلة فقط. لا يشمل أرصدة الفترات السابقة أو الخصم والتحصيل تحت حساب الضريبة أو التسويات أو المعاملات الخاصة؛ راجع الإقرار الرسمي والمستندات قبل السداد.')
+  ));
+ };
  const renderReports=()=>panel('القوائم والتقارير المالية','يتم استخراج الأرقام من دفتر الأستاذ المرحّل فقط. المركز المالي يحتاج أرصدة افتتاحية معتمدة.',h('div',{className:'space-y-3'},
   h('div',{className:'grid md:grid-cols-4 gap-3'},field('من شهر',period.from,v=>setPeriod(o=>Object.assign({},o,{from:v})),'month'),field('إلى شهر',period.to,v=>setPeriod(o=>Object.assign({},o,{to:v})),'month'),select('التقرير',report,v=>setReport(v),[{value:'trial',label:'ميزان المراجعة'},{value:'income',label:'قائمة الدخل'},{value:'balance',label:'المركز المالي'},{value:'cashflow',label:'التدفقات النقدية'},{value:'ledger',label:'دفتر الأستاذ'}]),button('تحديث',loadPeriod,'primary')),
   report==='trial'?table(['الحساب','الاسم','مدين','دائن','رصيد مدين','رصيد دائن'],trial.map(x=>{const v=x.amount.debit-x.amount.credit;return h('tr',{key:x.account.code},h('td',{className:'p-2'},x.account.code),h('td',{className:'p-2'},x.account.name),h('td',{className:'p-2'},fmt(x.amount.debit)),h('td',{className:'p-2'},fmt(x.amount.credit)),h('td',{className:'p-2'},fmt(Math.max(v,0))),h('td',{className:'p-2'},fmt(Math.max(-v,0))));})):null,
