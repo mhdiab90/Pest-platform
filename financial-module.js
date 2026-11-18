@@ -667,31 +667,29 @@ function FinanceModule(props){
   );
  };
  const renderPartyStatements = function() {
-  const list=partyStatement.type==='customer'?allClients:allVendors;
+  const staff=(userDirectory||[]).filter(u=>u.uid).map(u=>Object.assign({},u,{id:u.uid,code:u.uid,name:u.fullName||u.username||u.email||u.uid}));
+  const staffType=["employeeCustody","employeeAdvance"].includes(partyStatement.type);
+  const list=partyStatement.type==="customer"?allClients:partyStatement.type==="vendor"?allVendors:staff;
+  const employee=staffType;
   let running=0;
   const displayRows=partyRows.map(function(line,index){
-   const movement=partyStatement.type==='vendor'?n(line.credit)-n(line.debit):n(line.debit)-n(line.credit);
+   const movement=partyStatement.type==="vendor"?n(line.credit)-n(line.debit):n(line.debit)-n(line.credit);
    running+=movement;
-   return h('tr',{key:(line.journalId||'entry')+'-'+index,className:'border-t'},
-    h('td',{className:'p-2'},line.date||'—'),
-    h('td',{className:'p-2'},line.reference||'—'),
-    h('td',{className:'p-2'},line.journalId||'—'),
-    h('td',{className:'p-2'},line.description||'—'),
-    h('td',{className:'p-2'},fmt(line.debit)),
-    h('td',{className:'p-2'},fmt(line.credit)),
-    h('td',{className:'p-2 font-bold'},fmt(running))
+   return h("tr",{key:(line.journalId||"entry")+"-"+index,className:"border-t"},
+    h("td",{className:"p-2"},line.date||"—"),h("td",{className:"p-2"},line.reference||"—"),h("td",{className:"p-2"},line.journalId||"—"),h("td",{className:"p-2"},line.description||"—"),h("td",{className:"p-2"},fmt(line.debit)),h("td",{className:"p-2"},fmt(line.credit)),h("td",{className:"p-2 font-bold"},fmt(running))
    );
   });
-  const selectedParty=list.find(function(p){return (p.code||p.id)===partyStatement.id;});
-  return panel('كشف حساب العميل / المورد','الحركة مستخرجة من الأستاذ الفرعي ومربوطة بالحساب الرقابي.',h('div',{className:'space-y-3'},
-   h('div',{className:'grid md:grid-cols-3 gap-3'},
-    select('نوع الطرف',partyStatement.type,function(v){setPartyStatement({type:v,id:''});setPartyRows([]);},[{value:'customer',label:'عميل'},{value:'vendor',label:'مورد'}]),
-    partyPicker('الطرف',list,partyStatement.id,function(p){setPartyStatement(old=>Object.assign({},old,{id:p.code||p.id}));},statementPartySearch,setStatementPartySearch,partyStatement.type==='vendor'?'vendor':'customer'),
-    button('عرض كشف الحساب',loadParty,'primary',busy)
+  const selectedParty=list.find(p=>String(p.code||p.id)===String(partyStatement.id));
+  const typeLabel={customer:"عميل",vendor:"مورد",employeeCustody:"عهدة موظف",employeeAdvance:"سلفة موظف"}[partyStatement.type];
+  return panel("كشف حساب تفصيلي — "+typeLabel,employee?"حركة الموظف مرتبطة بالحساب الرقابي "+(partyStatement.type==="employeeCustody"?"1220 — العهد لدى العاملين":"1230 — السلف لدى العاملين")+".":"الحركة مستخرجة من الأستاذ الفرعي ومرتبطة بالحساب الرقابي.",h("div",{className:"space-y-3"},
+   h("div",{className:"grid md:grid-cols-3 gap-3"},
+    select("نوع كشف الحساب",partyStatement.type,function(v){setPartyStatement({type:v,id:""});setPartyRows([]);setStatementPartySearch("");},[{value:"customer",label:"العملاء"},{value:"vendor",label:"الموردون"},{value:"employeeCustody",label:"العهد الشخصية للموظفين"},{value:"employeeAdvance",label:"السلف الشخصية للموظفين"}]),
+    employee?partyPicker("الموظف",list,partyStatement.id,p=>setPartyStatement(old=>Object.assign({},old,{id:p.uid||p.code||p.id})),statementPartySearch,setStatementPartySearch,"customer"):partyPicker(partyStatement.type==="vendor"?"المورد":"العميل",list,partyStatement.id,p=>setPartyStatement(old=>Object.assign({},old,{id:p.code||p.id})),statementPartySearch,setStatementPartySearch,partyStatement.type),
+    button("عرض كشف الحساب",loadParty,"primary",busy)
    ),
-   selectedParty?metric('الطرف المحدد',partyName(selectedParty)):null,
-   table(['التاريخ','المرجع','رقم القيد','البيان','مدين','دائن',partyStatement.type==='vendor'?'الرصيد الدائن':'الرصيد المدين'],displayRows),
-   h('div',{className:'text-sm font-bold text-slate-800'},(partyStatement.type==='vendor'?'الرصيد الدائن الختامي: ':'الرصيد المدين الختامي: ')+fmt(running)+' ج.م')
+   selectedParty?metric(employee?"الموظف":typeLabel,partyName(selectedParty)):null,
+   table(["التاريخ","المرجع","رقم القيد","البيان","مدين","دائن","الرصيد"],displayRows),
+   h("div",{className:"text-sm font-bold text-slate-800"},"الرصيد الختامي "+(partyStatement.type==="vendor"?"الدائن":"المدين")+": "+fmt(running)+" ج.م")
   ));
  };
  const renderCostCenterAnalysis = function() {
