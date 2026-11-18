@@ -16,6 +16,7 @@ on:
       - ".github/workflows/worker-check.yml"
   pull_request:
     paths:
+      - "tests/**"
       - "cloudflare/worker.js"
       - "financial-api.js"
       - "financial-module.js"
