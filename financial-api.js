@@ -298,7 +298,7 @@ export async function handleFinancialRequest(ctx){
    if(!["vat_input","vat_output","withholding","addition"].includes(item.taxType))throw new Error("حدد نوع الضريبة بصورة صحيحة.");
    const rate=Number(item.rate);if(!Number.isFinite(rate)||rate<0||rate>100)throw new Error("نسبة الضريبة يجب أن تكون من 0 إلى 100.");
   }
-  if(kind==="bankAccounts"){const account=await adminRead("chartOfAccounts/"+id(item.accountCode||code));if(!account||account.isGroup||account.active===false)throw new Error("اربط حساب البنك بحساب محاسبي نشط وقابل للترحيل في دليل الحسابات.");}
+  if(kind==="bankAccounts"){const account=await adminRead("chartOfAccounts/"+id(item.accountCode||code));if(!account||account.isGroup||account.active===false||account.type!=="asset")throw new Error("اربط حساب البنك بحساب أصول نشطًا وقابلًا للترحيل في دليل الحسابات.");}
   let saved={...item,code,name:txt(item.name,180),active:item.active!==false,createdAt:item.createdAt||now,createdBy:item.createdBy||claims.sub,updatedAt:now,updatedBy:claims.sub};
   const audit={action:"save_master",kind,code,uid:claims.sub,createdAt:now};
   let linkedExisting=false;
@@ -316,7 +316,7 @@ export async function handleFinancialRequest(ctx){
    if(correctParty&&partyNameOf(correctParty)&&partyNameOf(correctParty)!==txt(item.name,180)&&!(taxOf(correctParty)&&taxOf(item)&&taxOf(correctParty)===taxOf(item)))throw new Error("كود المورد/العميل موجود باسم أو رقم ضريبي مختلف في السجل الرئيسي.");
    linkedExisting=Boolean(existingCode||correctParty);
    const supplied=Object.fromEntries(Object.entries(item).filter(([,value])=>value!==undefined&&value!==null&&value!==""));
-   saved={...(correctParty||{}),...(existingCode||{}),...supplied,code,name:txt(item.name,180),partyType:item.partyType,active:true,updatedAt:now,updatedBy:claims.sub};
+   saved={...(correctParty||{}),...(existingCode||{}),...supplied,code,name:txt(item.name,180),partyType:item.partyType,active:true,createdAt:(existingCode&&existingCode.createdAt)||(correctParty&&correctParty.createdAt)||now,createdBy:(existingCode&&existingCode.createdBy)||(correctParty&&correctParty.createdBy)||claims.sub,updatedAt:now,updatedBy:claims.sub};
    if(!saved.taxNumber&&saved.taxRegistrationNumber)saved.taxNumber=saved.taxRegistrationNumber;
    if(!saved.taxRegistrationNumber&&saved.taxNumber)saved.taxRegistrationNumber=saved.taxNumber;
    const root=saved.partyType==="customer"?"clients":"vendors",globalUpdates={};
@@ -487,7 +487,20 @@ export async function handleFinancialRequest(ctx){
   }
   if((inv.currency||"EGP")!=="EGP")errors.push("لا يمكن ترحيل فاتورة بعملة أجنبية قبل تفعيل أسعار الصرف وإعادة تقييم أرصدة العملات. اختر الجنيه المصري أو اترك المستند مسودة.");
   inv.currency="EGP";
-  if(!inv.partyId)errors.push("اختيار العميل أو المورد مطلوب");if(!inv.number)errors.push("رقم الفاتورة مطلوب");if(!inv.lines.length)errors.push("أضف بندًا واحدًا على الأقل");
+  if(!inv.partyId)errors.push("اختيار العميل أو المورد مطلوب");
+  else{
+   const expectedPartyType=inv.invoiceType==="purchase"?"vendor":"customer",masterParty=await adminRead("parties/"+id(inv.partyId));
+   const legacyParty=adminReadRoot?await adminReadRoot((expectedPartyType==="vendor"?"vendors/":"clients/")+id(inv.partyId)):null;
+   const oppositeParty=adminReadRoot?await adminReadRoot((expectedPartyType==="vendor"?"clients/":"vendors/")+id(inv.partyId)):null;
+   const party=masterParty&&masterParty.partyType===expectedPartyType?masterParty:legacyParty;
+   if(oppositeParty&&!legacyParty)errors.push("نوع الطرف المحدد لا يتوافق مع نوع الفاتورة.");
+   else if(!party)errors.push("المورد أو العميل غير مسجل في البيانات الأساسية بالنوع الصحيح.");
+   else{
+    inv.partyName=txt(party.name||party.companyName||party.legalName||party.supplierName||party.vendorName||party.customerName||party.clientName||inv.partyName,180);
+    inv.partyTaxNumber=party.taxNumber||party.taxRegistrationNumber||party.registrationNumber||party.registrationNo||party.vatNumber||party.taxId||inv.partyTaxNumber||"";
+   }
+  }
+  if(!inv.number)errors.push("رقم الفاتورة مطلوب");if(!inv.lines.length)errors.push("أضف بندًا واحدًا على الأقل");
   const invoiceChart=(await adminRead("chartOfAccounts"))||{};
   inv.lines.forEach((l,i)=>{
    if(!txt(l.description,250))errors.push("وصف البند "+(i+1)+" مطلوب");
@@ -531,6 +544,11 @@ export async function handleFinancialRequest(ctx){
    doc.partyType=movementType==="customer_receipt"?"customer":"vendor";
    doc.partyId=id(body.partyId);
    doc.partyName=txt(body.partyName||"",180);
+   const party=await adminRead("parties/"+doc.partyId),legacyParty=adminReadRoot?await adminReadRoot((doc.partyType==="vendor"?"vendors/":"clients/")+doc.partyId):null,oppositeParty=adminReadRoot?await adminReadRoot((doc.partyType==="vendor"?"clients/":"vendors/")+doc.partyId):null;
+   if(oppositeParty&&!legacyParty)throw new Error("نوع الطرف المحدد لا يتوافق مع نوع حركة الخزينة.");
+   if(!(party&&party.partyType===doc.partyType)&&!legacyParty)throw new Error("العميل أو المورد غير مسجل بالنوع الصحيح في البيانات الأساسية.");
+   const savedParty=party&&party.partyType===doc.partyType?party:legacyParty;
+   doc.partyName=txt(savedParty.name||savedParty.companyName||savedParty.legalName||savedParty.supplierName||savedParty.vendorName||savedParty.customerName||doc.partyName,180);
    requirePosting(doc.partyType==="customer"?"1210":"281",doc.partyType==="customer"?"asset":"liability");
   }
   if(movementType==="other_receipt"){
@@ -544,6 +562,7 @@ export async function handleFinancialRequest(ctx){
   if(["cash_to_bank","bank_to_cash"].includes(movementType)){
    doc.bankAccountCode=id(body.bankAccountCode||"1120");
    requirePosting(doc.bankAccountCode,"asset");
+   if(doc.bankAccountCode===doc.cashAccountCode)throw new Error("اختر حساب خزينة وحساب بنك مختلفين لإجراء التحويل.");
   }
   if(["employee_custody","employee_custody_return","employee_advance","employee_advance_recovery"].includes(movementType)){
    if(profile.role!=="admin")throw new Error("تحويل العهد والسلف للعاملين متاح لمدير النظام أو مستخدم مخوّل من الإدارة.");
@@ -561,6 +580,8 @@ export async function handleFinancialRequest(ctx){
  }
  if(action==="submitBankImport"){
   requirePermission(profile,"financial","add");const importId=id(body.id||uid("BANK")),rows=Array.isArray(body.rows)?body.rows.slice(0,500):[];if(!rows.length)throw new Error("ملف البنك لا يحتوي على حركات");const u={},duplicates=[];let count=0;
+  const bankCode=id(body.bankAccountCode||"1120"),bankAccount=await adminRead("chartOfAccounts/"+bankCode);
+  if(!bankAccount||bankAccount.isGroup||bankAccount.active===false||bankAccount.type!=="asset")throw new Error("اختر حساب بنك نشطًا من حسابات الأصول قبل استيراد الكشف.");
   for(const row of rows){const d=date(row.date),amount=num(row.amount);if(!amount)continue;const fingerprint=await sha([txt(body.bankAccountCode||"1120",32),d,amount.toFixed(2),txt(row.reference,100),txt(row.description,500).toLowerCase().replace(/\s+/g," ")].join("|")),prev=await adminRead("bankFingerprints/"+fingerprint),docId=uid("BNK"),doc={id:docId,type:"bankLine",importId,date:d,amount,description:txt(row.description,500),reference:txt(row.reference,100),direction:row.direction==="in"?"in":"out",bankAccountCode:txt(body.bankAccountCode||"1120",32),fingerprint,status:prev?"duplicate_review":"pending_review",warnings:prev?["تكرار محتمل لحركة "+prev.documentId]:[],duplicateOf:prev&&prev.documentId||"",createdAt:now,createdBy:claims.sub};if(prev)duplicates.push(docId);else u["bankFingerprints/"+fingerprint]={documentId:docId,importId,createdAt:now};u["documents/"+docId]=doc;u["reviewQueue/"+docId]=reviewRecord(doc);count++;}
   u["bankImports/"+importId]={id:importId,bankAccountCode:body.bankAccountCode||"1120",fileName:txt(body.fileName,180),rowCount:count,duplicateCount:duplicates.length,createdAt:now,createdBy:claims.sub};u["audit/"+uid("AUD")]={action:"bank_import",importId,rowCount:count,duplicates:duplicates.length,uid:claims.sub,createdAt:now};await adminPatch(u);return {success:true,importId,rows:count,duplicates:duplicates.length};
  }
@@ -681,7 +702,7 @@ export async function handleFinancialRequest(ctx){
     lines.push(purchase?{accountCode:l.kind==="stock"?"1300":txt(l.accountCode||"6100",32),debit:value,credit:0,description:l.description,costCenterId:l.costCenterId||(projectCenter&&projectCenter.code)||"",projectCode:inv.projectCode||"",itemCode:l.kind==="stock"?l.itemCode:"",quantity:num(l.quantity),warehouseCode:l.warehouseCode||"default"}:{accountCode:l.kind==="stock"?"4100":txt(l.incomeAccountCode||"4200",32),debit:0,credit:value,description:l.description,costCenterId:l.costCenterId||(projectCenter&&projectCenter.code)||"",projectCode:inv.projectCode||"",itemCode:l.kind==="stock"?l.itemCode:"",quantity:num(l.quantity),warehouseCode:l.warehouseCode||"default"});}
    if(purchase&&tot.tax)lines.push({accountCode:"1410",debit:tot.tax,credit:0,description:"ضريبة مدخلات",taxCode:inv.taxCode||"",taxType:inv.taxType||"vat_input"});if(!purchase&&tot.tax)lines.push({accountCode:"2110",debit:0,credit:tot.tax,description:"ضريبة مخرجات",taxCode:inv.taxCode||"",taxType:inv.taxType||"vat_output"});lines.push(purchase?{accountCode:"281",debit:0,credit:tot.total,description:"فاتورة مشتريات",partyType:"vendor",partyId}:{accountCode:"1210",debit:tot.total,credit:0,description:"فاتورة مبيعات",partyType:"customer",partyId});
    const bal=(await adminRead("inventory/balances"))||{};
-   if(!purchase){for(const l of lines.filter(x=>x.itemCode)){const stock=bal[l.warehouseCode]&&bal[l.warehouseCode][l.itemCode]||{quantity:0,averageCost:0};if(Number(stock.quantity||0)<l.quantity)throw new Error("الرصيد غير كافٍ للصنف "+l.itemCode);const cost=rnd(l.quantity*Number(stock.averageCost||0));lines.push({accountCode:"5100",debit:cost,credit:0,description:"تكلفة مبيعات "+l.description,itemCode:l.itemCode,quantity:l.quantity,warehouseCode:l.warehouseCode,costCenterId:l.costCenterId},{accountCode:"1300",debit:0,credit:cost,description:"صرف مخزون "+l.description,itemCode:l.itemCode,quantity:l.quantity,warehouseCode:l.warehouseCode});}}
+   if(!purchase){for(const l of lines.filter(x=>x.itemCode)){const stock=bal[l.warehouseCode]&&bal[l.warehouseCode][l.itemCode]||{quantity:0,averageCost:0};if(Number(stock.quantity||0)<l.quantity)throw new Error("الرصيد غير كافٍ للصنف "+l.itemCode);const cost=rnd(l.quantity*Number(stock.averageCost||0));lines.push({accountCode:"5100",debit:cost,credit:0,description:"تكلفة مبيعات "+l.description,itemCode:l.itemCode,quantity:l.quantity,warehouseCode:l.warehouseCode,costCenterId:l.costCenterId||(projectCenter&&projectCenter.code)||"",projectCode:inv.projectCode||""},{accountCode:"1300",debit:0,credit:cost,description:"صرف مخزون "+l.description,itemCode:l.itemCode,quantity:l.quantity,warehouseCode:l.warehouseCode});}}
    const check=balance(lines);if(Math.abs(check.difference)>0.01)throw new Error("القيد الناتج غير متوازن: "+check.difference);
    j={id:uid("JRN"),date:inv.date,description:(purchase?"فاتورة مشتريات ":"فاتورة مبيعات ")+inv.number,reference:inv.number,sourceType:"invoice",sourceId:doc.id,currency:inv.currency||"EGP",lines,status:"posted",createdAt:inv.createdAt,createdBy:inv.createdBy,approvedAt:now,approvedBy:claims.sub,postedAt:now,totals:tot};Object.assign(updates,journalUpdates(j));
    for(const amountRow of invoiceAmounts.filter(function(row){return row.line.kind==="stock";})){const l=amountRow.line,warehouse=id(l.warehouseCode||"default"),code=id(l.itemCode),stock=bal[warehouse]&&bal[warehouse][code]||{quantity:0,value:0,averageCost:0},qty=num(l.quantity),gross=amountRow.amount,inward=purchase,oldQty=Number(stock.quantity||0),oldValue=Number(stock.value||0),cost=inward?gross:rnd(qty*Number(stock.averageCost||0)),nextQty=inward?oldQty+qty:oldQty-qty,nextValue=inward?oldValue+gross:oldValue-cost,mov=uid("MOV");updates["inventory/balances/"+warehouse+"/"+code]={quantity:rnd(nextQty),value:rnd(nextValue),averageCost:nextQty>0?rnd(nextValue/nextQty):0,updatedAt:now};updates["inventory/movements/"+mov]={id:mov,date:inv.date,invoiceId:doc.id,journalId:j.id,itemCode:code,warehouseCode:warehouse,kind:inward?"purchase":"sale",quantity:inward?qty:-qty,unitCost:inward?rnd(gross/qty):Number(stock.averageCost||0),value:inward?gross:-cost,createdAt:now,createdBy:claims.sub};}
