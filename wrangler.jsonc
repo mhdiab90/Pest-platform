@@ -43,7 +43,8 @@
       "/dashboards",
       "/whatsapp/*",
       "/drive/*",
-      "/attachments*"
+      "/attachments*",
+      "/finance"
     ]
   },
   "previews": {
