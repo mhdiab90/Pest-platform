@@ -250,10 +250,13 @@ function FinanceModule(props){
     pageResults.forEach(page=>{if(page&&page[key]!==undefined&&page[key]!==null&&page[key]!=='')x[key]=page[key];});
    });
    pageResults.forEach(page=>{if(Array.isArray(page&&page.items))x.items.push(...page.items);});
-   const nextType=x.type==='sales'?'sales':x.type==='purchase'?'purchase':invoice.type;
+   const modelDirection=x.type==='sales'?'sales':x.type==='purchase'?'purchase':'';
+   const nextType=invoice.type;
+   const directionMismatch=Boolean(modelDirection&&modelDirection!==invoice.type);
    const targetPartyType=nextType==='purchase'?'vendor':'customer',partyList=targetPartyType==='vendor'?allVendors:allClients;
    const extractedParty=String(x.partyName||'').trim(),taxNumber=String(x.taxNumber||'').trim();
-   const matchedParty=partyList.find(p=>taxNumber&&String(p.taxNumber||'').trim()===taxNumber)||partyList.find(p=>normalizeMatch(partyName(p))===normalizeMatch(extractedParty));
+   const partyTax=p=>String(p.taxNumber||p.taxRegistrationNumber||p.registrationNumber||p.registrationNo||p.vatNumber||p.taxId||'').trim();
+   const matchedParty=partyList.find(p=>taxNumber&&partyTax(p)===taxNumber)||partyList.find(p=>normalizeMatch(partyName(p))===normalizeMatch(extractedParty));
    const unmatchedItems=[];
    const extractedLines=Array.isArray(x.items)?x.items.map((line,index)=>{
     const description=String(line.description||'').trim();
@@ -272,7 +275,7 @@ function FinanceModule(props){
    setInvoicePartySearch(extractedParty);
    setOcrSuggestions({party:extractedParty&&!matchedParty?{name:extractedParty,taxNumber,partyType:targetPartyType,code:nextCode(targetPartyType==='vendor'?'VND':'CUS',partyList)}:null,items:unmatchedItems});
    const pageSummary=isPdf?'اكتملت قراءة '+pagesRead+' من '+totalPdfPages+' صفحة PDF.':'اكتملت قراءة صورة الفاتورة.';
-   setNotice(pageSummary+' راجع كل بند وحدد هل هو صنف مخزني أم مصروف/خدمة، وتأكد من الحساب المقترح قبل الإرسال.'+(isPdf?' تم الاحتفاظ بملف PDF الأصلي لربطه بالفاتورة.':'')+(isPdf&&totalPdfPages>pagesRead?' تنبيه: تم تحليل أول 12 صفحة فقط؛ راجع الصفحات المتبقية يدويًا.':''));
+   setNotice(pageSummary+' راجع كل بند وحدد هل هو صنف مخزني أم مصروف/خدمة، وتأكد من الحساب المقترح قبل الإرسال.'+(directionMismatch?' تنبيه: اقتراح الذكاء الاصطناعي اختلف عن نوع الفاتورة المختار؛ تم الالتزام باختيارك اليدوي ('+(invoice.type==='purchase'?'مشتريات من مورد':'مبيعات لعميل')+').' :'')+(isPdf?' تم الاحتفاظ بملف PDF الأصلي لربطه بالفاتورة.':'')+(isPdf&&totalPdfPages>pagesRead?' تنبيه: تم تحليل أول 12 صفحة فقط؛ راجع الصفحات المتبقية يدويًا.':''));
   }catch(e){setError('تعذرت قراءة الفاتورة آليًا: '+(e.message||String(e))+' ويمكنك استكمال البيانات يدويًا.');}
   finally{setBusy(false);}
  };
