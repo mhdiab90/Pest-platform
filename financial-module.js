@@ -67,6 +67,77 @@ function FinanceModule(props){
   }catch(e){setError(e.message||String(e));}
   finally{setBusy(false);}
  };
+ const refreshAssignments=async()=>{
+  try{
+   const result=await api('?resource=assignments');
+   const list=rows(result.items).sort((a,b)=>n(b.createdAt)-n(a.createdAt));
+   setAssignmentItems(list);
+   const pendingId=window.PEST_PENDING_FINANCE_ASSIGNMENT_ID;
+   if(pendingId){
+    const match=list.find(x=>x.id===pendingId);
+    if(match){setSelectedAssignmentId(match.id);setAssignmentLines((match.invoice&&match.invoice.lines||[]).map(x=>Object.assign({},x)));}
+    window.PEST_PENDING_FINANCE_ASSIGNMENT_ID='';
+   }
+  }catch(e){setError(e.message||String(e));}
+ };
+ React.useEffect(()=>{if(tab==='assignments')refreshAssignments();},[tab]);
+ React.useEffect(()=>{
+  const pending=window.PEST_PENDING_FINANCE_ASSIGNMENT_ID;
+  if(pending){setSelectedAssignmentId(pending);setTab('assignments');}
+ },[]);
+ const invoicePayload=()=>{
+  const party=parties.find(x=>String(x.code||x.id)===String(invoice.partyId));
+  return Object.assign({},invoice,{partyName:party?partyName(party):invoice.partyName,lines:invoice.lines.map(x=>Object.assign({},x,{quantity:n(x.quantity),unitPrice:n(x.unitPrice),discount:n(x.discount)}))});
+ };
+ const saveInvoiceDraftRecord=async()=>{
+  const payload=invoicePayload();
+  const result=await api('', 'POST',Object.assign({action:'saveInvoiceDraft'},payload));
+  if(invoiceFile){
+   const uploadResult=await upload(invoiceFile,result.id),attachment=uploadResult.attachment||uploadResult;
+   await api('', 'POST',{action:'addAttachment',documentId:result.id,attachment});
+   setInvoiceFile(null);
+  }
+  setInvoice(old=>Object.assign({},old,{id:result.id}));
+  await refresh();
+  return result;
+ };
+ const saveInvoiceDraft=async()=>{
+  setBusy(true);setError('');
+  try{
+   const result=await saveInvoiceDraftRecord();
+   setNotice('تم حفظ الفاتورة كمسودة غير مرحلة. يمكنك استكمالها أو تحويلها لمستخدم آخر.');
+  }catch(e){setError(e.message||String(e));}
+  finally{setBusy(false);}
+ };
+ const assignInvoiceToUser=async()=>{
+  if(!assignmentUserUid){setError('اختر المستخدم الذي سيستكمل الفاتورة.');return;}
+  setBusy(true);setError('');
+  try{
+   const draft=await saveInvoiceDraftRecord();
+   const result=await api('', 'POST',{action:'assignInvoice',invoiceId:draft.id,assigneeUid:assignmentUserUid,instruction:assignmentInstruction});
+   setNotice('تم حفظ المسودة وتحويلها للمستخدم المختار، وستصل إليه في المهام والتنبيهات.');
+   setInvoice(o=>Object.assign({},o,{id:draft.id}));
+   await refresh();
+  }catch(e){setError(e.message||String(e));}
+  finally{setBusy(false);}
+ };
+ const openAssignment=assignment=>{
+  setSelectedAssignmentId(assignment.id);
+  setAssignmentLines((assignment.invoice&&assignment.invoice.lines||[]).map(x=>Object.assign({},x)));
+ };
+ const completeAssignment=async()=>{
+  const assignment=assignmentItems.find(x=>x.id===selectedAssignmentId);
+  if(!assignment)return;
+  setAssignmentBusy(true);setError('');
+  try{
+   const lines=assignmentLines.map((line,index)=>({index,kind:line.kind,itemCode:line.itemCode||'',groupCode:line.groupCode||'',warehouseCode:line.warehouseCode||'default',accountCode:line.accountCode||'',itemType:line.itemType||'stock'}));
+   const result=await api('', 'POST',{action:'completeInvoiceAssignment',assignmentId:assignment.id,lines});
+   setNotice('تم استكمال التصنيف وإرجاع المسودة إلى المستخدم الأصلي للمراجعة والإرسال.');
+   setSelectedAssignmentId('');setAssignmentLines([]);
+   await refreshAssignments();await refresh();
+  }catch(e){setError(e.message||String(e));}
+  finally{setAssignmentBusy(false);}
+ };
  const loadPeriod=async()=>{
   setBusy(true);
   try{const d=await api('?resource=periods&from='+encodeURIComponent(period.from)+'&to='+encodeURIComponent(period.to));const all=[];Object.entries(d.entries||{}).forEach(([m,entries])=>Object.values(entries||{}).forEach(j=>{if(j&&j.status==='posted')all.push(j);}));setPeriodJournals(all);}
