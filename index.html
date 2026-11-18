@@ -1022,6 +1022,8 @@ function App(){
   const [userRequests,setUserRequests] = useState([]);
   const [pendingNotificationRequests,setPendingNotificationRequests] = useState([]);
   const [unreadNotificationMessages,setUnreadNotificationMessages] = useState([]);
+  const [notificationBadgeReadyUid,setNotificationBadgeReadyUid] = useState('');
+  const notificationBadgeStreamsRef=useRef({uid:'',messages:false,custody:false,pending:false});
   const [activeUsers,setActiveUsers] = useState([]);
   const [onlinePresenceByUid,setOnlinePresenceByUid] = useState({});
   const [onlinePresenceError,setOnlinePresenceError] = useState('');
@@ -1600,6 +1602,19 @@ function App(){
   useEffect(()=>{
     const uid=currentUser?.uid||'';
     const subscriptions=dataSubscriptionsRef.current;
+    if(!uid){
+      notificationBadgeStreamsRef.current={uid:'',messages:false,custody:false,pending:false};
+      setNotificationBadgeReadyUid('');
+    }else if(notificationBadgeStreamsRef.current.uid!==uid){
+      notificationBadgeStreamsRef.current={uid,messages:false,custody:false,pending:!isAdmin};
+      setNotificationBadgeReadyUid('');
+    }
+    const markNotificationBadgeStreamReady=key=>{
+      const streams=notificationBadgeStreamsRef.current;
+      if(streams.uid!==uid)return;
+      streams[key]=true;
+      if(streams.messages&&streams.custody&&streams.pending)setNotificationBadgeReadyUid(uid);
+    };
     const detachAll=()=>{
       subscriptions.forEach(subscription=>{
         try{
@@ -1779,6 +1794,7 @@ function App(){
           unreadMessageIdsRef.current=new Set(next.map(m=>m.id));
         }
         setUnreadNotificationMessages(next);
+        markNotificationBadgeStreamReady('messages');
       });
       if(isAdmin){
         const updatePending=kind=>snapshot=>{
@@ -1787,6 +1803,7 @@ function App(){
           const merged=[...notificationRequestRowsRef.current.pending,...notificationRequestRowsRef.current.deferred];
           setPendingNotificationRequests(merged);
           if(notificationRequestReadyRef.current.pending&&notificationRequestReadyRef.current.deferred){
+            markNotificationBadgeStreamReady('pending');
             if(requestIdsRef.current===null)requestIdsRef.current=new Set(merged.map(item=>item.uid));
             else{
               merged.forEach(request=>{
@@ -1816,6 +1833,14 @@ function App(){
         notifyUserOfIncoming({id:'cashCustody:'+item.id,type:'cashCustody',cashCustody:item});
       }
     });
+    // The child listeners above stay incremental; this one small initial read only
+    // marks the notification stream ready so we do not clear a badge before hydration.
+    void db.ref('cashCustodyNotifications/'+uid).once('value')
+      .then(()=>markNotificationBadgeStreamReady('custody'))
+      .catch(error=>{
+        console.warn('Initial badge notification read:',error);
+        markNotificationBadgeStreamReady('custody');
+      });
   },[currentUser?.uid,tab,assistantOpen,attachmentEntityType]);
 
   function closeHeaderPopoversOnOutside(event){
@@ -4695,6 +4720,39 @@ function App(){
     ...cashCustodyNotifications.filter(n=>n.read!==true).map(n=>({id:'cashCustody:'+n.id,type:'cashCustody',title:rtl?'حركة مالية تخص عهدتك':'Financial movement for your custody',description:[n.senderName,money(n.amount)+' '+(n.currency||'EGP'),n.description].filter(Boolean).join(' · '),createdAt:Number(n.createdAt||0),cashCustody:n})),
     ...(isAdmin?pendingRequests.filter(r=>!seenRequestIds.includes(r.uid)).map(r=>({id:'request:'+r.uid,type:'request',title:rtl?'طلب مستخدم جديد':'New user request',description:(r.fullName||r.username||r.email||r.uid),createdAt:Number(r.createdAt||0),request:r})):[])
   ].sort((a,b)=>b.createdAt-a.createdAt);
+
+  useEffect(()=>{
+    const uid=currentUser?.uid||'';
+    const count=Math.max(0,Math.min(999,notificationItems.length));
+    if(!uid){
+      if(window.PEST_NATIVE?.setAppBadgeCount){
+        void window.PEST_NATIVE.setAppBadgeCount(0).catch(error=>console.warn('Clearing app badge:',error));
+      }
+      return;
+    }
+    if(notificationBadgeReadyUid!==uid)return;
+    let cancelled=false;
+    const updateLocalBadge=async()=>{
+      try{
+        if(window.PEST_NATIVE?.setAppBadgeCount){
+          await window.PEST_NATIVE.setAppBadgeCount(count);
+        }
+      }catch(error){console.warn('Updating app icon badge:',error);}
+    };
+    void updateLocalBadge();
+    // Let the push worker finish its increment for this event before the
+    // app writes the exact unread total back to the shared per-user counter.
+    const timer=window.setTimeout(()=>{
+      if(cancelled)return;
+      void sendPushWorkerRequest('/push/badge/sync',{count})
+        .catch(error=>console.warn('Syncing app badge count:',error));
+    },900);
+    return ()=>{
+      cancelled=true;
+      window.clearTimeout(timer);
+    };
+  },[currentUser?.uid,notificationBadgeReadyUid,notificationItems.length]);
+
   function markRequestNotificationSeen(uid){setSeenRequestIds(old=>{const next=old.includes(uid)?old:[...old,uid];try{localStorage.setItem('pestSeenAdminRequests:'+currentUser.uid,JSON.stringify(next));}catch(err){console.warn('Could not save notification read state:',err);}return next;});}
   async function openNotification(item){
     setNotificationOpen(false);
