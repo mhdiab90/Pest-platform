@@ -7,24 +7,39 @@ import { CapacitorUpdater } from '@capgo/capacitor-updater';
 
 const isNative = Capacitor.isNativePlatform();
 const ANDROID_NOTIFICATION_CHANNEL = 'pest_alerts_v3';
+const LEGACY_ANDROID_NOTIFICATION_CHANNEL = 'pest_alerts_v2';
 let pushListenersInstalled = false;
 let pushRegistrationInProgress = null;
 let notificationChannelPromise = null;
 
+function createAndroidNotificationChannel(id, description) {
+  return LocalNotifications.createChannel({
+    id,
+    name: 'PEST Notifications',
+    description,
+    importance: 5,
+    visibility: 1,
+    sound: 'pest_notification.wav',
+    vibration: true,
+    lights: true,
+    lightColor: '#14517a'
+  });
+}
+
 async function ensureAndroidNotificationChannel() {
   if (!isNative || Capacitor.getPlatform() !== 'android') return;
   if (!notificationChannelPromise) {
-    notificationChannelPromise = LocalNotifications.createChannel({
-      id: ANDROID_NOTIFICATION_CHANNEL,
-      name: 'PEST Notifications',
-      description: 'Messages, cash custody and important PEST Platform alerts',
-      importance: 5,
-      visibility: 1,
-      sound: 'pest_notification.wav',
-      vibration: true,
-      lights: true,
-      lightColor: '#14517a'
-    }).catch(error => {
+    // Keep the previous channel registered while older Preview Workers may still send v2.
+    notificationChannelPromise = Promise.all([
+      createAndroidNotificationChannel(
+        ANDROID_NOTIFICATION_CHANNEL,
+        'Messages, cash custody and important PEST Platform alerts'
+      ),
+      createAndroidNotificationChannel(
+        LEGACY_ANDROID_NOTIFICATION_CHANNEL,
+        'Compatibility channel for pending PEST Platform push messages'
+      )
+    ]).catch(error => {
       notificationChannelPromise = null;
       throw error;
     });
