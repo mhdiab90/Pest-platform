@@ -1500,12 +1500,28 @@ function App(){
   // Authentication is checked first. No database read is attempted before a user signs in.
   useEffect(()=>{
     let mounted = true;
+    let authBootSettled = false;
+    const authBootTimer = window.setTimeout(()=>{
+      if(!mounted || authBootSettled) return;
+      setAuthError(rtl
+        ? 'تأخر الاتصال بخدمة تسجيل الدخول أو تحميل بيانات الحساب. تحقق من الإنترنت ثم أعد المحاولة أو حدّث الصفحة.'
+        : 'Connecting to sign-in or loading your account is taking too long. Check your connection, retry or refresh the page.');
+      setAuthReady(true);
+      setBusy(false);
+    },10000);
+    const settleAuthBoot=()=>{
+      if(authBootSettled)return;
+      authBootSettled=true;
+      window.clearTimeout(authBootTimer);
+    };
     const unsubscribe = auth.onAuthStateChanged(async fbUser=>{
       if(!mounted) return;
       if(registrationInProgress.current || (fbUser && registrationUid.current===fbUser.uid)) return;
       if(!fbUser){
+        settleAuthBoot();
         registrationUid.current=null;
         setCurrentUser(null);
+        setAuthError('');
         setAuthReady(true);
         setBusy(false);
         return;
@@ -1538,10 +1554,14 @@ function App(){
         setAuthError(firebaseErrorMessage(err,tr));
         await auth.signOut().catch(()=>{});
       }finally{
-        if(mounted){setAuthReady(true);setBusy(false);}
+        if(mounted){settleAuthBoot();setAuthReady(true);setBusy(false);}
       }
     });
-    return ()=>{mounted=false;unsubscribe();};
+    return ()=>{
+      mounted=false;
+      settleAuthBoot();
+      unsubscribe();
+    };
   },[]);
 
 
