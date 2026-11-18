@@ -167,48 +167,73 @@ function FinanceModule(props){
   panel('الأداء المالي','يعتمد الملخص على القيود المرحّلة بالفترة المحددة.',h('div',{className:'grid md:grid-cols-4 gap-3'},metric('الإيرادات',fmt(revenue)+' ج.م'),metric('المصروفات',fmt(expenses)+' ج.م'),metric('الأصول',fmt(assets)+' ج.م'),metric('الالتزامات',fmt(liabilities)+' ج.م'))),
   panel('المستندات الأخيرة','',table(['المستند','النوع','التاريخ','الحالة'],documents.slice(0,12).map(x=>h('tr',{key:x.id,className:'border-t'},h('td',{className:'p-2'},x.title||x.number||x.id),h('td',{className:'p-2'},x.type),h('td',{className:'p-2'},x.date||'—'),h('td',{className:'p-2'},status(x.status))))))
  );
- const renderJournal=()=>h('div',{className:'space-y-4'},
-  panel('بيانات القيد','قيد مزدوج. لا يتم ترحيله قبل مراجعة مستخدم مخوّل.',h('div',{className:'grid md:grid-cols-3 gap-3'},field('التاريخ',journal.date,v=>setJournal(o=>Object.assign({},o,{date:v})),'date'),field('المرجع',journal.reference,v=>setJournal(o=>Object.assign({},o,{reference:v}))),field('البيان',journal.description,v=>setJournal(o=>Object.assign({},o,{description:v}))))),
-  panel('سطور القيد','يجب أن يتساوى المدين والدائن.',h('div',{className:'space-y-3'},journal.lines.map((l,i)=>h('div',{key:i,className:'grid grid-cols-1 md:grid-cols-12 gap-2 rounded-xl bg-slate-50 p-3 border'},
-   h('div',{className:'md:col-span-3'},select('الحساب',l.accountCode,v=>updateJ(i,'accountCode',v),posting.map(a=>({value:a.code,label:a.code+' — '+a.name})))),
-   h('div',{className:'md:col-span-2'},field('البيان',l.description,v=>updateJ(i,'description',v))),
-   h('div',{className:'md:col-span-1'},field('مدين',l.debit,v=>updateJ(i,'debit',v),'number')),
-   h('div',{className:'md:col-span-1'},field('دائن',l.credit,v=>updateJ(i,'credit',v),'number')),
-   h('div',{className:'md:col-span-2'},select('مركز التكلفة',l.costCenterId,v=>updateJ(i,'costCenterId',v),[{value:'',label:'بدون'},...centers.map(c=>({value:c.code,label:c.code+' — '+c.name}))])),
-   h('div',{className:'md:col-span-2'},select('الطرف التحليلي',l.partyType+'|'+l.partyId,v=>{const a=v.split('|');updateJ(i,'partyType',a[0]);updateJ(i,'partyId',a[1]);},[{value:'|',label:'بدون'},...clients.map(x=>({value:'customer|'+(x.code||x.id),label:'عميل '+partyName(x)})),...vendors.map(x=>({value:'vendor|'+(x.code||x.id),label:'مورد '+partyName(x)}))])),
-   h('div',{className:'md:col-span-1 flex items-end'},button('حذف',()=>setJournal(o=>Object.assign({},o,{lines:o.lines.filter((x,j)=>j!==i)})),'danger'))
-  )),button('إضافة سطر',()=>setJournal(o=>Object.assign({},o,{lines:o.lines.concat([{accountCode:'6100',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''}])}))))),
-  h('div',{className:'flex flex-wrap gap-4 items-center p-3 bg-white border rounded-xl'},h('b',null,'المدين: '+fmt(jDebit)),h('b',null,'الدائن: '+fmt(jCredit)),h('b',{className:Math.abs(jDebit-jCredit)<0.01?'text-emerald-700':'text-rose-700'},'الفرق: '+fmt(jDebit-jCredit)),button('حفظ وإرسال للمراجعة',submitJournal,'primary',busy)),
-  panel('المسودات والتصحيحات','يمكن فتح المستندات التي أعيدت للتصحيح وتعديلها ثم إعادة إرسالها.',table(['رقم','التاريخ','الوصف','الحالة','إجراء'],documents.filter(x=>x.type==='journal'&&['needs_correction','draft'].includes(x.status)).map(x=>h('tr',{key:x.id,className:'border-t'},h('td',{className:'p-2'},x.id),h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},x.description),h('td',{className:'p-2'},status(x.status)),h('td',{className:'p-2'},button('تعديل',()=>editDoc(x),'muted')))))
- );
- const renderInvoices=()=>h('div',{className:'space-y-4'},
-  panel('بيانات الفاتورة','صورة الفاتورة تساعد في استخراج البيانات. راجعها بنفسك قبل الإرسال للمراجعة.',h('div',{className:'grid md:grid-cols-3 gap-3'},
-   select('نوع الفاتورة',invoice.type,v=>setInvoice(o=>Object.assign({},o,{type:v,partyId:'',partyName:''})),[{value:'purchase',label:'مشتريات / مورد'},{value:'sales',label:'مبيعات / عميل'}]),
-   field('رقم الفاتورة',invoice.number,v=>setInvoice(o=>Object.assign({},o,{number:v}))),
-   field('التاريخ',invoice.date,v=>setInvoice(o=>Object.assign({},o,{date:v})),'date'),
-   select(invoice.type==='purchase'?'المورد':'العميل',invoice.partyId,v=>{const p=parties.find(x=>(x.code||x.id)===v);setInvoice(o=>Object.assign({},o,{partyId:v,partyName:p?partyName(p):''}));},[{value:'',label:'اختر الطرف'},...parties.map(p=>({value:p.code||p.id,label:partyName(p)+' ('+(p.code||p.id)+')'}))]),
-   select('المشروع المرتبط',invoice.projectCode,v=>setInvoice(o=>Object.assign({},o,{projectCode:v})),[{value:'',label:'بدون مشروع'},...projects.map(p=>({value:p.code||p.id,label:(p.name||p.code)+' ('+(p.code||p.id)+')'}))]),
-   field('نسبة الضريبة %',invoice.taxRate,v=>setInvoice(o=>Object.assign({},o,{taxRate:v,taxAmount:''})),'number'),
-   field('الضريبة (قيمة ثابتة اختيارية)',invoice.taxAmount,v=>setInvoice(o=>Object.assign({},o,{taxAmount:v})),'number'),
-   field('خصم الفاتورة',invoice.discount,v=>setInvoice(o=>Object.assign({},o,{discount:v})),'number'),
-   h('label',{className:'block text-sm font-bold'},'صورة / PDF الفاتورة',h('input',{type:'file',accept:'image/*,application/pdf',onChange:e=>readImage(e.target.files&&e.target.files[0]),className:'block mt-1 text-sm'}))
-  )),
-  panel('بنود الفاتورة','اختر صنفًا موجودًا أو صنف البند كخدمة/مصروف.',h('div',{className:'space-y-3'},
-   invoice.lines.map((l,i)=>h('div',{key:i,className:'grid grid-cols-1 md:grid-cols-12 gap-2 p-3 border bg-slate-50 rounded-xl'},
-    h('div',{className:'md:col-span-3'},field('وصف البند',l.description,v=>updateI(i,'description',v))),
-    h('div',{className:'md:col-span-2'},select('النوع',l.kind,v=>updateI(i,'kind',v),[{value:'stock',label:'صنف مخزني'},{value:'service',label:'خدمة / مصروف'}])),
-    h('div',{className:'md:col-span-2'},l.kind==='stock'?select('كود الصنف',l.itemCode,v=>updateI(i,'itemCode',v),[{value:'',label:'اختر الصنف'},...items.map(x=>({value:x.code,label:x.code+' — '+x.name+' '+(x.version||'')}))]):select('الحساب',l.accountCode,v=>updateI(i,'accountCode',v),posting.map(a=>({value:a.code,label:a.code+' — '+a.name})))),
-    h('div',{className:'md:col-span-1'},field('الكمية',l.quantity,v=>updateI(i,'quantity',v),'number')),
-    h('div',{className:'md:col-span-1'},field('السعر',l.unitPrice,v=>updateI(i,'unitPrice',v),'number')),
-    h('div',{className:'md:col-span-1'},field('الخصم',l.discount,v=>updateI(i,'discount',v),'number')),
-    h('div',{className:'md:col-span-1'},select('مركز التكلفة',l.costCenterId,v=>updateI(i,'costCenterId',v),[{value:'',label:'بدون'},...centers.map(c=>({value:c.code,label:c.code+' — '+c.name}))])),
-    h('div',{className:'md:col-span-1 flex items-end'},button('حذف',()=>setInvoice(o=>Object.assign({},o,{lines:o.lines.filter((x,j)=>j!==i)})),'danger'))
-   )),
-   button('إضافة بند',()=>setInvoice(o=>Object.assign({},o,{lines:o.lines.concat([{description:'',kind:'stock',itemCode:'',quantity:'1',unit:'قطعة',unitPrice:'',discount:'',accountCode:'6100',incomeAccountCode:'4100',costCenterId:'',warehouseCode:'default'}])})))
-  )),
-  h('div',{className:'flex flex-wrap items-center gap-4 p-3 bg-white border rounded-xl'},h('b',null,'الصافي: '+fmt(net)),h('b',null,'الضريبة: '+fmt(tax)),h('b',null,'الإجمالي: '+fmt(total)),button('حفظ وإرسال للمراجعة',submitInvoice,'primary',busy)),
-  panel('فواتير تحتاج تصحيح','',table(['الفاتورة','الطرف','التاريخ','الحالة','إجراء'],documents.filter(x=>x.type==='invoice'&&['needs_correction','draft'].includes(x.status)).map(x=>h('tr',{key:x.id,className:'border-t'},h('td',{className:'p-2'},x.number||x.id),h('td',{className:'p-2'},x.partyName),h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},status(x.status)),h('td',{className:'p-2'},button('تعديل',()=>editDoc(x),'muted'))))))
- );
+ const renderJournal = function() {
+  const lineCards = journal.lines.map(function(line,index) {
+   return h('div',{key:index,className:'grid grid-cols-1 md:grid-cols-12 gap-2 rounded-xl bg-slate-50 p-3 border'},
+    h('div',{className:'md:col-span-3'},select('الحساب',line.accountCode,function(v){updateJ(index,'accountCode',v);},posting.map(function(a){return {value:a.code,label:a.code+' — '+a.name};}))),
+    h('div',{className:'md:col-span-2'},field('البيان',line.description,function(v){updateJ(index,'description',v);})),
+    h('div',{className:'md:col-span-1'},field('مدين',line.debit,function(v){updateJ(index,'debit',v);},'number')),
+    h('div',{className:'md:col-span-1'},field('دائن',line.credit,function(v){updateJ(index,'credit',v);},'number')),
+    h('div',{className:'md:col-span-2'},select('مركز التكلفة',line.costCenterId,function(v){updateJ(index,'costCenterId',v);},[{value:'',label:'بدون'}].concat(centers.map(function(x){return {value:x.code,label:x.code+' — '+x.name};})))),
+    h('div',{className:'md:col-span-2'},select('الطرف التحليلي',(line.partyType||'')+'|'+(line.partyId||''),function(v){const parts=v.split('|');updateJ(index,'partyType',parts[0]);updateJ(index,'partyId',parts[1]);},[{value:'|',label:'بدون'}].concat(clients.map(function(x){return {value:'customer|'+(x.code||x.id),label:'عميل '+partyName(x)};}),vendors.map(function(x){return {value:'vendor|'+(x.code||x.id),label:'مورد '+partyName(x)};})))),
+    h('div',{className:'md:col-span-1 flex items-end'},button('حذف',function(){setJournal(function(old){return Object.assign({},old,{lines:old.lines.filter(function(x,j){return j!==index;})});});},'danger'))
+   );
+  });
+  const addLine = button('إضافة سطر',function(){setJournal(function(old){return Object.assign({},old,{lines:old.lines.concat([{accountCode:'6100',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''}])});});});
+  const linesPanel = panel('سطور القيد','يجب أن يتساوى المدين والدائن.',h('div',{className:'space-y-3'},...lineCards,addLine));
+  const headerPanel = panel('بيانات القيد','قيد مزدوج. لا يتم ترحيله قبل مراجعة مستخدم مخوّل.',h('div',{className:'grid md:grid-cols-3 gap-3'},
+   field('التاريخ',journal.date,function(v){setJournal(function(old){return Object.assign({},old,{date:v});});},'date'),
+   field('المرجع',journal.reference,function(v){setJournal(function(old){return Object.assign({},old,{reference:v});});}),
+   field('البيان',journal.description,function(v){setJournal(function(old){return Object.assign({},old,{description:v});});})
+  ));
+  const totalsPanel = h('div',{className:'flex flex-wrap gap-4 items-center p-3 bg-white border rounded-xl'},
+   h('b',null,'المدين: '+fmt(jDebit)),h('b',null,'الدائن: '+fmt(jCredit)),
+   h('b',{className:Math.abs(jDebit-jCredit)<0.01?'text-emerald-700':'text-rose-700'},'الفرق: '+fmt(jDebit-jCredit)),
+   button('حفظ وإرسال للمراجعة',submitJournal,'primary',busy)
+  );
+  const draftRows = documents.filter(function(x){return x.type==='journal'&&['needs_correction','draft'].includes(x.status);}).map(function(x){
+   return h('tr',{key:x.id,className:'border-t'},h('td',{className:'p-2'},x.id),h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},x.description),h('td',{className:'p-2'},status(x.status)),h('td',{className:'p-2'},button('تعديل',function(){editDoc(x);},'muted')));
+  });
+  const draftsPanel = panel('المسودات والتصحيحات','يمكن فتح المستندات التي أعيدت للتصحيح وتعديلها ثم إعادة إرسالها.',table(['رقم','التاريخ','الوصف','الحالة','إجراء'],draftRows));
+  return h('div',{className:'space-y-4'},headerPanel,linesPanel,totalsPanel,draftsPanel);
+ };
+ const renderInvoices = function() {
+  const headFields = h('div',{className:'grid md:grid-cols-3 gap-3'},
+   select('نوع الفاتورة',invoice.type,function(v){setInvoice(function(old){return Object.assign({},old,{type:v,partyId:'',partyName:''});});},[{value:'purchase',label:'مشتريات / مورد'},{value:'sales',label:'مبيعات / عميل'}]),
+   field('رقم الفاتورة',invoice.number,function(v){setInvoice(function(old){return Object.assign({},old,{number:v});});}),
+   field('التاريخ',invoice.date,function(v){setInvoice(function(old){return Object.assign({},old,{date:v});});},'date'),
+   select(invoice.type==='purchase'?'المورد':'العميل',invoice.partyId,function(v){const p=parties.find(function(x){return (x.code||x.id)===v;});setInvoice(function(old){return Object.assign({},old,{partyId:v,partyName:p?partyName(p):''});});},[{value:'',label:'اختر الطرف'}].concat(parties.map(function(p){return {value:p.code||p.id,label:partyName(p)+' ('+(p.code||p.id)+')'};}))),
+   select('المشروع المرتبط',invoice.projectCode,function(v){setInvoice(function(old){return Object.assign({},old,{projectCode:v});});},[{value:'',label:'بدون مشروع'}].concat(projects.map(function(p){return {value:p.code||p.id,label:(p.name||p.code)+' ('+(p.code||p.id)+')'};}))),
+   field('نسبة الضريبة %',invoice.taxRate,function(v){setInvoice(function(old){return Object.assign({},old,{taxRate:v,taxAmount:''});});},'number'),
+   field('الضريبة (قيمة ثابتة اختيارية)',invoice.taxAmount,function(v){setInvoice(function(old){return Object.assign({},old,{taxAmount:v});});},'number'),
+   field('خصم الفاتورة',invoice.discount,function(v){setInvoice(function(old){return Object.assign({},old,{discount:v});});},'number'),
+   h('label',{className:'block text-sm font-bold'},'صورة / PDF الفاتورة',h('input',{type:'file',accept:'image/*,application/pdf',onChange:function(e){const file=e.target.files&&e.target.files[0];if(file)readImage(file);},className:'block mt-1 text-sm'}))
+  );
+  const invoiceHead = panel('بيانات الفاتورة','صورة الفاتورة تساعد في استخراج البيانات. راجعها بنفسك قبل الإرسال للمراجعة.',headFields);
+  const invoiceRows = invoice.lines.map(function(line,index) {
+   const itemOptions=[{value:'',label:'اختر الصنف'}].concat(items.map(function(x){return {value:x.code,label:x.code+' — '+x.name+' '+(x.version||'')};}));
+   const accountOptions=posting.map(function(a){return {value:a.code,label:a.code+' — '+a.name};});
+   const centerOptions=[{value:'',label:'بدون'}].concat(centers.map(function(x){return {value:x.code,label:x.code+' — '+x.name};}));
+   return h('div',{key:index,className:'grid grid-cols-1 md:grid-cols-12 gap-2 p-3 border bg-slate-50 rounded-xl'},
+    h('div',{className:'md:col-span-3'},field('وصف البند',line.description,function(v){updateI(index,'description',v);})),
+    h('div',{className:'md:col-span-2'},select('النوع',line.kind,function(v){updateI(index,'kind',v);},[{value:'stock',label:'صنف مخزني'},{value:'service',label:'خدمة / مصروف'}])),
+    h('div',{className:'md:col-span-2'},line.kind==='stock'?select('كود الصنف',line.itemCode,function(v){updateI(index,'itemCode',v);},itemOptions):select('الحساب',line.accountCode,function(v){updateI(index,'accountCode',v);},accountOptions)),
+    h('div',{className:'md:col-span-1'},field('الكمية',line.quantity,function(v){updateI(index,'quantity',v);},'number')),
+    h('div',{className:'md:col-span-1'},field('السعر',line.unitPrice,function(v){updateI(index,'unitPrice',v);},'number')),
+    h('div',{className:'md:col-span-1'},field('الخصم',line.discount,function(v){updateI(index,'discount',v);},'number')),
+    h('div',{className:'md:col-span-1'},select('مركز التكلفة',line.costCenterId,function(v){updateI(index,'costCenterId',v);},centerOptions)),
+    h('div',{className:'md:col-span-1 flex items-end'},button('حذف',function(){setInvoice(function(old){return Object.assign({},old,{lines:old.lines.filter(function(x,j){return j!==index;})});});},'danger'))
+   );
+  });
+  const addInvoiceLine = button('إضافة بند',function(){setInvoice(function(old){return Object.assign({},old,{lines:old.lines.concat([{description:'',kind:'stock',itemCode:'',quantity:'1',unit:'قطعة',unitPrice:'',discount:'',accountCode:'6100',incomeAccountCode:'4100',costCenterId:'',warehouseCode:'default'}])});});});
+  const invoiceLines = panel('بنود الفاتورة','اختر صنفًا موجودًا أو صنف البند كخدمة/مصروف.',h('div',{className:'space-y-3'},...invoiceRows,addInvoiceLine));
+  const totalsBox = h('div',{className:'flex flex-wrap items-center gap-4 p-3 bg-white border rounded-xl'},h('b',null,'الصافي: '+fmt(net)),h('b',null,'الضريبة: '+fmt(tax)),h('b',null,'الإجمالي: '+fmt(total)),button('حفظ وإرسال للمراجعة',submitInvoice,'primary',busy));
+  const correctionRows=documents.filter(function(x){return x.type==='invoice'&&['needs_correction','draft'].includes(x.status);}).map(function(x){
+   return h('tr',{key:x.id,className:'border-t'},h('td',{className:'p-2'},x.number||x.id),h('td',{className:'p-2'},x.partyName),h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},status(x.status)),h('td',{className:'p-2'},button('تعديل',function(){editDoc(x);},'muted')));
+  });
+  const correctionPanel = panel('فواتير تحتاج تصحيح','',table(['الفاتورة','الطرف','التاريخ','الحالة','إجراء'],correctionRows));
+  return h('div',{className:'space-y-4'},invoiceHead,invoiceLines,totalsBox,correctionPanel);
+ };
  const renderMaster=kind=>{
   const opts=[['chartOfAccounts','حساب عام'],['costCenters','مركز تكلفة'],['itemGroups','مجموعة أصناف'],['items','صنف مخزني / إصدار'],['warehouses','مخزن'],['bankAccounts','حساب بنك'],['taxCodes','كود ضريبي']];
   let data=kind==='accounts'?accounts:kind==='centers'?centers:items;
