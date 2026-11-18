@@ -76,6 +76,34 @@ test("PDF page text is sent through invoice extraction and preserves suggested e
   delete env.AI;
 });
 
+test("Egyptian ETA invoice direction is determined by the company's tax registration number and party role", async () => {
+  const supplierInvoiceText = "Invoice\nIssuer (From)\nTaxpayer Name : Egypt Laptop\nRegistration Number : #329566725\nRecipients (To)\nTaxpayer Name: الشركة\nRegistration Number : #589845268\nCode Name";
+  env.AI = {run:async(_model,request)=>{
+    const prompt=request.messages[0].content.map(part=>part.text||"").join(" ");
+    assert.match(prompt,/589845268/);
+    assert.match(prompt,/issuerName/);
+    assert.match(prompt,/recipientTaxNumber/);
+    return {response:JSON.stringify({type:"sales",partyName:"wrong party",taxNumber:"wrong",issuerName:"AI supplier",issuerTaxNumber:"111111111",recipientName:"AI recipient",recipientTaxNumber:"222222222"})};
+  }};
+  const purchase=await invoke("POST","",{action:"ocrText",text:supplierInvoiceText,pageNumber:1,totalPages:1});
+  assert.equal(purchase.extracted.type,"purchase","company tax ID in Recipients(To) must force purchase direction");
+  assert.equal(purchase.extracted.issuerName,"Egypt Laptop");
+  assert.equal(purchase.extracted.issuerTaxNumber,"329566725");
+  assert.equal(purchase.extracted.recipientTaxNumber,"589845268");
+  assert.equal(purchase.extracted.partyName,"Egypt Laptop","supplier is the counterparty");
+  assert.equal(purchase.extracted.taxNumber,"329566725");
+
+  const customerInvoiceText = "Invoice\nIssuer (From)\nTaxpayer Name : الشركة\nRegistration Number : #589845268\nRecipients (To)\nTaxpayer Name: الجامعة الأمريكية\nRegistration Number : #200128086\nCode Name";
+  env.AI.run=async()=>({response:JSON.stringify({type:"purchase",partyName:"wrong party",taxNumber:"wrong",items:[]})});
+  const sale=await invoke("POST","",{action:"ocrText",text:customerInvoiceText,pageNumber:1,totalPages:1});
+  assert.equal(sale.extracted.type,"sales","company tax ID in Issuer(From) must force sales direction");
+  assert.equal(sale.extracted.recipientName,"الجامعة الأمريكية");
+  assert.equal(sale.extracted.recipientTaxNumber,"200128086");
+  assert.equal(sale.extracted.partyName,"الجامعة الأمريكية","customer is the counterparty");
+  assert.equal(sale.extracted.taxNumber,"200128086");
+  delete env.AI;
+});
+
 test("financial workflow: bootstrap, double-entry review, invoice stock costing and duplicate protection", async () => {
   await invoke("GET","?resource=bootstrap");
   assert.ok(read("chartOfAccounts/281"),"default supplier control account is created");
