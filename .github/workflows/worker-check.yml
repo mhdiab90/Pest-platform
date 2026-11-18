@@ -52,7 +52,9 @@ jobs:
           node --check scripts/build-web.mjs
       - name: Run financial accounting tests
         run: node --test tests/financial-api.test.mjs
-      - name: Build optimized web assets and bundle Worker (dry run only)
+      - name: Build optimized web assets
+        run: npm run build:web
+      - name: Bundle Worker with Wrangler (dry run only)
         run: npx --yes wrangler@4 deploy --dry-run --outdir .wrangler-dry-run
       - name: Validate Firebase Messaging service worker syntax
         run: node --check firebase-messaging-sw.js
