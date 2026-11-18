@@ -300,6 +300,7 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
     partyId:"VENDOR-001",partyName:"Supplier Test",currency:"EGP",taxCode:"VAT-IN-14",taxRate:14,discount:10,
     lines:[{description:"Test stock",kind:"stock",itemCode:"ITEM-001",quantity:2,unitPrice:50,discount:0,warehouseCode:"default"}]
   });
+  assert.equal(duplicate.status,"duplicate_review","duplicate invoice must enter a dedicated review status");
   assert.ok(duplicate.warnings.length>0,"duplicate invoice is flagged");
   await assert.rejects(
     invoke("POST","",{action:"review",id:duplicate.id,decision:"approve",reason:"duplicate"}),
