@@ -7,6 +7,7 @@ on:
       - "cloudflare/worker.js"
       - "financial-api.js"
       - "financial-module.js"
+      - "tests/**"
       - "scripts/build-mobile.mjs"
       - "firebase-messaging-sw.js"
       - "index.html"
@@ -43,6 +44,8 @@ jobs:
           node --check financial-api.js
           node --check financial-module.js
           node --check scripts/build-mobile.mjs
+      - name: Run financial accounting tests
+        run: node --test tests/financial-api.test.mjs
       - name: Bundle Worker with Wrangler (dry run only)
         run: npx --yes wrangler@4 deploy --dry-run --outdir .wrangler-dry-run
       - name: Validate Firebase Messaging service worker syntax
