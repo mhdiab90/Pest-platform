@@ -106,6 +106,13 @@ test("Egyptian ETA invoice direction is determined by the company's tax registra
 
 test("financial workflow: bootstrap, double-entry review, invoice stock costing and duplicate protection", async () => {
   await invoke("GET","?resource=bootstrap");
+  write("vendors/VENDOR-001",{code:"VENDOR-001",name:"Supplier Test",taxRegistrationNumber:"329566725"});
+  write("clients/CUSTOMER-001",{code:"CUSTOMER-001",name:"Customer Test",taxRegistrationNumber:"200128086"});
+  assert.equal(read("taxCodes/VAT-IN-14").taxType,"vat_input","standard input VAT code is seeded");
+  assert.equal(read("taxCodes/VAT-OUT-14").taxType,"vat_output","standard output VAT code is seeded");
+  assert.equal(read("taxCodes/VAT-IN-05").rate,5,"special input VAT code is seeded separately");
+  assert.equal(read("taxCodes/VAT-OUT-05").rate,5,"special output VAT code is seeded separately");
+  assert.equal(read("taxCodes/VAT-OUT-00").rate,0,"zero-rated sales code is seeded separately");
   assert.ok(read("chartOfAccounts/281"),"default supplier control account is created");
   assert.ok(read("chartOfAccounts/1210"),"default customer control account is created");
   assert.equal(read("chartOfAccounts/65").isGroup,true,"maintenance expense group is created");
@@ -166,6 +173,20 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
   });
   assert.equal(customer.item.code,"CUSTOMER-MASTER-01");
   assert.equal(read("clients/CUSTOMER-MASTER-01").name,"Customer Master Test","new finance customers are also registered in the main CRM");
+  const supplierCreate = await invoke("POST","",{
+    action:"saveMaster",kind:"parties",
+    item:{code:"SUP-NEW-MASTER-01",name:"New Supplier Master Test",partyType:"vendor",phone:"01110000000",taxNumber:"589566777"}
+  });
+  assert.equal(supplierCreate.success,true);
+  assert.equal(supplierCreate.created,true);
+  assert.equal(read("vendors/SUP-NEW-MASTER-01").name,"New Supplier Master Test","supplier is added to the global supplier register");
+  assert.equal(read("parties/SUP-NEW-MASTER-01").taxRegistrationNumber,"589566777","supplier tax number is stored on the financial party master");
+  const supplierRetry=await invoke("POST","",{
+    action:"saveMaster",kind:"parties",
+    item:{code:"SUP-NEW-MASTER-01",name:"New Supplier Master Test",partyType:"vendor",taxNumber:"589566777"}
+  });
+  assert.equal(supplierRetry.success,true);
+  assert.equal(supplierRetry.linkedExisting,true,"retry returns a successful linked record rather than failing silently");
   const bootstrapAfterParty = await invoke("GET","?resource=bootstrap");
   assert.equal(bootstrapAfterParty.parties["CUSTOMER-MASTER-01"].partyType,"customer","finance picker bootstrap merges CRM clients and vendors");
 
@@ -189,12 +210,13 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
   });
   const purchase = await invoke("POST","",{
     action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-001",projectCode:"PRJ-1",
-    partyId:"VENDOR-001",partyName:"Supplier Test",currency:"EGP",taxRate:14,discount:10,
+    partyId:"VENDOR-001",partyName:"Supplier Test",currency:"EGP",taxCode:"VAT-IN-14",taxAmount:"",taxRate:14,discount:10,
     lines:[{description:"Test stock",kind:"stock",itemCode:"ITEM-001",quantity:2,unitPrice:50,discount:0,warehouseCode:"default"}]
   });
   assert.equal(purchase.status,"pending_review");
   assert.equal(purchase.totals.net,90,"invoice-level discount is allocated across lines");
   assert.equal(purchase.totals.tax,12.6);
+  assert.equal(read("documents/"+purchase.id).taxCode,"VAT-IN-14","input VAT code is retained on the purchase invoice");
   await invoke("POST","",{
     action:"saveMaster",kind:"bankAccounts",
     item:{code:"1120",name:"Main Test Bank",accountCode:"1120"}
@@ -270,11 +292,12 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
 
   const sale = await invoke("POST","",{
     action:"submitInvoice",type:"sales",date:"2026-11-18",number:"SAL-001",
-    partyId:"CUSTOMER-001",partyName:"Customer Test",currency:"EGP",taxRate:14,
+    partyId:"CUSTOMER-001",partyName:"Customer Test",currency:"EGP",taxCode:"VAT-OUT-14",taxAmount:"",taxRate:14,
     lines:[{description:"Test stock sale",kind:"stock",itemCode:"ITEM-001",quantity:1,unitPrice:200,discount:0,warehouseCode:"default"}]
   });
   const salePosted = await invoke("POST","",{action:"review",id:sale.id,decision:"approve",reason:"sale approval"});
   assert.equal(salePosted.status,"posted");
+  assert.equal(read("documents/"+sale.id).taxCode,"VAT-OUT-14","output VAT code is retained on the sales invoice");
   const saleStock = read("inventory/balances/default/ITEM-001");
   assert.equal(saleStock.quantity,1);
   assert.equal(saleStock.value,45);
@@ -345,3 +368,32 @@ test("supplier linking, delegated invoice completion, staff custody and advances
   await assert.rejects(invoke("POST","",{action:"review",id:excessRecovery.id,decision:"approve",reason:"must not over recover"}),/أكبر من رصيد السلفة/);
 });
 
+
+
+test("period report returns selected-period activity and cumulative balances separately", async () => {
+  write("settings/accountingStartMonth","2026-10");
+  write("periods/2026-10/entries/opening",{id:"OPENING",date:"2026-10-01",status:"posted",lines:[{accountCode:"1110",debit:1000,credit:0}]});
+  write("periods/2026-11/entries/november",{id:"NOV",date:"2026-11-10",status:"posted",lines:[{accountCode:"6100",debit:100,credit:0}]});
+  write("periods/2026-12/entries/december",{id:"DEC",date:"2026-12-10",status:"posted",lines:[{accountCode:"1110",debit:200,credit:0}]});
+  const report=await invoke("GET","?resource=periods&from=2026-11&to=2026-12");
+  assert.deepEqual(report.months,["2026-11","2026-12"]);
+  assert.deepEqual(Object.keys(report.entries),["2026-11","2026-12"]);
+  assert.deepEqual(Object.keys(report.balanceEntries),["2026-10","2026-11","2026-12"]);
+  assert.equal(report.accountingStartMonth,"2026-10");
+  assert.equal(report.balanceEntries["2026-10"].opening.lines[0].debit,1000);
+  assert.equal(report.entries["2026-11"].november.lines[0].debit,100);
+});
+
+test("foreign-currency posting is blocked until exchange rates and revaluation exist", async () => {
+  await assert.rejects(
+    invoke("POST","",{
+      action:"submitJournal",date:"2026-11-18",description:"USD manual journal",currency:"USD",
+      lines:[{accountCode:"6100",debit:100,credit:0},{accountCode:"1110",debit:0,credit:100}]
+    }),
+    /عملات/
+  );
+  await assert.rejects(
+    invoke("POST","",{action:"submitCash",movementType:"other_payment",date:"2026-11-18",amount:100,currency:"USD",cashAccountCode:"1110",offsetAccountCode:"6100",description:"USD cash payment"}),
+    /عملات/
+  );
+});
