@@ -59,10 +59,33 @@ test("CORS allows both supported app clients and rejects unrelated websites", ()
   assert.equal(isAllowedOrigin(""), false);
 });
 
+test("PDF page text is sent through invoice extraction and preserves suggested expense codes", async () => {
+  env.AI={run:async(_model,request)=>{
+    const prompt=request.messages[0].content.map(part=>part.text||"").join(" ");
+    assert.match(prompt,/page 2 of 3/i);
+    assert.match(prompt,/6503/);
+    return {response:JSON.stringify({type:"purchase",number:"PDF-001",items:[{description:"إصلاح تكييف",quantity:1,unitPrice:900,kind:"service",suggestedExpenseCode:"6503"}]})};
+  }};
+  const result=await invoke("POST","",{
+    action:"ocrText",text:"Invoice page text: supplier, HVAC maintenance, total 900",
+    pageNumber:2,totalPages:3,expenseAccounts:[{code:"6503",name:"صيانة الكهرباء والتكييف"}]
+  });
+  assert.equal(result.needsHumanReview,true);
+  assert.equal(result.pageNumber,2);
+  assert.equal(result.extracted.items[0].suggestedExpenseCode,"6503");
+  delete env.AI;
+});
+
 test("financial workflow: bootstrap, double-entry review, invoice stock costing and duplicate protection", async () => {
   await invoke("GET","?resource=bootstrap");
   assert.ok(read("chartOfAccounts/281"),"default supplier control account is created");
   assert.ok(read("chartOfAccounts/1210"),"default customer control account is created");
+  assert.equal(read("chartOfAccounts/65").isGroup,true,"maintenance expense group is created");
+  assert.equal(read("chartOfAccounts/6501").type,"expense","maintenance expense ledger account is created");
+  assert.equal(read("chartOfAccounts/6601").parentCode,"66","training account is nested under its expense group");
+  assert.equal(read("chartOfAccounts/6701").name,"مواد ومستلزمات النظافة","cleaning materials expense is seeded");
+  assert.equal(read("chartOfAccounts/6802").name,"مشروبات وقهوة وشاي ومياه","pantry beverages expense is seeded");
+  assert.equal(read("chartOfAccounts/6901").name,"أدوات كتابية وقرطاسية","stationery expense is seeded");
 
   const journalDraft = await invoke("POST","",{
     action:"submitJournal",
@@ -180,6 +203,31 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
   assert.ok(supplierLines.some(x=>x.credit===102.6),"supplier subledger records the full invoice total");
   const projectRows = Object.values(read("costLedger/CC-PRJ-1/2026-11") || {});
   assert.ok(projectRows.some(x=>x.debit===90&&x.projectCode==="PRJ-1"),"invoice expense/inventory line carries the project cost center");
+
+  const mixedPurchase = await invoke("POST","",{
+    action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-MIX-EXP-01",
+    partyId:"VENDOR-001",partyName:"Supplier Test",currency:"EGP",
+    lines:[
+      {description:"إصلاح وحدة تكييف",kind:"service",accountCode:"6503",quantity:1,unitPrice:1500},
+      {description:"دورة تدريب للعاملين",kind:"service",accountCode:"6601",quantity:2,unitPrice:500},
+      {description:"مستلزمات نظافة",kind:"service",accountCode:"6701",quantity:5,unitPrice:100}
+    ]
+  });
+  assert.equal(mixedPurchase.status,"pending_review","expense invoice is accepted without inventory item codes");
+  const expensePosted=await invoke("POST","",{action:"review",id:mixedPurchase.id,decision:"approve",reason:"expense invoice approval"});
+  assert.equal(expensePosted.status,"posted");
+  const expenseJournal=read("journals/"+expensePosted.journalId);
+  assert.ok(expenseJournal.lines.some(x=>x.accountCode==="6503"&&x.debit===1500),"maintenance line posts to maintenance expense");
+  assert.ok(expenseJournal.lines.some(x=>x.accountCode==="6601"&&x.debit===1000),"training line posts to training expense");
+  assert.ok(expenseJournal.lines.some(x=>x.accountCode==="6701"&&x.debit===500),"cleaning supplies post to cleaning expense");
+  assert.equal(read("inventory/balances/default/ITEM-001").quantity,2,"service/expense lines do not change inventory quantity");
+
+  const wrongExpenseAccount=await invoke("POST","",{
+    action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-WRONG-ACC-01",
+    partyId:"VENDOR-001",partyName:"Supplier Test",
+    lines:[{description:"Training",kind:"service",accountCode:"4100",quantity:1,unitPrice:100}]
+  });
+  assert.equal(wrongExpenseAccount.status,"needs_correction","purchase expenses cannot be posted to revenue accounts");
 
   const duplicate = await invoke("POST","",{
     action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-001",
