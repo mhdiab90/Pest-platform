@@ -2691,8 +2691,9 @@ export default {
           const adminRead = path => adminDatabaseRequest("financial/" + String(path || "").split("/").filter(Boolean).map(encodeURIComponent).join("/"), accessToken, "GET");
           const adminPatch = updates => adminDatabaseRequest("financial", accessToken, "PATCH", updates);
           const adminReadRoot = path => adminDatabaseRequest(path, accessToken, "GET");
+          const adminPutRoot = (path, value) => adminDatabaseRequest(path, accessToken, "PUT", value);
           const adminPatchRoot = updates => adminDatabaseRequest("", accessToken, "PATCH", updates);
-          const output = await handleFinancialRequest({request,url,body,claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch,adminReadRoot,adminPatchRoot,accessToken});
+          const output = await handleFinancialRequest({request,url,body,claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch,adminReadRoot,adminPutRoot,adminPatchRoot,accessToken});
           if(output&&output.pushNotification){
             const push=output.pushNotification;
             delete output.pushNotification;
