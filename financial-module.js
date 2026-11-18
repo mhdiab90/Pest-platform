@@ -170,13 +170,14 @@ function FinanceModule(props){
     try{const uploadResult=await upload(invoiceFile,result.id);const attachment=uploadResult.attachment||uploadResult;await api('', 'POST',{action:'addAttachment',documentId:result.id,attachment});}
     catch(e){attachmentError=e.message||String(e);}
    }
-   if(attachmentError)setError('تم حفظ بيانات الفاتورة، لكن تعذر رفع الصورة أو ربطها: '+attachmentError);
-   else setNotice(result.status==='pending_review'?'تم حفظ الفاتورة وإرسالها للمراجعة. سيتم إنشاء وترحيل القيد بعد الاعتماد.':('الفاتورة محفوظة وتحتاج تصحيح: '+(result.errors||[]).join('، ')));
+   if(result.status==='pending_review')setNotice('تم حفظ الفاتورة وإرسالها للمراجعة. سيتم إنشاء وترحيل القيد بعد الاعتماد.');
+   else setNotice('الفاتورة محفوظة وتحتاج تصحيح: '+(result.errors||[]).join('، '));
    if(result.status==='pending_review'){
     setInvoice({id:'',type:invoice.type,date:today(),number:'',partyId:'',partyName:'',currency:'EGP',taxRate:'',taxAmount:'',discount:'',projectCode:'',lines:[{description:'',kind:'stock',itemCode:'',quantity:'1',unit:'قطعة',unitPrice:'',discount:'',accountCode:'6100',incomeAccountCode:'4100',costCenterId:'',warehouseCode:'default'}]});
     setInvoiceFile(null);setInvoicePartySearch('');setOcrSuggestions({party:null,items:[]});
    }else setInvoice(o=>Object.assign({},o,{id:result.id}));
    await refresh();
+   if(attachmentError)setError('تم حفظ بيانات الفاتورة، لكن تعذر رفع الصورة أو ربطها: '+attachmentError);
   }catch(e){setError(e.message||String(e));}
   finally{setBusy(false);}
  };
@@ -265,6 +266,7 @@ function FinanceModule(props){
   chartOfAccounts:{label:'دليل الحسابات',kind:'chartOfAccounts',columns:['code','name','type','nature','parentCode','isGroup']},
   costCenters:{label:'مراكز التكلفة',kind:'costCenters',columns:['code','name','projectCode']},
   warehouses:{label:'المخازن',kind:'warehouses',columns:['code','name']},
+  bankAccounts:{label:'حسابات البنوك',kind:'bankAccounts',columns:['code','name','accountCode']},
   taxCodes:{label:'الأكواد الضريبية',kind:'taxCodes',columns:['code','name','taxType','rate','effectiveFrom']}
  };
  const downloadMasterTemplate=()=>{
@@ -291,6 +293,7 @@ function FinanceModule(props){
     groupCode:['groupcode','كود المجموعة','المجموعة'],
     version:['version','الإصدار','الاصدار'],
     warehouseCode:['warehousecode','كود المخزن','المخزن'],
+    accountCode:['accountcode','كود الحساب','الحساب المحاسبي'],
     type:['type','نوع الحساب','نوع'],
     nature:['nature','طبيعة الحساب','الطبيعة'],
     parentCode:['parentcode','الحساب الأب','الحساب الاب','كود الحساب الأب'],
@@ -525,12 +528,12 @@ function FinanceModule(props){
   select('نوع الحركة',cash.direction,v=>setCash(o=>Object.assign({},o,{direction:v,partyType:v==='in'?'customer':'vendor',partyAccountCode:v==='in'?'1210':'281',partyId:''})),[{value:'in',label:'تحصيل عميل'},{value:'out',label:'سداد مورد'}]),
   field('التاريخ',cash.date,v=>setCash(o=>Object.assign({},o,{date:v})),'date'),field('المبلغ',cash.amount,v=>setCash(o=>Object.assign({},o,{amount:v})),'number'),
   partyPicker('الطرف',cash.direction==='in'?allClients:allVendors,cash.partyId,p=>setCash(o=>Object.assign({},o,{partyId:p.code||p.id})),cashPartySearch,setCashPartySearch,cash.direction==='in'?'customer':'vendor'),
-  select('الخزينة أو البنك',cash.cashAccountCode,v=>setCash(o=>Object.assign({},o,{cashAccountCode:v})),[{value:'1110',label:'1110 — الخزينة'},{value:'1120',label:'1120 — البنوك'},...posting.filter(a=>a.code!=='1210'&&a.code!=='281'&&a.code!=='1300').map(a=>({value:a.code,label:a.code+' — '+a.name}))]),
+  selectWithAdd('الخزينة أو البنك',cash.cashAccountCode,v=>setCash(o=>Object.assign({},o,{cashAccountCode:v})),[{value:'1110',label:'1110 — الخزينة'},{value:'1120',label:'1120 — البنوك'},...posting.filter(a=>a.code!=='1210'&&a.code!=='281'&&a.code!=='1300').map(a=>({value:a.code,label:a.code+' — '+a.name}))],'chartOfAccounts',{type:'asset',nature:'debit',parentCode:'11'}),
   field('رقم مرجع / شيك',cash.reference,v=>setCash(o=>Object.assign({},o,{reference:v}))),area('البيان',cash.description,v=>setCash(o=>Object.assign({},o,{description:v}))),
   button('حفظ وإرسال للمراجعة',submitCash,'primary',busy)
  ));
  const renderBank=()=>panel('استيراد كشف حساب البنك','Excel أو CSV. المكررات تعرض للمراجع بدل ترحيلها تلقائيًا.',h('div',{className:'space-y-3'},
-  select('حساب البنك',bankAccount,v=>setBankAccount(v),[{value:'1120',label:'1120 — البنوك'},...rows(master.bankAccounts).map(x=>({value:x.accountCode||x.code,label:x.code+' — '+x.name}))]),
+  selectWithAdd('حساب البنك',bankAccount,v=>setBankAccount(v),[{value:'1120',label:'1120 — البنوك'},...rows(master.bankAccounts).map(x=>({value:x.accountCode||x.code,label:x.code+' — '+x.name}))],'bankAccounts',{accountCode:bankAccount}),
   h('label',{className:'block text-sm font-bold'},'ملف كشف الحساب',h('input',{type:'file',accept:'.xlsx,.xls,.csv',className:'block mt-1',onChange:e=>e.target.files&&e.target.files[0]&&parseBank(e.target.files[0])})),
   bankRows.length?table(['التاريخ','الوصف','المرجع','المبلغ','النوع'],bankRows.map((x,i)=>h('tr',{key:i},h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},x.description),h('td',{className:'p-2'},x.reference),h('td',{className:'p-2'},fmt(x.amount)),h('td',{className:'p-2'},x.direction==='in'?'وارد':'صادر')))):null,
   button('إرسال الحركات إلى المراجعة',sendBank,'primary',busy||!bankRows.length)
