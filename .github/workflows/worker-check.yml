@@ -10,15 +10,15 @@ on:
       - "scripts/build-mobile.mjs"
       - "firebase-messaging-sw.js"
       - "index.html"
-      - "financial-api.js"
-      - "financial-module.js"
-      - "scripts/build-mobile.mjs"
       - "wrangler.jsonc"
       - ".github/scripts/check-app-babel.mjs"
       - ".github/workflows/worker-check.yml"
   pull_request:
     paths:
       - "cloudflare/worker.js"
+      - "financial-api.js"
+      - "financial-module.js"
+      - "scripts/build-mobile.mjs"
       - "index.html"
       - "wrangler.jsonc"
       - ".github/scripts/check-app-babel.mjs"
@@ -38,7 +38,11 @@ jobs:
       - name: Install JSX parser
         run: npm install --no-save @babel/parser
       - name: Validate Worker JavaScript syntax
-        run: node --input-type=module --check < cloudflare/worker.js
+        run: |
+          node --input-type=module --check < cloudflare/worker.js
+          node --check financial-api.js
+          node --check financial-module.js
+          node --check scripts/build-mobile.mjs
       - name: Bundle Worker with Wrangler (dry run only)
         run: npx --yes wrangler@4 deploy --dry-run --outdir .wrangler-dry-run
       - name: Validate Firebase Messaging service worker syntax
