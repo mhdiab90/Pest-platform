@@ -97,9 +97,9 @@ export async function handleFinancialRequest(ctx){
   if(kind==="chartOfAccounts"){if(!["asset","liability","equity","revenue","expense"].includes(item.type)||!["debit","credit"].includes(item.nature))throw new Error("نوع أو طبيعة الحساب غير صحيحة");if(item.isGroup&&item.allowPosting)throw new Error("الحساب التجميعي لا يقبل الترحيل");if(item.parentCode){const p=await adminRead("chartOfAccounts/"+id(item.parentCode));if(!p||!p.isGroup)throw new Error("الحساب الأب يجب أن يكون مجموعة");}}if(kind==="items"&&item.groupCode){const group=await adminRead("itemGroups/"+id(item.groupCode));if(!group)throw new Error("مجموعة الصنف غير موجودة. أضف المجموعة أولاً.");}if(kind==="bankAccounts"){const account=await adminRead("chartOfAccounts/"+id(item.accountCode||code));if(!account||account.isGroup||account.active===false)throw new Error("اربط حساب البنك بحساب محاسبي نشط وقابل للترحيل في دليل الحسابات.");}
   if(kind==="parties"){
    if(!["customer","vendor"].includes(item.partyType))throw new Error("حدد نوع الطرف: عميل أو مورد.");
-   const root= item.partyType==="customer"?"clients":"vendors";
-   const current=adminReadRoot?await adminReadRoot(root+"/"+code):null;
-   if(current)throw new Error("كود الطرف موجود بالفعل في سجل العملاء أو الموردين.");
+   const currentCustomer=adminReadRoot?await adminReadRoot("clients/"+code):null;
+   const currentVendor=adminReadRoot?await adminReadRoot("vendors/"+code):null;
+   if(currentCustomer||currentVendor)throw new Error("كود الطرف موجود بالفعل في سجل العملاء أو الموردين.");
   }
   const saved={...item,code,name:txt(item.name,180),active:item.active!==false,createdAt:item.createdAt||now,createdBy:item.createdBy||claims.sub,updatedAt:now,updatedBy:claims.sub};
   const audit={action:"save_master",kind,code,uid:claims.sub,createdAt:now},u={};u[kind+"/"+code]=saved;u["audit/"+uid("AUD")]=audit;
@@ -120,11 +120,12 @@ export async function handleFinancialRequest(ctx){
   const partyRoot=kind==="parties"?(body.partyType==="customer"?"clients":body.partyType==="vendor"?"vendors":""):"";
   if(kind==="parties"&&!partyRoot)throw new Error("حدد هل ملف الأطراف للعملاء أم الموردين.");
   const legacy=partyRoot&&adminReadRoot?(await adminReadRoot(partyRoot))||{}:{};
+  const otherLegacy=partyRoot&&adminReadRoot?(await adminReadRoot(partyRoot==="clients"?"vendors":"clients"))||{}:{};
   let count=0;
   for(let i=0;i<sourceRows.length;i++){
    const row=sourceRows[i]||{},code=id(row.code),name=txt(row.name,180);
    if(!name)throw new Error("الصف "+(i+2)+": الاسم مطلوب.");
-   if(seen.has(code)||existing[code]||(legacy&&legacy[code]))throw new Error("الصف "+(i+2)+": الكود "+code+" موجود بالفعل أو مكرر في الملف.");
+   if(seen.has(code)||existing[code]||(legacy&&legacy[code])||(otherLegacy&&otherLegacy[code]))throw new Error("الصف "+(i+2)+": الكود "+code+" موجود بالفعل أو مكرر في سجل العملاء/الموردين أو الملف.");
    seen.add(code);
    if(kind==="chartOfAccounts"){
     if(!["asset","liability","equity","revenue","expense"].includes(row.type)||!["debit","credit"].includes(row.nature))throw new Error("الصف "+(i+2)+": نوع أو طبيعة الحساب غير صحيحة.");
@@ -182,7 +183,7 @@ export async function handleFinancialRequest(ctx){
   const documentId=id(body.documentId),document=await adminRead("documents/"+documentId),attachment=body.attachment||{},attachmentId=id(attachment.id);
   if(!document)throw new Error("الفاتورة أو المستند غير موجود.");
   if(document.createdBy!==claims.sub&&profile.role!=="admin"&&!hasPermission(profile,"financial","edit"))throw new Error("ليس لديك صلاحية ربط المرفقات بهذا المستند.");
-  const metadata={id:attachmentId,fileName:txt(attachment.fileName||attachment.name,240),mimeType:txt(attachment.mimeType||attachment.contentType,120),size:num(attachment.size||0),createdAt:now,uploadedBy:claims.sub};
+  const metadata={id:attachmentId,fileName:txt(attachment.fileName||attachment.name,240),mimeType:txt(attachment.mimeType||attachment.contentType,120),size:num(attachment.size||attachment.fileSize||0),createdAt:now,uploadedBy:claims.sub};
   const updates={};updates["documents/"+documentId+"/attachments/"+attachmentId]=metadata;updates["audit/"+uid("AUD")]={action:"attach_financial_document",documentId,attachmentId,uid:claims.sub,createdAt:now};
   await adminPatch(updates);return {success:true,attachment:metadata};
  }
