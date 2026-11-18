@@ -295,10 +295,10 @@ export function isAllowedOrigin(origin) {
   if (origin === ALLOWED_ORIGIN ||
       origin === "https://pest-platform.netlify.app" ||
       origin === "https://pest-platform.ai-mhdiab90.workers.dev") return true;
-  if (/^deploy-preview-\\d+--pest-platform\\.netlify\\.app$/.test(host)) return true;
+  if (/^deploy-preview-\d+--pest-platform\.netlify\.app$/.test(host)) return true;
   // The named production Worker and this account's generated Preview Worker
   // hosts are both first-party application origins.
-  return /^(?:[a-z0-9-]+-)?pest-platform\\.ai-mhdiab90\\.workers\\.dev$/.test(host);
+  return /^(?:[a-z0-9-]+-)?pest-platform\.ai-mhdiab90\.workers\.dev$/.test(host);
 }
 
 function fcmBase64Url(bytes) {
