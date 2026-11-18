@@ -20,8 +20,12 @@ function extractEtaInvoiceParties(value) {
 }
 
 const DEFAULT_VAT_CODES = [
- {code:"VAT-IN-14",name:"ضريبة قيمة مضافة مدخلات 14%",taxType:"vat_input",rate:14,effectiveFrom:"2017-07-01",etaTaxType:"T1"},
- {code:"VAT-OUT-14",name:"ضريبة قيمة مضافة مخرجات 14%",taxType:"vat_output",rate:14,effectiveFrom:"2017-07-01",etaTaxType:"T1"}
+ {code:"VAT-IN-14",name:"ضريبة قيمة مضافة مدخلات — السعر العام 14%",taxType:"vat_input",rate:14,effectiveFrom:"2017-07-01",etaTaxType:"T1"},
+ {code:"VAT-OUT-14",name:"ضريبة قيمة مضافة مخرجات — السعر العام 14%",taxType:"vat_output",rate:14,effectiveFrom:"2017-07-01",etaTaxType:"T1"},
+ {code:"VAT-IN-05",name:"ضريبة مدخلات — سعر خاص 5% (للحالات القانونية فقط)",taxType:"vat_input",rate:5,effectiveFrom:"2026-07-29",etaTaxType:"T1"},
+ {code:"VAT-OUT-05",name:"ضريبة مخرجات — سعر خاص 5% (للحالات القانونية فقط)",taxType:"vat_output",rate:5,effectiveFrom:"2026-07-29",etaTaxType:"T1"},
+ {code:"VAT-IN-00",name:"ضريبة مدخلات — صفرية 0%",taxType:"vat_input",rate:0,effectiveFrom:"2017-07-01",etaTaxType:"T1"},
+ {code:"VAT-OUT-00",name:"ضريبة مخرجات — صفرية 0%",taxType:"vat_output",rate:0,effectiveFrom:"2017-07-01",etaTaxType:"T1"}
 ];
 
 const DEFAULT_STAFF_ACCOUNTS = [
@@ -187,6 +191,8 @@ export async function handleFinancialRequest(ctx){
     const currentTaxCodes=(await adminRead("taxCodes"))||{},taxUpdates={};
     for(const taxCode of DEFAULT_VAT_CODES){if(!currentTaxCodes[taxCode.code])taxUpdates["taxCodes/"+taxCode.code]={...taxCode,active:true,createdAt:Date.now(),createdBy:claims.sub};}
     if(Object.keys(taxUpdates).length)await adminPatch(taxUpdates);
+    const accountingStartMonth=await adminRead("settings/accountingStartMonth");
+    if(!accountingStartMonth)await adminPatch({"settings/accountingStartMonth":new Date().toISOString().slice(0,7)});
    }
    const out={chartOfAccounts:chart};for(const k of ["costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","settings"])out[k]=(await adminRead(k))||{};
    const parties=(await adminRead("parties"))||{};
@@ -200,7 +206,24 @@ export async function handleFinancialRequest(ctx){
   }
   if(res==="review"||res==="journals"||res==="documents"||res==="inventory"||res==="tax"||res==="audit")return {items:(await adminRead(res==="review"?"reviewQueue":res))||{}};
   if(res==="bank")return {items:(await adminRead("bankImports"))||{},accounts:(await adminRead("bankAccounts"))||{}};
-  if(res==="periods"){const from=txt(url.searchParams.get("from")||new Date().toISOString().slice(0,7),7),to=txt(url.searchParams.get("to")||from,7);if(!/^\d{4}-\d{2}$/.test(from)||!/^\d{4}-\d{2}$/.test(to))throw new Error("Invalid financial period.");const a=new Date(from+"-01T00:00:00Z"),b=new Date(to+"-01T00:00:00Z"),diff=(b.getUTCFullYear()-a.getUTCFullYear())*12+b.getUTCMonth()-a.getUTCMonth();if(diff<0||diff>24)throw new Error("Report period must not exceed 24 months.");const months=[],entries={};for(let i=0;i<=diff;i++){const d=new Date(Date.UTC(a.getUTCFullYear(),a.getUTCMonth()+i,1)),m=d.toISOString().slice(0,7);months.push(m);entries[m]=(await adminRead("periods/"+m+"/entries"))||{};}return {months,entries};}
+  if(res==="periods"){
+   const from=txt(url.searchParams.get("from")||new Date().toISOString().slice(0,7),7),to=txt(url.searchParams.get("to")||from,7);
+   if(!/^\d{4}-\d{2}$/.test(from)||!/^\d{4}-\d{2}$/.test(to))throw new Error("Invalid financial period.");
+   const configuredStart=await adminRead("settings/accountingStartMonth"),balanceFrom=String(configuredStart||from);
+   if(!/^\d{4}-\d{2}$/.test(balanceFrom))throw new Error("تاريخ بداية الدفاتر المحاسبية غير مضبوط. راجع إعدادات النظام المالي.");
+   const startDate=new Date(balanceFrom+"-01T00:00:00Z"),fromDate=new Date(from+"-01T00:00:00Z"),toDate=new Date(to+"-01T00:00:00Z");
+   const diff=(toDate.getUTCFullYear()-startDate.getUTCFullYear())*12+toDate.getUTCMonth()-startDate.getUTCMonth();
+   const periodDiff=(toDate.getUTCFullYear()-fromDate.getUTCFullYear())*12+toDate.getUTCMonth()-fromDate.getUTCMonth();
+   if(diff<0||periodDiff<0||diff>120||periodDiff>24)throw new Error("مدى التقرير غير صحيح. الحد الأقصى 24 شهرًا لحركة الفترة و120 شهرًا للأرصدة التراكمية.");
+   const months=[],entries={},balanceEntries={};
+   for(let i=0;i<=diff;i++){
+    const d=new Date(Date.UTC(startDate.getUTCFullYear(),startDate.getUTCMonth()+i,1)),m=d.toISOString().slice(0,7);
+    const monthly=(await adminRead("periods/"+m+"/entries"))||{};
+    balanceEntries[m]=monthly;
+    if(m>=from&&m<=to){months.push(m);entries[m]=monthly;}
+   }
+   return {months,entries,balanceEntries,accountingStartMonth:balanceFrom};
+  }
   if(res==="party"){
    const requested=txt(url.searchParams.get("type")||"customer",32);
    const allowed=["customer","vendor","employeeCustody","employeeAdvance"];
@@ -349,6 +372,7 @@ export async function handleFinancialRequest(ctx){
  }
  if(action==="submitJournal"){
   requirePermission(profile,"financial","add");const j={id:id(body.id||uid("DOC")),type:"journal",date:date(body.date),description:txt(body.description,500),reference:txt(body.reference,120),currency:txt(body.currency||"EGP",3),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120)};
+  if(j.currency!=="EGP")throw new Error("القيود متعددة العملات وأسعار الصرف غير مفعّلة بعد. استخدم الجنيه المصري حتى لا تختلط أرصدة العملات في القوائم.");
   if(body.id){
    const previous=await adminRead("documents/"+j.id);
    if(previous&&(!["needs_correction","draft","returned_to_creator"].includes(previous.status)||previous.createdBy!==claims.sub))throw new Error("لا يمكن تعديل هذا القيد بعد إرساله أو اعتماده.");
@@ -461,6 +485,8 @@ export async function handleFinancialRequest(ctx){
    if(!taxCode||taxCode.taxType!==expectedTaxType)errors.push("كود ضريبة القيمة المضافة لا يتوافق مع نوع الفاتورة.");
    else{inv.taxCode=taxCode.code||body.taxCode;inv.taxType=taxCode.taxType;inv.taxRate=num(taxCode.rate||0);}
   }
+  if((inv.currency||"EGP")!=="EGP")errors.push("لا يمكن ترحيل فاتورة بعملة أجنبية قبل تفعيل أسعار الصرف وإعادة تقييم أرصدة العملات. اختر الجنيه المصري أو اترك المستند مسودة.");
+  inv.currency="EGP";
   if(!inv.partyId)errors.push("اختيار العميل أو المورد مطلوب");if(!inv.number)errors.push("رقم الفاتورة مطلوب");if(!inv.lines.length)errors.push("أضف بندًا واحدًا على الأقل");
   const invoiceChart=(await adminRead("chartOfAccounts"))||{};
   inv.lines.forEach((l,i)=>{
@@ -497,6 +523,7 @@ export async function handleFinancialRequest(ctx){
   if(!movementTypes.includes(movementType))throw new Error("حدد نوع حركة الخزينة.");
   const doc={...body,id:id(body.id||uid("CASH")),type:"cash",movementType,date:date(body.date),amount:num(body.amount),description:txt(body.description,500),reference:txt(body.reference||"",120),cashAccountCode:txt(body.cashAccountCode||"1110",32),createdAt:now,createdBy:claims.sub,status:"pending_review"};
   if(!doc.amount)throw new Error("أدخل مبلغًا صحيحًا.");
+  if(doc.currency!=="EGP")throw new Error("القيود متعددة العملات وأسعار الصرف غير مفعّلة بعد. سجّل الحركة بالجنيه المصري حتى لا تختلط أرصدة العملات في القوائم المالية.");
   const chart=(await adminRead("chartOfAccounts"))||{};
   const requirePosting=(code,expected)=>{const account=chart[code];if(!account||account.isGroup||account.active===false||account.type!==expected)throw new Error("الحساب "+code+" غير صالح لهذه الحركة.");return account;};
   requirePosting(doc.cashAccountCode,"asset");
