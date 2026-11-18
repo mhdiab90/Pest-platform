@@ -114,6 +114,8 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
   assert.equal(read("taxCodes/VAT-OUT-05").rate,5,"special output VAT code is seeded separately");
   assert.equal(read("taxCodes/VAT-OUT-00").rate,0,"zero-rated sales code is seeded separately");
   assert.ok(read("chartOfAccounts/281"),"default supplier control account is created");
+  assert.equal(read("chartOfAccounts/1240").subledgerType,"vendor","supplier advances have a separate asset control account");
+  assert.equal(read("chartOfAccounts/2130").subledgerType,"customer","customer advances have a separate liability control account");
   assert.ok(read("chartOfAccounts/1210"),"default customer control account is created");
   assert.equal(read("chartOfAccounts/65").isGroup,true,"maintenance expense group is created");
   assert.equal(read("chartOfAccounts/6501").type,"expense","maintenance expense ledger account is created");
@@ -251,6 +253,13 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
   assert.equal(purchaseStock.averageCost,45);
   const supplierLines = Object.values(read("partyLedger/vendor/VENDOR-001/2026-11") || {});
   assert.ok(supplierLines.some(x=>x.credit===102.6),"supplier subledger records the full invoice total");
+  const supplierPayment=await invoke("POST","",{action:"submitCash",movementType:"supplier_payment",date:"2026-11-18",amount:150,currency:"EGP",partyId:"VENDOR-001",partyName:"Supplier Test",cashAccountCode:"1110",description:"Supplier payment and advance"});
+  const supplierPaymentPosted=await invoke("POST","",{action:"review",id:supplierPayment.id,decision:"approve",reason:"test supplier settlement"});
+  assert.equal(supplierPaymentPosted.status,"posted");
+  const supplierPaymentJournal=read("journals/"+supplierPaymentPosted.journalId);
+  assert.ok(supplierPaymentJournal.lines.some(x=>x.accountCode==="281"&&x.debit===102.6&&x.partyId==="VENDOR-001"),"supplier payment settles only open payable");
+  assert.ok(supplierPaymentJournal.lines.some(x=>x.accountCode==="1240"&&x.debit===47.4&&x.partyId==="VENDOR-001"),"supplier overpayment is recognized as a supplier advance asset");
+
   const projectRows = Object.values(read("costLedger/CC-PRJ-1/2026-11") || {});
   assert.ok(projectRows.some(x=>x.debit===90&&x.projectCode==="PRJ-1"),"invoice expense/inventory line carries the project cost center");
 
@@ -271,6 +280,8 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
   assert.ok(expenseJournal.lines.some(x=>x.accountCode==="6601"&&x.debit===1000),"training line posts to training expense");
   assert.ok(expenseJournal.lines.some(x=>x.accountCode==="6701"&&x.debit===500),"cleaning supplies post to cleaning expense");
   assert.equal(read("inventory/balances/default/ITEM-001").quantity,2,"service/expense lines do not change inventory quantity");
+  assert.ok(expenseJournal.lines.some(x=>x.accountCode==="1240"&&x.credit===47.4&&x.partyId==="VENDOR-001"),"new supplier invoice automatically applies the outstanding supplier advance");
+  assert.ok(expenseJournal.lines.some(x=>x.accountCode==="281"&&x.debit===47.4&&x.partyId==="VENDOR-001"),"supplier advance clearing reduces accounts payable");
 
   const wrongExpenseAccount=await invoke("POST","",{
     action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-WRONG-ACC-01",
@@ -304,6 +315,20 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
   const saleJournal = read("journals/"+salePosted.journalId);
   assert.ok(saleJournal.lines.some(x=>x.accountCode==="5100"&&x.debit===45),"sale posts cost of goods sold");
   assert.ok(saleJournal.lines.some(x=>x.accountCode==="1300"&&x.credit===45),"sale credits inventory");
+  const customerReceipt=await invoke("POST","",{action:"submitCash",movementType:"customer_receipt",date:"2026-11-18",amount:250,currency:"EGP",partyId:"CUSTOMER-001",partyName:"Customer Test",cashAccountCode:"1110",description:"Customer receipt with advance"});
+  const customerReceiptPosted=await invoke("POST","",{action:"review",id:customerReceipt.id,decision:"approve",reason:"test customer settlement"});
+  assert.equal(customerReceiptPosted.status,"posted");
+  const customerReceiptJournal=read("journals/"+customerReceiptPosted.journalId);
+  assert.ok(customerReceiptJournal.lines.some(x=>x.accountCode==="1210"&&x.credit===228&&x.partyId==="CUSTOMER-001"),"customer receipt settles the existing receivable");
+  assert.ok(customerReceiptJournal.lines.some(x=>x.accountCode==="2130"&&x.credit===22&&x.partyId==="CUSTOMER-001"),"customer overpayment is recognized as a customer advance liability");
+
+  const followingSale=await invoke("POST","",{action:"submitInvoice",type:"sales",date:"2026-11-18",number:"SAL-ADV-APPLY-01",partyId:"CUSTOMER-001",partyName:"Customer Test",currency:"EGP",taxRate:0,lines:[{description:"Service following customer advance",kind:"service",incomeAccountCode:"4200",quantity:1,unitPrice:100}]});
+  const followingSalePosted=await invoke("POST","",{action:"review",id:followingSale.id,decision:"approve",reason:"apply customer advance"});
+  assert.equal(followingSalePosted.status,"posted");
+  const followingSaleJournal=read("journals/"+followingSalePosted.journalId);
+  assert.ok(followingSaleJournal.lines.some(x=>x.accountCode==="2130"&&x.debit===22&&x.partyId==="CUSTOMER-001"),"new sale automatically applies the available customer advance");
+  assert.ok(followingSaleJournal.lines.some(x=>x.accountCode==="1210"&&x.credit===22&&x.partyId==="CUSTOMER-001"),"customer advance application reduces the new receivable");
+
 });
 
 test("supplier linking, delegated invoice completion, staff custody and advances", async () => {
