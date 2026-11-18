@@ -234,6 +234,10 @@
     "pushDispatches": {
       ".read": false,
       ".write": false
+    },
+    "financial": {
+      ".read": false,
+      ".write": false
     }
   }
 }
