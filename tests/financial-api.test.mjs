@@ -419,6 +419,28 @@ test("review inbox exposes newly submitted invoice details and removes invalid r
   assert.equal(read("documents/"+submitted.id+"/attachmentUploadStatus"),"pending");
 });
 
+test("review queue repair restores orphan pending documents and removes stale entries without changing documents", async () => {
+  const orphanId="REVIEW-REPAIR-ORPHAN-20261118";
+  const correctedId="REVIEW-REPAIR-CORRECTED-20261118";
+  const staleId="REVIEW-REPAIR-MISSING-20261118";
+  write("documents/"+orphanId,{id:orphanId,type:"invoice",invoiceType:"purchase",number:"ORPHAN-INV-01",date:"2026-11-18",partyName:"Repair Supplier",total:114,status:"pending_review",createdAt:100,createdBy:"test-admin"});
+  write("documents/"+correctedId,{id:correctedId,type:"invoice",number:"CORRECTED-INV-01",status:"needs_correction",errors:["رقم الفاتورة مطلوب"],createdAt:101,createdBy:"test-admin"});
+  write("reviewQueue/"+correctedId,{id:correctedId,type:"invoice",status:"pending_review",number:"CORRECTED-INV-01"});
+  write("reviewQueue/"+staleId,{id:staleId,type:"cash",status:"pending_review"});
+  const before=await invoke("GET","?resource=review");
+  assert.equal(before.items[orphanId],undefined,"ordinary queue reads do not scan all documents for repair");
+  const repaired=await invoke("GET","?resource=review&repair=1");
+  assert.equal(repaired.items[orphanId].status,"pending_review","the missing queue row is restored from the authoritative document");
+  assert.equal(repaired.items[orphanId].number,"ORPHAN-INV-01");
+  assert.deepEqual(repaired.reconciliation,{restored:1,removed:2});
+  assert.equal(read("reviewQueue/"+orphanId).total,114);
+  assert.equal(read("reviewQueue/"+correctedId),null,"a document that needs correction is not left in the approval queue");
+  assert.equal(read("reviewQueue/"+staleId),null,"a queue row with no source document is removed");
+  assert.equal(read("documents/"+orphanId).status,"pending_review","repair does not alter source document status");
+  assert.equal(read("documents/"+correctedId).status,"needs_correction","repair never changes invoice status or accounting values");
+  assert.ok(Object.values(read("audit")||{}).some(entry=>entry.action==="reconcile_review_queue"&&entry.restored===1&&entry.removed===2),"the reconciliation is auditable");
+});
+
 test("invoice remains in review when its Drive attachment upload is pending", async () => {
   await invoke("GET","?resource=bootstrap");
   write("vendors/VENDOR-ATTACH-01",{code:"VENDOR-ATTACH-01",name:"Attachment Supplier",partyType:"vendor"});
@@ -474,8 +496,19 @@ test("supplier linking, delegated invoice completion, staff custody and advances
     {description:"Stationery supplies",kind:"stock",itemCode:"",quantity:1,unitPrice:300,accountCode:"6901"}
   ]});
   assert.equal(draft.status,"draft");
+  write("documents/"+draft.id+"/attachments/ATT-ASSIGN-01",{id:"ATT-ASSIGN-01",fileName:"delegated-invoice.pdf",mimeType:"application/pdf",size:2048});
+  await invoke("POST","",{action:"setAttachmentUploadStatus",documentId:draft.id,status:"pending",fileName:"delegated-invoice.pdf",error:"Drive unavailable"});
+  const savedAgain=await invoke("POST","",{action:"saveInvoiceDraft",id:draft.id,type:"purchase",date:"2026-11-18",number:"ASSIGN-001",partyId:"VENDOR-LEGACY",partyName:"Legacy Supplier",lines:[
+    {description:"Stationery supplies",kind:"stock",itemCode:"",quantity:1,unitPrice:300,accountCode:"6901"}
+  ]});
+  assert.equal(savedAgain.status,"draft");
+  assert.equal(read("documents/"+draft.id+"/attachments/ATT-ASSIGN-01").fileName,"delegated-invoice.pdf","saving a draft preserves previously uploaded attachments");
+  assert.equal(read("documents/"+draft.id).attachmentUploadStatus,"pending","saving a draft preserves an attachment upload that still needs retry");
   const assigned=await invoke("POST","",{action:"assignInvoice",invoiceId:draft.id,assigneeUid:"EMPLOYEE-01",instruction:"صنّف البند كمستلزمات مكتبية واربط حسابه الصحيح"});
   assert.equal(assigned.status,"assigned");
+  assert.equal(read("reviewQueue/"+draft.id),null,"assigning an invoice removes it from the review queue");
+  assert.equal(read("documents/"+draft.id+"/attachments/ATT-ASSIGN-01").fileName,"delegated-invoice.pdf","assignment preserves invoice attachments");
+  assert.equal(read("documents/"+draft.id).attachmentUploadStatus,"pending","assignment preserves a pending attachment retry");
   assert.equal(read("tasks/EMPLOYEE-01/"+assigned.taskId).kind,"financialAssignment");
   assert.equal(read("cashCustodyNotifications/EMPLOYEE-01/"+assigned.assignmentId).type,"financialAssignment");
 
@@ -488,6 +521,9 @@ test("supplier linking, delegated invoice completion, staff custody and advances
   ]});
   assert.equal(completed.status,"returned_to_creator");
   assert.equal(read("documents/"+draft.id).status,"returned_to_creator");
+  assert.equal(read("reviewQueue/"+draft.id),null,"returning an assigned invoice to its creator does not leave a stale review row");
+  assert.equal(read("documents/"+draft.id+"/attachments/ATT-ASSIGN-01").fileName,"delegated-invoice.pdf","completion preserves the scanned invoice attachment");
+  assert.equal(read("documents/"+draft.id).attachmentUploadStatus,"pending","completion preserves the attachment retry state");
   assert.equal(read("cashCustodyNotifications/"+previousUid+"/"+read("documents/"+draft.id).returnedTaskId).type,"financialAssignmentReturned");
   assert.equal(read("tasks/EMPLOYEE-01/"+assigned.taskId+"/status"),"completed");
 
@@ -496,6 +532,9 @@ test("supplier linking, delegated invoice completion, staff custody and advances
     {description:"Stationery supplies",kind:"service",accountCode:"6901",quantity:1,unitPrice:300}
   ]});
   assert.equal(resubmitted.status,"pending_review","creator can submit a returned delegated invoice");
+  assert.ok(read("reviewQueue/"+draft.id),"resubmitted delegated invoice returns to the review queue");
+  assert.equal(read("documents/"+draft.id+"/attachments/ATT-ASSIGN-01").fileName,"delegated-invoice.pdf","resubmission preserves the original scanned invoice");
+  assert.equal(read("documents/"+draft.id).attachmentUploadStatus,"pending","resubmission preserves the pending attachment retry");
   assert.equal(read("tasks/test-admin/"+read("documents/"+draft.id).returnedTaskId+"/status"),"completed");
 
   const custody=await invoke("POST","",{action:"submitCash",movementType:"employee_custody",date:"2026-11-18",amount:500,currency:"EGP",description:"Employee cash custody",employeeUid:"EMPLOYEE-01",cashAccountCode:"1110"});
