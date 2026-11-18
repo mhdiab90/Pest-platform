@@ -1045,9 +1045,26 @@ function FinanceModule(props){
   h('tr',{key:'operating-expenses',className:'font-bold'},h('td',{className:'p-2'},'إجمالي المصروفات الأخرى'),h('td',{className:'p-2'},fmt(operatingExpenses))),
   h('tr',{key:'net',className:'font-bold bg-slate-50'},h('td',{className:'p-2'},'صافي الربح / الخسارة'),h('td',{className:'p-2'},fmt(profit)))
  ];
- const renderReports=()=>panel('القوائم والتقارير المالية','ميزان المراجعة والمركز المالي تراكميان حتى نهاية الفترة من بداية الدفاتر، وقائمة الدخل والتدفقات لحركة الفترة المختارة. يلزم قيد افتتاحي للأرصدة السابقة.',h('div',{className:'space-y-3'},
+  const trialBalanceRows=balanceTrial.map(function(x){
+  return h('tr',{key:x.account.code},
+   h('td',{className:'p-2'},x.account.code),
+   h('td',{className:'p-2'},x.account.name),
+   h('td',{className:'p-2'},fmt(x.opening.debit)),
+   h('td',{className:'p-2'},fmt(x.opening.credit)),
+   h('td',{className:'p-2'},fmt(x.activity.debit)),
+   h('td',{className:'p-2'},fmt(x.activity.credit)),
+   h('td',{className:'p-2 font-bold'},fmt(x.ending.debit)),
+   h('td',{className:'p-2 font-bold'},fmt(x.ending.credit))
+  );
+ });
+ const trialBalanceTotals=h('div',{className:'flex flex-wrap justify-end gap-4 text-sm font-bold border rounded-lg p-3'},
+  h('span',null,'إجمالي الختامي المدين: '+fmt(balanceTrial.reduce((sum,x)=>sum+x.ending.debit,0))),
+  h('span',null,'إجمالي الختامي الدائن: '+fmt(balanceTrial.reduce((sum,x)=>sum+x.ending.credit,0))),
+  h('span',null,'الفرق: '+fmt(balanceTrial.reduce((sum,x)=>sum+x.ending.debit-x.ending.credit,0)))
+ );
+const renderReports=()=>panel('القوائم والتقارير المالية','ميزان المراجعة والمركز المالي تراكميان حتى نهاية الفترة من بداية الدفاتر، وقائمة الدخل والتدفقات لحركة الفترة المختارة. يلزم قيد افتتاحي للأرصدة السابقة.',h('div',{className:'space-y-3'},
   h('div',{className:'grid md:grid-cols-4 gap-3'},field('من شهر',period.from,v=>setPeriod(o=>Object.assign({},o,{from:v})),'month'),field('إلى شهر',period.to,v=>setPeriod(o=>Object.assign({},o,{to:v})),'month'),select('التقرير',report,v=>setReport(v),[{value:'trial',label:'ميزان المراجعة'},{value:'income',label:'قائمة الدخل'},{value:'balance',label:'المركز المالي'},{value:'cashflow',label:'قائمة التدفقات النقدية (مبسطة)'},{value:'ledger',label:'دفتر الأستاذ'}]),button('تحديث',loadPeriod,'primary')),
-  report==='trial'?h('div',{className:'space-y-2'},table(['الحساب','الاسم','افتتاحي مدين','افتتاحي دائن','حركة مدين','حركة دائن','ختامي مدين','ختامي دائن'],balanceTrial.map(x=>h('tr',{key:x.account.code},h('td',{className:'p-2'},x.account.code),h('td',{className:'p-2'},x.account.name),h('td',{className:'p-2'},fmt(x.opening.debit)),h('td',{className:'p-2'},fmt(x.opening.credit)),h('td',{className:'p-2'},fmt(x.activity.debit)),h('td',{className:'p-2'},fmt(x.activity.credit)),h('td',{className:'p-2 font-bold'},fmt(x.ending.debit)),h('td',{className:'p-2 font-bold'},fmt(x.ending.credit)))),h('div',{className:'flex flex-wrap justify-end gap-4 text-sm font-bold border rounded-lg p-3'},h('span',null,'إجمالي الختامي المدين: '+fmt(balanceTrial.reduce((s,x)=>s+x.ending.debit,0))),h('span',null,'إجمالي الختامي الدائن: '+fmt(balanceTrial.reduce((s,x)=>s+x.ending.credit,0))))):null,
+  report==='trial'?h('div',{className:'space-y-2'},table(['الحساب','الاسم','افتتاحي مدين','افتتاحي دائن','حركة مدين','حركة دائن','ختامي مدين','ختامي دائن'],trialBalanceRows),trialBalanceTotals):null,
   report==='income'?panel('قائمة الدخل','تعرض الإيرادات وتكلفة المبيعات ومجمل الربح ومصروفات الفترة المختارة.',table(['البند','القيمة'],incomeStatementRows)):null,
   report==='balance'?h('div',{className:'space-y-2'},table(['البند','القيمة'],[['إجمالي الأصول',assets],['إجمالي الالتزامات',liabilities],['حقوق الملكية قبل نتيجة الأرباح',equity-accumulatedProfit],['الأرباح المتراكمة منذ بداية الدفاتر',accumulatedProfit],['إجمالي حقوق الملكية',equity],['إجمالي الالتزامات وحقوق الملكية',liabilities+equity],['فرق التوازن (يجب أن يساوي صفرًا)',assets-liabilities-equity]].map((x,i)=>h('tr',{key:i,className:i===6?'font-bold':''},h('td',{className:'p-2'},x[0]),h('td',{className:'p-2'},fmt(x[1]))))),h('p',{className:'text-xs text-slate-500'},'المركز المالي يعرض الأرصدة المتراكمة منذ بداية الدفاتر المحاسبية '+(accountingStartMonth||'')+' وحتى '+period.to+'. يجب إدخال قيد افتتاحي معتمد للأرصدة السابقة لبداية الدفاتر.')):null,
   report==='cashflow'?h('div',{className:'space-y-3'},panel('قائمة التدفقات النقدية المبسطة','تستند إلى الحركات النقدية والبنكية المرحلة بالفترة المحددة. التحويلات بين النقدية والبنوك مستبعدة لتجنب ازدواج احتسابها.',table(['النشاط','تدفقات داخلة','تدفقات خارجة','صافي التدفق'],[
