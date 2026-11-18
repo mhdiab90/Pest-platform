@@ -16,6 +16,7 @@ on:
       - "package.json"
       - "package-lock.json"
       - "wrangler.jsonc"
+      - ".github/workflows/build-web-assets.yml"
 
 permissions:
   contents: write
