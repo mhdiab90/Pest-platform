@@ -75,11 +75,15 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
   assert.equal(read("reviewQueue/"+unbalanced.id),null,"invalid draft is not placed in approval queue");
 
   await invoke("POST","",{
+    action:"saveMaster",kind:"costCenters",
+    item:{code:"CC-PRJ-1",name:"Project 1 cost center",projectCode:"PRJ-1"}
+  });
+  await invoke("POST","",{
     action:"saveMaster",kind:"items",
     item:{code:"ITEM-001",name:"Test stock item",unit:"piece",groupCode:"GROUP-1",version:"V1",warehouseCode:"default"}
   });
   const purchase = await invoke("POST","",{
-    action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-001",
+    action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-001",projectCode:"PRJ-1",
     partyId:"VENDOR-001",partyName:"Supplier Test",currency:"EGP",taxRate:14,discount:10,
     lines:[{description:"Test stock",kind:"stock",itemCode:"ITEM-001",quantity:2,unitPrice:50,discount:0,warehouseCode:"default"}]
   });
@@ -96,6 +100,8 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
   assert.equal(purchaseStock.averageCost,45);
   const supplierLines = Object.values(read("partyLedger/vendor/VENDOR-001/2026-11") || {});
   assert.ok(supplierLines.some(x=>x.credit===102.6),"supplier subledger records the full invoice total");
+  const projectRows = Object.values(read("costLedger/CC-PRJ-1/2026-11") || {});
+  assert.ok(projectRows.some(x=>x.debit===90&&x.projectCode==="PRJ-1"),"invoice expense/inventory line carries the project cost center");
 
   const duplicate = await invoke("POST","",{
     action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-001",
