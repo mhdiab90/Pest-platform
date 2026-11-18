@@ -541,6 +541,12 @@ export async function handleFinancialRequest(ctx){
     const employeeName=txt(employee.fullName||employee.username||employee.email||employeeUid,120),custody=movement.startsWith("employee_custody"),accountCode=custody?"1220":"1230",partyType=custody?"employeeCustody":"employeeAdvance";
     validate(accountCode,"asset");
     const incoming=["employee_custody_return","employee_advance_recovery"].includes(movement);
+    if(incoming){
+     const ledger=(await adminRead("partyLedger/"+partyType+"/"+employeeUid))||{};
+     let outstanding=0;
+     Object.values(ledger).forEach(periodRows=>Object.values(periodRows||{}).forEach(entry=>{outstanding+=Number(entry.debit||0)-Number(entry.credit||0);}));
+     if(amount>outstanding+0.01)throw new Error((custody?"قيمة الاسترداد أكبر من رصيد العهدة المستحق للموظف.":"قيمة تحصيل السلفة أكبر من رصيد السلفة المستحق على الموظف.")+" الرصيد الحالي: "+Math.max(0,outstanding).toFixed(2));
+    }
     lines=incoming?
      [{accountCode:cash,debit:amount,credit:0,description:doc.description},{accountCode:accountCode,debit:0,credit:amount,description:doc.description,partyType,partyId:employeeUid}]:
      [{accountCode:accountCode,debit:amount,credit:0,description:doc.description,partyType,partyId:employeeUid},{accountCode:cash,debit:0,credit:amount,description:doc.description}];
