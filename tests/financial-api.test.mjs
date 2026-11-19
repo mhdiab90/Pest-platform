@@ -4,6 +4,7 @@ import { handleFinancialRequest } from "../financial-api.js";
 import { isAllowedOrigin } from "../cloudflare/origin.js";
 
 const database = {};
+const adminPatchCalls = [];
 const segments = path => String(path || "").split("/").filter(Boolean);
 function read(path) {
   return segments(path).reduce((value, key) => value && value[key] !== undefined ? value[key] : null, database);
@@ -21,6 +22,7 @@ function write(path, value) {
 }
 async function adminRead(path) { return read(path); }
 async function adminPatch(updates) {
+  adminPatchCalls.push(updates);
   for (const [path, value] of Object.entries(updates)) write(path, value);
   return true;
 }
@@ -96,28 +98,28 @@ test("PDF page text is sent through invoice extraction and preserves suggested e
   delete env.AI;
 });
 
-test("invoice number is extracted from Internal id before the AI suggestion for PDF text and image OCR", async () => {
-  const pdfText = "Egyptian e-invoice Internal id : ASFOUR/INV-2026-00127 EXTRA COLUMN: 999999 Issue Date : 2026-11-18 Issuer (From) Supplier Registration Number : 329566725\\nOther Reference: 202611180001";
+test("invoice number uses only the numeric token beside Internal ID, not the ETA document ID", async () => {
+  const pdfText = "Invoice\\nID: HPQ0GXW34P4KXH0S2FJFJ77M10 Proforma Invoice Number:\\nPO Reference:\\nInternal ID: 13672\\nSigned By: Egypt Laptop";
   env.AI = {run:async(_model,request)=>{
     const prompt=request.messages[0].content.map(part=>part.text||"").join(" ");
     assert.match(prompt,/Internal id/i);
-    assert.match(prompt,/first contiguous token immediately to the right/i);
-    return {response:JSON.stringify({type:"purchase",number:"AI-WRONG-0001",items:[]})};
+    assert.match(prompt,/first contiguous numeric digit sequence immediately to the right/i);
+    assert.match(prompt,/Return digits only/i);
+    return {response:JSON.stringify({type:"purchase",number:"HPQ0GXW34P4KXH0S2FJFJ77M10",items:[]})};
   }};
   const fromPdf = await invoke("POST","",{action:"ocrText",text:pdfText,pageNumber:1,totalPages:1});
-  assert.equal(fromPdf.extracted.number,"ASFOUR/INV-2026-00127","the printed Internal id value overrides the model's guessed invoice number");
+  assert.equal(fromPdf.extracted.number,"13672","the printed Internal ID wins over the long ETA document ID and any model guess");
 
   env.AI.run=async(_model,request)=>{
     const prompt=request.messages[0].content.map(part=>part.text||"").join(" ");
     assert.match(prompt,/Internal id/i);
-    assert.match(prompt,/preserving letters, digits, slashes, dots and hyphens/i);
-    return {response:JSON.stringify({type:"purchase",internalIdValue:"IMG-INTERNAL-7788 EXTRA-COLUMN-999",number:"AI-WRONG-IMAGE-0001",items:[]})};
+    assert.match(prompt,/Stop at the first non-digit/i);
+    return {response:JSON.stringify({type:"purchase",internalIdValue:"13672 EXTRA COLUMN 999999",number:"HPQ0GXW34P4KXH0S2FJFJ77M10",items:[]})};
   };
   const fromImage=await invoke("POST","",{action:"ocr",image:"data:image/jpeg;base64,AAAA",pageNumber:1,totalPages:1});
-  assert.equal(fromImage.extracted.number,"IMG-INTERNAL-7788","image OCR prompt explicitly prioritizes the Internal id field");
+  assert.equal(fromImage.extracted.number,"13672","image OCR keeps only the first digit sequence after Internal ID");
   delete env.AI;
 });
-
 test("Egyptian ETA invoice direction is determined by the company's tax registration number and party role", async () => {
   const supplierInvoiceText = "Invoice\nIssuer (From)\nTaxpayer Name : Egypt Laptop\nRegistration Number : #329566725\nRecipients (To)\nTaxpayer Name: الشركة\nRegistration Number : #589845268\nCode Name";
   env.AI = {run:async(_model,request)=>{
@@ -849,4 +851,146 @@ test("finance endpoints request screen-specific permission scopes", async () => 
   },{requirePermission:requireScoped});
   assert.equal(result.status,"assigned");
   assert.deepEqual(seen[0],["financial_assignments","add"]);
+});
+
+
+function assertNoOverlappingPaths(updates){
+  const paths=Object.keys(updates||{});
+  for(let i=0;i<paths.length;i++)for(let j=0;j<paths.length;j++){
+    if(i!==j&&paths[j].startsWith(paths[i]+"/")){
+      assert.fail("Overlapping Firebase PATCH paths: "+paths[i]+" and "+paths[j]);
+    }
+  }
+}
+
+test("forwarded invoices preserve full details and attachments through a multi-user chain before review", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const ownerUid=claims.sub,firstUid="FIN-FORWARD-FIRST",secondUid="FIN-FORWARD-SECOND",reviewerUid="FIN-FORWARD-REVIEWER";
+  const invoiceId="INV-FORWARD-CHAIN-001";
+  write("users/"+firstUid,{uid:firstUid,status:"active",role:"user",fullName:"First Assignee"});
+  write("users/"+secondUid,{uid:secondUid,status:"active",role:"user",fullName:"Second Assignee"});
+  write("users/"+reviewerUid,{uid:reviewerUid,status:"active",role:"user",fullName:"Reviewer",permissions:{financial_review:{view:true,approve:true,edit:true}}});
+  write("parties/FIN-FORWARD-VENDOR",{code:"FIN-FORWARD-VENDOR",name:"Forward Supplier",partyType:"vendor",active:true});
+  write("chartOfAccounts/6100",{code:"6100",name:"مصروفات تشغيل",type:"expense",nature:"debit",active:true});
+  write("documents/"+invoiceId,{
+    id:invoiceId,type:"invoice",invoiceType:"purchase",status:"draft",createdBy:ownerUid,createdByName:"Owner",
+    number:"13672",date:"2026-11-19",partyId:"FIN-FORWARD-VENDOR",partyName:"Forward Supplier",
+    currency:"EGP",taxCode:"",taxRate:14,taxAmount:"",discount:0,
+    lines:[{description:"Maintenance service",kind:"service",accountCode:"6100",quantity:1,unitPrice:100,discount:0}],
+    attachments:{"ATT-FORWARD-01":{id:"ATT-FORWARD-01",fileName:"13672.pdf",mimeType:"application/pdf",size:4096}}
+  });
+
+  const assigned=await invoke("POST","",{action:"assignInvoice",invoiceId,assigneeUid:firstUid,instruction:"استكمال بيانات الفاتورة"});
+  assert.equal(assigned.status,"assigned");
+
+  const forwardPatchStart=adminPatchCalls.length;
+  const forwarded=await invoke("POST","",{
+    action:"forwardInvoiceAssignment",assignmentId:assigned.assignmentId,nextAssigneeUid:secondUid,
+    instruction:"مراجعة الضريبة واستكمال البيانات",
+    invoice:{invoiceType:"purchase",date:"2026-11-19",number:"13672",partyId:"FIN-FORWARD-VENDOR",partyName:"Forward Supplier",partyTaxNumber:"329566725",currency:"EGP",taxCode:"",taxRate:14,taxAmount:"",discount:0,projectCode:""}
+  },{
+    profile:{uid:firstUid,role:"user",status:"active",fullName:"First Assignee"},
+    claims:{sub:firstUid}
+  });
+  assert.equal(forwarded.status,"assigned");
+  const nextAssignmentId=forwarded.nextAssignmentId;
+  const currentInvoice=read("documents/"+invoiceId);
+  assert.equal(currentInvoice.assignedTo,secondUid);
+  assert.equal(currentInvoice.number,"13672");
+  assert.equal(currentInvoice.partyTaxNumber,"329566725");
+  assert.equal(currentInvoice.attachments["ATT-FORWARD-01"].fileName,"13672.pdf","the original attachment metadata stays linked to the same invoice");
+  assert.equal(currentInvoice.assignmentChain.length,2,"both the original transfer and onward transfer remain in the chain");
+  assert.equal(read("assignments/"+firstUid+"/"+assigned.assignmentId).status,"forwarded");
+  assert.equal(read("assignments/"+secondUid+"/"+nextAssignmentId).status,"open");
+  assert.equal(read("tasks/"+firstUid+"/"+assigned.taskId+"/status"),"completed");
+  assert.equal(read("tasks/"+secondUid+"/"+read("assignments/"+secondUid+"/"+nextAssignmentId).taskId).kind,"financialAssignment");
+  assert.equal(read("cashCustodyNotifications/"+secondUid+"/"+nextAssignmentId).type,"financialAssignment");
+
+  const secondInbox=await invoke("GET","?resource=assignments",{},{
+    profile:{uid:secondUid,role:"user",status:"active",fullName:"Second Assignee"},
+    claims:{sub:secondUid}
+  });
+  assert.equal(secondInbox.items[0].invoice.taxRate,14);
+  assert.equal(secondInbox.items[0].invoice.attachments["ATT-FORWARD-01"].fileName,"13672.pdf");
+
+  const forwardedPatch=adminPatchCalls.slice(forwardPatchStart).find(patch=>Object.prototype.hasOwnProperty.call(patch,"documents/"+invoiceId));
+  assert.ok(forwardedPatch,"forwarding writes the full invoice once");
+  assertNoOverlappingPaths(forwardedPatch);
+
+  const completePatchStart=adminPatchCalls.length;
+  const completed=await invoke("POST","",{
+    action:"completeInvoiceAssignment",assignmentId:nextAssignmentId,decision:"submit_for_review",
+    invoice:{invoiceType:"purchase",date:"2026-11-19",number:"13672",partyId:"FIN-FORWARD-VENDOR",partyName:"Forward Supplier",partyTaxNumber:"329566725",currency:"EGP",taxCode:"",taxRate:14,taxAmount:"",discount:0},
+    lines:[{description:"Maintenance service",kind:"service",accountCode:"6100",quantity:1,unitPrice:100,discount:0}]
+  },{
+    profile:{uid:secondUid,role:"user",status:"active",fullName:"Second Assignee"},
+    claims:{sub:secondUid}
+  });
+  assert.equal(completed.status,"pending_review","an incomplete invoice is sent to review rather than rejected at submission");
+  assert.ok(read("reviewQueue/"+invoiceId));
+  assert.ok(read("documents/"+invoiceId).errors.some(error=>error.includes("كود ضريبي")),"missing VAT code is recorded for the reviewer");
+  assert.equal(read("documents/"+invoiceId).attachments["ATT-FORWARD-01"].fileName,"13672.pdf");
+  const completedPatch=adminPatchCalls.slice(completePatchStart).find(patch=>Object.prototype.hasOwnProperty.call(patch,"documents/"+invoiceId));
+  assert.ok(completedPatch,"completion writes the full invoice once");
+  assertNoOverlappingPaths(completedPatch);
+
+  const reviewerProfile={uid:reviewerUid,role:"user",status:"active",fullName:"Reviewer"};
+  const corrected=await invoke("POST","",{
+    action:"updateReviewInvoice",id:invoiceId,
+    invoice:{invoiceType:"purchase",date:"2026-11-19",number:"13672",partyId:"FIN-FORWARD-VENDOR",partyName:"Forward Supplier",partyTaxNumber:"329566725",currency:"EGP",taxCode:"VAT-IN-14",taxType:"vat_input",taxRate:14,taxAmount:"",discount:0},
+    lines:[{description:"Maintenance service",kind:"service",accountCode:"6100",quantity:1,unitPrice:100,discount:0}]
+  },{profile:reviewerProfile,claims:{sub:reviewerUid}});
+  assert.deepEqual(corrected.errors,[],"the reviewer can select the missing active input VAT code and clear the error");
+  const approved=await invoke("POST","",{action:"review",id:invoiceId,decision:"approve"},{profile:reviewerProfile,claims:{sub:reviewerUid}});
+  assert.equal(approved.status,"posted");
+  assert.equal(read("documents/"+invoiceId).status,"posted");
+});
+
+test("journal edit and delete permissions work for any manual journal and clean posted ledgers", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const draft=await invoke("POST","",{
+    action:"submitJournal",date:"2026-11-19",description:"Permission journal test",reference:"PERM-JRN-01",
+    lines:[{accountCode:"6100",debit:100,credit:0,description:"Before edit"},{accountCode:"1110",debit:0,credit:100,description:"Cash"}]
+  });
+  assert.equal(draft.status,"pending_review");
+  const approved=await invoke("POST","",{action:"review",id:draft.id,decision:"approve",reason:"test approval"});
+  assert.equal(approved.status,"posted");
+  assert.equal(read("ledger/6100/2026-11/"+draft.id+"_1").debit,100);
+
+  const editCalls=[];
+  const editPermission=(_profile,moduleId,action)=>{
+    editCalls.push([moduleId,action]);
+    if(moduleId!=="financial_journal"||action!=="edit")throw new Error("wrong journal edit permission scope");
+    return true;
+  };
+  const edited=await invoke("POST","",{
+    action:"submitJournal",id:draft.id,date:"2026-11-19",description:"Permission journal test — edited",
+    reference:"PERM-JRN-01",lines:[{accountCode:"6200",debit:125,credit:0,description:"After edit"},{accountCode:"1110",debit:0,credit:125,description:"Cash"}]
+  },{
+    profile:{uid:"FIN-JOURNAL-EDITOR",role:"user",status:"active",fullName:"Journal Editor"},
+    claims:{sub:"FIN-JOURNAL-EDITOR"},requirePermission:editPermission
+  });
+  assert.equal(edited.status,"posted");
+  assert.deepEqual(editCalls[0],["financial_journal","edit"]);
+  assert.equal(read("ledger/6100/2026-11/"+draft.id+"_1"),null,"editing removes the old account row");
+  assert.equal(read("ledger/6200/2026-11/"+draft.id+"_1").debit,125,"editing recreates the ledger row with the new account and amount");
+  assert.equal(read("ledger/1110/2026-11/"+draft.id+"_2").credit,125);
+
+  const deleteCalls=[];
+  const deletePermission=(_profile,moduleId,action)=>{
+    deleteCalls.push([moduleId,action]);
+    if(moduleId!=="financial_journal"||action!=="delete")throw new Error("wrong journal delete permission scope");
+    return true;
+  };
+  const removed=await invoke("POST","",{action:"deleteJournal",id:draft.id},{
+    profile:{uid:"FIN-JOURNAL-DELETE",role:"user",status:"active",fullName:"Journal Deleter"},
+    claims:{sub:"FIN-JOURNAL-DELETE"},requirePermission:deletePermission
+  });
+  assert.equal(removed.deleted,true);
+  assert.deepEqual(deleteCalls[0],["financial_journal","delete"]);
+  assert.equal(read("journals/"+draft.id),null);
+  assert.equal(read("documents/"+draft.id),null);
+  assert.equal(read("periods/2026-11/entries/"+draft.id),null);
+  assert.equal(read("ledger/6200/2026-11/"+draft.id+"_1"),null);
+  assert.equal(read("ledger/1110/2026-11/"+draft.id+"_2"),null);
 });
