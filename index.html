@@ -2214,6 +2214,7 @@ function App(){
     const permissions=currentUser?.permissions||{};
     if(moduleId==='financial'){
       const scoped=financialPermissionAreaIds.some(key=>permissions[key]&&typeof permissions[key]==='object');
+      if(scoped&&action==='view')return financialPermissionAreaIds.some(key=>permissions[key]?.view===true||(key==='financial_review'&&permissions[key]?.approve===true));
       return scoped?financialPermissionAreaIds.some(key=>permissions[key]?.[action]===true):permissions.financial?.[action]===true;
     }
     if(moduleId.startsWith('financial_')){
