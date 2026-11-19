@@ -1103,12 +1103,13 @@ test("project accounting events create review journals and only affect ledgers a
   const projectCode="PRJ-EVENT-ACCOUNTING-01",vendorCode="VENDOR-PROJECT-01";
   write("projects/"+projectCode,{code:projectCode,name:"Project Event Accounting",vendorCodes:[vendorCode],clientCodes:[]});
   write("vendors/"+vendorCode,{code:vendorCode,name:"Project Supplier",taxNumber:"123",status:"active"});
+  write("partyLedger/vendor/"+vendorCode+"/2026-11/opening",{journalId:"OPENING-PROJECT-VENDOR",accountCode:"281",debit:0,credit:1000});
   await invoke("GET","?resource=bootstrap");
   assert.ok(read("costCenters/"+projectCode),"the project code is mirrored to the financial cost center master");
 
   const submitted=await invoke("POST","",{action:"submitProjectEvent",projectCode,event:{
     id:"EVT-SUPPLIER-PAYMENT-01",actionCode:"supplier_payment",actionName:"تسليم شيك للمورد",
-    date:"2026-11-19",partyType:"vendor",partyCode:vendorCode,amount:250,settledAmount:250,
+    date:"2026-11-19",partyType:"vendor",partyCode:"",amount:250,settledAmount:250,
     currency:"EGP",paymentMethod:"cheque",referenceNo:"CHQ-001",status:"full",note:"Cheque handover"
   }});
   assert.equal(submitted.success,true);
@@ -1118,6 +1119,8 @@ test("project accounting events create review journals and only affect ledgers a
   assert.equal(read("documents/"+submitted.journalId).status,"pending_review");
   assert.equal(read("documents/"+submitted.journalId).sourceType,"projectEvent");
   assert.equal(read("documents/"+submitted.journalId).lines[0].costCenterId,projectCode);
+  assert.equal(read("projects/"+projectCode+"/events/EVT-SUPPLIER-PAYMENT-01/partyCode"),vendorCode,"the single vendor linked to the project is inferred automatically");
+  assert.equal(read("documents/"+submitted.journalId).lines[1].accountCode,"2140","an issued cheque credits outstanding cheques, not the bank account");
   assert.equal(read("ledger/281/2026-11/"+submitted.journalId+"_1"),null,"a proposed journal does not change the ledger before approval");
 
   const approved=await invoke("POST","",{action:"review",id:submitted.journalId,decision:"approve",reason:"Project cheque approved"});
@@ -1199,4 +1202,73 @@ test("a transferred invoice recipient can cancel the assigned invoice and close 
   assert.equal(read("documents/"+invoiceId+"/status"),"cancelled");
   assert.equal(read("assignments/"+recipientUid+"/"+assigned.assignmentId+"/status"),"cancelled");
   assert.equal(read("tasks/"+recipientUid+"/"+assigned.taskId+"/status"),"completed");
+});
+
+
+test("incoming cheques use a clearing account then transfer to bank on collection", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const projectCode="PRJ-INCOMING-CHEQUE-01",customerCode="CUSTOMER-CHEQUE-01";
+  write("projects/"+projectCode,{code:projectCode,name:"Incoming Cheque Project",clientCodes:[customerCode],vendorCodes:[]});
+  write("clients/"+customerCode,{code:customerCode,name:"Cheque Customer",status:"active"});
+  write("partyLedger/customer/"+customerCode+"/2026-11/opening",{journalId:"OPENING-CHEQUE-CUSTOMER",accountCode:"1210",debit:1000,credit:0});
+  await invoke("GET","?resource=bootstrap");
+
+  const received=await invoke("POST","",{action:"submitProjectEvent",projectCode,event:{
+    id:"EVT-IN-CHEQUE-01",actionCode:"cheque_received",actionName:"استلام شيك",
+    date:"2026-11-19",partyType:"client",amount:400,settledAmount:400,currency:"EGP",
+    paymentMethod:"cheque",referenceNo:"CHQ-IN-01",status:"full"
+  }});
+  assert.equal(received.accountingStatus,"pending_review");
+  const receivedJournal=read("documents/"+received.journalId);
+  assert.ok(receivedJournal.lines.some(line=>line.accountCode==="1130"&&line.debit===400),"incoming cheque is recorded under cheques in collection");
+  assert.ok(receivedJournal.lines.some(line=>line.accountCode==="1210"&&line.credit===400),"customer receivable is reduced");
+  await invoke("POST","",{action:"review",id:received.journalId,decision:"approve",reason:"Accept customer cheque"});
+  assert.ok(read("ledger/1130/2026-11/"+received.journalId+"_1"));
+
+  const cleared=await invoke("POST","",{action:"submitProjectEvent",projectCode,event:{
+    id:"EVT-CLEAR-CHEQUE-01",actionCode:"cheque_cleared_in",actionName:"تحصيل الشيك بالبنك",
+    date:"2026-11-19",partyType:"client",partyCode:customerCode,amount:400,settledAmount:400,
+    currency:"EGP",paymentMethod:"bank_transfer",referenceNo:"CHQ-IN-01",status:"full"
+  }});
+  const clearedJournal=read("documents/"+cleared.journalId);
+  assert.ok(clearedJournal.lines.some(line=>line.accountCode==="1120"&&line.debit===400),"clearing moves the amount into bank");
+  assert.ok(clearedJournal.lines.some(line=>line.accountCode==="1130"&&line.credit===400),"clearing removes the cheque from transit");
+  await invoke("POST","",{action:"review",id:cleared.journalId,decision:"approve",reason:"Bank cleared"});
+  assert.ok(read("ledger/1120/2026-11/"+cleared.journalId+"_1"));
+});
+
+test("personal custody movements create a single accounting review journal and approve paired books together", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const ownerUid="CUSTODY-EMPLOYEE-01",projectCode="PRJ-CUSTODY-ACCOUNTING-01",transactionId="CUSTODY-EXPENSE-01",mirrorId="CUSTODY-COMPANY-MIRROR-01";
+  write("users/"+ownerUid,{uid:ownerUid,status:"active",role:"user",fullName:"Custody Employee"});
+  write("projects/"+projectCode,{code:projectCode,name:"Custody Project"});
+  write("cashCustodies/"+ownerUid+"/transactions/"+transactionId,{
+    id:transactionId,ownerUid,bookScope:"personal",type:"expense",amount:125,currency:"EGP",
+    date:"2026-11-19",description:"Project field expense",projectCode,status:"approved",
+    linkedOwnerUid:"test-admin",linkedTransactionId:mirrorId,pairRole:"origin",createdBy:ownerUid,createdByName:"Custody Employee"
+  });
+  write("cashCustodies/test-admin/transactions/"+mirrorId,{
+    id:mirrorId,ownerUid:"test-admin",bookScope:"company",type:"receipt",amount:125,currency:"EGP",
+    date:"2026-11-19",description:"Linked employee custody",projectCode,status:"approved",
+    linkedOwnerUid:ownerUid,linkedTransactionId:transactionId,pairRole:"counterparty"
+  });
+  await invoke("GET","?resource=bootstrap");
+
+  const result=await invoke("POST","",{action:"submitCashCustodyJournal",ownerUid,transactionId});
+  assert.equal(result.status,"pending_review");
+  assert.ok(read("reviewQueue/"+result.id),"personal custody journal appears in financial review");
+  assert.equal(read("documents/"+result.id+"/sourceType"),"cashCustody");
+  assert.equal(read("documents/"+result.id+"/lines/0/costCenterId"),projectCode);
+  assert.equal(read("cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/status"),"pending");
+  assert.equal(read("cashCustodies/test-admin/transactions/"+mirrorId+"/status"),"pending");
+  assert.equal(read("ledger/6100/2026-11/"+result.id+"_1"),null,"custody movement cannot affect ledger before review");
+
+  const approved=await invoke("POST","",{action:"review",id:result.id,decision:"approve",reason:"Approve custody expense"});
+  assert.equal(approved.status,"posted");
+  assert.ok(read("ledger/6100/2026-11/"+result.id+"_1"));
+  assert.ok(read("partyLedger/employeeCustody/"+ownerUid+"/2026-11/"+result.id+"_2"));
+  assert.equal(read("cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/status"),"approved");
+  assert.equal(read("cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/financialReviewStatus"),"posted");
+  assert.equal(read("cashCustodies/test-admin/transactions/"+mirrorId+"/status"),"approved");
+  assert.equal(read("cashCustodies/test-admin/transactions/"+mirrorId+"/financialReviewStatus"),"posted");
 });
