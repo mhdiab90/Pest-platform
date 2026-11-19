@@ -596,6 +596,15 @@ function FinanceModule(props){
    await api('', 'POST',{action:'saveMaster',kind:f.kind,item});setNotice('تم حفظ الكود');setMasterForm(o=>Object.assign({},o,{code:'',name:''}));await refresh();
   }catch(e){setError(e.message||String(e));}finally{setBusy(false);}
  };
+const deleteJournalDocument=async(doc)=>{
+   if(!canFinance("journal","delete")){setError("ليس لديك صلاحية حذف القيود اليومية.");return;}
+   if(!window.confirm("تأكيد حذف القيد "+(doc.id||"")+"؟ سيتم حذف أثره من الأستاذ والفترة إذا كان قيدًا مرحلًا يدويًا."))return;
+   setBusy(true);setError('');
+   try{await api('', 'POST',{action:'deleteJournal',id:doc.id});setNotice("تم حذف القيد وتحديث سجلات الأستاذ والفترة.");await refresh();await loadPeriod();}
+   catch(e){setError(e.message||String(e));}
+   finally{setBusy(false);}
+  };
+  
  const submitJournal=async()=>{
   if(!canFinance("journal",journal.id?"edit":"add")){setError("ليس لديك صلاحية حفظ أو تعديل القيود اليومية.");return;}
   setBusy(true);setError('');try{const payload=Object.assign({},journal);const result=await api('', 'POST',Object.assign({action:'submitJournal'},payload));setNotice(result.status==='pending_review'?'تم إرسال القيد إلى المراجعة':'تم حفظ القيد مع أخطاء: '+(result.errors||[]).join('، '));if(result.status==='pending_review')setJournal({id:'',date:today(),description:'',reference:'',currency:'EGP',lines:[{accountCode:'6100',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''},{accountCode:'1110',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''}]});else setJournal(o=>Object.assign({},o,{id:result.id}));await refresh();}catch(e){setError(e.message||String(e));}finally{setBusy(false);}
@@ -960,10 +969,11 @@ function FinanceModule(props){
    h('b',{className:Math.abs(jDebit-jCredit)<0.01?'text-emerald-700':'text-rose-700'},'الفرق: '+fmt(jDebit-jCredit)),
    button('حفظ وإرسال للمراجعة',submitJournal,'primary',busy||!canFinance("journal",journal.id?"edit":"add"))
   );
-  const draftRows = documents.filter(function(x){return x.type==='journal'&&['needs_correction','draft'].includes(x.status);}).map(function(x){
-   return h('tr',{key:x.id,className:'border-t'},h('td',{className:'p-2'},x.id),h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},x.description),h('td',{className:'p-2'},status(x.status)),h('td',{className:'p-2'},button('تعديل',function(){editDoc(x);},'muted',!canFinance("journal","edit"))));
-  });
-  const draftsPanel = panel('المسودات والتصحيحات','يمكن فتح المستندات التي أعيدت للتصحيح وتعديلها ثم إعادة إرسالها.',table(['رقم','التاريخ','الوصف','الحالة','إجراء'],draftRows));
+   const draftRows = documents.filter(function(x){return x.type==='journal';}).sort((a,b)=>n(b.createdAt)-n(a.createdAt)).map(function(x){
+    const manual=!(x.sourceType&&x.sourceType!=='manual');
+    return h('tr',{key:x.id,className:'border-t'},h('td',{className:'p-2'},x.id),h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},x.description),h('td',{className:'p-2'},status(x.status)),h('td',{className:'p-2'},h('div',{className:'flex flex-wrap gap-1'},button('تعديل',function(){editDoc(x);},'muted',!manual||!canFinance("journal","edit")),button('حذف',function(){void deleteJournalDocument(x);},'danger',!manual||!canFinance("journal","delete"))))));
+   });
+   const draftsPanel = panel('سجل القيود اليومية','يمكن تعديل أو حذف القيود اليدوية وفق الصلاحيات. القيود المرتبطة بفواتير أو سندات مصدرية لا تُحذف أو تُعدل من هنا حفاظًا على ترابط المخزون والأستاذ.',table(['رقم','التاريخ','الوصف','الحالة','إجراء'],draftRows));
   return h('div',{className:'space-y-4'},headerPanel,linesPanel,totalsPanel,draftsPanel);
  };
  const renderInvoices = function() {
