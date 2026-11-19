@@ -138,17 +138,41 @@ function active(profile) {
   return profile && ["active", "نشط", "مفعل", "enabled"].includes(String(profile.status || "").toLowerCase());
 }
 
+const FINANCIAL_PERMISSION_AREAS = [
+  "financial_overview", "financial_journal", "financial_review", "financial_invoices",
+  "financial_assignments", "financial_partyStatements", "financial_masters", "financial_accounts",
+  "financial_centers", "financial_inventory", "financial_cash", "financial_bank",
+  "financial_tax", "financial_reports"
+];
+
 function hasPermission(profile, moduleId, action) {
   if (profile && profile.role === "admin" && active(profile)) return true;
   const user = profile || {};
+  const permissions = user.permissions || {};
   const username = String(user.username || "").trim().toLowerCase();
   const emailLocal = String(user.email || "").split("@")[0].trim().toLowerCase();
   const fullName = String(user.fullName || "").trim().toLowerCase();
   if (moduleId === "projects" && ["view", "add", "edit"].includes(action) &&
       (username === "omar" || emailLocal === "omar" || fullName === "omar")) return true;
   if (moduleId === "cashCustody" && ["view", "add", "edit"].includes(action) &&
-      (!user.permissions || !user.permissions.cashCustody || user.permissions.cashCustody[action] !== false)) return true;
-  return Boolean(user.permissions && user.permissions[moduleId] && user.permissions[moduleId][action] === true);
+      (!permissions.cashCustody || permissions.cashCustody[action] !== false)) return true;
+
+  if (moduleId === "financial") {
+    const hasScopedFinancialPermissions = FINANCIAL_PERMISSION_AREAS.some(key =>
+      permissions[key] && typeof permissions[key] === "object"
+    );
+    if (hasScopedFinancialPermissions) return FINANCIAL_PERMISSION_AREAS.some(key => permissions[key][action] === true);
+    return Boolean(permissions.financial && permissions.financial[action] === true);
+  }
+  if (moduleId.startsWith("financial_")) {
+    const specific = permissions[moduleId];
+    if (specific && typeof specific === "object") return specific[action] === true;
+    const hasScopedFinancialPermissions = FINANCIAL_PERMISSION_AREAS.some(key =>
+      permissions[key] && typeof permissions[key] === "object"
+    );
+    return !hasScopedFinancialPermissions && Boolean(permissions.financial && permissions.financial[action] === true);
+  }
+  return Boolean(permissions[moduleId] && permissions[moduleId][action] === true);
 }
 
 function requirePermission(profile, moduleId, action) {
