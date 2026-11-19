@@ -376,11 +376,24 @@ async function adminDatabaseRequest(path, accessToken, method, body) {
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) })
   });
-  const value = await response.json().catch(() => null);
+  const responseText = await response.text().catch(() => "");
+  let value = null;
+  if (responseText) {
+    try { value = JSON.parse(responseText); } catch (_) {}
+  }
   if (!response.ok) {
-    const detail = String(value && value.error || "Firebase Realtime Database rejected the request").replace(/\\s+/g, " ").slice(0, 180);
-    console.error("Firebase Admin database request failed:", { status: response.status, path: cleanPath, detail });
-    throw new Error("FIREBASE_ADMIN_DATABASE_ERROR: RTDB rejected the " + (method || "GET") + " request (HTTP " + response.status + ") for " + (cleanPath || "/") + ". " + detail + " Check the service-account project and Firebase Realtime Database access.");
+    const rawDetail = value && value.error ? String(value.error) : responseText;
+    const detail = String(rawDetail || response.statusText || "Firebase Realtime Database rejected the request")
+      .replace(/\\s+/g, " ").trim().slice(0, 260);
+    const contentType = response.headers.get("content-type") || "";
+    const requestId = response.headers.get("x-firebase-request-id") || response.headers.get("x-cloud-trace-context") || "";
+    console.error("Firebase Admin database request failed:", {
+      status: response.status, statusText: response.statusText, path: cleanPath || "/",
+      contentType, requestId, detail
+    });
+    throw new Error("FIREBASE_ADMIN_DATABASE_ERROR: RTDB rejected the " + (method || "GET") +
+      " request (HTTP " + response.status + ") for " + (cleanPath || "/") + ". " + detail +
+      " Check the service-account project, exact Realtime Database URL and Firebase access.");
   }
   return value;
 }
@@ -2692,8 +2705,9 @@ export default {
           const adminPatch = updates => adminDatabaseRequest("financial", accessToken, "PATCH", updates);
           const adminReadRoot = path => adminDatabaseRequest(path, accessToken, "GET");
           const adminPutRoot = (path, value) => adminDatabaseRequest(path, accessToken, "PUT", value);
-          const adminPatchRoot = updates => adminDatabaseRequest("", accessToken, "PATCH", updates);
-          const output = await handleFinancialRequest({request,url,body,claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch,adminReadRoot,adminPutRoot,adminPatchRoot,accessToken});
+          // Apply multi-location party changes at /clients or /vendors, never at the database root.
+          const adminPatchRootAt = (path, updates) => adminDatabaseRequest(path, accessToken, "PATCH", updates);
+          const output = await handleFinancialRequest({request,url,body,claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch,adminReadRoot,adminPutRoot,adminPatchRootAt,accessToken});
           if(output&&output.pushNotification){
             const push=output.pushNotification;
             delete output.pushNotification;
