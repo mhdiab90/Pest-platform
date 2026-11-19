@@ -840,7 +840,61 @@ export async function handleFinancialRequest(ctx){
    if(decision==="submit_for_review")return {success:true,id:invoice.id,assignmentId,status:savedInvoice.status,errors:reviewErrors,reviewersNotified:reviewers.length,pushNotifications};
    return {success:true,id:invoice.id,assignmentId,status:"returned_to_creator",pushNotifications};
   }
-if(action==="submitInvoice"){
+if(action==="forwardInvoiceAssignment"){
+   requireFinanceArea("assignments","edit");
+   const assignmentId=id(body.assignmentId),assignment=await adminRead("assignments/"+claims.sub+"/"+assignmentId);
+   if(!assignment||assignment.assigneeUid!==claims.sub||assignment.status!=="open")throw new Error("المهمة غير موجودة أو تم إغلاقها بالفعل.");
+   const invoice=await adminRead("documents/"+id(assignment.invoiceId));
+   if(!invoice||invoice.type!=="invoice"||invoice.status!=="assigned"||invoice.assignedTo!==claims.sub||invoice.assignmentId!==assignmentId)throw new Error("الفاتورة لم تعد في عهدتك للتحويل.");
+   const nextUid=id(body.nextAssigneeUid),nextUser=adminReadRoot?await adminReadRoot("users/"+nextUid):null;
+   if(nextUid===claims.sub)throw new Error("اختر مستخدمًا آخر غير حسابك الحالي.");
+   if(!nextUser||!["active","نشط","مفعل","enabled"].includes(String(nextUser.status||"").toLowerCase()))throw new Error("المستخدم الجديد غير موجود أو غير نشط.");
+   const nextName=txt(nextUser.fullName||nextUser.username||nextUser.email||nextUid,120),instruction=txt(body.instruction||"استكمال ومراجعة بيانات الفاتورة",700),nowForward=Date.now(),nextId=uid("ASN"),nextTaskId=uid("FIN-TASK");
+   const header=body.invoice&&typeof body.invoice==="object"&&!Array.isArray(body.invoice)?body.invoice:{};
+   const saved={...invoice,...header};
+   const sourceLines=Array.isArray(body.lines)?body.lines.slice(0,100):(invoice.lines||[]);
+   saved.lines=sourceLines.map((line,index)=>{if(!line||typeof line!=="object"||Array.isArray(line))throw new Error("بيانات البند "+(index+1)+" غير صحيحة.");return {...(invoice.lines&&invoice.lines[index]||{}),...line};});
+   const item={id:nextId,invoiceId:invoice.id,assigneeUid:nextUid,assigneeName:nextName,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120),instruction,status:"open",taskId:nextTaskId,createdAt:nowForward,invoiceNumber:saved.number||"",invoiceType:saved.invoiceType||"purchase",partyName:saved.partyName||"",date:saved.date||"",rootAssignmentId:assignment.rootAssignmentId||assignment.id,parentAssignmentId:assignment.id,rootSenderUid:assignment.rootSenderUid||invoice.createdBy};
+   const task={id:nextTaskId,title:"فاتورة محولة إليك: "+(saved.number||invoice.id),description:instruction,status:"open",createdAt:nowForward,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120),kind:"financialAssignment",financialAssignmentId:nextId,sourceInvoiceId:invoice.id,assigneeUid:nextUid};
+   const notification={id:nextId,type:"financialAssignment",recipientUid:nextUid,assignmentId:nextId,invoiceId:invoice.id,senderUid:claims.sub,senderName:txt(profile.fullName||profile.username||profile.email,120),title:"فاتورة محولة إليك",description:instruction,createdAt:nowForward,read:false};
+   saved.assignmentChain=(saved.assignmentChain||[]).concat([{assignmentId:nextId,fromUid:claims.sub,fromName:txt(profile.fullName||profile.username||profile.email,120),toUid:nextUid,toName:nextName,at:nowForward,instruction}]);
+   saved.assignmentId=nextId;saved.assignmentSenderUid=claims.sub;saved.assignedTo=nextUid;saved.assignedAt=nowForward;saved.assignmentInstruction=instruction;saved.status="assigned";saved.updatedAt=nowForward;
+   const financialUpdates={};
+   financialUpdates["documents/"+invoice.id]=saved;
+   financialUpdates["assignments/"+claims.sub+"/"+assignmentId+"/status"]="forwarded";
+   financialUpdates["assignments/"+claims.sub+"/"+assignmentId+"/completedAt"]=nowForward;
+   financialUpdates["assignments/"+claims.sub+"/"+assignmentId+"/decision"]="reassigned";
+   financialUpdates["sentAssignments/"+claims.sub+"/"+assignmentId+"/status"]="forwarded";
+   financialUpdates["sentAssignments/"+claims.sub+"/"+assignmentId+"/forwardedToUid"]=nextUid;
+   financialUpdates["sentAssignments/"+claims.sub+"/"+assignmentId+"/forwardedToName"]=nextName;
+   financialUpdates["sentAssignments/"+claims.sub+"/"+assignmentId+"/completedAt"]=nowForward;
+   financialUpdates["assignments/"+nextUid+"/"+nextId]=item;
+   financialUpdates["sentAssignments/"+claims.sub+"/"+nextId]={...item};
+   const rootUid=assignment.rootSenderUid||invoice.createdBy,rootAssignmentId=assignment.rootAssignmentId||assignmentId;
+   if(rootUid&&rootUid!==claims.sub){
+    financialUpdates["sentAssignments/"+rootUid+"/"+rootAssignmentId+"/status"]="forwarded";
+    financialUpdates["sentAssignments/"+rootUid+"/"+rootAssignmentId+"/forwardedToUid"]=nextUid;
+    financialUpdates["sentAssignments/"+rootUid+"/"+rootAssignmentId+"/forwardedToName"]=nextName;
+    financialUpdates["sentAssignments/"+rootUid+"/"+rootAssignmentId+"/latestAssignmentId"]=nextId;
+   }
+   financialUpdates["audit/"+uid("AUD")]={action:"forward_invoice_assignment",documentId:invoice.id,fromAssignmentId:assignmentId,toAssignmentId:nextId,fromUid:claims.sub,toUid:nextUid,uid:claims.sub,createdAt:nowForward};
+   const taskUpdates={};if(assignment.taskId){taskUpdates[claims.sub+"/"+assignment.taskId+"/status"]="completed";taskUpdates[claims.sub+"/"+assignment.taskId+"/completedAt"]=nowForward;}taskUpdates[nextUid+"/"+nextTaskId]=task;
+   const notificationUpdates={[nextUid+"/"+nextId]:notification};
+   let tasksSaved=false,notificationsSaved=false;
+   try{
+    await patchExternalBranch("tasks",taskUpdates);tasksSaved=true;
+    await patchExternalBranch("cashCustodyNotifications",notificationUpdates);notificationsSaved=true;
+    await adminPatch(financialUpdates);
+   }catch(error){
+    const rollback=[];
+    if(notificationsSaved)try{await removeExternalBranch("cashCustodyNotifications",[nextUid+"/"+nextId]);}catch(e){rollback.push(String(e.message||e));}
+    if(tasksSaved)try{await patchExternalBranch("tasks",{[claims.sub+"/"+assignment.taskId+"/status"]:"open",[nextUid+"/"+nextTaskId]:null});}catch(e){rollback.push(String(e.message||e));}
+    if(rollback.length)throw new Error("تعذر إتمام إعادة التحويل، وفشل التراجع عن بعض المهام أو الإشعارات: "+rollback.join("؛ ")+". السبب الأصلي: "+String(error.message||error));
+    throw error;
+   }
+   return {success:true,id:invoice.id,assignmentId,nextAssignmentId:nextId,status:"assigned",pushNotification:{recipientUid:nextUid,eventType:"financialAssignment",eventId:nextId,content:{title:"فاتورة محولة إليك",body:instruction}}};
+  }
+  if(action==="submitInvoice"){
    if(!["purchase","sales"].includes(body.type))throw new Error("حدد هل الفاتورة مشتريات من مورد أم مبيعات لعميل.");
    const inv={...body,id:id(body.id||uid("INV")),type:"invoice",invoiceType:body.type,date:txt(body.date||"",10),number:txt(body.number||"",120),partyId:txt(body.partyId||"",120),partyName:txt(body.partyName||"",180),currency:txt(body.currency||"EGP",3),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120)},errors=[];
    let previous=null;
