@@ -622,3 +622,44 @@ test("first accounting start month migration preserves the earliest existing pos
   await invoke("GET","?resource=bootstrap");
   assert.equal(read("settings/accountingStartMonth"),"2026-08","the first period includes all existing posted financial history");
 });
+
+
+test("master records support editing, safe code changes and protected deletion", async () => {
+  const itemCode="ITEM-CRUD-TEST";
+  await invoke("POST","",{action:"saveMaster",kind:"items",item:{code:itemCode,name:"Before edit",itemType:"stock",unit:"piece",warehouseCode:"default"}});
+  assert.equal(read("items/"+itemCode).name,"Before edit");
+
+  await invoke("POST","",{action:"saveMaster",kind:"items",originalCode:itemCode,item:{code:itemCode,name:"After edit",itemType:"stock",unit:"piece",warehouseCode:"default"}});
+  assert.equal(read("items/"+itemCode).name,"After edit","editing a master record preserves its key and updates the data");
+
+  write("documents/CRUD-ITEM-REFERENCE",{id:"CRUD-ITEM-REFERENCE",type:"invoice",lines:[{itemCode}]});
+  await assert.rejects(
+    invoke("POST","",{action:"saveMaster",kind:"items",originalCode:itemCode,item:{code:"ITEM-CRUD-RENAMED",name:"Renamed item",itemType:"stock",unit:"piece",warehouseCode:"default"}}),
+    /لا يمكن تغيير الكود/
+  );
+  assert.ok(read("items/"+itemCode),"the original code remains available when historical documents reference it");
+  assert.equal(read("items/ITEM-CRUD-RENAMED"),null,"a blocked code migration does not create a second item");
+
+  const deleted=await invoke("POST","",{action:"deleteMaster",kind:"items",code:itemCode});
+  assert.equal(deleted.deactivated,true,"a referenced item is deactivated instead of being physically deleted");
+  assert.equal(read("items/"+itemCode).active,false);
+  assert.equal(read("documents/CRUD-ITEM-REFERENCE").lines[0].itemCode,itemCode,"historical invoice references remain intact");
+
+  await invoke("POST","",{action:"saveMaster",kind:"warehouses",item:{code:"WH-CRUD-UNUSED",name:"Unused warehouse"}});
+  const removed=await invoke("POST","",{action:"deleteMaster",kind:"warehouses",code:"WH-CRUD-UNUSED"});
+  assert.equal(removed.deleted,true,"an unused master record can be deleted");
+  assert.equal(read("warehouses/WH-CRUD-UNUSED"),null);
+
+  write("clients/CUS-CRUD-OLD",{code:"CUS-CRUD-OLD",name:"Old customer",partyType:"customer"});
+  const changedParty=await invoke("POST","",{action:"saveMaster",kind:"parties",permissionModule:"master",originalCode:"CUS-CRUD-OLD",item:{code:"CUS-CRUD-NEW",name:"Updated customer",partyType:"customer"}});
+  assert.equal(changedParty.item.code,"CUS-CRUD-NEW");
+  assert.equal(read("clients/CUS-CRUD-OLD"),null,"the old CRM key is removed after a safe unused code change");
+  assert.equal(read("clients/CUS-CRUD-NEW").name,"Updated customer");
+  assert.equal(read("parties/CUS-CRUD-NEW").partyType,"customer","the finance party directory is updated together with the CRM record");
+
+  write("projects/PRJ-CRUD-REFERENCE",{code:"PRJ-CRUD-REFERENCE",clientCodes:["CUS-CRUD-NEW"],events:{}});
+  const partyDelete=await invoke("POST","",{action:"deleteMaster",kind:"parties",permissionModule:"master",code:"CUS-CRUD-NEW"});
+  assert.equal(partyDelete.deactivated,true,"customer records referenced by projects are deactivated, not erased");
+  assert.equal(read("clients/CUS-CRUD-NEW").active,false);
+  assert.equal(read("projects/PRJ-CRUD-REFERENCE").clientCodes[0],"CUS-CRUD-NEW");
+});
