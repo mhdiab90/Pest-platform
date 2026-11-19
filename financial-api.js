@@ -896,6 +896,53 @@ export async function handleFinancialRequest(ctx){
    updates["audit/"+uid("AUD")]={action:previous?"edit_journal":"submit_journal",documentId:journalId,status:j.status,uid:claims.sub,createdAt:now};
    await adminPatch(updates);return {success:true,id:journalId,status:j.status,errors:v.errors,balance:v.balance};
   }
+  if(action==="cancelJournal"){
+   requireFinanceArea("journal","edit");
+   const journalId=id(body.id),document=await adminRead("documents/"+journalId),posted=await adminRead("journals/"+journalId),target=document||posted;
+   if(!target||target.type!=="journal")throw new Error("قيد اليومية المطلوب إلغاؤه غير موجود.");
+   if(target.status==="posted"||posted&&posted.status==="posted")throw new Error("القيد مرحّل بالفعل. استخدم قيدًا عكسيًا بدل الإلغاء.");
+   if(!["draft","pending_review","needs_correction"].includes(target.status))throw new Error("القيد ليس في حالة تسمح بالإلغاء.");
+   const updates={};
+   updates["documents/"+journalId+"/status"]="cancelled";
+   updates["documents/"+journalId+"/cancelledAt"]=now;
+   updates["documents/"+journalId+"/cancelledBy"]=claims.sub;
+   updates["documents/"+journalId+"/cancellationReason"]=txt(body.reason||"إلغاء القيد بطلب المستخدم",500);
+   updates["reviewQueue/"+journalId]=null;
+   updates["audit/"+uid("AUD")]={action:"cancel_journal",documentId:journalId,sourceType:target.sourceType||"manual",uid:claims.sub,createdAt:now};
+   if(target.sourceType==="projectEvent"&&target.sourceId&&adminPatchRootAt){
+    const separator=String(target.sourceId).lastIndexOf("--");
+    if(separator>0){
+     const projectCode=target.sourceId.slice(0,separator),eventId=target.sourceId.slice(separator+2);
+     await adminPatchRootAt("projects/"+id(projectCode)+"/events/"+id(eventId),{accountingStatus:"cancelled",accountingImpact:false,accountingCancelledAt:now,accountingCancelledBy:claims.sub});
+    }
+   }else if(target.sourceType==="cashCustody"&&target.sourceId&&adminPatchRootAt){
+    const separator=String(target.sourceId).indexOf("--");
+    if(separator>0){
+     const ownerUid=id(target.sourceId.slice(0,separator)),transactionId=id(target.sourceId.slice(separator+2));
+     await adminPatchRootAt("cashCustodies/"+ownerUid+"/transactions/"+transactionId,{financialReviewStatus:"cancelled",financialReviewCancelledAt:now,financialReviewCancelledBy:claims.sub});
+    }
+   }
+   await adminPatch(updates);return {success:true,id:journalId,status:"cancelled"};
+  }
+  if(action==="reverseJournal"){
+   requireFinanceArea("journal","add");
+   const originalId=id(body.id),original=await adminRead("journals/"+originalId);
+   if(!original||original.type!=="journal"||original.status!=="posted")throw new Error("لا يمكن إنشاء قيد عكسي إلا لقيد مرحّل.");
+   if(original.reversalJournalId||original.reversedByJournalId)throw new Error("تم إنشاء قيد عكسي لهذا القيد من قبل.");
+   const reversalId=uid("REV-JRN"),reversalDate=date(body.date||new Date().toISOString().slice(0,10));
+   const lines=(original.lines||[]).map(line=>({...line,debit:Number(line.credit||0),credit:Number(line.debit||0),description:txt(line.description||original.description||"",250)+" — عكس"}));
+   const journal={id:reversalId,type:"journal",date:reversalDate,description:txt(body.description||("قيد عكسي للقيد "+originalId+" — "+(original.description||"")),500),reference:txt(body.reference||original.reference||originalId,120),currency:original.currency||"EGP",lines,sourceType:"manual",reversalOf:originalId,createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120)};
+   if(journal.currency!=="EGP")throw new Error("القيود متعددة العملات وأسعار الصرف غير مفعّلة بعد.");
+   const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{},validation=validateJournal(journal,chart,centers);
+   if(validation.errors.length)throw new Error("تعذر تكوين القيد العكسي: "+validation.errors.join("؛ "));
+   journal.status="pending_review";journal.balance=validation.balance;journal.errors=[];
+   const updates={};updates["documents/"+reversalId]=journal;updates["reviewQueue/"+reversalId]=reviewRecord(journal);
+   updates["journals/"+originalId+"/reversalJournalId"]=reversalId;
+   updates["journals/"+originalId+"/reversalRequestedAt"]=now;
+   updates["audit/"+uid("AUD")]={action:"create_reversing_journal",documentId:reversalId,reversalOf:originalId,uid:claims.sub,createdAt:now};
+   await adminPatch(updates);
+   return {success:true,id:reversalId,status:"pending_review",reversalOf:originalId,errors:[]};
+  }
   if(action==="deleteJournal"){
    requireFinanceArea("journal","delete");
    const journalId=id(body.id),document=await adminRead("documents/"+journalId),posted=await adminRead("journals/"+journalId),target=posted||document;
@@ -1381,7 +1428,19 @@ if(action==="submitCash"){
   if(!["pending_review","duplicate_review"].includes(doc.status))throw new Error("المستند ليس في قائمة المراجعة");
   if(decision==="approve"&&doc.status==="duplicate_review"&&doc.duplicateOf)throw new Error("هذه الحركة مكررة محتملة. لا تعتمدها إلا باستخدام قرار اعتماد التكرار الصريح.");
   if(decision==="approveDuplicate"&&doc.status!=="duplicate_review")throw new Error("هذا المستند ليس تكرارًا محتملاً.");
-  if(decision==="reject"||decision==="return"){const status=decision==="reject"?"rejected":"needs_correction",u={};u["documents/"+docId+"/status"]=status;u["documents/"+docId+"/reviewReason"]=txt(body.reason,1000);u["documents/"+docId+"/reviewedBy"]=claims.sub;u["documents/"+docId+"/reviewedAt"]=now;u["reviewQueue/"+docId]=null;u["audit/"+uid("AUD")]={action:status,documentId:docId,uid:claims.sub,createdAt:now};await adminPatch(u);return {success:true,status};}
+  if(decision==="reject"||decision==="return"){
+   const status=decision==="reject"?"rejected":"needs_correction",u={};
+   u["documents/"+docId+"/status"]=status;u["documents/"+docId+"/reviewReason"]=txt(body.reason,1000);u["documents/"+docId+"/reviewedBy"]=claims.sub;u["documents/"+docId+"/reviewedAt"]=now;u["reviewQueue/"+docId]=null;
+   u["audit/"+uid("AUD")]={action:status,documentId:docId,uid:claims.sub,createdAt:now};
+   if(doc.type==="journal"&&doc.sourceType==="projectEvent"&&doc.sourceId&&adminPatchRootAt){
+    const separator=String(doc.sourceId).lastIndexOf("--");
+    if(separator>0)await adminPatchRootAt("projects/"+id(doc.sourceId.slice(0,separator))+"/events/"+id(doc.sourceId.slice(separator+2)),{accountingStatus:status,accountingReviewReason:txt(body.reason,1000),accountingReviewedAt:now,accountingReviewedBy:claims.sub});
+   }else if(doc.type==="journal"&&doc.sourceType==="cashCustody"&&doc.sourceId&&adminPatchRootAt){
+    const separator=String(doc.sourceId).indexOf("--");
+    if(separator>0)await adminPatchRootAt("cashCustodies/"+id(doc.sourceId.slice(0,separator))+"/transactions/"+id(doc.sourceId.slice(separator+2)),{financialReviewStatus:status,financialReviewReason:txt(body.reason,1000),financialReviewedAt:now,financialReviewedBy:claims.sub});
+   }
+   await adminPatch(u);return {success:true,status};
+  }
   if(decision!=="approve"&&decision!=="approveDuplicate")throw new Error("قرار المراجعة غير صحيح");const updates={};let j;
   if(doc.type==="journal"){const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{},v=validateJournal(doc,chart,centers);if(v.errors.length)throw new Error(v.errors.join("؛ "));j={...doc,status:"posted",approvedAt:now,approvedBy:claims.sub,postedAt:now};Object.assign(updates,journalUpdates(j));}
   else if(doc.type==="cash"){
@@ -1523,7 +1582,22 @@ if(action==="submitCash"){
    for(const amountRow of invoiceAmounts.filter(function(row){return row.line.kind==="stock";})){const l=amountRow.line,warehouse=id(l.warehouseCode||"default"),code=id(l.itemCode),stock=bal[warehouse]&&bal[warehouse][code]||{quantity:0,value:0,averageCost:0},qty=num(l.quantity),gross=amountRow.amount,inward=purchase,oldQty=Number(stock.quantity||0),oldValue=Number(stock.value||0),cost=inward?gross:rnd(qty*Number(stock.averageCost||0)),nextQty=inward?oldQty+qty:oldQty-qty,nextValue=inward?oldValue+gross:oldValue-cost,mov=uid("MOV");updates["inventory/balances/"+warehouse+"/"+code]={quantity:rnd(nextQty),value:rnd(nextValue),averageCost:nextQty>0?rnd(nextValue/nextQty):0,updatedAt:now};updates["inventory/movements/"+mov]={id:mov,date:inv.date,invoiceId:doc.id,journalId:j.id,itemCode:code,warehouseCode:warehouse,kind:inward?"purchase":"sale",quantity:inward?qty:-qty,unitCost:inward?rnd(gross/qty):Number(stock.averageCost||0),value:inward?gross:-cost,createdAt:now,createdBy:claims.sub};}
    updates["documentFingerprints/"+inv.fingerprint]={documentId:doc.id,createdAt:now};updates["documents/"+doc.id+"/totals"]=tot;
   }else throw new Error("نوع المستند غير مدعوم في الترحيل");
-  updates["documents/"+docId+"/status"]="posted";updates["documents/"+docId+"/journalId"]=j.id;updates["documents/"+docId+"/approvedAt"]=now;updates["documents/"+docId+"/approvedBy"]=claims.sub;updates["documents/"+docId+"/postedAt"]=now;updates["reviewQueue/"+docId]=null;updates["audit/"+uid("AUD")]={action:"approve_and_post",documentId:docId,journalId:j.id,uid:claims.sub,createdAt:now};await adminPatch(updates);return {success:true,status:"posted",journalId:j.id};
+  updates["documents/"+docId+"/status"]="posted";updates["documents/"+docId+"/journalId"]=j.id;updates["documents/"+docId+"/approvedAt"]=now;updates["documents/"+docId+"/approvedBy"]=claims.sub;updates["documents/"+docId+"/postedAt"]=now;updates["reviewQueue/"+docId]=null;
+  updates["audit/"+uid("AUD")]={action:"approve_and_post",documentId:docId,journalId:j.id,uid:claims.sub,createdAt:now};
+  if(doc.type==="journal"&&doc.reversalOf)updates["journals/"+id(doc.reversalOf)+"/reversedByJournalId"]=j.id;
+  if(doc.type==="journal"&&doc.sourceType==="projectEvent"&&doc.sourceId&&adminPatchRootAt){
+   const separator=String(doc.sourceId).lastIndexOf("--");
+   if(separator>0)await adminPatchRootAt("projects/"+id(doc.sourceId.slice(0,separator))+"/events/"+id(doc.sourceId.slice(separator+2)),{accountingStatus:"posted",accountingImpact:true,accountingJournalId:j.id,accountingApprovedAt:now,accountingApprovedBy:claims.sub,accountingErrors:null});
+  }else if(doc.type==="journal"&&doc.sourceType==="cashCustody"&&doc.sourceId&&adminPatchRootAt){
+   const separator=String(doc.sourceId).indexOf("--");
+   if(separator>0){
+    const ownerUid=id(doc.sourceId.slice(0,separator)),transactionId=id(doc.sourceId.slice(separator+2)),custody=adminReadRoot?await adminReadRoot("cashCustodies/"+ownerUid+"/transactions/"+transactionId):null;
+    const custodyUpdates={financialReviewStatus:"posted",financialJournalId:j.id,financialReviewedAt:now,financialReviewedBy:claims.sub};
+    if(custody){custodyUpdates.status="approved";if(custody.linkedOwnerUid&&custody.linkedTransactionId){await adminPatchRootAt("cashCustodies/"+id(custody.linkedOwnerUid)+"/transactions/"+id(custody.linkedTransactionId),{status:"approved",financialReviewStatus:"posted",financialJournalId:j.id,financialReviewedAt:now,financialReviewedBy:claims.sub});}}
+    await adminPatchRootAt("cashCustodies/"+ownerUid+"/transactions/"+transactionId,custodyUpdates);
+   }
+  }
+  await adminPatch(updates);return {success:true,status:"posted",journalId:j.id};
  }
  if(action==="returnToReview"){requireFinanceArea("review","edit");throw new Error("إعادة الإرسال المباشر غير مسموح بها لأنها تتجاوز التحقق المحاسبي. أعد حفظ القيد أو الفاتورة من الشاشة المخصصة ليُعاد احتساب الأخطاء والتحقق من البيانات قبل دخول قائمة المراجعة.");}
  throw new Error("Unknown financial action.");
