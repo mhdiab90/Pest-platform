@@ -37,6 +37,12 @@ async function adminPatchRoot(updates) {
   }
   return true;
 }
+const adminPatchRootAtCalls = [];
+async function adminPatchRootAt(path, updates) {
+  adminPatchRootAtCalls.push({path, updates});
+  for (const [key, value] of Object.entries(updates)) write(path + "/" + key, value);
+  return true;
+}
 const profile = {uid:"test-admin",role:"admin",status:"active",fullName:"Finance Test"};
 const claims = {sub:"test-admin"};
 const env = {};
@@ -53,7 +59,7 @@ async function invoke(method, path, body, options = {}) {
     body:body || {},
     claims:requestClaims,profile:requestProfile,env,
     hasPermission:requestHasPermission,requirePermission:requestRequirePermission,
-    adminRead,adminPatch,adminReadRoot,adminPutRoot,adminPatchRoot
+    adminRead,adminPatch,adminReadRoot,adminPutRoot,adminPatchRoot,adminPatchRootAt
   });
 }
 
@@ -242,10 +248,11 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
   assert.equal(supplierImport.count,2);
   assert.equal(read("vendors/SUP-IMPORT-01").name,"Imported Supplier One");
   assert.equal(read("parties/SUP-IMPORT-02").partyType,"vendor");
-  await assert.rejects(
-    invoke("POST","",{action:"importMasters",kind:"parties",partyType:"vendor",rows:[{code:"SUP-IMPORT-01",name:"Duplicate supplier"}]}),
-    /موجود بالفعل/
-  );
+  const supplierUpsert = await invoke("POST","",{action:"importMasters",kind:"parties",partyType:"vendor",rows:[{code:"SUP-IMPORT-01",name:"Updated supplier",phone:""}]});
+  assert.equal(supplierUpsert.updated,1,"an existing customer/supplier code updates the current record");
+  assert.equal(read("vendors/SUP-IMPORT-01").name,"Updated supplier");
+  assert.equal(read("vendors/SUP-IMPORT-01").phone,"01111111111","blank spreadsheet cells do not erase existing contact data");
+  assert.equal(read("vendors/SUP-IMPORT-01").id,undefined,"the import does not manufacture a replacement record ID");
   await invoke("POST","",{
     action:"saveMaster",kind:"items",
     item:{code:"ITEM-001",name:"Test stock item",unit:"piece",groupCode:"GROUP-1",version:"V1",warehouseCode:"default"}
@@ -670,6 +677,31 @@ test("master records support editing, safe code changes and protected deletion",
   assert.equal(read("projects/PRJ-CRUD-REFERENCE").clientCodes[0],"CUS-CRUD-NEW");
 });
 
+
+test("master imports upsert by code, keep blank columns unchanged and report no-op rows", async () => {
+  write("costCenters/CC-UPSERT-01",{code:"CC-UPSERT-01",name:"Old Center",projectCode:"PRJ-OLD",active:false,createdAt:123});
+  const updated = await invoke("POST","",{action:"importMasters",kind:"costCenters",rows:[{code:"CC-UPSERT-01",name:"New Center",projectCode:""}]});
+  assert.equal(updated.updated,1);
+  assert.equal(read("costCenters/CC-UPSERT-01").name,"New Center");
+  assert.equal(read("costCenters/CC-UPSERT-01").projectCode,"PRJ-OLD","empty Excel columns preserve existing values");
+  assert.equal(read("costCenters/CC-UPSERT-01").active,false,"existing inactive status is preserved");
+  assert.equal(read("costCenters/CC-UPSERT-01").createdAt,123,"original creation metadata is preserved");
+  const unchanged = await invoke("POST","",{action:"importMasters",kind:"costCenters",rows:[{code:"CC-UPSERT-01",name:"New Center",projectCode:""}]});
+  assert.equal(unchanged.unchanged,1,"identical re-imports are counted but do not replace the record");
+});
+
+test("bulk master deletion deletes unused records and deactivates referenced records", async () => {
+  write("items/BULK-DELETE-UNUSED",{code:"BULK-DELETE-UNUSED",name:"Unused item",itemType:"stock",active:true});
+  write("items/BULK-DELETE-USED",{code:"BULK-DELETE-USED",name:"Used item",itemType:"stock",active:true});
+  write("documents/BULK-DELETE-REFERENCE",{id:"BULK-DELETE-REFERENCE",type:"invoice",lines:[{itemCode:"BULK-DELETE-USED"}]});
+  const result = await invoke("POST","",{action:"deleteMasters",kind:"items",codes:["BULK-DELETE-UNUSED","BULK-DELETE-USED"]});
+  assert.equal(result.deleted,1);
+  assert.equal(result.deactivated,1);
+  assert.equal(result.failed,0);
+  assert.equal(read("items/BULK-DELETE-UNUSED"),null,"unused records are physically removed");
+  assert.equal(read("items/BULK-DELETE-USED").active,false,"referenced records are deactivated safely");
+  assert.equal(read("documents/BULK-DELETE-REFERENCE").lines[0].itemCode,"BULK-DELETE-USED","historical document references are retained");
+});
 
 test("master permission cannot be used to edit or delete financial master records", async () => {
   write("items/SECURE-ITEM-001",{code:"SECURE-ITEM-001",name:"Protected item",itemType:"stock",active:true});
