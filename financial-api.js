@@ -250,6 +250,26 @@ function invoiceLineAmounts(inv){
  });
 }
 function invoiceTotals(inv){const net=rnd(invoiceLineAmounts(inv).reduce(function(sum,row){return sum+row.amount;},0)),hasFixedTax=inv.taxAmount!==undefined&&inv.taxAmount!==null&&String(inv.taxAmount).trim()!=="",tax=rnd(hasFixedTax?num(inv.taxAmount):net*num(inv.taxRate||0)/100);return {net,tax,total:rnd(net+tax)};}
+function invoiceReviewErrors(inv,taxCodes,chart,items){
+ const errors=[],lines=Array.isArray(inv.lines)?inv.lines:[],rawDate=String(inv.date||"");
+ if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(rawDate)||!Number.isFinite(Date.parse(rawDate+"T00:00:00Z")))errors.push("تاريخ الفاتورة مطلوب أو غير صحيح.");
+ if(!txt(inv.number,120))errors.push("رقم الفاتورة مطلوب.");
+ if(!txt(inv.partyId,120))errors.push("يجب تحديد العميل أو المورد.");
+ if(inv.currency!=="EGP")errors.push("يجب اختيار الجنيه المصري قبل اعتماد الفاتورة.");
+ if(!lines.length)errors.push("يجب إضافة بند واحد على الأقل.");
+ lines.forEach((line,index)=>{
+  if(!txt(line.description,250))errors.push("وصف البند "+(index+1)+" مطلوب.");
+  if(!(Number(line.quantity)>0))errors.push("الكمية غير صحيحة في البند "+(index+1)+".");
+  if(!["stock","service"].includes(line.kind))errors.push("حدد طبيعة البند "+(index+1)+".");
+  else if(line.kind==="stock"){if(!line.itemCode||!items[line.itemCode]||items[line.itemCode].active===false)errors.push("حدد صنفًا مخزنيًا نشطًا للبند "+(index+1)+".");}
+  else{const expected=inv.invoiceType==="purchase"?"expense":"revenue",code=String(inv.invoiceType==="purchase"?(line.accountCode||""):(line.incomeAccountCode||"")),account=chart[code];if(!account||account.isGroup||account.active===false||account.type!==expected)errors.push("حدد حساب "+(expected==="expense"?"مصروف":"إيراد")+" صحيحًا للبند "+(index+1)+".");}
+ });
+ const rate=Number(inv.taxRate||0),taxAmount=Number(inv.taxAmount||0);
+ if(inv.taxCode){const code=taxCodes[id(inv.taxCode)],expected=inv.invoiceType==="purchase"?"vat_input":"vat_output";if(!code||code.active===false||code.taxType!==expected)errors.push("كود الضريبة غير نشط أو لا يتوافق مع نوع الفاتورة.");else{if(code.effectiveFrom&&rawDate&&rawDate<String(code.effectiveFrom))errors.push("كود الضريبة غير سارٍ بتاريخ الفاتورة.");if(Math.abs(Number(code.rate||0)-rate)>0.01)errors.push("نسبة كود الضريبة لا تطابق نسبة الفاتورة.");}}
+ else if(rate>0||taxAmount>0)errors.push("يجب اختيار كود ضريبي نشط ومطابق لنوع الفاتورة وتاريخها ونسبتها.");
+ try{invoiceTotals(inv);}catch(error){errors.push(String(error.message||error));}
+ return [...new Set(errors)];
+}
 async function sha(v){const a=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(v));return Array.from(new Uint8Array(a)).map(x=>x.toString(16).padStart(2,"0")).join("");}
 
 export async function handleFinancialRequest(ctx){
@@ -676,10 +696,11 @@ export async function handleFinancialRequest(ctx){
   if(!["purchase","sales"].includes(direction))throw new Error("حدد نوع الفاتورة أولاً: مشتريات أو مبيعات.");
   const draftId=id(body.id||uid("INV")),previous=body.id?await adminRead("documents/"+draftId):null;
   requireFinanceArea("invoices",previous?"edit":"add");
-  if(previous&&(!(previous.type==="invoice"&&["draft","needs_correction","returned_to_creator"].includes(previous.status))||previous.createdBy!==claims.sub))throw new Error("لا يمكن تعديل هذه الفاتورة في حالتها الحالية.");
-  const inv={...body,id:draftId,type:"invoice",invoiceType:direction,date:date(body.date),number:txt(body.number,120),partyId:txt(body.partyId,120),partyName:txt(body.partyName,180),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:previous&&previous.createdAt||now,createdBy:previous&&previous.createdBy||claims.sub,createdByName:previous&&previous.createdByName||txt(profile.fullName||profile.username||profile.email,120),status:"draft"};
+  if(previous&&(!(previous.type==="invoice"&&["draft","needs_correction","returned_to_creator"].includes(previous.status))||(previous.createdBy!==claims.sub&&previous.lastAssignedTo!==claims.sub)))throw new Error("لا يمكن تعديل هذه الفاتورة في حالتها الحالية.");
+  const inv={...body,id:draftId,type:"invoice",invoiceType:direction,date:txt(body.date||"",10),number:txt(body.number||"",120),partyId:txt(body.partyId||"",120),partyName:txt(body.partyName||"",180),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:previous&&previous.createdAt||now,createdBy:previous&&previous.createdBy||claims.sub,createdByName:previous&&previous.createdByName||txt(profile.fullName||profile.username||profile.email,120),status:"draft"};
   if(previous&&previous.returnedTaskId)inv.returnedTaskId=previous.returnedTaskId;
   if(previous&&previous.attachments)inv.attachments=previous.attachments;
+   for(const field of ["assignmentId","assignmentSenderUid","assignmentChain","lastAssignedTo"])if(previous&&previous[field]!==undefined)inv[field]=previous[field];
   if(previous&&previous.returnedTaskId)inv.returnedTaskId=previous.returnedTaskId;
   if(previous)for(const field of ["attachmentUploadStatus","attachmentFileName","attachmentUploadError"])if(previous[field])inv[field]=previous[field];
   inv.errors=[];
@@ -701,20 +722,22 @@ export async function handleFinancialRequest(ctx){
   requireFinanceArea("assignments","add");
   const invoiceId=id(body.invoiceId),invoice=await adminRead("documents/"+invoiceId);
   if(!invoice||invoice.type!=="invoice")throw new Error("الفاتورة المطلوب تحويلها غير موجودة.");
-  if(invoice.createdBy!==claims.sub&&profile.role!=="admin")throw new Error("لا يمكنك تحويل فاتورة أنشأها مستخدم آخر.");
+  if(invoice.createdBy!==claims.sub&&invoice.lastAssignedTo!==claims.sub&&profile.role!=="admin")throw new Error("لا يمكنك تحويل فاتورة لا تقع في عهدتك.");
   if(!["draft","needs_correction","returned_to_creator"].includes(invoice.status))throw new Error("لا يمكن تحويل الفاتورة في حالتها الحالية.");
   const assigneeUid=id(body.assigneeUid),assignee=adminReadRoot?await adminReadRoot("users/"+assigneeUid):null;
   if(!assignee||!["active","نشط","مفعل","enabled"].includes(String(assignee.status||"").toLowerCase()))throw new Error("المستخدم المحدد غير نشط أو غير موجود.");
   if(assigneeUid===claims.sub)throw new Error("اختر مستخدمًا آخر لاستكمال الفاتورة.");
   const instruction=txt(body.instruction||"مراجعة تصنيف البنود وتحديد الأكواد المخزنية أو حسابات المصروفات",700);
   const taskId=uid("FIN-TASK"),assignmentId=uid("ASN"),createdByName=txt(profile.fullName||profile.username||profile.email,120),assigneeName=txt(assignee.fullName||assignee.username||assignee.email||assigneeUid,120);
-  const assignment={id:assignmentId,invoiceId,assigneeUid,assigneeName,createdBy:claims.sub,createdByName,instruction,status:"open",taskId,createdAt:now,invoiceNumber:invoice.number||"",invoiceType:invoice.invoiceType||"purchase",partyName:invoice.partyName||"",date:invoice.date||""};
+  const assignment={id:assignmentId,invoiceId,assigneeUid,assigneeName,createdBy:claims.sub,createdByName,instruction,status:"open",taskId,createdAt:now,invoiceNumber:invoice.number||"",invoiceType:invoice.invoiceType||"purchase",partyName:invoice.partyName||"",date:invoice.date||"",rootAssignmentId:invoice.assignmentChain&&invoice.assignmentChain[0]&&invoice.assignmentChain[0].assignmentId||assignmentId,parentAssignmentId:invoice.assignmentId||""};
   const task={id:taskId,title:"استكمال تصنيف فاتورة "+(invoice.number||invoiceId),description:instruction,status:"open",createdAt:now,createdBy:claims.sub,createdByName,kind:"financialAssignment",financialAssignmentId:assignmentId,sourceInvoiceId:invoiceId,assigneeUid};
   const financialUpdates={};
   financialUpdates["documents/"+invoiceId+"/status"]="assigned";
   financialUpdates["documents/"+invoiceId+"/assignedTo"]=assigneeUid;
   financialUpdates["documents/"+invoiceId+"/assignmentId"]=assignmentId;
   financialUpdates["documents/"+invoiceId+"/assignedAt"]=now;
+   financialUpdates["documents/"+invoiceId+"/assignmentSenderUid"]=claims.sub;
+   financialUpdates["documents/"+invoiceId+"/assignmentChain"]=[...(invoice.assignmentChain||[]),{assignmentId,fromUid:claims.sub,fromName:createdByName,toUid:assigneeUid,toName:assigneeName,at:now,instruction}];
   financialUpdates["reviewQueue/"+invoiceId]=null;
   financialUpdates["assignments/"+assigneeUid+"/"+assignmentId]=assignment;
   financialUpdates["sentAssignments/"+claims.sub+"/"+assignmentId]={...assignment};
