@@ -373,6 +373,18 @@ export async function handleFinancialRequest(ctx){
     }
    }
    const out={chartOfAccounts:chart};for(const k of ["costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","settings"])out[k]=(await adminRead(k))||{};
+   // Every project is also a cost center, using the exact project code. Create only missing
+   // project-linked centers; never overwrite a manually maintained center with the same code.
+   const projectCostCenterUpdates={},projectDirectory=adminReadRoot?(await adminReadRoot("projects"))||{}:{};
+   for(const [projectCode,projectRecord] of Object.entries(projectDirectory)){
+    if(!projectRecord||typeof projectRecord!=="object")continue;
+    const code=id(projectRecord.code||projectCode);
+    if(!out.costCenters[code]){
+     const center={code,name:txt(projectRecord.name||projectRecord.projectName||code,180),projectCode:code,isProjectCenter:true,active:true,createdAt:now,createdBy:claims.sub};
+     projectCostCenterUpdates["costCenters/"+code]=center;out.costCenters[code]=center;
+    }
+   }
+   if(Object.keys(projectCostCenterUpdates).length)await adminPatch(projectCostCenterUpdates);
    const parties=(await adminRead("parties"))||{};
    const crmClients=adminReadRoot?(await adminReadRoot("clients"))||{}:{};
    const crmVendors=adminReadRoot?(await adminReadRoot("vendors"))||{}:{};
