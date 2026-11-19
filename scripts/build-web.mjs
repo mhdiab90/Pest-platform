@@ -4,6 +4,7 @@ import { transform } from "esbuild";
 
 const outputDirectory = "web-dist";
 const requiredAssets = [
+  "code-intelligence.js",
   "capacitor-bridge.js",
   "pest-crm-module.js",
   "financial-module.js",
