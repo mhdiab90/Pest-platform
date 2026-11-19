@@ -42,6 +42,10 @@ const DEFAULT_PARTY_ADVANCE_ACCOUNTS = [
  {code:"1240",name:"دفعات مقدمة للموردين",type:"asset",nature:"debit",parentCode:"11",isControl:true,subledgerType:"vendor"},
  {code:"2130",name:"دفعات مقدمة من العملاء",type:"liability",nature:"credit",parentCode:"21",isControl:true,subledgerType:"customer"}
 ];
+const DEFAULT_CHEQUE_ACCOUNTS = [
+ {code:"1130",name:"شيكات واردة تحت التحصيل",type:"asset",nature:"debit",parentCode:"11"},
+ {code:"2140",name:"شيكات صادرة لم تقدم للبنك",type:"liability",nature:"credit",parentCode:"21"}
+];
 
 const DEFAULT_EXPENSE_ACCOUNTS = [
  {code:"65",name:"مصروفات الصيانة والإصلاحات",type:"expense",nature:"debit",isGroup:true,parentCode:"6"},
@@ -428,7 +432,7 @@ export async function handleFinancialRequest(ctx){
    if(profile.role==="admin"){
     const migrated={};
     const updates={};
-    for(const account of [...DEFAULT_EXPENSE_ACCOUNTS,...DEFAULT_STAFF_ACCOUNTS,...DEFAULT_PARTY_ADVANCE_ACCOUNTS]){
+    for(const account of [...DEFAULT_EXPENSE_ACCOUNTS,...DEFAULT_STAFF_ACCOUNTS,...DEFAULT_PARTY_ADVANCE_ACCOUNTS,...DEFAULT_CHEQUE_ACCOUNTS]){
      if(chart[account.code])continue;
      const parent=account.parentCode?(chart[account.parentCode]||migrated[account.parentCode]):null;
      if(account.parentCode&&(!parent||!parent.isGroup))continue;
@@ -825,8 +829,8 @@ export async function handleFinancialRequest(ctx){
   const configuredEffects={
    purchase_order:"payable",supplier_commitment:"payable",supplier_invoice:"payable",
    customer_receivable:"receivable",customer_invoice:"receivable",payment_request:"receivable",retention_due:"receivable",
-   supplier_payment:"cash_out",cash_payment:"cash_out",bank_transfer_out:"cash_out",cheque_issued:"cash_out",cheque_cleared_out:"cash_out",advance_paid:"cash_out",
-   customer_collection:"cash_in",cash_received:"cash_in",bank_transfer_in:"cash_in",cheque_received:"cash_in",cheque_cleared_in:"cash_in",advance_received:"cash_in"
+   supplier_payment:"cash_out",cash_payment:"cash_out",bank_transfer_out:"cash_out",cheque_issued:"cheque_outstanding",cheque_cleared_out:"cash_out",advance_paid:"cash_out",
+   customer_collection:"cash_in",cash_received:"cash_in",bank_transfer_in:"cash_in",cheque_received:"cheque_in_transit",cheque_cleared_in:"cash_in",advance_received:"cash_in"
   };
   let effect=configuredEffects[actionCode]||"none";
   if(effect==="none"&&amount>0&&["vendor","client"].includes(partyType))effect=partyType==="vendor"?"payable":"receivable";
@@ -881,14 +885,30 @@ export async function handleFinancialRequest(ctx){
    }else if(effect==="receivable"){
     lines.push({accountCode:"1210",debit:amount,credit:0,description:event.actionName,costCenterId:projectCode,projectCode,partyType:"customer",partyId:partyCode});
     lines.push({accountCode:"4200",debit:0,credit:amount,description:event.actionName,costCenterId:projectCode,projectCode});
+   }else if(effect==="cheque_outstanding"){
+    lines.push({accountCode:"281",debit:financialAmount,credit:0,description:event.actionName,costCenterId:projectCode,projectCode,partyType:"vendor",partyId:partyCode});
+    lines.push({accountCode:"2140",debit:0,credit:financialAmount,description:"شيك صادر لم يقدم للبنك — "+event.actionName,costCenterId:projectCode,projectCode});
+   }else if(effect==="cheque_in_transit"){
+    lines.push({accountCode:"1130",debit:financialAmount,credit:0,description:"شيك وارد تحت التحصيل — "+event.actionName,costCenterId:projectCode,projectCode});
+    lines.push({accountCode:"1210",debit:0,credit:financialAmount,description:event.actionName,costCenterId:projectCode,projectCode,partyType:"customer",partyId:partyCode});
    }else if(effect==="cash_in"){
-    lines.push({accountCode:cashAccount,debit:financialAmount,credit:0,description:event.actionName,costCenterId:projectCode,projectCode});
     const isAdvance=actionCode==="advance_received";
-    lines.push({accountCode:isAdvance?"2130":"1210",debit:0,credit:financialAmount,description:event.actionName,costCenterId:projectCode,projectCode,partyType:"customer",partyId:partyCode});
+    if(actionCode==="cheque_cleared_in"){
+     lines.push({accountCode:cashAccount,debit:financialAmount,credit:0,description:event.actionName,costCenterId:projectCode,projectCode});
+     lines.push({accountCode:"1130",debit:0,credit:financialAmount,description:"تحصيل شيك وارد — "+event.actionName,costCenterId:projectCode,projectCode});
+    }else{
+     lines.push({accountCode:cashAccount,debit:financialAmount,credit:0,description:event.actionName,costCenterId:projectCode,projectCode});
+     lines.push({accountCode:isAdvance?"2130":"1210",debit:0,credit:financialAmount,description:event.actionName,costCenterId:projectCode,projectCode,partyType:"customer",partyId:partyCode});
+    }
    }else if(effect==="cash_out"){
     const isAdvance=actionCode==="advance_paid",isVendorPayment=partyType==="vendor"||isAdvance;
-    lines.push({accountCode:isAdvance?"1240":isVendorPayment?"281":"6100",debit:financialAmount,credit:0,description:event.actionName,costCenterId:projectCode,projectCode,...(isVendorPayment?{partyType:"vendor",partyId:partyCode}:{})});
-    lines.push({accountCode:cashAccount,debit:0,credit:financialAmount,description:event.actionName,costCenterId:projectCode,projectCode});
+    if(actionCode==="cheque_cleared_out"){
+     lines.push({accountCode:"2140",debit:financialAmount,credit:0,description:"صرف شيك صادر — "+event.actionName,costCenterId:projectCode,projectCode});
+     lines.push({accountCode:cashAccount,debit:0,credit:financialAmount,description:event.actionName,costCenterId:projectCode,projectCode});
+    }else{
+     lines.push({accountCode:isAdvance?"1240":isVendorPayment?"281":"6100",debit:financialAmount,credit:0,description:event.actionName,costCenterId:projectCode,projectCode,...(isVendorPayment?{partyType:"vendor",partyId:partyCode}:{})});
+     lines.push({accountCode:cashAccount,debit:0,credit:financialAmount,description:event.actionName,costCenterId:projectCode,projectCode});
+    }
    }
    if(lines.length<2)journalErrors.push("تعذر تكوين سطور القيد المقترح لهذا الحدث.");
    const chart=(await adminRead("chartOfAccounts"))||{},centers=Object.assign({},(await adminRead("costCenters"))||{});
