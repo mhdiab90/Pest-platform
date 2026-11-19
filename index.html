@@ -4537,10 +4537,11 @@ function App(){
     const action=projectActionOptions.find(x=>x.id===projectEvent.actionCode)||projectActionOptions[0];
     const partyType=projectEvent.partyType||action.party||'';
     const configuredEffect=action.effect||'none';
-    // For a financial event, the selected counterparty determines who owes whom:
-    // supplier = payable by us; customer = receivable for us. Cash movements keep their explicit direction.
-    const hasFinancialAmount=Number(projectEvent.amount||0)>0;
-    const effect=hasFinancialAmount&&!['cash_in','cash_out'].includes(configuredEffect)&&['vendor','client'].includes(partyType)?(partyType==='vendor'?'payable':'receivable'):configuredEffect;
+    // Only explicitly classified accounting events create journals. A quotation, purchase order,
+    // delivery note or general project note stays operational even when it carries an estimated value.
+    let effect=configuredEffect;
+    if(effect==='cash_out'&&projectEvent.paymentMethod==='cheque'&&projectEvent.actionCode!=='cheque_cleared_out')effect='cheque_outstanding';
+    if(effect==='cash_in'&&projectEvent.paymentMethod==='cheque'&&projectEvent.actionCode!=='cheque_cleared_in')effect='cheque_in_transit';
     const normalizedType=effect==='cash_in'?'customer_collection':effect==='cash_out'?'supplier_payment':effect==='receivable'?'customer_receivable':effect==='payable'?'supplier_commitment':projectEvent.actionCode;
     const id=editingProjectEventId||db.ref('projects/'+code+'/events').push().key;
     const existingEvent=editingProjectEventId&&target.events?target.events[editingProjectEventId]:null;
