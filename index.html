@@ -1728,13 +1728,25 @@ function App(){
           console.warn('Presence disconnect cleanup was denied; heartbeat expiry is active.');
           return;
         }
-        setOnlinePresenceError(rtl
-          ? (readPath
-            ? 'Firebase رفض قراءة المسار /presence. تأكد من نشر قواعد v12 بالكامل.'
-            : 'Firebase رفض كتابة جلسة الاتصال. القراءة تعمل، لذا راجع صلاحية الكتابة عند presence/$uid/$connectionId وتأكد أن uid يطابق حساب Firebase المسجل.')
-          : (readPath
-            ? 'Firebase denied reading /presence. Confirm the complete v12 rules are published.'
-            : 'Firebase denied writing the presence session. Reading works, so check the write rule at presence/$uid/$connectionId and confirm the UID matches the signed-in Firebase account.'));
+        if(readPath){
+          setOnlinePresenceError(rtl
+            ? 'Firebase رفض قراءة المسار /presence. تأكد من نشر ملف قواعد v13 بالكامل.'
+            : 'Firebase denied reading /presence. Confirm the complete v13 rules file is published.');
+          return;
+        }
+        db.ref('users/'+uid+'/status').once('value').then(statusSnapshot=>{
+          if(!mounted)return;
+          const accountStatus=statusSnapshot.exists()?String(statusSnapshot.val()):'غير موجود';
+          setOnlinePresenceError(rtl
+            ? 'Firebase رفض كتابة جلسة الاتصال. حالة الحساب الحالية في users/{uid}/status: '+accountStatus+'. انشر ملف قواعد v13 بالكامل؛ يجب أن يسمح بكتابة state وlastChanged عند presence/{uid}/{connectionId}.'
+            : 'Firebase denied writing the presence session. Current users/{uid}/status: '+accountStatus+'. Publish the complete v13 rules file; it explicitly permits state and lastChanged under presence/{uid}/{connectionId}.');
+        }).catch(statusError=>{
+          if(!mounted)return;
+          console.warn('Could not read own account status for presence diagnosis:',statusError);
+          setOnlinePresenceError(rtl
+            ? 'Firebase رفض كتابة جلسة الاتصال. تعذر قراءة users/{uid}/status للتشخيص؛ انشر ملف قواعد v13 بالكامل.'
+            : 'Firebase denied writing the presence session. The app could not read users/{uid}/status for diagnosis; publish the complete v13 rules file.');
+        });
         return;
       }
       setOnlinePresenceError(firebaseErrorMessage(error,tr));
