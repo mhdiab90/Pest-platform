@@ -336,6 +336,86 @@ export async function handleFinancialRequest(ctx){
  const documentPermissionArea=document=>document&&document.type==="invoice"?"invoices":
   document&&document.type==="journal"?"journal":document&&document.type==="cash"?"cash":
   document&&document.type==="bankLine"?"bank":"reports";
+ const submitCashCustodyJournalRecord=async(ownerUid,transactionId)=>{
+  ownerUid=id(ownerUid);transactionId=id(transactionId);
+  if(ownerUid!==claims.sub&&!hasPermission(profile,"cashCustody","viewOthers"))throw new Error("ليس لديك صلاحية ربط قيود عهدة مستخدم آخر.");
+  const transaction=adminReadRoot?await adminReadRoot("cashCustodies/"+ownerUid+"/transactions/"+transactionId):null;
+  if(!transaction)throw new Error("حركة العهدة غير موجودة.");
+  if(transaction.pairRole==="counterparty")return {success:true,skipped:true,reason:"counterparty"};
+  if(transaction.status==="cancelled"||transaction.status==="rejected")return {success:true,skipped:true,reason:"cancelled"};
+  if(String(transaction.currency||"EGP").toUpperCase()!=="EGP")throw new Error("لا يمكن إرسال حركة العهدة للمراجعة المحاسبية بعملة أجنبية قبل تفعيل أسعار الصرف وإعادة التقييم.");
+  const linkPath="cashCustodyJournalLinks/"+ownerUid+"/"+transactionId;
+  const linkedId=await adminRead(linkPath),existingId=transaction.financialDocumentId||linkedId||"";
+  if(existingId){
+   const existing=await adminRead("documents/"+id(existingId));
+   if(existing&&existing.status==="posted")return {success:true,id:existing.id,status:"posted",alreadyPosted:true};
+   if(existing&&["pending_review","needs_correction"].includes(existing.status)){
+    if(!existing.reviewQueue)await adminPatch({"reviewQueue/"+existing.id:reviewRecord(existing)});
+    return {success:true,id:existing.id,status:existing.status,existing:true};
+   }
+   if(existing&&existing.status==="cancelled")throw new Error("قيد العهدة السابق ملغي. سجّل حركة تسوية جديدة بدل إعادة استخدام نفس الحركة.");
+  }
+  const amount=num(transaction.amount||0),movement=txt(transaction.type||"",40),dateValue=date(transaction.date||"");
+  if(amount<=0)throw new Error("مبلغ حركة العهدة غير صحيح.");
+  const incoming=["receipt","topup","refund","opening_balance","adjustment_in","transfer_in"].includes(movement);
+  const owner=adminReadRoot?await adminReadRoot("users/"+ownerUid):null;
+  const employeeName=txt(owner&& (owner.fullName||owner.username||owner.email)||transaction.createdByName||ownerUid,120);
+  const projectCode=txt(transaction.projectCode||"",120),lines=[];
+  const costCenterId=projectCode;
+  if(movement==="opening_balance"){
+   lines.push({accountCode:"1220",debit:amount,credit:0,description:transaction.description||"رصيد عهدة افتتاحي",partyType:"employeeCustody",partyId:ownerUid,costCenterId,projectCode});
+   lines.push({accountCode:"3100",debit:0,credit:amount,description:"رصيد عهدة افتتاحي",costCenterId,projectCode});
+  }else if(incoming){
+   lines.push({accountCode:"1220",debit:amount,credit:0,description:transaction.description||"حركة عهدة واردة",partyType:"employeeCustody",partyId:ownerUid,costCenterId,projectCode});
+   lines.push({accountCode:movement==="refund"?"6100":"1110",debit:0,credit:amount,description:transaction.description||"حركة عهدة واردة",costCenterId,projectCode});
+  }else if(movement==="return"||movement==="transfer_out"){
+   lines.push({accountCode:"1110",debit:amount,credit:0,description:transaction.description||"رد عهدة إلى الشركة",costCenterId,projectCode});
+   lines.push({accountCode:"1220",debit:0,credit:amount,description:transaction.description||"رد عهدة إلى الشركة",partyType:"employeeCustody",partyId:ownerUid,costCenterId,projectCode});
+  }else{
+   lines.push({accountCode:"6100",debit:amount,credit:0,description:transaction.description||"مصروف من العهدة",costCenterId,projectCode});
+   lines.push({accountCode:"1220",debit:0,credit:amount,description:transaction.description||"مصروف من العهدة",partyType:"employeeCustody",partyId:ownerUid,costCenterId,projectCode});
+  }
+  const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{};
+  const rootUpdates={};
+  if(projectCode&&!centers[projectCode]){
+   const project=adminReadRoot?await adminReadRoot("projects/"+projectCode):null;
+   if(project){
+    const center={code:projectCode,name:txt(project.name||project.projectName||projectCode,180),projectCode,isProjectCenter:true,active:true,createdAt:now,createdBy:claims.sub};
+    centers[projectCode]=center;rootUpdates["financial/costCenters/"+projectCode]=center;
+   }
+  }
+  const journalId=uid("CUST-JRN"),journal={
+   id:journalId,type:"journal",sourceType:"cashCustody",sourceId:ownerUid+"--"+transactionId,ownerUid,custodyTransactionId:transactionId,
+   projectCode,date:dateValue,description:"قيد عهدة شخصية — "+txt(transaction.description||movement,300)+" — "+employeeName,
+   reference:txt(transaction.reference||transactionId,120),currency:"EGP",lines,status:"pending_review",
+   createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120)
+  };
+  const validation=validateJournal(journal,chart,centers);
+  journal.balance=validation.balance;journal.errors=validation.errors;journal.status="pending_review";journal.title="حركة عهدة بانتظار المراجعة — "+employeeName;
+  rootUpdates["financial/documents/"+journalId]=journal;
+  rootUpdates["financial/reviewQueue/"+journalId]=reviewRecord(journal);
+  rootUpdates["financial/cashCustodyJournalLinks/"+ownerUid+"/"+transactionId]=journalId;
+  rootUpdates["financial/audit/"+uid("AUD")]={action:"submit_cash_custody_journal",documentId:journalId,ownerUid,transactionId,uid:claims.sub,createdAt:now};
+  rootUpdates["cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/financialDocumentId"]=journalId;
+  rootUpdates["cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/financialReviewStatus"]="pending_review";
+  rootUpdates["cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/status"]="pending";
+  const mirrorOwner=id(transaction.linkedOwnerUid||""),mirrorId=id(transaction.linkedTransactionId||"");
+  if(mirrorOwner&&mirrorId){
+   rootUpdates["cashCustodies/"+mirrorOwner+"/transactions/"+mirrorId+"/financialDocumentId"]=journalId;
+   rootUpdates["cashCustodies/"+mirrorOwner+"/transactions/"+mirrorId+"/financialReviewStatus"]="pending_review";
+   rootUpdates["cashCustodies/"+mirrorOwner+"/transactions/"+mirrorId+"/status"]="pending";
+  }
+  if(transaction.linkedProjectEventId&&projectCode){
+   const eventPath="projects/"+projectCode+"/events/"+id(transaction.linkedProjectEventId);
+   rootUpdates[eventPath+"/accountingImpact"]=true;
+   rootUpdates[eventPath+"/accountingStatus"]="pending_review";
+   rootUpdates[eventPath+"/accountingDocumentId"]=journalId;
+   rootUpdates[eventPath+"/accountingJournalId"]=journalId;
+  }
+  if(!adminPatchRoot)throw new Error("خدمة حفظ قيد العهدة غير متاحة.");
+  await adminPatchRoot(rootUpdates);
+  return {success:true,id:journalId,status:"pending_review",errors:journal.errors};
+ };
  if(!profile||!["active","نشط","مفعل","enabled"].includes(String(profile.status||"").toLowerCase()))throw new Error("This user account is not active.");
  if(request.method==="GET"){
   const res=txt(url.searchParams.get("resource")||"bootstrap",40);
@@ -895,6 +975,24 @@ export async function handleFinancialRequest(ctx){
    const updates={};updates["documents/"+journalId]=j;updates["reviewQueue/"+journalId]=v.errors.length?null:reviewRecord(j);
    updates["audit/"+uid("AUD")]={action:previous?"edit_journal":"submit_journal",documentId:journalId,status:j.status,uid:claims.sub,createdAt:now};
    await adminPatch(updates);return {success:true,id:journalId,status:j.status,errors:v.errors,balance:v.balance};
+  }
+  if(action==="submitCashCustodyJournal"){
+   requirePermission(profile,"cashCustody", "add");
+   const result=await submitCashCustodyJournalRecord(body.ownerUid||claims.sub,body.transactionId);
+   return result;
+  }
+  if(action==="syncCashCustodyJournals"){
+   requirePermission(profile,"cashCustody","view");
+   const ownerUid=id(body.ownerUid||claims.sub);
+   if(ownerUid!==claims.sub&&!hasPermission(profile,"cashCustody","viewOthers"))throw new Error("ليس لديك صلاحية مزامنة عهدة مستخدم آخر.");
+   const transactions=Array.isArray(body.transactions)?body.transactions.slice(0,100):[];
+   const results=[];
+   for(const transaction of transactions){
+    if(!transaction||!transaction.id)continue;
+    try{results.push(await submitCashCustodyJournalRecord(ownerUid,transaction.id));}
+    catch(error){results.push({success:false,id:String(transaction.id),error:String(error.message||error)});}
+   }
+   return {success:true,results,created:results.filter(x=>x.success&&!x.existing&&!x.skipped&&!x.alreadyPosted).length,failed:results.filter(x=>!x.success).length};
   }
   if(action==="cancelJournal"){
    requireFinanceArea("journal","edit");
