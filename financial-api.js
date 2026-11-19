@@ -833,7 +833,9 @@ export async function handleFinancialRequest(ctx){
    customer_collection:"cash_in",cash_received:"cash_in",bank_transfer_in:"cash_in",cheque_received:"cheque_in_transit",cheque_cleared_in:"cash_in",advance_received:"cash_in"
   };
   let effect=configuredEffects[actionCode]||"none";
-  if(effect==="none"&&amount>0&&["vendor","client"].includes(partyType))effect=partyType==="vendor"?"payable":"receivable";
+  const requestedPaymentMethod=txt(submitted.paymentMethod||"",40);
+  if(effect==="cash_out"&&requestedPaymentMethod==="cheque"&&actionCode!=="cheque_cleared_out")effect="cheque_outstanding";
+  if(effect==="cash_in"&&requestedPaymentMethod==="cheque"&&actionCode!=="cheque_cleared_in")effect="cheque_in_transit";
   if(amount<=0)effect="none";
   const currency=txt(submitted.currency||project.currency||"EGP",3).toUpperCase();
   const event={
