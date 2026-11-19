@@ -119,7 +119,7 @@ async function databaseRequest(path, token, method, body, query) {
   if (query && typeof query === "object") Object.entries(query).forEach(([key, value]) => {
     if (value !== undefined && value !== null) params.set(key, String(value));
   });
-  const url = DATABASE_URL + (cleanPath ? "/" + cleanPath : "") + ".json?" + params.toString();
+  const url = DATABASE_URL.replace(/\/+$/, "") + (cleanPath ? "/" + cleanPath : "/") + ".json?" + params.toString();
   const response = await fetch(url, {
     method: method || "GET",
     headers: { "Accept": "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
@@ -398,7 +398,7 @@ async function getFirebaseDatabaseAccessToken(env) {
 
 async function adminDatabaseRequest(path, accessToken, method, body) {
   const cleanPath = String(path || "").split("/").filter(Boolean).map(encodeURIComponent).join("/");
-  const url = DATABASE_URL + (cleanPath ? "/" + cleanPath : "") + ".json";
+  const url = DATABASE_URL.replace(/\/+$/, "") + (cleanPath ? "/" + cleanPath : "/") + ".json";
   const response = await fetch(url, {
     method: method || "GET",
     headers: {
