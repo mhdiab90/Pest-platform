@@ -2179,9 +2179,39 @@ function App(){
   const omarUsername=String(currentUser?.username||'').trim().toLowerCase();
   const omarEmailLocal=String(currentUser?.email||'').split('@')[0].trim().toLowerCase();
   const isOmarProjectUser=omarUsername==='omar'||omarEmailLocal==='omar'||String(currentUser?.fullName||'').trim().toLowerCase()==='omar';
-  const permissionModules=[{id:'dashboard',label:rtl?'لوحة التحكم':'Dashboard'},{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors'},{id:'pestCrm',label:rtl?'إدارة العملاء والمبيعات (PEST CRM)':'Sales & Customer CRM (PEST)'},{id:'projects',label:rtl?'المشروعات وملفاتها':'Projects & Project files'},{id:'attachments',label:rtl?'المرفقات':'Attachments'},{id:'financial',label:rtl?'النظام المالي والمحاسبي':'Financial Accounting',icon:'fa-calculator'},{id:'statement',label:rtl?'التدفقات النقدية':'Cash flow'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody'},{id:'reports',label:rtl?'التقارير':'Reports'},{id:'messages',label:rtl?'الرسائل وWhatsApp':'Messages & WhatsApp'},{id:'tasks',label:rtl?'المهام':'Tasks'},{id:'announcements',label:rtl?'الإعلانات العامة':'Global Announcements'},{id:'aiAgent',label:rtl?'المساعد الذكي (استخدام)':'AI Agent (Use)'},{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data'}];
+  const permissionModules=[{id:'dashboard',label:rtl?'لوحة التحكم':'Dashboard'},{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors'},{id:'pestCrm',label:rtl?'إدارة العملاء والمبيعات (PEST CRM)':'Sales & Customer CRM (PEST)'},{id:'projects',label:rtl?'المشروعات وملفاتها':'Projects & Project files'},{id:'attachments',label:rtl?'المرفقات':'Attachments'},{id:'financial_overview',label:rtl?'الملخص المالي':'Financial · Overview',icon:'fa-calculator'},
+    {id:'financial_journal',label:rtl?'القيود اليومية':'Financial · Journals'},
+    {id:'financial_review',label:rtl?'المراجعة والاعتماد':'Financial · Review & Approval'},
+    {id:'financial_invoices',label:rtl?'فواتير العملاء والموردين':'Financial · Invoices'},
+    {id:'financial_assignments',label:rtl?'الإجراءات المحولة':'Financial · Delegated Actions'},
+    {id:'financial_partyStatements',label:rtl?'كشوف حسابات الأطراف والعاملين':'Financial · Party Statements'},
+    {id:'financial_masters',label:rtl?'البيانات الأساسية والاستيراد':'Financial · Master Data'},
+    {id:'financial_accounts',label:rtl?'دليل الحسابات':'Financial · Chart of Accounts'},
+    {id:'financial_centers',label:rtl?'مراكز التكلفة':'Financial · Cost Centers'},
+    {id:'financial_inventory',label:rtl?'المخزون والأصناف والمخازن':'Financial · Inventory'},
+    {id:'financial_cash',label:rtl?'الخزينة والتحصيل والسداد':'Financial · Cash & Receipts'},
+    {id:'financial_bank',label:rtl?'كشوف البنوك':'Financial · Bank Statements'},
+    {id:'financial_tax',label:rtl?'الأكواد الضريبية':'Financial · Tax Codes'},
+    {id:'financial_reports',label:rtl?'القوائم والتقارير المالية':'Financial · Statements & Reports'},{id:'statement',label:rtl?'التدفقات النقدية':'Cash flow'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody'},{id:'reports',label:rtl?'التقارير':'Reports'},{id:'messages',label:rtl?'الرسائل وWhatsApp':'Messages & WhatsApp'},{id:'tasks',label:rtl?'المهام':'Tasks'},{id:'announcements',label:rtl?'الإعلانات العامة':'Global Announcements'},{id:'aiAgent',label:rtl?'المساعد الذكي (استخدام)':'AI Agent (Use)'},{id:'settings',label:rtl?'النسخ الاحتياطي والبيانات':'Backup & Data'}];
   const permissionActions=[{id:'view',label:rtl?'عرض':'View'},{id:'add',label:rtl?'إضافة':'Add'},{id:'edit',label:rtl?'تعديل':'Edit'},{id:'delete',label:rtl?'حذف':'Delete'},{id:'approve',label:rtl?'اعتماد':'Approve'},{id:'export',label:rtl?'تصدير':'Export'},{id:'manage',label:rtl?'إدارة':'Manage'},{id:'viewOthers',label:rtl?'عرض عهد الآخرين':'View others'}];
-  const hasPermission=(moduleId,action='view')=>isAdmin||moduleId==='profile'&&action==='view'||(isOmarProjectUser&&moduleId==='projects'&&['view','add','edit'].includes(action))||moduleId==='cashCustody'&&['view','add','edit'].includes(action)&&currentUser?.permissions?.cashCustody?.[action]!==false||currentUser?.permissions?.[moduleId]?.[action]===true;
+  const financialPermissionAreaIds=['financial_overview','financial_journal','financial_review','financial_invoices','financial_assignments','financial_partyStatements','financial_masters','financial_accounts','financial_centers','financial_inventory','financial_cash','financial_bank','financial_tax','financial_reports'];
+  const hasPermission=(moduleId,action='view')=>{
+    if(isAdmin||moduleId==='profile'&&action==='view')return true;
+    if(isOmarProjectUser&&moduleId==='projects'&&['view','add','edit'].includes(action))return true;
+    if(moduleId==='cashCustody'&&['view','add','edit'].includes(action))return !currentUser?.permissions?.cashCustody||currentUser.permissions.cashCustody[action]!==false;
+    const permissions=currentUser?.permissions||{};
+    if(moduleId==='financial'){
+      const scoped=financialPermissionAreaIds.some(key=>permissions[key]&&typeof permissions[key]==='object');
+      return scoped?financialPermissionAreaIds.some(key=>permissions[key]?.[action]===true):permissions.financial?.[action]===true;
+    }
+    if(moduleId.startsWith('financial_')){
+      const specific=permissions[moduleId];
+      if(specific&&typeof specific==='object')return specific[action]===true;
+      const scoped=financialPermissionAreaIds.some(key=>permissions[key]&&typeof permissions[key]==='object');
+      return !scoped&&permissions.financial?.[action]===true;
+    }
+    return permissions[moduleId]?.[action]===true;
+  };
   const canAccessTab=tabId=>tabId==='appLauncher'?true:['companySettings','aiSettings','userRequests','userPermissions','userManagement','auditLogs'].includes(tabId)?Boolean(isAdmin):tabId==='announcements'?hasPermission('announcements','manage'):tabId==='custodyStatement'?hasPermission('cashCustody','view'):hasPermission(tabId==='projectDetail'?'projects':tabId,'view');
   const requirePermission=(moduleId,action)=>{if(hasPermission(moduleId,action))return true;alert(rtl?'ليس لديك صلاحية لتنفيذ هذه العملية. يرجى مراجعة مدير النظام.':'You do not have permission to perform this action. Contact your administrator.');return false;};
   async function attachmentWorkerRequest(path,method='GET',body,extraHeaders={},rawBody=false,asBlob=false){
@@ -6374,7 +6404,7 @@ function App(){
           </div>}
         </div>}
         {tab==='pestCrm'&&canAccessTab('pestCrm')&&<PestCrmModuleSlot db={db} currentUser={currentUser} rtl={rtl} can={hasPermission} addLog={addLog}/>}
-        {financialModuleMounted&&canAccessTab('financial')&&<div className={tab==='financial'?'':'hidden'}><FinanceModuleSlot db={db} currentUser={currentUser} rtl={rtl} workerBase={PUSH_WORKER_BASE} userDirectory={userDirectory} addLog={addLog} onOpenPartyMaster={openFinancialPartyMaster}/></div>}
+        {financialModuleMounted&&canAccessTab('financial')&&<div className={tab==='financial'?'':'hidden'}><FinanceModuleSlot db={db} currentUser={currentUser} rtl={rtl} workerBase={PUSH_WORKER_BASE} userDirectory={userDirectory} addLog={addLog} can={hasPermission} onOpenPartyMaster={openFinancialPartyMaster}/></div>}
         {tab==='dashboard'&&<div className="space-y-5 print-area">
           <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="font-bold text-xl">{tr('dashboard')} · {tr('cashFlow')}</h2><div className="flex gap-2 no-print"><button onClick={()=>setTab('reports')} className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-bold">{tr('reportCenter')}</button><button onClick={()=>window.print()} className="bg-gray-800 text-white rounded-lg px-4 py-2 text-sm">{tr('printPdf')}</button></div></div>
           <section className="app-dashboard-filterbar no-print">
@@ -6974,7 +7004,7 @@ function App(){
           <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-bold text-xl">{rtl?'إدارة صلاحيات المستخدمين':'User Permissions Management'}</h2><span className="text-xs text-gray-500">{rtl?'صلاحيات مستقلة لكل مستخدم':'Independent permissions for each user'}</span></div>
           <section className="bg-white border rounded-xl p-4 space-y-4">
             <label className="block text-sm font-bold">{rtl?'اختيار المستخدم':'Select user'}
-              <select className="mt-1 w-full border rounded-lg p-3 font-normal" value={permissionUserUid} onChange={e=>{const uid=e.target.value;setPermissionUserUid(uid);const user=activeUsers.find(x=>x.uid===uid);const draft={...(user?.permissions||{})};draft.cashCustody={view:draft.cashCustody?.view!==false,add:draft.cashCustody?.add!==false,edit:draft.cashCustody?.edit!==false,...(draft.cashCustody||{})};setPermissionDraft(draft);setPermissionNotice('');}}>
+              <select className="mt-1 w-full border rounded-lg p-3 font-normal" value={permissionUserUid} onChange={e=>{const uid=e.target.value;setPermissionUserUid(uid);const user=activeUsers.find(x=>x.uid===uid);const draft={...(user?.permissions||{})};const hasScoped=financialPermissionAreaIds.some(key=>draft[key]&&typeof draft[key]==='object');if(!hasScoped&&draft.financial){financialPermissionAreaIds.forEach(key=>{draft[key]={...draft.financial};});}draft.cashCustody={view:draft.cashCustody?.view!==false,add:draft.cashCustody?.add!==false,edit:draft.cashCustody?.edit!==false,...(draft.cashCustody||{})};setPermissionDraft(draft);setPermissionNotice('');}}>
                 <option value="">{rtl?'اختر مستخدماً':'Choose a user'}</option>
                 {activeUsers.filter(user=>user.uid&&user.uid!==currentUser.uid&&user.status!=='disabled').map(user=><option key={user.uid} value={user.uid}>{user.fullName||user.username||user.email||user.uid} — {user.jobTitle||user.email||''}</option>)}
               </select>
