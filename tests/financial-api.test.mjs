@@ -876,10 +876,11 @@ function assertNoOverlappingPaths(updates){
 
 test("forwarded invoices preserve full details and attachments through a multi-user chain before review", async () => {
   await invoke("GET","?resource=bootstrap");
-  const ownerUid=claims.sub,firstUid="FIN-FORWARD-FIRST",secondUid="FIN-FORWARD-SECOND",reviewerUid="FIN-FORWARD-REVIEWER";
+  const ownerUid=claims.sub,firstUid="FIN-FORWARD-FIRST",secondUid="FIN-FORWARD-SECOND",thirdUid="FIN-FORWARD-THIRD",reviewerUid="FIN-FORWARD-REVIEWER";
   const invoiceId="INV-FORWARD-CHAIN-001";
   write("users/"+firstUid,{uid:firstUid,status:"active",role:"user",fullName:"First Assignee"});
   write("users/"+secondUid,{uid:secondUid,status:"active",role:"user",fullName:"Second Assignee"});
+  write("users/"+thirdUid,{uid:thirdUid,status:"active",role:"user",fullName:"Third Assignee"});
   write("users/"+reviewerUid,{uid:reviewerUid,status:"active",role:"user",fullName:"Reviewer",permissions:{financial_review:{view:true,approve:true,edit:true}}});
   write("parties/FIN-FORWARD-VENDOR",{code:"FIN-FORWARD-VENDOR",name:"Forward Supplier",partyType:"vendor",active:true});
   write("chartOfAccounts/6100",{code:"6100",name:"مصروفات تشغيل",type:"expense",nature:"debit",active:true});
