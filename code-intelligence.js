@@ -16,6 +16,15 @@
     return String(value);
   }
 
+  function hasForbiddenCharacter(value) {
+    return [".", "#", "$", "[", "]", "/"].some(character => String(value).includes(character));
+  }
+
+  function sanitizePrefix(value) {
+    return Array.from(String(value == null ? "" : value).trim())
+      .filter(character => ![".", "#", "$", "[", "]", "/"].includes(character)).join("");
+  }
+
   function codeOf(record, codeField) {
     if (typeof record === "string" || typeof record === "number") return String(record);
     if (!record || typeof record !== "object") return "";
