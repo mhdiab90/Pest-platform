@@ -271,7 +271,10 @@ export async function handleFinancialRequest(ctx){
  })[kind]||"masters";
  const requireFinanceArea=(area,action)=>requirePermission(profile,"financial_"+area,action);
  const hasFinanceArea=(area,action)=>hasPermission(profile,"financial_"+area,action);
- const requireFinanceMaster=(kind,action)=>requireFinanceArea(financeAreaForMaster(kind),action);
+ const requireFinanceMaster=(kind,action)=>{
+  if(kind==="parties"&&hasPermission(profile,"master",action))return true;
+  return requireFinanceArea(financeAreaForMaster(kind),action);
+ };
  const documentPermissionArea=document=>document&&document.type==="invoice"?"invoices":
   document&&document.type==="journal"?"journal":document&&document.type==="cash"?"cash":
   document&&document.type==="bankLine"?"bank":"reports";
@@ -428,7 +431,8 @@ export async function handleFinancialRequest(ctx){
   if(target&&!sameKey&&kind!=="parties")throw new Error("هذا الكود مسجل بالفعل. اختر كودًا غير مستخدم.");
   if(kind==="parties"&&target&&target.partyType&&target.partyType!==item.partyType)throw new Error("هذا الكود مسجل بالفعل لنوع طرف مختلف.");
   if(!txt(item.name,180))throw new Error("الاسم مطلوب");
-  requireFinanceArea(permissionArea,previous?"edit":"add");
+  if(kind==="parties"&&hasPermission(profile,"master",previous?"edit":"add")){}
+  else requireFinanceArea(permissionArea,previous?"edit":"add");
   if(!previous&&target&&kind!=="parties")throw new Error("هذا الكود مسجل بالفعل. اختر كودًا آخر حتى لا يتم استبدال بياناته.");
   if(previous&&!sameKey){
    const usages=await findMasterReferences(ctx,kind,originalCode,previous.partyType||item.partyType||"");
