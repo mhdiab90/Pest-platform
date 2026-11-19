@@ -888,7 +888,7 @@ if(action==="forwardInvoiceAssignment"){
    const invoice=await adminRead("documents/"+id(assignment.invoiceId));
    if(!invoice||invoice.type!=="invoice"||invoice.status!=="assigned"||invoice.assignedTo!==claims.sub||invoice.assignmentId!==assignmentId)throw new Error("الفاتورة لم تعد في عهدتك للتحويل.");
    const nextUid=id(body.nextAssigneeUid),nextUser=adminReadRoot?await adminReadRoot("users/"+nextUid):null;
-   if(nextUid===claims.sub)throw new Error("اختر مستخدمًا آخر غير حسابك الحالي.");
+   if(nextUid===claims.sub||nextUid===assignment.createdBy)throw new Error("اختر مستخدمًا آخر غير حسابك وغير المستخدم الذي أحال إليك الفاتورة.");
    if(!nextUser||!["active","نشط","مفعل","enabled"].includes(String(nextUser.status||"").toLowerCase()))throw new Error("المستخدم الجديد غير موجود أو غير نشط.");
    const nextName=txt(nextUser.fullName||nextUser.username||nextUser.email||nextUid,120),instruction=txt(body.instruction||"استكمال ومراجعة بيانات الفاتورة",700),nowForward=Date.now(),nextId=uid("ASN"),nextTaskId=uid("FIN-TASK");
    const header=body.invoice&&typeof body.invoice==="object"&&!Array.isArray(body.invoice)?body.invoice:{};
