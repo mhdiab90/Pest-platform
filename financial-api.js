@@ -880,35 +880,56 @@ export async function handleFinancialRequest(ctx){
     center={code:projectCode,name:txt(project.name||project.projectName||projectCode,180),projectCode,isProjectCenter:true,active:true,createdAt:now,createdBy:claims.sub};
     centerUpdates["costCenters/"+projectCode]=center;
    }
-   const partyLedgerType=partyType==="vendor"?"vendor":"customer",lines=[];
+   let outstandingPayable=0,outstandingReceivable=0;
+   if(partyCode&&partyType==="vendor"){
+    const ledger=(await adminRead("partyLedger/vendor/"+partyCode))||{};
+    outstandingPayable=Object.values(ledger).reduce((sum,periodRows)=>sum+Object.values(periodRows||{}).reduce((part,row)=>part+(row.accountCode==="281"?Number(row.credit||0)-Number(row.debit||0):0),0),0);
+   }else if(partyCode&&partyType==="client"){
+    const ledger=(await adminRead("partyLedger/customer/"+partyCode))||{};
+    outstandingReceivable=Object.values(ledger).reduce((sum,periodRows)=>sum+Object.values(periodRows||{}).reduce((part,row)=>part+(row.accountCode==="1210"?Number(row.debit||0)-Number(row.credit||0):0),0),0);
+   }
+   const lines=[];
    if(effect==="payable"){
-    lines.push({accountCode:"6100",debit:amount,credit:0,description:event.actionName,costCenterId:projectCode,projectCode,partyType:"",partyId:""});
+    lines.push({accountCode:"6100",debit:amount,credit:0,description:event.actionName,costCenterId:projectCode,projectCode});
     lines.push({accountCode:"281",debit:0,credit:amount,description:event.actionName,costCenterId:projectCode,projectCode,partyType:"vendor",partyId:partyCode});
    }else if(effect==="receivable"){
     lines.push({accountCode:"1210",debit:amount,credit:0,description:event.actionName,costCenterId:projectCode,projectCode,partyType:"customer",partyId:partyCode});
     lines.push({accountCode:"4200",debit:0,credit:amount,description:event.actionName,costCenterId:projectCode,projectCode});
    }else if(effect==="cheque_outstanding"){
-    lines.push({accountCode:"281",debit:financialAmount,credit:0,description:event.actionName,costCenterId:projectCode,projectCode,partyType:"vendor",partyId:partyCode});
+    if(actionCode==="advance_paid"){
+     lines.push({accountCode:"1240",debit:financialAmount,credit:0,description:event.actionName,costCenterId:projectCode,projectCode,partyType:"vendor",partyId:partyCode});
+    }else{
+     const settled=rnd(Math.min(financialAmount,Math.max(0,outstandingPayable))),advance=rnd(financialAmount-settled);
+     if(settled)lines.push({accountCode:"281",debit:settled,credit:0,description:event.actionName,costCenterId:projectCode,projectCode,partyType:"vendor",partyId:partyCode});
+     if(advance)lines.push({accountCode:"1240",debit:advance,credit:0,description:"دفعة مقدمة للمورد بالشيك — "+event.actionName,costCenterId:projectCode,projectCode,partyType:"vendor",partyId:partyCode});
+    }
     lines.push({accountCode:"2140",debit:0,credit:financialAmount,description:"شيك صادر لم يقدم للبنك — "+event.actionName,costCenterId:projectCode,projectCode});
    }else if(effect==="cheque_in_transit"){
+    const isAdvance=actionCode==="advance_received",settled=isAdvance?0:rnd(Math.min(financialAmount,Math.max(0,outstandingReceivable))),advance=rnd(financialAmount-settled);
     lines.push({accountCode:"1130",debit:financialAmount,credit:0,description:"شيك وارد تحت التحصيل — "+event.actionName,costCenterId:projectCode,projectCode});
-    lines.push({accountCode:"1210",debit:0,credit:financialAmount,description:event.actionName,costCenterId:projectCode,projectCode,partyType:"customer",partyId:partyCode});
+    if(settled)lines.push({accountCode:"1210",debit:0,credit:settled,description:event.actionName,costCenterId:projectCode,projectCode,partyType:"customer",partyId:partyCode});
+    if(advance)lines.push({accountCode:"2130",debit:0,credit:advance,description:"دفعة مقدمة من العميل بالشيك — "+event.actionName,costCenterId:projectCode,projectCode,partyType:"customer",partyId:partyCode});
    }else if(effect==="cash_in"){
-    const isAdvance=actionCode==="advance_received";
     if(actionCode==="cheque_cleared_in"){
      lines.push({accountCode:cashAccount,debit:financialAmount,credit:0,description:event.actionName,costCenterId:projectCode,projectCode});
      lines.push({accountCode:"1130",debit:0,credit:financialAmount,description:"تحصيل شيك وارد — "+event.actionName,costCenterId:projectCode,projectCode});
     }else{
+     const isAdvance=actionCode==="advance_received",settled=isAdvance?0:rnd(Math.min(financialAmount,Math.max(0,outstandingReceivable))),advance=rnd(financialAmount-settled);
      lines.push({accountCode:cashAccount,debit:financialAmount,credit:0,description:event.actionName,costCenterId:projectCode,projectCode});
-     lines.push({accountCode:isAdvance?"2130":"1210",debit:0,credit:financialAmount,description:event.actionName,costCenterId:projectCode,projectCode,partyType:"customer",partyId:partyCode});
+     if(settled)lines.push({accountCode:"1210",debit:0,credit:settled,description:event.actionName,costCenterId:projectCode,projectCode,partyType:"customer",partyId:partyCode});
+     if(advance)lines.push({accountCode:"2130",debit:0,credit:advance,description:"دفعة مقدمة من العميل — "+event.actionName,costCenterId:projectCode,projectCode,partyType:"customer",partyId:partyCode});
     }
    }else if(effect==="cash_out"){
-    const isAdvance=actionCode==="advance_paid",isVendorPayment=partyType==="vendor"||isAdvance;
     if(actionCode==="cheque_cleared_out"){
      lines.push({accountCode:"2140",debit:financialAmount,credit:0,description:"صرف شيك صادر — "+event.actionName,costCenterId:projectCode,projectCode});
      lines.push({accountCode:cashAccount,debit:0,credit:financialAmount,description:event.actionName,costCenterId:projectCode,projectCode});
+    }else if(actionCode==="advance_paid"){
+     lines.push({accountCode:"1240",debit:financialAmount,credit:0,description:event.actionName,costCenterId:projectCode,projectCode,partyType:"vendor",partyId:partyCode});
+     lines.push({accountCode:cashAccount,debit:0,credit:financialAmount,description:event.actionName,costCenterId:projectCode,projectCode});
     }else{
-     lines.push({accountCode:isAdvance?"1240":isVendorPayment?"281":"6100",debit:financialAmount,credit:0,description:event.actionName,costCenterId:projectCode,projectCode,...(isVendorPayment?{partyType:"vendor",partyId:partyCode}:{})});
+     const settled=rnd(Math.min(financialAmount,Math.max(0,outstandingPayable))),advance=rnd(financialAmount-settled);
+     if(settled)lines.push({accountCode:"281",debit:settled,credit:0,description:event.actionName,costCenterId:projectCode,projectCode,partyType:"vendor",partyId:partyCode});
+     if(advance)lines.push({accountCode:"1240",debit:advance,credit:0,description:"دفعة مقدمة للمورد — "+event.actionName,costCenterId:projectCode,projectCode,partyType:"vendor",partyId:partyCode});
      lines.push({accountCode:cashAccount,debit:0,credit:financialAmount,description:event.actionName,costCenterId:projectCode,projectCode});
     }
    }
