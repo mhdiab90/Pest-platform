@@ -331,7 +331,7 @@ function FinanceModule(props){
   }else if(kind==='itemGroups'){records=rows(master.itemGroups);fallbackPrefix='GRP';}
   else if(kind==='chartOfAccounts'){
    records=accounts;fallbackPrefix=value.parentCode||'ACC';
-   Object.assign(options,{groupBy:'parentCode',groupValue:value.parentCode||'',separator:!!value.parentCode,minDigits:value.parentCode?2:3});
+   Object.assign(options,{groupBy:'parentCode',groupValue:value.parentCode||'',separator:!value.parentCode,minDigits:value.parentCode?2:3});
   }else if(kind==='costCenters'){
    records=centers;fallbackPrefix=value.projectCode?String(value.projectCode)+'-CC':'CC';
    Object.assign(options,{groupBy:'projectCode',groupValue:value.projectCode||''});
