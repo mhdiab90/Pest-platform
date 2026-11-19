@@ -1125,6 +1125,7 @@ function App(){
   const [activeUsers,setActiveUsers] = useState([]);
   const [onlinePresenceByUid,setOnlinePresenceByUid] = useState({});
   const [onlinePresenceError,setOnlinePresenceError] = useState('');
+  const [onlinePresenceClock,setOnlinePresenceClock] = useState(Date.now());
   const [onlineUsersOpen,setOnlineUsersOpen] = useState(false);
   const [onlineChatUid,setOnlineChatUid] = useState('');
   const [onlineChatDraft,setOnlineChatDraft] = useState('');
@@ -1699,7 +1700,9 @@ function App(){
   },[currentUser?.uid]);
 
   useEffect(()=>{
-    const uid=currentUser?.uid||'';
+    // Presence writes must use the authenticated Firebase UID, not profile metadata.
+    const authUser=auth.currentUser;
+    const uid=authUser?.uid||currentUser?.uid||'';
     if(!uid){
       setOnlinePresenceByUid({});
       setOnlinePresenceError('');
@@ -1709,6 +1712,7 @@ function App(){
     }
     let mounted=true;
     let wasConnected=false;
+    let heartbeatTimer=null;
     setOnlinePresenceError('');
     const reportPresenceError=(context,error)=>{
       if(!mounted)return;
@@ -1718,42 +1722,67 @@ function App(){
       const permissionDenied=errorCode==='PERMISSION_DENIED'||errorText.includes('permission_denied')||errorText.includes('permission denied');
       if(permissionDenied){
         const readPath=String(context||'').toLowerCase().includes('read');
+        const disconnectCleanup=String(context||'').toLowerCase().includes('disconnect');
+        if(disconnectCleanup){
+          // The heartbeat fallback and two-minute expiry keep the online list accurate.
+          console.warn('Presence disconnect cleanup was denied; heartbeat expiry is active.');
+          return;
+        }
         setOnlinePresenceError(rtl
           ? (readPath
-            ? 'Firebase رفض قراءة المسار /presence. انشر ملف قواعد Pest-Platform-Firebase-Rules-Custody-v12-Online-Presence-Push.json بالكامل من Firebase Database Rules، وتأكد أن حالة الحساب في users/{uid}/status نشطة.'
-            : 'Firebase رفض تسجيل جلسة الاتصال في presence. انشر ملف قواعد v12 بالكامل، وتأكد أن حالة الحساب في users/{uid}/status نشطة.')
+            ? 'Firebase رفض قراءة المسار /presence. تأكد من نشر قواعد v12 بالكامل.'
+            : 'Firebase رفض كتابة جلسة الاتصال. القراءة تعمل، لذا راجع صلاحية الكتابة عند presence/$uid/$connectionId وتأكد أن uid يطابق حساب Firebase المسجل.')
           : (readPath
-            ? 'Firebase denied reading /presence. Publish the complete v12 rules file in Firebase Realtime Database Rules and confirm users/{uid}/status is active.'
-            : 'Firebase denied presence registration. Publish the complete v12 rules file and confirm users/{uid}/status is active.'));
+            ? 'Firebase denied reading /presence. Confirm the complete v12 rules are published.'
+            : 'Firebase denied writing the presence session. Reading works, so check the write rule at presence/$uid/$connectionId and confirm the UID matches the signed-in Firebase account.'));
         return;
       }
       setOnlinePresenceError(firebaseErrorMessage(error,tr));
     };
+    if(authUser?.uid&&currentUser?.uid&&authUser.uid!==currentUser.uid){
+      console.warn('Presence profile UID differs from Firebase Auth UID; using the authenticated UID.',{profileUid:currentUser.uid,authUid:authUser.uid});
+    }
     const presenceRef=db.ref('presence');
     const presenceHandler=snapshot=>{
       if(!mounted)return;
       setOnlinePresenceByUid(snapshot.val()||{});
-      setOnlinePresenceError('');
+      // A successful read must not hide a failed presence write.
     };
     presenceRef.on('value',presenceHandler,error=>reportPresenceError('Online presence read:',error));
     const connectionRef=db.ref('.info/connected');
     const ownPresenceRef=db.ref('presence/'+uid).push();
     const connectionHandler=snapshot=>{
       const connected=snapshot.val()===true;
-      if(!connected){wasConnected=false;return;}
+      if(!connected){
+        wasConnected=false;
+        if(heartbeatTimer!==null){window.clearInterval(heartbeatTimer);heartbeatTimer=null;}
+        return;
+      }
       if(wasConnected)return;
       wasConnected=true;
-      ownPresenceRef.onDisconnect().remove()
-        .then(()=>ownPresenceRef.set({
+      // Disconnect cleanup is best-effort and must not block the online write.
+      ownPresenceRef.onDisconnect().remove().catch(error=>{
+        reportPresenceError('Online presence disconnect cleanup:',error);
+      });
+      const writePresence=()=>{
+        if(!mounted||!wasConnected)return;
+        ownPresenceRef.set({
           state:'online',
           lastChanged:firebase.database.ServerValue.TIMESTAMP
-        }))
-        .then(()=>{if(mounted)setOnlinePresenceError('');})
-        .catch(error=>reportPresenceError('Online presence registration:',error));
+        }).then(()=>{
+          if(mounted)setOnlinePresenceError('');
+        }).catch(error=>reportPresenceError('Online presence write:',error));
+      };
+      writePresence();
+      if(heartbeatTimer!==null)window.clearInterval(heartbeatTimer);
+      heartbeatTimer=window.setInterval(writePresence,45000);
     };
     connectionRef.on('value',connectionHandler,error=>reportPresenceError('Firebase connection listener:',error));
+    const clockTimer=window.setInterval(()=>{if(mounted)setOnlinePresenceClock(Date.now());},15000);
     return ()=>{
       mounted=false;
+      if(heartbeatTimer!==null)window.clearInterval(heartbeatTimer);
+      window.clearInterval(clockTimer);
       presenceRef.off('value',presenceHandler);
       connectionRef.off('value',connectionHandler);
       ownPresenceRef.remove().catch(error=>console.warn('Online presence cleanup:',error));
@@ -5069,7 +5098,8 @@ function App(){
   const requestStatusLabel=v=>{const x=requestStatusValue(v);return x==='approved'?tr('approvedLabel'):x==='rejected'?tr('rejectedLabel'):tr('pendingLabel');};
   const filteredRequests=userRequests.filter(r=>(requestFilter==='all'||requestStatusValue(r.status)===requestFilter) && includesText([r.fullName,r.email,r.username,r.jobTitle,r.uid].join(' '),globalSearch));
   const themeNames={red:'themeRed',blue:'themeBlue',green:'themeGreen',teal:'themeTeal',purple:'themePurple',orange:'themeOrange',charcoal:'themeCharcoal',sky:'themeSky',rose:'themeRose',amber:'themeAmber',indigo:'themeIndigo',navy:'themeNavy'};
-  const onlinePeople=userDirectory.filter(u=>u.uid&&u.uid!==currentUser?.uid&&isActiveAccountStatus(u.status)&&Object.values(onlinePresenceByUid[u.uid]||{}).some(connection=>connection?.state==='online')).sort((a,b)=>String(a.fullName||a.username||'').localeCompare(String(b.fullName||b.username||'')));
+  const onlinePresenceFreshnessCutoff=onlinePresenceClock-120000;
+  const onlinePeople=userDirectory.filter(u=>u.uid&&u.uid!==currentUser?.uid&&isActiveAccountStatus(u.status)&&Object.values(onlinePresenceByUid[u.uid]||{}).some(connection=>connection?.state==='online'&&Number(connection.lastChanged||0)>=onlinePresenceFreshnessCutoff)).sort((a,b)=>String(a.fullName||a.username||'').localeCompare(String(b.fullName||b.username||'')));
   const onlineChatUser=userDirectory.find(u=>u.uid===onlineChatUid&&isActiveAccountStatus(u.status))||null;
   const onlineChatMessages=onlineChatUid&&currentUser?.uid?messages.filter(m=>{
     if(!m||m.visibility==='public')return false;
