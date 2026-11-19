@@ -538,6 +538,51 @@ test("supplier linking, delegated invoice completion, staff custody and advances
 
 
 
+test("all cash and bank transfer postings remain balanced and synchronized with source documents", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const movements = [
+    {movementType:"other_receipt",amount:125.50,offsetAccountCode:"4200",description:"Other cash receipt transfer audit"},
+    {movementType:"other_payment",amount:65.25,offsetAccountCode:"6100",description:"Other cash payment transfer audit"},
+    {movementType:"cash_to_bank",amount:200,bankAccountCode:"1120",description:"Cash deposited to bank transfer audit"},
+    {movementType:"bank_to_cash",amount:150,bankAccountCode:"1120",description:"Bank withdrawal to cash transfer audit"}
+  ];
+  for (const movement of movements) {
+    const submitted=await invoke("POST","",{action:"submitCash",date:"2026-11-19",currency:"EGP",cashAccountCode:"1110",...movement});
+    assert.equal(submitted.status,"pending_review",movement.movementType+" must first enter review");
+    assert.ok(read("reviewQueue/"+submitted.id),"every cash movement must have a queue record");
+    const approved=await invoke("POST","",{action:"review",id:submitted.id,decision:"approve",reason:"transfer workflow test"});
+    assert.equal(approved.status,"posted",movement.movementType+" must be posted after approval");
+    const document=read("documents/"+submitted.id),journal=read("journals/"+approved.journalId);
+    assert.equal(document.status,"posted");
+    assert.equal(document.journalId,approved.journalId);
+    assert.equal(read("reviewQueue/"+submitted.id),null,"posted source document must leave the review queue");
+    assert.equal(read("sourceLocks/cash_"+submitted.id).journalId,approved.journalId,"posted transfer must have one source lock");
+    const debit=journal.lines.reduce((sum,line)=>sum+Number(line.debit||0),0);
+    const credit=journal.lines.reduce((sum,line)=>sum+Number(line.credit||0),0);
+    assert.equal(Math.round(debit*100),Math.round(credit*100),movement.movementType+" journal must balance to the cent");
+    assert.equal(Math.round(debit*100),Math.round(Number(movement.amount)*100));
+  }
+
+  const imported=await invoke("POST","",{action:"submitBankImport",bankAccountCode:"1120",fileName:"bank-transfer-audit.csv",rows:[
+    {date:"2026-11-19",amount:88.75,direction:"in",description:"Bank statement interest audit",reference:"BANK-AUDIT-20261119-01"}
+  ]});
+  assert.equal(imported.rows,1);
+  const bankDocument=Object.values(read("documents")||{}).find(doc=>doc&&doc.importId===imported.importId);
+  assert.ok(bankDocument,"imported bank row must create a source document");
+  assert.equal(bankDocument.status,"pending_review");
+  assert.ok(read("reviewQueue/"+bankDocument.id),"imported bank row must enter review");
+  await invoke("POST","",{action:"setBankOffset",id:bankDocument.id,offsetAccountCode:"4200"});
+  const bankApproved=await invoke("POST","",{action:"review",id:bankDocument.id,decision:"approve",reason:"bank import reconciliation test"});
+  assert.equal(bankApproved.status,"posted");
+  const bankJournal=read("journals/"+bankApproved.journalId);
+  assert.ok(bankJournal.lines.some(line=>line.accountCode==="1120"&&line.debit===88.75),"bank receipt increases the bank asset account");
+  assert.ok(bankJournal.lines.some(line=>line.accountCode==="4200"&&line.credit===88.75),"bank receipt credits the selected offset account");
+  assert.equal(read("documents/"+bankDocument.id).status,"posted");
+  assert.equal(read("reviewQueue/"+bankDocument.id),null);
+  assert.equal(read("sourceLocks/bankLine_"+bankDocument.id).journalId,bankApproved.journalId);
+  assert.equal(Math.round(bankJournal.lines.reduce((sum,line)=>sum+Number(line.debit||0),0)*100),Math.round(bankJournal.lines.reduce((sum,line)=>sum+Number(line.credit||0),0)*100));
+});
+
 test("period report returns selected-period activity and cumulative balances separately", async () => {
   write("settings/accountingStartMonth","2026-10");
   write("periods/2026-10/entries/opening",{id:"OPENING",date:"2026-10-01",status:"posted",lines:[{accountCode:"1110",debit:1000,credit:0}]});
