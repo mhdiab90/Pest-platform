@@ -928,16 +928,54 @@ test("forwarded invoices preserve full details and attachments through a multi-u
   assert.ok(forwardedPatch,"forwarding writes the full invoice once");
   assertNoOverlappingPaths(forwardedPatch);
 
-  const completePatchStart=adminPatchCalls.length;
-  const completed=await invoke("POST","",{
-    action:"completeInvoiceAssignment",assignmentId:nextAssignmentId,decision:"submit_for_review",
-    invoice:{invoiceType:"purchase",date:"2026-11-19",number:"13672",partyId:"FIN-FORWARD-VENDOR",partyName:"Forward Supplier",partyTaxNumber:"329566725",currency:"EGP",taxCode:"",taxRate:14,taxAmount:"",discount:0},
-    lines:[{description:"Maintenance service",kind:"service",accountCode:"6100",quantity:1,unitPrice:100,discount:0}]
+  await assert.rejects(
+    invoke("POST","",{
+      action:"forwardInvoiceAssignment",assignmentId:nextAssignmentId,nextAssigneeUid:firstUid,
+      instruction:"محاولة إعادة الفاتورة إلى المرسل المباشر"
+    },{
+      profile:{uid:secondUid,role:"user",status:"active",fullName:"Second Assignee"},
+      claims:{sub:secondUid}
+    }),
+    /غير المستخدم الذي أحال إليك/
+  );
+
+  const secondForwardPatchStart=adminPatchCalls.length;
+  const forwardedToThird=await invoke("POST","",{
+    action:"forwardInvoiceAssignment",assignmentId:nextAssignmentId,nextAssigneeUid:thirdUid,
+    instruction:"استكمال المراجعة النهائية",
+    invoice:{invoiceType:"purchase",date:"2026-11-19",number:"13672",partyId:"FIN-FORWARD-VENDOR",partyName:"Forward Supplier",partyTaxNumber:"329566725",currency:"EGP",taxCode:"",taxRate:14,taxAmount:"",discount:0,projectCode:""}
   },{
     profile:{uid:secondUid,role:"user",status:"active",fullName:"Second Assignee"},
     claims:{sub:secondUid}
   });
-  assert.equal(completed.status,"pending_review","an incomplete invoice is sent to review rather than rejected at submission");
+  assert.equal(forwardedToThird.status,"assigned");
+  const thirdAssignmentId=forwardedToThird.nextAssignmentId;
+  assert.equal(read("documents/"+invoiceId).assignedTo,thirdUid);
+  assert.equal(read("documents/"+invoiceId).assignmentChain.length,3,"the handoff history records the originator and every assigned user");
+  assert.equal(read("assignments/"+secondUid+"/"+nextAssignmentId).status,"forwarded");
+  assert.equal(read("assignments/"+thirdUid+"/"+thirdAssignmentId).status,"open");
+  assert.equal(read("cashCustodyNotifications/"+thirdUid+"/"+thirdAssignmentId).type,"financialAssignment");
+  const secondForwardPatch=adminPatchCalls.slice(secondForwardPatchStart).find(patch=>Object.prototype.hasOwnProperty.call(patch,"documents/"+invoiceId));
+  assert.ok(secondForwardPatch,"the second handoff writes the full invoice once");
+  assertNoOverlappingPaths(secondForwardPatch);
+
+  const thirdInbox=await invoke("GET","?resource=assignments",{},{
+    profile:{uid:thirdUid,role:"user",status:"active",fullName:"Third Assignee"},
+    claims:{sub:thirdUid}
+  });
+  assert.equal(thirdInbox.items[0].invoice.attachments["ATT-FORWARD-01"].fileName,"13672.pdf");
+  assert.equal(thirdInbox.items[0].invoice.partyTaxNumber,"329566725");
+
+  const completePatchStart=adminPatchCalls.length;
+  const completed=await invoke("POST","",{
+    action:"completeInvoiceAssignment",assignmentId:thirdAssignmentId,decision:"submit_for_review",
+    invoice:{invoiceType:"purchase",date:"2026-11-19",number:"13672",partyId:"FIN-FORWARD-VENDOR",partyName:"Forward Supplier",partyTaxNumber:"329566725",currency:"EGP",taxCode:"",taxRate:14,taxAmount:"",discount:0},
+    lines:[{description:"Maintenance service",kind:"service",accountCode:"6100",quantity:1,unitPrice:100,discount:0}]
+  },{
+    profile:{uid:thirdUid,role:"user",status:"active",fullName:"Third Assignee"},
+    claims:{sub:thirdUid}
+  });
+  assert.equal(completed.status,"pending_review","the third user can send an incomplete invoice to review");
   assert.ok(read("reviewQueue/"+invoiceId));
   assert.ok(read("documents/"+invoiceId).errors.some(error=>error.includes("كود ضريبي")),"missing VAT code is recorded for the reviewer");
   assert.equal(read("documents/"+invoiceId).attachments["ATT-FORWARD-01"].fileName,"13672.pdf");
