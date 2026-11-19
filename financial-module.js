@@ -1850,7 +1850,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
   selected?h('div',{className:'space-y-3'},
    h('div',{className:'flex items-center justify-between'},h('strong',null,selected.title||selected.number||selected.id),button('إغلاق',()=>setSelected(null))),
    h('p',{className:'text-sm'},t('النوع: ','Type: ')+(selected.type==='invoice'?(selected.invoiceType==='purchase'?t('فاتورة مشتريات','Purchase Invoice'):t('فاتورة مبيعات','Sales Invoice')):documentType(selected.type))+' · '+t('التاريخ: ','Date: ')+(selected.date||'—')+' · '+t('الحالة: ','Status: ')+status(selected.status)),
-   h('p',{className:'text-sm font-bold'},t('قيمة القيد / المستند: ','Journal / Document Amount: ')+moneyLabel(selected.total||selected.amount||(selected.type==='journal'?(selected.lines||[]).reduce((sum,line)=>sum+n(line.debit),0):0)),
+   h('p',{className:'text-sm font-bold'},t('قيمة القيد / المستند: ','Journal / Document Amount: ')+moneyLabel(selected.total||selected.amount||(selected.type==='journal'?(selected.lines||[]).reduce((sum,line)=>sum+n(line.debit),0):0))),
    selected.type==='journal'?renderReviewJournalDetails():null,
     (selected.reviewReason||'')?h('p',{className:'rounded-lg border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900'},'ملاحظة المراجعة السابقة: '+selected.reviewReason):null,
    (selected.errors||[]).length?h('ul',{className:'list-disc pr-5 text-rose-700'},selected.errors.map((x,i)=>h('li',{key:i},x))):null,
