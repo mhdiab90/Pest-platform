@@ -777,7 +777,7 @@ export async function handleFinancialRequest(ctx){
    if(!party)throw new Error("العميل أو المورد المحدد غير موجود في البيانات الموحدة.");
    event.partyName=txt(party.name||party.companyName||party.legalName||event.partyName||partyCode,180);
   }
-  event.accountingStatus=effect==="none"?"not_applicable":"pending_review";
+  event.accountingStatus=submitted.status==="cancelled"&&existingJournal?"cancelled":effect==="none"?"not_applicable":"pending_review";
   event.accountingImpact=effect!=="none";
   const rootUpdates={};
   rootUpdates["projects/"+projectCode+"/lastActivityAt"]=now;
