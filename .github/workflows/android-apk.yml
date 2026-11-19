@@ -8,6 +8,7 @@ on:
       - 'fix/*'
     paths:
       - "index.html"
+      - "code-intelligence.js"
       - "financial-module.js"
       - "financial-api.js"
       - "assets/**"
