@@ -386,7 +386,7 @@ export async function handleFinancialRequest(ctx){
     centers[projectCode]=center;rootUpdates["financial/costCenters/"+projectCode]=center;
    }
   }
-  const journalId=existingDraft?existingDraft.id:uid("CUST-JRN"),journal={
+  const journalId=existingDraft?existingDraft.id:(existingId||uid("CUST-JRN")),journal={
    ...(existingDraft||{}),id:journalId,type:"journal",sourceType:"cashCustody",sourceId:ownerUid+"--"+transactionId,ownerUid,custodyTransactionId:transactionId,
    projectCode,date:dateValue,description:"قيد عهدة شخصية — "+txt(transaction.description||movement,300)+" — "+employeeName,
    reference:txt(transaction.reference||transactionId,120),currency:"EGP",lines,status:"pending_review",
@@ -400,11 +400,13 @@ export async function handleFinancialRequest(ctx){
   rootUpdates["financial/audit/"+uid("AUD")]={action:"submit_cash_custody_journal",documentId:journalId,ownerUid,transactionId,uid:claims.sub,createdAt:now};
   rootUpdates["cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/financialDocumentId"]=journalId;
   rootUpdates["cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/financialReviewStatus"]="pending_review";
+  rootUpdates["cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/financialReviewError"]=null;
   rootUpdates["cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/status"]="pending";
   const mirrorOwner=transaction.linkedOwnerUid?id(transaction.linkedOwnerUid):"",mirrorId=transaction.linkedTransactionId?id(transaction.linkedTransactionId):"";
   if(mirrorOwner&&mirrorId){
    rootUpdates["cashCustodies/"+mirrorOwner+"/transactions/"+mirrorId+"/financialDocumentId"]=journalId;
    rootUpdates["cashCustodies/"+mirrorOwner+"/transactions/"+mirrorId+"/financialReviewStatus"]="pending_review";
+   rootUpdates["cashCustodies/"+mirrorOwner+"/transactions/"+mirrorId+"/financialReviewError"]=null;
    rootUpdates["cashCustodies/"+mirrorOwner+"/transactions/"+mirrorId+"/status"]="pending";
   }
   if(transaction.linkedProjectEventId&&projectCode){
