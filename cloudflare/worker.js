@@ -163,7 +163,7 @@ function hasPermission(profile, moduleId, action) {
     );
     if (hasScopedFinancialPermissions) {
       if (action === "view") return FINANCIAL_PERMISSION_AREAS.some(key =>
-        permissions[key].view === true || (key === "financial_review" && permissions[key].approve === true)
+        permissions[key].view === true || ["add","edit","delete","approve"].some(permission => permissions[key][permission] === true)
       );
       return FINANCIAL_PERMISSION_AREAS.some(key => permissions[key][action] === true);
     }
