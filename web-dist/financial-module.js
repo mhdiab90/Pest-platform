@@ -315,6 +315,20 @@ function FinanceModule(props){
   }catch(e){setError(e.message||String(e));}
   finally{setAssignmentBusy(false);}
  };
+ const cancelAssignedInvoice=async()=>{
+  if(!canFinance("assignments","edit")){setError("ليس لديك صلاحية إلغاء المستند المحول.");return;}
+  const assignment=assignmentItems.find(x=>x.id===selectedAssignmentId);
+  if(!assignment)return;
+  if(!window.confirm("إلغاء الفاتورة المحولة إليك؟ ستُغلق المهمة وتُزال الفاتورة من المراجعة، مع الاحتفاظ بالمرفقات وسجل التحويل."))return;
+  setAssignmentBusy(true);setError("");
+  try{
+   await api("","POST",{action:"deleteInvoice",id:assignment.invoiceId,reason:"إلغاء من المستخدم المحال إليه"});
+   setNotice("تم إلغاء الفاتورة المحولة وإغلاق المهمة. تم الاحتفاظ بالمرفقات وسجل التحويل.");
+   setSelectedAssignmentId("");setAssignmentLines([]);setAssignmentHeader({});
+   await refreshAssignments();await refresh();
+  }catch(error){setError(error.message||String(error));}
+  finally{setAssignmentBusy(false);}
+ };
  const loadPeriod=async()=>{
   setBusy(true);
   try{
@@ -1294,6 +1308,7 @@ const deleteJournalDocument=async(doc)=>{
    h("div",{className:"flex flex-wrap items-center gap-2"},
     button("إعادة الملف للمرسل المباشر",()=>completeAssignment("return_to_creator"),"muted",assignmentBusy||!canFinance("assignments","edit")),
     button("إرسال للمراجعة والاعتماد",()=>completeAssignment("submit_for_review"),"success",assignmentBusy||!canFinance("assignments","edit")),
+    button("إلغاء الفاتورة",cancelAssignedInvoice,"danger",assignmentBusy||!canFinance("assignments","edit")),
     button("إغلاق التفاصيل",()=>setSelectedAssignmentId(""),"muted")
    )
   ));
