@@ -372,7 +372,10 @@ export async function handleFinancialRequest(ctx){
   if(!allowed.includes(kind))throw new Error("Unsupported master data type.");
   const item=body.item||{},code=id(item.code),originalCode=body.originalCode?id(body.originalCode):code;
   const permissionModule=body.permissionModule==="master"?"master":"financial";
-  const previous=body.originalCode?await adminRead(kind+"/"+originalCode):null;
+  let previous=body.originalCode?await adminRead(kind+"/"+originalCode):null;
+  if(body.originalCode&&!previous&&kind==="parties"&&adminReadRoot){
+   previous=await adminReadRoot("clients/"+originalCode)||await adminReadRoot("vendors/"+originalCode);
+  }
   if(body.originalCode&&!previous)throw new Error("السجل المراد تعديله لم يعد موجودًا. حدّث القائمة ثم حاول مرة أخرى.");
   const sameKey=originalCode===code;
   const target= sameKey ? previous : await adminRead(kind+"/"+code);
