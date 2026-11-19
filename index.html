@@ -3139,14 +3139,19 @@ function App(){
   const cashCustodyBalance=cashCustodyInTotal-cashCustodyOutTotal;
   useEffect(()=>{
     if(tab!=='cashCustody'||!cashCustodyTargetUid||!cashCustodyRows.length||cashCustodyJournalSyncRef.current||!requirePermission('cashCustody','view'))return;
-    const missing=cashCustodyRows.filter(transaction=>transaction&&transaction.id&&transaction.pairRole!=='counterparty'&&!transaction.financialDocumentId&&!['cancelled','rejected'].includes(String(transaction.status||''))).slice(0,80);
+    const missing=cashCustodyRows.filter(transaction=>transaction&&transaction.id&&transaction.pairRole!=='counterparty'&&!transaction.financialDocumentId&&!['cancelled','rejected'].includes(String(transaction.status||'')));
     if(!missing.length)return;
     cashCustodyJournalSyncRef.current=true;
-    sendPushWorkerRequest('/finance',{action:'syncCashCustodyJournals',ownerUid:cashCustodyTargetUid,transactions:missing})
-      .then(result=>{
-        if(result&&result.created)setCashCustodyNotice(rtl?'تم تحويل '+result.created+' حركة عهدة قديمة إلى قيود بانتظار المراجعة المحاسبية.':'Converted '+result.created+' existing custody transactions into journals awaiting review.');
-        if(result&&result.failed)setCashCustodyNotice(rtl?'تعذر إنشاء '+result.failed+' قيد عهدة. راجع الملاحظات أو العملة.':'Could not create '+result.failed+' custody journals. Check the errors or currency.');
-      })
+    (async()=>{
+      let created=0,failed=0;
+      for(let offset=0;offset<missing.length;offset+=80){
+        const batch=missing.slice(offset,offset+80);
+        const result=await sendPushWorkerRequest('/finance',{action:'syncCashCustodyJournals',ownerUid:cashCustodyTargetUid,transactions:batch});
+        created+=Number(result&&result.created||0);failed+=Number(result&&result.failed||0);
+      }
+      if(created)setCashCustodyNotice(rtl?'تم تحويل '+created+' حركة عهدة قديمة إلى قيود بانتظار المراجعة المحاسبية.':'Converted '+created+' existing custody transactions into journals awaiting review.');
+      if(failed)setCashCustodyNotice(rtl?'تعذر إنشاء '+failed+' قيد عهدة. راجع العملات أو أسباب الرفض في كل حركة.':'Could not create '+failed+' custody journals. Check currencies or individual transaction errors.');
+    })()
       .catch(error=>setCashCustodyNotice((rtl?'تعذرت مزامنة قيود العهد القديمة: ':'Could not sync existing custody journals: ')+String(error.message||error)))
       .finally(()=>{cashCustodyJournalSyncRef.current=false;});
   },[tab,cashCustodyTargetUid,cashCustodyRows.length,currentUser&&currentUser.uid]);
