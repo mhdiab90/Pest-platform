@@ -264,10 +264,22 @@ export async function handleFinancialRequest(ctx){
   const updates={};(keys||[]).forEach(key=>{updates[key]=null;});
   if(Object.keys(updates).length)await adminPatchRootAt(path,updates);
  };
+ const financeAreaForMaster=kind=>({
+  parties:"masters",chartOfAccounts:"accounts",costCenters:"centers",
+  items:"inventory",itemGroups:"inventory",warehouses:"inventory",
+  bankAccounts:"bank",taxCodes:"tax"
+ })[kind]||"masters";
+ const requireFinanceArea=(area,action)=>requirePermission(profile,"financial_"+area,action);
+ const hasFinanceArea=(area,action)=>hasPermission(profile,"financial_"+area,action);
+ const requireFinanceMaster=(kind,action)=>requireFinanceArea(financeAreaForMaster(kind),action);
+ const documentPermissionArea=document=>document&&document.type==="invoice"?"invoices":
+  document&&document.type==="journal"?"journal":document&&document.type==="cash"?"cash":
+  document&&document.type==="bankLine"?"bank":"reports";
  if(!profile||!["active","نشط","مفعل","enabled"].includes(String(profile.status||"").toLowerCase()))throw new Error("This user account is not active.");
  if(request.method==="GET"){
-  requirePermission(profile,"financial","view");const res=txt(url.searchParams.get("resource")||"bootstrap",40);
+  const res=txt(url.searchParams.get("resource")||"bootstrap",40);
   if(res==="bootstrap"){
+   requirePermission(profile,"financial","view");
    let chart=(await adminRead("chartOfAccounts"))||{};
    if(!Object.keys(chart).length){
     if(profile.role!=="admin")throw new Error("يجب على مدير النظام تهيئة دليل الحسابات أولاً.");
@@ -309,10 +321,26 @@ export async function handleFinancialRequest(ctx){
    out.inventory={balances:(await adminRead("inventory/balances"))||{}};
    return out;
   }
-  if(res==="document"){const docId=id(url.searchParams.get("id"));const item=await adminRead("documents/"+docId);if(!item)throw new Error("المستند المطلوب غير موجود أو تم نقله من قائمة المراجعة.");return {item};}
-  if(res==="review"||res==="journals"||res==="documents"||res==="inventory"||res==="tax"||res==="audit")return {items:(await adminRead(res==="review"?"reviewQueue":res))||{}};
-  if(res==="bank")return {items:(await adminRead("bankImports"))||{},accounts:(await adminRead("bankAccounts"))||{}};
-  if(res==="periods"){
+  if(res==="document"){
+   const docId=id(url.searchParams.get("id")),item=await adminRead("documents/"+docId);
+   if(!item)throw new Error("المستند المطلوب غير موجود أو تم نقله من قائمة المراجعة.");
+   if(!hasFinanceArea("review","view")&&!hasFinanceArea(documentPermissionArea(item),"view"))throw new Error("ليس لديك صلاحية عرض هذا المستند.");
+   return {item};
+  }
+  if(res==="review"){requireFinanceArea("review","view");return {items:(await adminRead("reviewQueue"))||{}};}
+  if(res==="journals"){requireFinanceArea("journal","view");return {items:(await adminRead("journals"))||{}};}
+  if(res==="documents"){
+   const allowed=["invoices","journal","cash","bank"].filter(area=>hasFinanceArea(area,"view"));
+   if(!allowed.length)throw new Error("ليس لديك صلاحية عرض مستندات الوحدة المالية.");
+   const source=(await adminRead("documents"))||{},items={};
+   Object.entries(source).forEach(([key,document])=>{if(allowed.includes(documentPermissionArea(document)))items[key]=document;});
+   return {items};
+  }
+  if(res==="inventory"){requireFinanceArea("inventory","view");return {items:(await adminRead("inventory"))||{}};}
+  if(res==="tax"){requireFinanceArea("tax","view");return {items:(await adminRead("tax"))||{}};}
+  if(res==="audit"){requireFinanceArea("reports","view");return {items:(await adminRead("audit"))||{}};}
+  if(res==="bank"){requireFinanceArea("bank","view");return {items:(await adminRead("bankImports"))||{},accounts:(await adminRead("bankAccounts"))||{}};}
+  if(res==="periods"){requireFinanceArea("reports","view");
    const from=txt(url.searchParams.get("from")||new Date().toISOString().slice(0,7),7),to=txt(url.searchParams.get("to")||from,7);
    if(!/^\d{4}-\d{2}$/.test(from)||!/^\d{4}-\d{2}$/.test(to))throw new Error("Invalid financial period.");
    const configuredStart=await adminRead("settings/accountingStartMonth"),balanceFrom=String(configuredStart||from);
@@ -331,6 +359,7 @@ export async function handleFinancialRequest(ctx){
    return {months,entries,balanceEntries,accountingStartMonth:balanceFrom};
   }
   if(res==="party"){
+   requireFinanceArea("partyStatements","view");
    const requested=txt(url.searchParams.get("type")||"customer",32);
    const allowed=["customer","vendor","employeeCustody","employeeAdvance"];
    if(!allowed.includes(requested))throw new Error("Invalid analytic party type.");
@@ -338,7 +367,7 @@ export async function handleFinancialRequest(ctx){
    return {entries:(await adminRead("partyLedger/"+requested+"/"+partyId))||{}};
   }
   if(res==="assignments"){
-   requirePermission(profile,"financial","view");
+   requireFinanceArea("assignments","view");
    const assigned=(await adminRead("assignments/"+claims.sub))||{};
    const output=[];
    for(const [assignmentId,record] of Object.entries(assigned)){
@@ -353,7 +382,7 @@ export async function handleFinancialRequest(ctx){
  }
  if(request.method!=="POST")throw new Error("Method not allowed.");const action=txt(body.action,40),now=Date.now();
  if(action==="ocr"||action==="ocrText"){
-  requirePermission(profile,"financial","add");
+  requireFinanceArea("invoices","add");
   if(!env.AI)throw new Error("Workers AI is not enabled.");
   const textOnly=action==="ocrText",pageNumber=Math.max(1,Math.floor(Number(body.pageNumber)||1)),totalPages=Math.max(pageNumber,Math.floor(Number(body.totalPages)||pageNumber));
   let content;
@@ -388,7 +417,7 @@ export async function handleFinancialRequest(ctx){
   const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties"];
   if(!allowed.includes(kind))throw new Error("Unsupported master data type.");
   const item=body.item||{},code=id(item.code),originalCode=body.originalCode?id(body.originalCode):code;
-  const permissionModule=kind==="parties"&&body.permissionModule==="master"?"master":"financial";
+  const permissionArea=financeAreaForMaster(kind);
   let previous=body.originalCode?await adminRead(kind+"/"+originalCode):null;
   if(body.originalCode&&!previous&&kind==="parties"&&adminReadRoot){
    previous=await adminReadRoot("clients/"+originalCode)||await adminReadRoot("vendors/"+originalCode);
@@ -399,7 +428,7 @@ export async function handleFinancialRequest(ctx){
   if(target&&!sameKey&&kind!=="parties")throw new Error("هذا الكود مسجل بالفعل. اختر كودًا غير مستخدم.");
   if(kind==="parties"&&target&&target.partyType&&target.partyType!==item.partyType)throw new Error("هذا الكود مسجل بالفعل لنوع طرف مختلف.");
   if(!txt(item.name,180))throw new Error("الاسم مطلوب");
-  requirePermission(profile,permissionModule,previous?"edit":"add");
+  requireFinanceArea(permissionArea,previous?"edit":"add");
   if(!previous&&target&&kind!=="parties")throw new Error("هذا الكود مسجل بالفعل. اختر كودًا آخر حتى لا يتم استبدال بياناته.");
   if(previous&&!sameKey){
    const usages=await findMasterReferences(ctx,kind,originalCode,previous.partyType||item.partyType||"");
@@ -474,8 +503,7 @@ export async function handleFinancialRequest(ctx){
   const codes=Array.from(new Set(rawCodes.map(value=>id(value))));
   if(!codes.length)throw new Error("حدد سجلًا واحدًا على الأقل للحذف.");
   if(codes.length>50)throw new Error("الحد الأقصى 50 سجلًا في عملية الحذف المتعدد.");
-  const permissionModule=kind==="parties"&&body.permissionModule==="master"?"master":"financial";
-  requirePermission(profile,permissionModule,"delete");
+  requireFinanceMaster(kind,"delete");
   const now=Date.now(),updates={},rootUpdates={},results=[];
   let deleted=0,deactivated=0,notFound=0,failed=0;
   const rootName=kind==="parties"?(body.partyType==="vendor"?"vendors":"clients"):"";
@@ -511,7 +539,7 @@ export async function handleFinancialRequest(ctx){
  if(action==="deleteMaster"){
   const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties"];
   if(!allowed.includes(kind))throw new Error("Unsupported master data type.");
-  const code=id(body.code),permissionModule=kind==="parties"&&body.permissionModule==="master"?"master":"financial";
+  const code=id(body.code);
   let existing=await adminRead(kind+"/"+code);
   let crmCustomer=null,crmVendor=null;
   if(kind==="parties"&&adminReadRoot){
@@ -519,7 +547,7 @@ export async function handleFinancialRequest(ctx){
    existing=existing||crmCustomer||crmVendor;
   }
   if(!existing)throw new Error("السجل غير موجود أو تم حذفه بالفعل.");
-  requirePermission(profile,permissionModule,"delete");
+  requireFinanceMaster(kind,"delete");
   const partyType=existing.partyType||(crmVendor?"vendor":"customer");
   const usages=await findMasterReferences(ctx,kind,code,partyType);
   const now=Date.now();
@@ -548,9 +576,9 @@ export async function handleFinancialRequest(ctx){
   return {success:true,deleted:true,deactivated:false,code,references:[]};
  }
  if(action==="importMasters"){
-  requirePermission(profile,"financial","add");
   const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties"];
   if(!allowed.includes(kind))throw new Error("Unsupported master data import type.");
+  requireFinanceMaster(kind,"add");
   const sourceRows=Array.isArray(body.rows)?body.rows:[];
   if(!sourceRows.length)throw new Error("ملف الاستيراد لا يحتوي على صفوف.");
   if(sourceRows.length>500)throw new Error("الحد الأقصى 500 سجل في عملية الاستيراد الواحدة.");
@@ -621,7 +649,7 @@ export async function handleFinancialRequest(ctx){
   return {success:true,kind,count,created,updated,unchanged};
  }
  if(action==="submitJournal"){
-  requirePermission(profile,"financial","add");let previous=null;const journalId=id(body.id||uid("DOC"));if(body.id){previous=await adminRead("documents/"+journalId);if(!previous||previous.type!=="journal"||!["needs_correction","draft","returned_to_creator"].includes(previous.status)||previous.createdBy!==claims.sub)throw new Error("لا يمكن تعديل هذا القيد: قد يكون غير موجود أو أُرسل للمراجعة أو تم اعتماده.");}const j={id:journalId,type:"journal",date:date(body.date),description:txt(body.description,500),reference:txt(body.reference,120),currency:txt(body.currency||"EGP",3),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:previous&&previous.createdAt||now,createdBy:previous&&previous.createdBy||claims.sub,createdByName:previous&&previous.createdByName||txt(profile.fullName||profile.username||profile.email,120)};
+  requireFinanceArea("journal","add");let previous=null;const journalId=id(body.id||uid("DOC"));if(body.id){previous=await adminRead("documents/"+journalId);if(!previous||previous.type!=="journal"||!["needs_correction","draft","returned_to_creator"].includes(previous.status)||previous.createdBy!==claims.sub)throw new Error("لا يمكن تعديل هذا القيد: قد يكون غير موجود أو أُرسل للمراجعة أو تم اعتماده.");}const j={id:journalId,type:"journal",date:date(body.date),description:txt(body.description,500),reference:txt(body.reference,120),currency:txt(body.currency||"EGP",3),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:previous&&previous.createdAt||now,createdBy:previous&&previous.createdBy||claims.sub,createdByName:previous&&previous.createdByName||txt(profile.fullName||profile.username||profile.email,120)};
   if(j.currency!=="EGP")throw new Error("القيود متعددة العملات وأسعار الصرف غير مفعّلة بعد. استخدم الجنيه المصري حتى لا تختلط أرصدة العملات في القوائم.");
   if(body.id){
    const previous=await adminRead("documents/"+j.id);
@@ -630,7 +658,7 @@ export async function handleFinancialRequest(ctx){
   const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{},v=validateJournal(j,chart,centers);j.errors=v.errors;j.balance=v.balance;j.status=v.errors.length?"needs_correction":"pending_review";const u={};u["documents/"+j.id]=j;u["reviewQueue/"+j.id]=v.errors.length?null:reviewRecord(j);u["audit/"+uid("AUD")]={action:"submit_journal",documentId:j.id,status:j.status,uid:claims.sub,createdAt:now};await adminPatch(u);return {success:true,id:j.id,status:j.status,errors:v.errors,balance:v.balance};
  }
  if(action==="saveInvoiceDraft"){
-  requirePermission(profile,"financial","add");
+  requireFinanceArea("invoices","add");
   const direction=body.type;
   if(!["purchase","sales"].includes(direction))throw new Error("حدد نوع الفاتورة أولاً: مشتريات أو مبيعات.");
   const draftId=id(body.id||uid("INV")),previous=body.id?await adminRead("documents/"+draftId):null;
@@ -656,7 +684,7 @@ export async function handleFinancialRequest(ctx){
   return {success:true,id:draftId,status:"draft",errors:inv.errors};
  }
  if(action==="assignInvoice"){
-  requirePermission(profile,"financial","add");
+  requireFinanceArea("assignments","add");
   const invoiceId=id(body.invoiceId),invoice=await adminRead("documents/"+invoiceId);
   if(!invoice||invoice.type!=="invoice")throw new Error("الفاتورة المطلوب تحويلها غير موجودة.");
   if(invoice.createdBy!==claims.sub&&profile.role!=="admin")throw new Error("لا يمكنك تحويل فاتورة أنشأها مستخدم آخر.");
@@ -692,7 +720,7 @@ export async function handleFinancialRequest(ctx){
   return {success:true,id:invoiceId,assignmentId,taskId,status:"assigned",pushNotification:{recipientUid:assigneeUid,eventType:"financialAssignment",eventId:assignmentId,content:{title:"فاتورة محولة إليك",body:"مطلوب: "+instruction}}};
  }
  if(action==="completeInvoiceAssignment"){
-  if(!hasPermission(profile,"financial","add")&&!hasPermission(profile,"financial","edit"))throw new Error("Permission denied: financial.add or financial.edit.");
+  if(!hasFinanceArea("assignments","add")&&!hasFinanceArea("assignments","edit"))throw new Error("Permission denied: financial_assignments.add or financial_assignments.edit.");
   const assignmentId=id(body.assignmentId),assignment=await adminRead("assignments/"+claims.sub+"/"+assignmentId);
   if(!assignment||assignment.assigneeUid!==claims.sub||assignment.status!=="open")throw new Error("المهمة غير موجودة أو تم إغلاقها بالفعل.");
   const invoice=await adminRead("documents/"+id(assignment.invoiceId));
@@ -759,7 +787,7 @@ export async function handleFinancialRequest(ctx){
   return {success:true,id:invoice.id,assignmentId,status:"returned_to_creator",pushNotification:{recipientUid:ownerUid,eventType:"financialAssignmentReturned",eventId:invoice.id,content:{title:"اكتمل استكمال الفاتورة",body:"عاد المستند إلى مسوداتك للمراجعة والإرسال."}}};
  }
  if(action==="submitInvoice"){
-  requirePermission(profile,"financial","add");if(!["purchase","sales"].includes(body.type))throw new Error("حدد هل الفاتورة مشتريات من مورد أم مبيعات لعميل.");const inv={...body,id:id(body.id||uid("INV")),type:"invoice",invoiceType:body.type,date:date(body.date),number:txt(body.number,120),partyId:txt(body.partyId,120),partyName:txt(body.partyName,180),currency:txt(body.currency||"EGP",3),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120)},errors=[];
+  requireFinanceArea("invoices","add");if(!["purchase","sales"].includes(body.type))throw new Error("حدد هل الفاتورة مشتريات من مورد أم مبيعات لعميل.");const inv={...body,id:id(body.id||uid("INV")),type:"invoice",invoiceType:body.type,date:date(body.date),number:txt(body.number,120),partyId:txt(body.partyId,120),partyName:txt(body.partyName,180),currency:txt(body.currency||"EGP",3),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120)},errors=[];
   if(body.taxCode){
    const taxCode=await adminRead("taxCodes/"+id(body.taxCode)),expectedTaxType=inv.invoiceType==="purchase"?"vat_input":"vat_output";
    if(!taxCode||taxCode.active===false||taxCode.taxType!==expectedTaxType)errors.push("كود ضريبة القيمة المضافة لا يتوافق مع نوع الفاتورة أو أنه غير نشط.");
@@ -810,7 +838,7 @@ export async function handleFinancialRequest(ctx){
   const u={};u["documents/"+inv.id]=inv;u["reviewQueue/"+inv.id]=errors.length?null:reviewRecord(inv);u["audit/"+uid("AUD")]={action:"submit_invoice",documentId:inv.id,status:inv.status,uid:claims.sub,createdAt:now};await adminPatch(u);if(!errors.length&&previous&&previous.returnedTaskId&&adminPatchRoot){const taskUpdates={};taskUpdates["tasks/"+claims.sub+"/"+id(previous.returnedTaskId)+"/status"]="completed";taskUpdates["tasks/"+claims.sub+"/"+id(previous.returnedTaskId)+"/completedAt"]=now;taskUpdates["tasks/"+claims.sub+"/"+id(previous.returnedTaskId)+"/completedBy"]=claims.sub;await adminPatchRoot(taskUpdates);}return {success:true,id:inv.id,status:inv.status,errors,warnings:inv.warnings,totals};
  }
  if(action==="submitCash"){
-  requirePermission(profile,"financial","add");
+  requireFinanceArea("cash","add");
   const movementTypes=["customer_receipt","supplier_payment","other_receipt","other_payment","cash_to_bank","bank_to_cash","employee_custody","employee_custody_return","employee_advance","employee_advance_recovery"];
   const movementType=txt(body.movementType||"",40);
   if(!movementTypes.includes(movementType))throw new Error("حدد نوع حركة الخزينة.");
@@ -859,23 +887,23 @@ export async function handleFinancialRequest(ctx){
   return {success:true,id:doc.id,status:doc.status};
  }
  if(action==="submitBankImport"){
-  requirePermission(profile,"financial","add");const importId=id(body.id||uid("BANK")),rows=Array.isArray(body.rows)?body.rows.slice(0,500):[];if(!rows.length)throw new Error("ملف البنك لا يحتوي على حركات");const u={},duplicates=[];let count=0;
+  requireFinanceArea("bank","add");const importId=id(body.id||uid("BANK")),rows=Array.isArray(body.rows)?body.rows.slice(0,500):[];if(!rows.length)throw new Error("ملف البنك لا يحتوي على حركات");const u={},duplicates=[];let count=0;
   const bankCode=id(body.bankAccountCode||"1120"),bankAccount=await adminRead("chartOfAccounts/"+bankCode);
   if(!bankAccount||bankAccount.isGroup||bankAccount.active===false||bankAccount.type!=="asset")throw new Error("اختر حساب بنك نشطًا من حسابات الأصول قبل استيراد الكشف.");
   for(const row of rows){const d=date(row.date),amount=num(row.amount);if(!amount)continue;const fingerprint=await sha([txt(body.bankAccountCode||"1120",32),d,amount.toFixed(2),txt(row.reference,100),txt(row.description,500).toLowerCase().replace(/\s+/g," ")].join("|")),prev=await adminRead("bankFingerprints/"+fingerprint),docId=uid("BNK"),doc={id:docId,type:"bankLine",importId,date:d,amount,description:txt(row.description,500),reference:txt(row.reference,100),direction:row.direction==="in"?"in":"out",bankAccountCode:txt(body.bankAccountCode||"1120",32),fingerprint,status:prev?"duplicate_review":"pending_review",warnings:prev?["تكرار محتمل لحركة "+prev.documentId]:[],duplicateOf:prev&&prev.documentId||"",createdAt:now,createdBy:claims.sub};if(prev)duplicates.push(docId);else u["bankFingerprints/"+fingerprint]={documentId:docId,importId,createdAt:now};u["documents/"+docId]=doc;u["reviewQueue/"+docId]=reviewRecord(doc);count++;}
   u["bankImports/"+importId]={id:importId,bankAccountCode:body.bankAccountCode||"1120",fileName:txt(body.fileName,180),rowCount:count,duplicateCount:duplicates.length,createdAt:now,createdBy:claims.sub};u["audit/"+uid("AUD")]={action:"bank_import",importId,rowCount:count,duplicates:duplicates.length,uid:claims.sub,createdAt:now};await adminPatch(u);return {success:true,importId,rows:count,duplicates:duplicates.length};
  }
  if(action==="addAttachment"){
-  requirePermission(profile,"financial","add");
+  requireFinanceArea("invoices","edit");
   const documentId=id(body.documentId),document=await adminRead("documents/"+documentId),attachment=body.attachment||{},attachmentId=id(attachment.id);
   if(!document)throw new Error("الفاتورة أو المستند غير موجود.");
-  if(document.createdBy!==claims.sub&&profile.role!=="admin"&&!hasPermission(profile,"financial","edit"))throw new Error("ليس لديك صلاحية ربط المرفقات بهذا المستند.");
+  if(document.createdBy!==claims.sub&&profile.role!=="admin"&&!hasFinanceArea("invoices","edit"))throw new Error("ليس لديك صلاحية ربط المرفقات بهذا المستند.");
   const metadata={id:attachmentId,fileName:txt(attachment.fileName||attachment.name,240),mimeType:txt(attachment.mimeType||attachment.contentType,120),size:num(attachment.size||attachment.fileSize||0),createdAt:now,uploadedBy:claims.sub};
   const updates={};updates["documents/"+documentId+"/attachments/"+attachmentId]=metadata;updates["audit/"+uid("AUD")]={action:"attach_financial_document",documentId,attachmentId,uid:claims.sub,createdAt:now};
   await adminPatch(updates);return {success:true,attachment:metadata};
  }
  if(action==="setAttachmentUploadStatus"){
-  requirePermission(profile,"financial","add");
+  requireFinanceArea("invoices","edit");
   const documentId=id(body.documentId),document=await adminRead("documents/"+documentId);
   if(!document||document.type!=="invoice")throw new Error("الفاتورة غير موجودة لتحديث حالة المرفق.");
   if(document.createdBy!==claims.sub&&profile.role!=="admin"&&!hasPermission(profile,"financial","edit"))throw new Error("ليس لديك صلاحية تحديث مرفقات هذه الفاتورة.");
@@ -908,7 +936,7 @@ export async function handleFinancialRequest(ctx){
   return {success:true,documentId,status:body.status};
  }
  if(action==="setBankOffset"){
-  if(!hasPermission(profile,"financial","approve"))throw new Error("Permission denied: financial.approve.");
+  requireFinanceArea("bank","edit");
   const docId=id(body.id),doc=await adminRead("documents/"+docId);
   if(!doc||doc.type!=="bankLine"||!["pending_review","duplicate_review"].includes(doc.status))throw new Error("حركة البنك غير متاحة للتعديل");
   const offset=id(body.offsetAccountCode),account=await adminRead("chartOfAccounts/"+offset);
@@ -918,7 +946,8 @@ export async function handleFinancialRequest(ctx){
   await adminPatch(updates);return {success:true};
  }
  if(action==="review"){
-  if(!hasPermission(profile,"financial","approve"))throw new Error("Permission denied: financial.approve.");const docId=id(body.id),decision=txt(body.decision,20),doc=await adminRead("documents/"+docId);if(!doc)throw new Error("مستند المراجعة غير موجود");
+  requireFinanceArea("review","approve");
+  const docId=id(body.id),decision=txt(body.decision,20),doc=await adminRead("documents/"+docId);if(!doc)throw new Error("مستند المراجعة غير موجود");
   const lockType=doc.type==="invoice"?"invoice":doc.type==="cash"?"cash":doc.type==="bankLine"?"bankLine":"";
   if(lockType){
    const sourceLock=await adminRead("sourceLocks/"+lockType+"_"+docId);
@@ -1074,6 +1103,6 @@ export async function handleFinancialRequest(ctx){
   }else throw new Error("نوع المستند غير مدعوم في الترحيل");
   updates["documents/"+docId+"/status"]="posted";updates["documents/"+docId+"/journalId"]=j.id;updates["documents/"+docId+"/approvedAt"]=now;updates["documents/"+docId+"/approvedBy"]=claims.sub;updates["documents/"+docId+"/postedAt"]=now;updates["reviewQueue/"+docId]=null;updates["audit/"+uid("AUD")]={action:"approve_and_post",documentId:docId,journalId:j.id,uid:claims.sub,createdAt:now};await adminPatch(updates);return {success:true,status:"posted",journalId:j.id};
  }
- if(action==="returnToReview"){requirePermission(profile,"financial","edit");throw new Error("إعادة الإرسال المباشر غير مسموح بها لأنها تتجاوز التحقق المحاسبي. أعد حفظ القيد أو الفاتورة من الشاشة المخصصة ليُعاد احتساب الأخطاء والتحقق من البيانات قبل دخول قائمة المراجعة.");}
+ if(action==="returnToReview"){requireFinanceArea("review","edit");throw new Error("إعادة الإرسال المباشر غير مسموح بها لأنها تتجاوز التحقق المحاسبي. أعد حفظ القيد أو الفاتورة من الشاشة المخصصة ليُعاد احتساب الأخطاء والتحقق من البيانات قبل دخول قائمة المراجعة.");}
  throw new Error("Unknown financial action.");
 }
