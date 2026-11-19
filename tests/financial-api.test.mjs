@@ -101,7 +101,7 @@ test("invoice number is extracted from Internal id before the AI suggestion for 
   env.AI = {run:async(_model,request)=>{
     const prompt=request.messages[0].content.map(part=>part.text||"").join(" ");
     assert.match(prompt,/Internal id/i);
-    assert.match(prompt,/complete value immediately following/i);
+    assert.match(prompt,/first contiguous token immediately to the right/i);
     return {response:JSON.stringify({type:"purchase",number:"AI-WRONG-0001",items:[]})};
   }};
   const fromPdf = await invoke("POST","",{action:"ocrText",text:pdfText,pageNumber:1,totalPages:1});
@@ -110,7 +110,7 @@ test("invoice number is extracted from Internal id before the AI suggestion for 
   env.AI.run=async(_model,request)=>{
     const prompt=request.messages[0].content.map(part=>part.text||"").join(" ");
     assert.match(prompt,/Internal id/i);
-    assert.match(prompt,/preserving letters, digits, slashes and hyphens/i);
+    assert.match(prompt,/preserving letters, digits, slashes, dots and hyphens/i);
     return {response:JSON.stringify({type:"purchase",number:"IMG-INTERNAL-7788",items:[]})};
   };
   const fromImage=await invoke("POST","",{action:"ocr",image:"data:image/jpeg;base64,AAAA",pageNumber:1,totalPages:1});
@@ -760,6 +760,9 @@ test("invoice delegation and return use scoped RTDB writes and return-to-review 
   assert.equal(read("assignments/" + assigneeUid + "/" + assigned.assignmentId).status,"open");
   assert.equal(read("tasks/" + assigneeUid + "/" + assigned.taskId).kind,"financialAssignment");
   assert.equal(read("cashCustodyNotifications/" + assigneeUid + "/" + assigned.assignmentId).type,"financialAssignment");
+  assert.equal(read("sentAssignments/" + ownerUid + "/" + assigned.assignmentId).status,"open","the sender's outgoing transfer is stored separately from the assignee inbox");
+  const senderTransferList=await invoke("GET","?resource=assignments");
+  assert.equal(senderTransferList.sentItems[0].id,assigned.assignmentId,"the creator can see the transfer in their outgoing transfers list");
   assert.ok(adminPatchRootAtCalls.some(call=>call.path==="tasks"));
   assert.ok(adminPatchRootAtCalls.some(call=>call.path==="cashCustodyNotifications"));
   assert.equal(adminPatchRootCalls.length,rootPatchCount,"assignment must not PATCH the RTDB root");
@@ -778,6 +781,7 @@ test("invoice delegation and return use scoped RTDB writes and return-to-review 
   const returnedTaskId=read("documents/" + invoiceId).returnedTaskId;
   assert.equal(read("tasks/" + ownerUid + "/" + returnedTaskId).kind,"financialAssignmentReturned");
   assert.equal(read("cashCustodyNotifications/" + ownerUid + "/" + returnedTaskId).type,"financialAssignmentReturned");
+  assert.equal(read("sentAssignments/" + ownerUid + "/" + assigned.assignmentId).status,"returned_to_creator","returned work remains visible in the creator's sent transfers");
   assert.equal(adminPatchRootCalls.length,rootPatchCount,"returning the invoice must not PATCH the RTDB root");
 
   const resubmitted = await invoke("POST","",{
@@ -790,7 +794,45 @@ test("invoice delegation and return use scoped RTDB writes and return-to-review 
   assert.equal(read("documents/" + invoiceId).status,"pending_review");
   assert.ok(read("reviewQueue/" + invoiceId),"resubmitted invoice must reappear in the review queue");
   assert.equal(read("tasks/" + ownerUid + "/" + returnedTaskId + "/status"),"completed");
+  assert.equal(read("sentAssignments/" + ownerUid + "/" + assigned.assignmentId).status,"sent_for_review","a creator resubmission updates the outgoing transfer status");
   assert.equal(adminPatchRootCalls.length,rootPatchCount,"invoice resubmission must not PATCH the RTDB root");
+});
+
+test("delegated invoice can be sent straight to review and notifies every user with review approval rights", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const ownerUid=claims.sub,assigneeUid="FIN-DIRECT-REVIEW-ASSIGNEE",reviewerUid="FIN-DIRECT-REVIEWER";
+  write("users/"+assigneeUid,{uid:assigneeUid,status:"active",role:"user",fullName:"Assignee"});
+  write("users/"+reviewerUid,{uid:reviewerUid,status:"active",role:"user",fullName:"Reviewer",permissions:{financial_review:{approve:true}}});
+  write("parties/FIN-DIRECT-REVIEW-VENDOR",{code:"FIN-DIRECT-REVIEW-VENDOR",name:"Review Supplier",partyType:"vendor",active:true});
+  write("chartOfAccounts/6100",{code:"6100",name:"مصروفات تشغيل",type:"expense",nature:"debit",active:true});
+  const invoiceId="INV-DIRECT-REVIEW-001";
+  write("documents/"+invoiceId,{
+    id:invoiceId,type:"invoice",invoiceType:"purchase",status:"draft",createdBy:ownerUid,createdByName:"Owner",
+    number:"PUR-DIRECT-REVIEW-001",date:"2026-11-19",partyId:"FIN-DIRECT-REVIEW-VENDOR",
+    partyName:"Review Supplier",currency:"EGP",taxRate:0,taxAmount:0,
+    lines:[{description:"Maintenance service",kind:"service",accountCode:"6100",quantity:1,unitPrice:125}]
+  });
+  const assigned=await invoke("POST","",{action:"assignInvoice",invoiceId,assigneeUid,instruction:"راجع التصنيف"});
+  const reviewerPermissions=(user,moduleId,action)=>moduleId==="financial_review"&&(action==="view"||action==="approve")&&user.uid===reviewerUid;
+  const completed=await invoke("POST","",{
+    action:"completeInvoiceAssignment",assignmentId:assigned.assignmentId,decision:"submit_for_review",
+    lines:[{index:0,kind:"service",accountCode:"6100"}]
+  },{profile:{uid:assigneeUid,role:"user",status:"active",fullName:"Assignee"},claims:{sub:assigneeUid},hasPermission:reviewerPermissions});
+  assert.equal(completed.success,true);
+  assert.equal(completed.status,"pending_review");
+  assert.equal(completed.reviewersNotified,1);
+  assert.equal(read("documents/"+invoiceId).status,"pending_review");
+  assert.ok(read("reviewQueue/"+invoiceId),"the submitted delegated invoice enters the approval queue");
+  assert.equal(read("assignments/"+assigneeUid+"/"+assigned.assignmentId).status,"completed");
+  assert.equal(read("sentAssignments/"+ownerUid+"/"+assigned.assignmentId).status,"sent_for_review");
+  assert.equal(read("tasks/"+assigneeUid+"/"+assigned.taskId+"/status"),"completed");
+  const reviewerNotification=Object.values(read("cashCustodyNotifications/"+reviewerUid)||{}).find(item=>item&&item.type==="financialReviewRequired");
+  assert.ok(reviewerNotification,"the authorized reviewer receives an in-app approval notification");
+  assert.equal(reviewerNotification.invoiceId,invoiceId);
+  assert.equal(reviewerNotification.read,false);
+  assert.equal(completed.pushNotifications[0].recipientUid,reviewerUid,"the same reviewer is included in push delivery");
+  const reviewList=await invoke("GET","?resource=review");
+  assert.ok(reviewList.items[invoiceId]||reviewList.items.find?.(item=>item.id===invoiceId),"the submitted invoice is present in the review resource");
 });
 
 test("finance endpoints request screen-specific permission scopes", async () => {
