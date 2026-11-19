@@ -8,6 +8,7 @@ on:
       - "cloudflare/origin.js"
       - "financial-api.js"
       - "financial-module.js"
+      - "code-intelligence.js"
       - "tests/**"
       - "scripts/build-mobile.mjs"
       - "scripts/build-web.mjs"
