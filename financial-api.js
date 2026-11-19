@@ -416,7 +416,7 @@ export async function handleFinancialRequest(ctx){
   }
   if(!adminPatchRoot)throw new Error("خدمة حفظ قيد العهدة غير متاحة.");
   await adminPatchRoot(rootUpdates);
-  return {success:true,id:journalId,status:"pending_review",errors:journal.errors};
+  return {success:true,id:journalId,status:"pending_review",errors:journal.errors,existing:Boolean(existingDraft)};
  };
  if(!profile||!["active","نشط","مفعل","enabled"].includes(String(profile.status||"").toLowerCase()))throw new Error("This user account is not active.");
  if(request.method==="GET"){
