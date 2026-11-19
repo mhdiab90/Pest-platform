@@ -1713,6 +1713,20 @@ function App(){
     const reportPresenceError=(context,error)=>{
       if(!mounted)return;
       console.error(context,error);
+      const errorCode=String(error?.code||'');
+      const errorText=String(error?.message||'').toLowerCase();
+      const permissionDenied=errorCode==='PERMISSION_DENIED'||errorText.includes('permission_denied')||errorText.includes('permission denied');
+      if(permissionDenied){
+        const readPath=String(context||'').toLowerCase().includes('read');
+        setOnlinePresenceError(rtl
+          ? (readPath
+            ? 'Firebase رفض قراءة المسار /presence. انشر ملف قواعد Pest-Platform-Firebase-Rules-Custody-v12-Online-Presence-Push.json بالكامل من Firebase Database Rules، وتأكد أن حالة الحساب في users/{uid}/status نشطة.'
+            : 'Firebase رفض تسجيل جلسة الاتصال في presence. انشر ملف قواعد v12 بالكامل، وتأكد أن حالة الحساب في users/{uid}/status نشطة.')
+          : (readPath
+            ? 'Firebase denied reading /presence. Publish the complete v12 rules file in Firebase Realtime Database Rules and confirm users/{uid}/status is active.'
+            : 'Firebase denied presence registration. Publish the complete v12 rules file and confirm users/{uid}/status is active.'));
+        return;
+      }
       setOnlinePresenceError(firebaseErrorMessage(error,tr));
     };
     const presenceRef=db.ref('presence');
@@ -6156,7 +6170,7 @@ function App(){
           </button>
           {onlineUsersOpen&&<div className="app-online-presence-popover">
             <div className="flex items-center justify-between gap-2 px-3 py-2 border-b"><b className="text-sm">{rtl?'المستخدمون المتصلون':'Online users'} ({onlinePeople.length})</b><button type="button" className="text-gray-400 hover:text-gray-700" onClick={()=>setOnlineUsersOpen(false)} aria-label={rtl?'إغلاق':'Close'}><i className="fas fa-times"></i></button></div>
-            {onlinePresenceError&&<p role="alert" className="mx-3 my-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800 whitespace-normal break-words">{rtl?'تعذر قراءة حالة الاتصال: ':'Could not load online presence: '}{onlinePresenceError}</p>}
+            {onlinePresenceError&&<p role="alert" className="mx-3 my-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800 whitespace-normal break-words">{rtl?'تعذر مزامنة حالة الاتصال: ':'Could not sync online presence: '}{onlinePresenceError}</p>}
             {!onlinePresenceError&&onlinePeople.length===0?<p className="p-4 text-xs text-gray-500 text-center">{rtl?'لا يوجد مستخدمون آخرون متصلون حاليًا.':'No other users are online right now.'}</p>:onlinePeople.map(user=><button type="button" key={user.uid} onClick={()=>openOnlineChat(user.uid)} className="app-online-user-row"><span className="app-online-avatar">{String(user.fullName||user.username||'?').trim().slice(0,1)}</span><span className="min-w-0 flex-1 text-start"><b className="block text-sm truncate">{user.fullName||user.username||user.uid}</b><small className="block text-xs text-gray-500 truncate">{user.jobTitle||user.username||''}</small></span><span className="app-online-led is-online"></span></button>)}
           </div>}
         </div>
