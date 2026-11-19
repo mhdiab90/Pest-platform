@@ -20,15 +20,15 @@ For testing, set FCM_SERVICE_ACCOUNT_JSON as a Secret and FCM_WEB_VAPID_KEY as a
 
 ## Firebase Realtime Database rules
 
-Publish the complete file `firebase-rules/Pest-Platform-Firebase-Rules-Custody-v12-Online-Presence-Push.json`. It keeps the v8 rules and adds:
+Publish the complete file `firebase-rules/Pest-Platform-Firebase-Rules-Custody-v13-Online-Presence-Push.json`. It keeps the v8 rules and adds:
 - pushTokens/{uid}/{tokenId}: only the active signed-in owner can write their own Android/web token; client reads are denied.
 - pushDispatches: client reads and writes are denied; the Worker uses its service account for idempotency tracking.
 
-The v12 file includes online-presence and push-token permissions. It is a proposed rules file only and must be published manually in Firebase Realtime Database → Rules. Replace the complete Rules document with this full JSON file; do not paste only the presence section. It replaces the earlier v11 draft. The /presence read permission is limited to signed-in active accounts, each account can write only its own connection records, and deleting its own connection record is allowed on disconnect so stale online markers can be cleaned up.
+The v13 file includes online-presence and push-token permissions. It is a proposed rules file only and must be published manually in Firebase Realtime Database → Rules. Replace the complete Rules document with this full JSON file; do not paste only the presence section. It replaces the earlier v12 draft. The /presence read permission is limited to signed-in active accounts, each account can write only its own connection records, and deleting its own connection record is allowed on disconnect. The connection-record validation explicitly allows the required `state` and `lastChanged` children while rejecting other fields; omitting those child validators causes writes to be rejected.
 
 ## Device enrollment and delivery
 
-After the Preview Worker secrets are configured and the v11 rules are published:
+After the Preview Worker secrets are configured and the v13 rules are published:
 - Install the new Android build, sign into Pest Platform, open the bell → Enable device / browser push notifications, and allow Android notifications.
 - On desktop, open Pest Platform over HTTPS, sign in, open the bell → Enable device / browser push notifications, and allow browser notifications.
 - Each device/browser stores its own FCM token under the signed-in UID. Logging out removes that device's token from that UID.
@@ -37,7 +37,7 @@ After the Preview Worker secrets are configured and the v11 rules are published:
 
 ## Important deployment note
 
-The GitHub changes do not automatically set Cloudflare secrets or publish Firebase database rules. Push delivery is not live until the two Worker settings above, the v11 Database Rules, and the Worker deployment are completed. The Android APK build is independent of the Cloudflare secret setup.
+The GitHub changes do not automatically set Cloudflare secrets or publish Firebase database rules. Push delivery is not live until the two Worker settings above, the v13 Database Rules, and the Worker deployment are completed. The Android APK build is independent of the Cloudflare secret setup.
 
 ## Stable Android update signing (recommended)
 
