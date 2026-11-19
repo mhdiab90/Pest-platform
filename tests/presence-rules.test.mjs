@@ -10,8 +10,10 @@ test("presence can be read only by authenticated active accounts", () => {
   assert.match(readRule, /auth != null/);
   assert.match(readRule, /users/);
   assert.match(readRule, /status/);
+  const writeRule = rules.presence?.["$uid"]?.["$connectionId"]?.[".write"] || "";
   for (const status of ["active", "Active", "ACTIVE", "نشط", "مفعل", "enabled", "Enabled", "ENABLED"]) {
-    assert.ok(readRule.includes("=== '" + status + "'"), "missing active status compatibility: " + status);
+    assert.ok(readRule.includes("=== '" + status + "'"), "missing read status compatibility: " + status);
+    assert.ok(writeRule.includes("=== '" + status + "'"), "missing write status compatibility: " + status);
   }
   assert.equal(rules.presence?.[".write"], undefined, "there must be no broad write permission on /presence");
 });
@@ -30,9 +32,13 @@ test("an owner can delete its own stale connection marker after account deactiva
   assert.ok(writeRule.indexOf("!newData.exists()") < writeRule.indexOf("status"), "delete permission must not depend on active status");
 });
 
-test("presence records accept only online state and a numeric timestamp", () => {
+test("presence records allow state and lastChanged while rejecting unknown fields", () => {
   const connectionRules = rules.presence?.["$uid"]?.["$connectionId"];
+  assert.match(connectionRules?.[".validate"] || "", /hasChildren\(\['state', 'lastChanged'\]\)/);
   assert.match(connectionRules?.[".validate"] || "", /state/);
   assert.match(connectionRules?.[".validate"] || "", /lastChanged/);
+  assert.match(connectionRules?.state?.[".validate"] || "", /newData\.isString\(\)/);
+  assert.match(connectionRules?.state?.[".validate"] || "", /'online'/);
+  assert.match(connectionRules?.lastChanged?.[".validate"] || "", /newData\.isNumber\(\)/);
   assert.equal(connectionRules?.["$other"]?.[".validate"], false, "unexpected fields must be rejected");
 });
