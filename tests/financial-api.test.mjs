@@ -1237,6 +1237,33 @@ test("incoming cheques use a clearing account then transfer to bank on collectio
   assert.ok(read("ledger/1120/2026-11/"+cleared.journalId+"_1"));
 });
 
+
+test("cash custody recovery sync creates a missing review journal once and reports retries as existing", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const ownerUid="CUSTODY-RECOVERY-OWNER",transactionId="CUSTODY-RECOVERY-01";
+  write("users/"+ownerUid,{uid:ownerUid,status:"active",role:"user",fullName:"Recovery Employee"});
+  write("cashCustodies/"+ownerUid+"/transactions/"+transactionId,{
+    id:transactionId,ownerUid,bookScope:"personal",type:"expense",amount:87.5,currency:"EGP",
+    date:"2026-11-19",description:"Previously saved custody movement",status:"pending",
+    financialReviewStatus:"blocked",createdBy:ownerUid,createdByName:"Recovery Employee"
+  });
+
+  const first=await invoke("POST","",{action:"syncCashCustodyJournals",ownerUid,transactions:[{id:transactionId}]});
+  assert.equal(first.failed,0);
+  assert.equal(first.created,1);
+  const journalId=read("cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/financialDocumentId");
+  assert.ok(journalId,"recovery sync links the previously saved custody transaction");
+  assert.ok(read("reviewQueue/"+journalId),"recovered journal appears in the financial review queue");
+  assert.equal(read("documents/"+journalId+"/status"),"pending_review");
+  assert.equal(read("cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/financialReviewStatus"),"pending_review");
+
+  const retry=await invoke("POST","",{action:"syncCashCustodyJournals",ownerUid,transactions:[{id:transactionId}]});
+  assert.equal(retry.failed,0);
+  assert.equal(retry.created,0,"retrying an already-linked journal must not be counted as a new journal");
+  assert.equal(read("cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/financialDocumentId"),journalId);
+  assert.ok(read("reviewQueue/"+journalId),"the same journal remains in the review queue");
+});
+
 test("personal custody movements create a single accounting review journal and approve paired books together", async () => {
   await invoke("GET","?resource=bootstrap");
   const ownerUid="CUSTODY-EMPLOYEE-01",projectCode="PRJ-CUSTODY-ACCOUNTING-01",transactionId="CUSTODY-EXPENSE-01",mirrorId="CUSTODY-COMPANY-MIRROR-01";
