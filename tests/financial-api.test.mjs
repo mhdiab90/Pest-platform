@@ -290,9 +290,10 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
   assert.equal(read("bankAccounts/1120").accountCode,"1120","bank account master is linked to a valid ledger account");
 
   write("chartOfAccounts/6200",{code:"6200",name:"رسوم وضرائب أخرى",type:"expense",nature:"debit",active:true});
+  write("parties/VENDOR-TAX-01",{code:"VENDOR-TAX-01",name:"Other Tax Supplier",partyType:"vendor",active:true});
   const additionalTax=await invoke("POST","",{
     action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-OTHER-TAX-01",
-    partyId:"VENDOR-001",partyName:"Supplier Test",currency:"EGP",taxCode:"",taxRate:4,taxAmount:"",
+    partyId:"VENDOR-TAX-01",partyName:"Other Tax Supplier",currency:"EGP",taxCode:"",taxRate:4,taxAmount:"",
     otherTaxes:[{description:"Stamp tax",rate:1,amount:"",accountCode:"6200"}],
     lines:[{description:"Maintenance service",kind:"service",accountCode:"6100",quantity:1,unitPrice:100}]
   });
