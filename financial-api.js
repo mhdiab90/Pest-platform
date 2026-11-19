@@ -387,7 +387,8 @@ export async function handleFinancialRequest(ctx){
   if(body.originalCode&&!previous)throw new Error("السجل المراد تعديله لم يعد موجودًا. حدّث القائمة ثم حاول مرة أخرى.");
   const sameKey=Boolean(body.originalCode)&&originalCode===code;
   const target=sameKey?previous:await adminRead(kind+"/"+code);
-  if(target&&!sameKey)throw new Error("الكود الجديد مستخدم بالفعل. اختر كودًا غير مستخدم.");
+  if(target&&!sameKey&&kind!=="parties")throw new Error("الكود الجديد مستخدم بالفعل. اختر كودًا غير مستخدم.");
+  if(kind==="parties"&&target&&target.partyType&&target.partyType!==item.partyType)throw new Error("هذا الكود مسجل بالفعل لنوع طرف مختلف.");
   if(!txt(item.name,180))throw new Error("الاسم مطلوب");
   requirePermission(profile,permissionModule,previous?"edit":"add");
   if(!previous&&target&&kind!=="parties")throw new Error("هذا الكود مسجل بالفعل. اختر كودًا آخر حتى لا يتم استبدال بياناته.");
@@ -428,12 +429,12 @@ export async function handleFinancialRequest(ctx){
    if(oppositeParty)throw new Error("هذا الكود مستخدم بالفعل في سجل "+(item.partyType==="customer"?"الموردين":"العملاء")+".");
    const partyNameOf=p=>String(p&&(p.name||p.companyName||p.legalName||p.supplierName||p.vendorName||p.customerName||p.clientName)||"").trim();
    const taxOf=p=>String(p&&(p.taxNumber||p.taxRegistrationNumber||p.registrationNumber||p.registrationNo||p.vatNumber||p.taxId)||"").replace(/[^0-9]/g,"");
-   const mergedPrevious=previous||correctParty||{};
+   const mergedPrevious=previous||target||correctParty||{};
    if(mergedPrevious.partyType&&mergedPrevious.partyType!==item.partyType)throw new Error("لا يمكن تحويل سجل العميل إلى مورد أو العكس بعد إنشائه؛ أنشئ سجلًا جديدًا بالنوع الصحيح.");
    if(!previous&&partyNameOf(correctParty)&&partyNameOf(correctParty)!==txt(item.name,180)&&!(taxOf(correctParty)&&taxOf(item)&&taxOf(correctParty)===taxOf(item)))throw new Error("كود المورد/العميل موجود باسم أو رقم ضريبي مختلف في السجل الرئيسي.");
-   linkedExisting=Boolean(correctParty&&!previous);
+   linkedExisting=Boolean((target||correctParty)&&!previous);
    const supplied=Object.fromEntries(Object.entries(item).filter(([,value])=>value!==undefined&&value!==null&&value!==""));
-   saved={...(correctParty||{}),...(previous||{}),...supplied,code,name:txt(item.name,180),partyType:item.partyType,active:item.active!==false,createdAt:(previous&&previous.createdAt)||(correctParty&&correctParty.createdAt)||now,createdBy:(previous&&previous.createdBy)||(correctParty&&correctParty.createdBy)||claims.sub,updatedAt:now,updatedBy:claims.sub};
+   saved={...(correctParty||{}),...(target||{}),...(previous||{}),...supplied,code,name:txt(item.name,180),partyType:item.partyType,active:item.active!==false,createdAt:(previous&&previous.createdAt)||(target&&target.createdAt)||(correctParty&&correctParty.createdAt)||now,createdBy:(previous&&previous.createdBy)||(target&&target.createdBy)||(correctParty&&correctParty.createdBy)||claims.sub,updatedAt:now,updatedBy:claims.sub};
    if(!saved.taxNumber&&saved.taxRegistrationNumber)saved.taxNumber=saved.taxRegistrationNumber;
    if(!saved.taxRegistrationNumber&&saved.taxNumber)saved.taxRegistrationNumber=saved.taxNumber;
    const root=saved.partyType==="customer"?"clients":"vendors";
@@ -453,7 +454,7 @@ export async function handleFinancialRequest(ctx){
   await adminPatch(updates);
   const persisted=await adminRead(kind+"/"+code);
   if(!persisted||String(persisted.code||code)!==code)throw new Error("تعذر التأكد من حفظ السجل. حدّث القائمة قبل إعادة المحاولة.");
-  return {success:true,item:saved,linkedExisting:kind==="parties"&&linkedExisting,created:!previous};
+  return {success:true,item:saved,linkedExisting:kind==="parties"&&linkedExisting,created:!previous&&!target};
  }
  if(action==="deleteMaster"){
   const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties"];
