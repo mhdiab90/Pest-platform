@@ -458,7 +458,7 @@ export async function handleFinancialRequest(ctx){
     if(!projectRecord||typeof projectRecord!=="object")continue;
     const code=id(projectRecord.code||projectCode);
     if(!out.costCenters[code]){
-     const center={code,name:txt(projectRecord.name||projectRecord.projectName||code,180),projectCode:code,isProjectCenter:true,active:true,createdAt:now,createdBy:claims.sub};
+     const center={code,name:txt(projectRecord.name||projectRecord.projectName||code,180),projectCode:code,isProjectCenter:true,active:true,createdAt:Date.now(),createdBy:claims.sub};
      projectCostCenterUpdates["costCenters/"+code]=center;out.costCenters[code]=center;
     }
    }
