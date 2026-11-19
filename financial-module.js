@@ -54,7 +54,7 @@ function FinanceModule(props){
  const [documents,setDocuments]=React.useState([]),[review,setReview]=React.useState([]),[periodJournals,setPeriodJournals]=React.useState([]),[balanceJournals,setBalanceJournals]=React.useState([]),[accountingStartMonth,setAccountingStartMonth]=React.useState('');
  const [clients,setClients]=React.useState([]),[vendors,setVendors]=React.useState([]),[projects,setProjects]=React.useState([]);
  const [period,setPeriod]=React.useState({from:today().slice(0,7),to:today().slice(0,7)}),[report,setReport]=React.useState('trial');
- const [assignmentItems,setAssignmentItems]=React.useState([]),[selectedAssignmentId,setSelectedAssignmentId]=React.useState(''),[assignmentLines,setAssignmentLines]=React.useState([]),[assignmentBusy,setAssignmentBusy]=React.useState(false),[assignmentInstruction,setAssignmentInstruction]=React.useState('مراجعة تصنيف البنود وتحديد الأكواد المخزنية أو حسابات المصروفات'),[assignmentUserUid,setAssignmentUserUid]=React.useState('');
+ const [assignmentItems,setAssignmentItems]=React.useState([]),[sentAssignmentItems,setSentAssignmentItems]=React.useState([]),[selectedAssignmentId,setSelectedAssignmentId]=React.useState(''),[assignmentLines,setAssignmentLines]=React.useState([]),[assignmentBusy,setAssignmentBusy]=React.useState(false),[assignmentInstruction,setAssignmentInstruction]=React.useState('مراجعة تصنيف البنود وتحديد الأكواد المخزنية أو حسابات المصروفات'),[assignmentUserUid,setAssignmentUserUid]=React.useState('');
  const [selected,setSelected]=React.useState(null),[offset,setOffset]=React.useState('6100');
  const [quickAddType,setQuickAddType]=React.useState(''),[quickAddTarget,setQuickAddTarget]=React.useState(null),[quickAddParent,setQuickAddParent]=React.useState(null),[quickAddOriginalCode,setQuickAddOriginalCode]=React.useState(''),[quickAddForm,setQuickAddForm]=React.useState({code:'',name:'',active:true,type:'expense',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',unit:'قطعة',groupCode:'',groupType:'other',itemType:'stock',version:'',warehouseCode:'default',projectCode:'',taxType:'vat_output',rate:'0',effectiveFrom:today(),partyType:'customer',phone:'',taxNumber:'',email:'',address:''});
  const [masterForm,setMasterForm]=React.useState({kind:'chartOfAccounts',code:'',name:'',type:'asset',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',unit:'قطعة',groupCode:'',groupType:'other',itemType:'stock',version:'',projectCode:'',warehouseCode:'default',taxType:'vat',rate:'0',effectiveFrom:today()});
@@ -164,6 +164,7 @@ function FinanceModule(props){
    const result=await api('?resource=assignments');
    const list=rows(result.items).sort((a,b)=>n(b.createdAt)-n(a.createdAt));
    setAssignmentItems(list);
+   setSentAssignmentItems(rows(result.sentItems).sort((a,b)=>n(b.createdAt)-n(a.createdAt)));
    const pendingId=window.PEST_PENDING_FINANCE_ASSIGNMENT_ID;
    if(pendingId){
     const match=list.find(x=>x.id===pendingId);
@@ -177,6 +178,18 @@ function FinanceModule(props){
   const openPendingRoute=async()=>{
    const assignmentId=window.PEST_PENDING_FINANCE_ASSIGNMENT_ID;
    if(assignmentId){setTab("assignments");await refreshAssignments();return;}
+   const reviewId=window.PEST_PENDING_FINANCE_REVIEW_ID;
+   if(reviewId){
+    setTab("review");
+    try{
+     const list=await refreshReviewQueue(true);
+     const match=(list||[]).find(item=>item.id===reviewId);
+     if(match)await openReviewItem(match);
+     else setError("لم يتم العثور على الفاتورة في قائمة المراجعة. حدّث القائمة أو تحقق من صلاحية المراجعة.");
+    }catch(error){setError(error.message||String(error));}
+    window.PEST_PENDING_FINANCE_REVIEW_ID="";
+    return;
+   }
    const invoiceId=window.PEST_PENDING_FINANCE_INVOICE_ID;
    if(invoiceId){
     setTab("invoices");
@@ -191,7 +204,7 @@ function FinanceModule(props){
   };
   const listener=()=>{void openPendingRoute();};
   window.addEventListener("pest-finance-route",listener);
-  if(window.PEST_PENDING_FINANCE_ASSIGNMENT_ID||window.PEST_PENDING_FINANCE_INVOICE_ID)void openPendingRoute();
+  if(window.PEST_PENDING_FINANCE_ASSIGNMENT_ID||window.PEST_PENDING_FINANCE_INVOICE_ID||window.PEST_PENDING_FINANCE_REVIEW_ID)void openPendingRoute();
   return()=>window.removeEventListener("pest-finance-route",listener);
  },[]);
 
@@ -250,16 +263,18 @@ function FinanceModule(props){
   setSelectedAssignmentId(assignment.id);
   setAssignmentLines((assignment.invoice&&assignment.invoice.lines||[]).map(x=>Object.assign({},x)));
  };
- const completeAssignment=async()=>{
-  if(!canFinance("assignments","edit")){setError("ليس لديك صلاحية استكمال الإجراء وإرجاعه.");return;}
+ const completeAssignment=async(decision="return_to_creator")=>{
+  if(!canFinance("assignments","edit")){setError("ليس لديك صلاحية استكمال الإجراء واتخاذ القرار.");return;}
   const assignment=assignmentItems.find(x=>x.id===selectedAssignmentId);
   if(!assignment)return;
   setAssignmentBusy(true);setError('');
   try{
    const purchase=assignment&&assignment.invoice&&assignment.invoice.invoiceType==='purchase';
    const lines=assignmentLines.map((line,index)=>({index,kind:line.kind,itemCode:line.itemCode||'',groupCode:line.groupCode||'',warehouseCode:line.warehouseCode||'default',accountCode:purchase?(line.accountCode||''):(line.incomeAccountCode||''),itemType:line.itemType||'stock'}));
-   const result=await api('', 'POST',{action:'completeInvoiceAssignment',assignmentId:assignment.id,lines});
-   setNotice('تم استكمال التصنيف وإرجاع المسودة إلى المستخدم الأصلي للمراجعة والإرسال.');
+   const result=await api('', 'POST',{action:'completeInvoiceAssignment',assignmentId:assignment.id,lines,decision});
+   setNotice(decision==="submit_for_review"
+    ?'تم استكمال الفاتورة وإرسالها إلى قائمة المراجعة والاعتماد. أُرسل إشعار إلى المستخدمين المخولين بالمراجعة.'
+    :'تم استكمال التصنيف وإرجاع المسودة إلى صاحب التحويل، وستظهر في قائمة تحويلاتي والمهام لديه.');
    setSelectedAssignmentId('');setAssignmentLines([]);
    await refreshAssignments();await refresh();
   }catch(e){setError(e.message||String(e));}
@@ -1031,8 +1046,18 @@ function FinanceModule(props){
  };
  const renderAssignments=()=>{
   const selectedAssignment=assignmentItems.find(item=>item.id===selectedAssignmentId);
-  const inbox=panel('الإجراءات المحولة إليّ','تظهر هنا الفواتير المحولة لهذا المستخدم فقط. بعد استكمال الأكواد والتصنيف تعود المسودة إلى صاحبها.',h('div',{className:'space-y-2'},assignmentItems.length?assignmentItems.map(item=>h('div',{key:item.id,className:'border rounded-xl p-3 flex flex-wrap items-center justify-between gap-3'},h('div',{className:'min-w-0'},h('b',{className:'block'},'فاتورة '+(item.invoiceNumber||item.invoice&&item.invoice.number||'بدون رقم')),h('p',{className:'text-xs text-slate-600'},(item.invoiceType==='purchase'?'مورد: ':'عميل: ')+(item.partyName||item.invoice&&item.invoice.partyName||'')+' · '+(item.date||item.invoice&&item.invoice.date||'')),h('p',{className:'text-xs text-slate-500 mt-1'},item.instruction||'')),button(selectedAssignmentId===item.id?'مفتوحة':'فتح الإجراء',()=>openAssignment(item),selectedAssignmentId===item.id?'primary':'muted'))):h('p',{className:'text-sm text-slate-500'},'لا توجد إجراءات مفتوحة محولة إليك.')));
-  if(!selectedAssignment)return h('div',{className:'space-y-4'},inbox);
+  const inbox=panel('المهام المحولة إليّ','تظهر هنا الفواتير التي حوّلها إليك مستخدم آخر، ويمكنك فتحها من هذه الشاشة أو من شاشة المهام الرئيسية.',h('div',{className:'space-y-2'},assignmentItems.length?assignmentItems.map(item=>h('div',{key:item.id,className:'border rounded-xl p-3 flex flex-wrap items-center justify-between gap-3'},h('div',{className:'min-w-0'},h('b',{className:'block'},'فاتورة '+(item.invoiceNumber||item.invoice&&item.invoice.number||'بدون رقم')),h('p',{className:'text-xs text-slate-600'},(item.invoiceType==='purchase'?'مورد: ':'عميل: ')+(item.partyName||item.invoice&&item.invoice.partyName||'')+' · '+(item.date||item.invoice&&item.invoice.date||'')),h('p',{className:'text-xs text-slate-500 mt-1'},item.instruction||'')),button(selectedAssignmentId===item.id?'مفتوحة':'فتح المهمة واتخاذ القرار',()=>openAssignment(item),selectedAssignmentId===item.id?'primary':'muted'))):h('p',{className:'text-sm text-slate-500'},'لا توجد مهام مالية محولة إليك.')));
+  const sentOutbox=panel('تحويلاتي الصادرة','متابعة كل فاتورة قمت بتحويلها: عند المستكمل، عادت إليك، أو أُرسلت للمراجعة والاعتماد.',h('div',{className:'space-y-2'},sentAssignmentItems.length?sentAssignmentItems.map(item=>{
+   const state=item.status==='returned_to_creator'?'عاد إليك':item.status==='sent_for_review'?'أُرسل للمراجعة والاعتماد':item.status==='open'?'عند المستخدم المستكمل':item.status==='completed'?'مكتمل':item.status||'—';
+   const canOpenReturned=item.status==='returned_to_creator'&&item.invoice;
+   return h('div',{key:item.id,className:'border rounded-xl p-3 flex flex-wrap items-center justify-between gap-3'},
+    h('div',{className:'min-w-0'},h('b',{className:'block'},'فاتورة '+(item.invoice&&item.invoice.number||item.invoiceNumber||item.invoiceId||'بدون رقم')),
+     h('p',{className:'text-xs text-slate-600'},(item.invoiceType==='purchase'?'مورد: ':'عميل: ')+(item.invoice&&item.invoice.partyName||item.partyName||'')+' · '+(item.date||item.invoice&&item.invoice.date||'')),
+     h('p',{className:'text-xs text-slate-500 mt-1'},'المستخدم: '+(item.assigneeName||'—')+' · الحالة: '+state)),
+    canOpenReturned?button('فتح المسودة',()=>{window.PEST_PENDING_FINANCE_INVOICE_ID=item.invoiceId;window.dispatchEvent(new Event('pest-finance-route'));setTab('invoices');},'muted'):null
+   );
+  }):h('p',{className:'text-sm text-slate-500'},'لا توجد تحويلات صادرة حتى الآن.')));
+  if(!selectedAssignment)return h('div',{className:'space-y-4'},inbox,sentOutbox);
   const inv=selectedAssignment.invoice||{},purchase=inv.invoiceType==='purchase';
   const lineCards=assignmentLines.map((line,index)=>{
    const itemOptions=[{value:'',label:'اختر الصنف المخزني'},...activeItems.map(item=>({value:item.code,label:item.code+' — '+item.name+' '+(item.version||'')}))];
@@ -1051,8 +1076,12 @@ function FinanceModule(props){
     h('div',{className:'md:col-span-2'},h('span',{className:'text-xs text-slate-500 block'},'الكمية × السعر'),h('b',{className:'text-sm'},fmt(n(line.quantity)*n(line.unitPrice))))
    );
   });
-  const detail=panel('استكمال فاتورة '+(inv.number||selectedAssignment.invoiceId||''),(purchase?'فاتورة مشتريات من مورد: ':'فاتورة مبيعات لعميل: ')+(inv.partyName||'')+' · '+(selectedAssignment.instruction||''),h('div',{className:'space-y-3'},h('div',{className:'grid md:grid-cols-3 gap-3'},metric('التاريخ',inv.date||'—'),metric('الإجمالي',fmt(inv.total||0)+' ج.م'),metric('عدد البنود',String(assignmentLines.length))),...lineCards,h('div',{className:'flex flex-wrap items-center gap-2'},button('إرجاع المسودة لصاحبها بعد الاستكمال',completeAssignment,'success',assignmentBusy||assignmentLines.length===0||!canFinance("assignments","edit")),button('إغلاق التفاصيل',()=>setSelectedAssignmentId(''),'muted'))));
-  return h('div',{className:'space-y-4'},inbox,detail);
+  const detail=panel('استكمال فاتورة '+(inv.number||selectedAssignment.invoiceId||''),(purchase?'فاتورة مشتريات من مورد: ':'فاتورة مبيعات لعميل: ')+(inv.partyName||'')+' · '+(selectedAssignment.instruction||''),h('div',{className:'space-y-3'},h('div',{className:'grid md:grid-cols-3 gap-3'},metric('التاريخ',inv.date||'—'),metric('الإجمالي',fmt(inv.total||0)+' ج.م'),metric('عدد البنود',String(assignmentLines.length))),...lineCards,h('div',{className:'rounded-lg border bg-slate-50 p-3 text-sm text-slate-600'},'بعد إكمال التصنيف اختر القرار: إعادة الملف إلى صاحب التحويل ليستكمل ويرسله لاحقًا، أو إرساله مباشرة إلى قائمة المراجعة والاعتماد.'),h('div',{className:'flex flex-wrap items-center gap-2'},
+   button('إعادة الملف لصاحب التحويل',()=>completeAssignment('return_to_creator'),'muted',assignmentBusy||assignmentLines.length===0||!canFinance("assignments","edit")),
+   button('إرسال للمراجعة والاعتماد',()=>completeAssignment('submit_for_review'),'success',assignmentBusy||assignmentLines.length===0||!canFinance("assignments","edit")),
+   button('إغلاق التفاصيل',()=>setSelectedAssignmentId(''),'muted')
+  )));
+  return h('div',{className:'space-y-4'},inbox,sentOutbox,detail);
  };
   const renderPartyStatements = function() {
   const staff=(userDirectory||[]).filter(u=>u.uid).map(u=>Object.assign({},u,{id:u.uid,code:u.uid,name:u.fullName||u.username||u.email||u.uid}));
