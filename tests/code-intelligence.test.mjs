@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import "../code-intelligence.js";
 
-const engine = globalThis.window.PEST_CODE_INTELLIGENCE;
+const engine = globalThis.PEST_CODE_INTELLIGENCE;
 
 test("continues the dominant prefix and preserves zero padding", () => {
   const result = engine.suggestNext({
