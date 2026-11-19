@@ -346,7 +346,8 @@ export async function handleFinancialRequest(ctx){
   if(res==="document"){
    const docId=id(url.searchParams.get("id")),item=await adminRead("documents/"+docId);
    if(!item)throw new Error("المستند المطلوب غير موجود أو تم نقله من قائمة المراجعة.");
-   if(!hasFinanceArea("review","view")&&!hasFinanceArea(documentPermissionArea(item),"view"))throw new Error("ليس لديك صلاحية عرض هذا المستند.");
+   const activeAssignment=item.status==="assigned"&&item.assignedTo===claims.sub&&item.assignmentId&&await adminRead("assignments/"+claims.sub+"/"+id(item.assignmentId));
+   if(!hasFinanceArea("review","view")&&!hasFinanceArea(documentPermissionArea(item),"view")&&!activeAssignment)throw new Error("ليس لديك صلاحية عرض هذا المستند.");
    return {item};
   }
   if(res==="review"){requireFinanceArea("review","view");return {items:(await adminRead("reviewQueue"))||{}};}
