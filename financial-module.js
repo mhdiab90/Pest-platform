@@ -549,13 +549,27 @@ function FinanceModule(props){
   }else openQuickAdd('parties',onCreated,defaults);
  };
  const selectWithAdd=(label,value,onChange,options,kind,defaults)=>select(label,value,function(next){if(next==='__quick_add__'){openQuickAdd(kind,onChange,defaults);}else onChange(next);},(options||[]).concat([{value:'__quick_add__',label:'＋ إضافة كود جديد'}]));
- const partyPicker=(label,list,value,onChange,query,setQuery,partyType)=>{
-  const term=normalizeMatch(query),matches=term?(list||[]).filter(p=>normalizeMatch([p.code,partyName(p),p.phone,p.mobile,partyTaxNumber(p)].join(' ')).includes(term)).slice(0,8):[];
-  const selected=(list||[]).find(p=>String(p.code||p.id)===String(value||''));
+ const partyPicker=(label,list,value,onChange,query,setQuery,partyType,showResults=true)=>{
+  const term=normalizeMatch(query),selected=(list||[]).find(p=>String(p.code||p.id)===String(value||''));
+  const findExactParty=raw=>{
+   const needle=normalizeMatch(raw);
+   if(!needle)return null;
+   return (list||[]).find(p=>[p.code,partyName(p),partyTaxNumber(p)].some(candidate=>normalizeMatch(candidate)===needle))||null;
+  };
+  const updateSearch=raw=>{
+   setQuery(raw);
+   const exact=findExactParty(raw);
+   if(exact){onChange(exact);setQuery(partyName(exact));}
+   else if(value)onChange({});
+  };
   return h('div',{className:'block text-sm font-bold text-slate-700 min-w-0'},label,
-   h('input',{type:'search',value:query||'',onChange:e=>setQuery(e.target.value),placeholder:'ابحث بالاسم أو الكود أو رقم التسجيل الضريبي',className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal bg-white'}),
+   h('input',{type:'search',value:query||'',onChange:e=>updateSearch(e.target.value),onBlur:e=>{
+    if(!showResults){const exact=findExactParty(e.target.value);if(exact){onChange(exact);setQuery(partyName(exact));}}
+   },onKeyDown:e=>{
+    if(e.key==='Enter'&&!showResults){e.preventDefault();const exact=findExactParty(e.currentTarget.value);if(exact){onChange(exact);setQuery(partyName(exact));}}
+   },placeholder:'ابحث بالاسم أو الكود أو رقم التسجيل الضريبي',className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal bg-white'}),
    selected?h('div',{className:'mt-1 text-xs text-emerald-700'},'المحدد: '+partyName(selected)+' ('+(selected.code||selected.id)+')'):null,
-   term?h('div',{className:'mt-1 max-h-36 overflow-auto rounded-lg border bg-white'},matches.length?matches.map(p=>h('button',{key:String(p.code||p.id),type:'button',onClick:()=>{onChange(p);setQuery(partyName(p));},className:'block w-full text-start px-3 py-2 text-sm hover:bg-blue-50 border-b last:border-0'},h('b',null,p.code||p.id),' — ',partyName(p),partyTaxNumber(p)?h('small',{className:'block text-slate-500'},'رقم ضريبي: '+partyTaxNumber(p)):null)):h('div',{className:'p-2 text-xs text-slate-500'},'لا توجد نتيجة مطابقة')):null,
+   showResults&&term?h('div',{className:'mt-1 max-h-36 overflow-auto rounded-lg border bg-white'},(list||[]).filter(p=>normalizeMatch([p.code,partyName(p),p.phone,p.mobile,partyTaxNumber(p)].join(' ')).includes(term)).slice(0,8).map(p=>h('button',{key:String(p.code||p.id),type:'button',onClick:()=>{onChange(p);setQuery(partyName(p));},className:'block w-full text-start px-3 py-2 text-sm hover:bg-blue-50 border-b last:border-0'},h('b',null,p.code||p.id),' — ',partyName(p),partyTaxNumber(p)?h('small',{className:'block text-slate-500'},'رقم ضريبي: '+partyTaxNumber(p)):null))):null,
    h('button',{type:'button',onClick:()=>{
     const defaults={code:nextCode(partyType==='vendor'?'VND':'CUS',list),name:String(query||'').replace(/\s*\([^)]*\)\s*$/,''),partyType};
     openPartyMaster((code,createdItem)=>{const p=Object.assign({code,name:query,partyType},createdItem||{});onChange(p);setQuery(partyName(p));},defaults);
@@ -1114,7 +1128,7 @@ const deleteJournalDocument=async(doc)=>{
    select('العملة',invoice.currency||'EGP',function(v){setInvoice(old=>Object.assign({},old,{currency:v}));},[{value:'EGP',label:'EGP — جنيه مصري'}].concat(invoice.currency&&invoice.currency!=='EGP'?[{value:invoice.currency,label:invoice.currency+' — موقوف حتى تفعيل أسعار الصرف'}]:[])),
    field('رقم الفاتورة',invoice.number,function(v){setInvoice(function(old){return Object.assign({},old,{number:v});});}),
    field('التاريخ',invoice.date,function(v){setInvoice(function(old){return Object.assign({},old,{date:v});});},'date'),
-   partyPicker(invoice.type==='purchase'?'المورد':'العميل',parties,invoice.partyId,function(p){setInvoice(old=>Object.assign({},old,{partyId:p.code||p.id,partyName:partyName(p),partyTaxNumber:partyTaxNumber(p)}));},invoicePartySearch,setInvoicePartySearch,invoice.type==='purchase'?'vendor':'customer'),
+   partyPicker(invoice.type==='purchase'?'المورد':'العميل',parties,invoice.partyId,function(p){setInvoice(old=>Object.assign({},old,{partyId:p.code||p.id||'',partyName:partyName(p)||'',partyTaxNumber:partyTaxNumber(p)||''}));},invoicePartySearch,setInvoicePartySearch,invoice.type==='purchase'?'vendor':'customer',false),
    select('المشروع المرتبط',invoice.projectCode,function(v){setInvoice(function(old){return Object.assign({},old,{projectCode:v});});},[{value:'',label:'بدون مشروع'}].concat(projects.filter(p=>p.active!==false).map(function(p){return {value:p.code||p.id,label:(p.name||p.code)+' ('+(p.code||p.id)+')'};}))),
    select('كود ضريبة القيمة المضافة (ثابت 14%)',defaultVatCodeForInvoice(invoice.type),function(){},[{value:defaultVatCodeForInvoice(invoice.type),label:(invoice.type==='purchase'?'مدخلات':'مخرجات')+' — السعر العام 14%'}]),
    h('div',{className:'rounded-lg border bg-slate-50 p-2 text-sm flex flex-col justify-center'},h('span',{className:'text-xs text-slate-500'},'نسبة الكود الثابت'),h('strong',null,'14%')),
