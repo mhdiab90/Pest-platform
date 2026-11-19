@@ -172,7 +172,7 @@ function FinanceModule(props){
    }
   }catch(e){setError(e.message||String(e));}
  };
- React.useEffect(()=>{if(tab==='assignments')refreshAssignments();},[tab]);
+ React.useEffect(()=>{if(tab==='assignments'&&canFinance("assignments","view"))refreshAssignments();},[tab,currentUser&&currentUser.uid]);
  React.useEffect(()=>{
   const openPendingRoute=async()=>{
    const assignmentId=window.PEST_PENDING_FINANCE_ASSIGNMENT_ID;
@@ -204,6 +204,7 @@ function FinanceModule(props){
   return Object.assign({},invoice,{partyName:party?partyName(party):invoice.partyName,partyTaxNumber:party?partyTaxNumber(party):invoice.partyTaxNumber,lines:invoice.lines.map(x=>Object.assign({},x,{quantity:n(x.quantity),unitPrice:n(x.unitPrice),discount:n(x.discount)}))});
  };
  const saveInvoiceDraftRecord=async()=>{
+  if(!canFinance("invoices",invoice.id?"edit":"add"))throw new Error("ليس لديك صلاحية حفظ أو تعديل مسودة الفاتورة.");
   const payload=invoicePayload();
   const result=await api('', 'POST',Object.assign({action:'saveInvoiceDraft'},payload));
   setInvoice(old=>Object.assign({},old,{id:result.id}));
@@ -231,6 +232,7 @@ function FinanceModule(props){
   finally{setBusy(false);}
  };
  const assignInvoiceToUser=async()=>{
+  if(!canFinance("assignments","add")){setError("ليس لديك صلاحية تحويل الإجراءات لمستخدم آخر.");return;}
   if(!assignmentUserUid){setError('اختر المستخدم الذي سيستكمل الفاتورة.');return;}
   setBusy(true);setError('');
   try{
@@ -249,6 +251,7 @@ function FinanceModule(props){
   setAssignmentLines((assignment.invoice&&assignment.invoice.lines||[]).map(x=>Object.assign({},x)));
  };
  const completeAssignment=async()=>{
+  if(!canFinance("assignments","edit")){setError("ليس لديك صلاحية استكمال الإجراء وإرجاعه.");return;}
   const assignment=assignmentItems.find(x=>x.id===selectedAssignmentId);
   if(!assignment)return;
   setAssignmentBusy(true);setError('');
@@ -277,7 +280,7 @@ function FinanceModule(props){
  };
  React.useEffect(()=>{refresh();if(db){Promise.all([db.ref('clients').once('value'),db.ref('vendors').once('value'),db.ref('projects').once('value')]).then(a=>{setClients(rows(a[0].val()));setVendors(rows(a[1].val()));setProjects(rows(a[2].val()));}).catch(e=>console.warn(e));}},[]);
  React.useEffect(()=>{
-  if(tab!=='review')return;
+  if(tab!=='review'||!canFinance("review","view"))return;
   let active=true,loading=false;
   const sync=async()=>{
    if(!active||loading||(typeof document!=='undefined'&&document.visibilityState==='hidden'))return;
@@ -297,7 +300,7 @@ function FinanceModule(props){
   document.addEventListener('visibilitychange',onVisibility);
   return()=>{active=false;window.clearInterval(timer);document.removeEventListener('visibilitychange',onVisibility);};
  },[tab,currentUser&&currentUser.uid]);
- React.useEffect(()=>{if(['overview','reports','tax','centers'].includes(tab))loadPeriod();},[tab,period.from,period.to]);
+ React.useEffect(()=>{if(['overview','reports','tax','centers'].includes(tab)&&canFinance(financeTabAreas[tab],"view"))loadPeriod();},[tab,period.from,period.to,currentUser&&currentUser.uid]);
  const loadParty=async()=>{
   if(!partyStatement.id){setError('اختر العميل أو المورد أولاً.');return;}
   setBusy(true);setError('');
@@ -491,6 +494,8 @@ function FinanceModule(props){
  };
  const saveQuickAdd=async()=>{
   if(!quickAddType||busy)return;
+  const requiredAction=quickAddOriginalCode?"edit":"add";
+  if(!canFinance(financeAreaForMaster(quickAddType),requiredAction)){setError("ليس لديك صلاحية "+(requiredAction==="edit"?"تعديل":"إضافة")+" هذا النوع من البيانات.");return;}
   setBusy(true);setError('');setNotice('');
   try{
    const f=quickAddForm,kind=quickAddType;
@@ -556,15 +561,18 @@ function FinanceModule(props){
  const table=(headers,data)=>h('div',{className:'overflow-auto border rounded-xl'},h('table',{className:'w-full text-sm text-right'},h('thead',{className:'bg-slate-100'},h('tr',null,headers.map(x=>h('th',{key:x,className:'p-3 whitespace-nowrap'},x)))),h('tbody',null,data.length?data:h('tr',null,h('td',{colSpan:headers.length,className:'p-4 text-center text-slate-400'},'لا توجد بيانات')))));
  const noticeElement=error?h('div',{className:'rounded-xl bg-rose-50 text-rose-800 border border-rose-200 p-3 text-sm'},error):notice?h('div',{className:'rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 p-3 text-sm'},notice):null;
  const saveMaster=async()=>{
+  if(!canFinance(masterForm.kind==="chartOfAccounts"?"accounts":financeAreaForMaster(masterForm.kind),masterForm.code&&masterForm.originalCode?"edit":"add")&&!canFinance(masterForm.kind==="chartOfAccounts"?"accounts":financeAreaForMaster(masterForm.kind),"add")){setError("ليس لديك صلاحية إضافة هذا الكود.");return;}
   setBusy(true);setError('');try{
    const f=masterForm,item={code:f.code,name:f.name,type:f.type,nature:f.nature,parentCode:f.parentCode,isGroup:f.isGroup,subledgerType:f.subledgerType,unit:f.unit,groupCode:f.groupCode,version:f.version,projectCode:f.projectCode,warehouseCode:f.warehouseCode,taxType:f.taxType,rate:n(f.rate),effectiveFrom:f.effectiveFrom};
    await api('', 'POST',{action:'saveMaster',kind:f.kind,item});setNotice('تم حفظ الكود');setMasterForm(o=>Object.assign({},o,{code:'',name:''}));await refresh();
   }catch(e){setError(e.message||String(e));}finally{setBusy(false);}
  };
  const submitJournal=async()=>{
+  if(!canFinance("journal",journal.id?"edit":"add")){setError("ليس لديك صلاحية حفظ أو تعديل القيود اليومية.");return;}
   setBusy(true);setError('');try{const payload=Object.assign({},journal);const result=await api('', 'POST',Object.assign({action:'submitJournal'},payload));setNotice(result.status==='pending_review'?'تم إرسال القيد إلى المراجعة':'تم حفظ القيد مع أخطاء: '+(result.errors||[]).join('، '));if(result.status==='pending_review')setJournal({id:'',date:today(),description:'',reference:'',currency:'EGP',lines:[{accountCode:'6100',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''},{accountCode:'1110',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''}]});else setJournal(o=>Object.assign({},o,{id:result.id}));await refresh();}catch(e){setError(e.message||String(e));}finally{setBusy(false);}
  };
  const submitInvoice=async()=>{
+  if(!canFinance("invoices",invoice.id?"edit":"add")){setError("ليس لديك صلاحية إرسال أو تعديل الفواتير.");return;}
   setBusy(true);setError('');
   try{
    const payload=invoicePayload();
@@ -585,7 +593,7 @@ function FinanceModule(props){
     setInvoice({id:'',type:invoice.type,date:today(),number:'',partyId:'',partyName:'',partyTaxNumber:'',currency:'EGP',taxCode:resetTaxCode?resetTaxCode.code:defaultVatCodeForInvoice(invoice.type),taxRate:resetTaxCode?String(resetTaxCode.rate):'14',taxAmount:'',discount:'',projectCode:'',lines:[{description:'',kind:'stock',itemCode:'',quantity:'1',unit:'قطعة',unitPrice:'',discount:'',accountCode:'6100',incomeAccountCode:'4100',costCenterId:'',warehouseCode:'default'}]});
     setInvoiceTypeManuallySelected(false);
     setInvoiceFile(null);setInvoicePartySearch('');setOcrSuggestions({party:null,items:[]});
-    setTab('review');
+    setTab(canFinance("review","view")?'review':'invoices');
     setSelected(Object.assign({},payload,{id:result.id,type:'invoice',invoiceType:payload.type,status:result.status,total:result.totals&&result.totals.total||0,createdAt:Date.now(),attachments:savedAttachment?{[savedAttachment.id]:savedAttachment}:{},attachmentUploadStatus:attachmentError?'pending':'',attachmentFileName:attachmentError&&invoiceFile?invoiceFile.name:'',attachmentUploadError:attachmentError}));
     setNotice(attachmentError
      ?'تم حفظ الفاتورة وإدراجها في قائمة المراجعة بنجاح. تعذر رفع المرفق حاليًا؛ افتح الفاتورة من المراجعة واختر إعادة رفع المرفق.'
@@ -595,7 +603,7 @@ function FinanceModule(props){
     setNotice('الفاتورة محفوظة وتحتاج تصحيح: '+(result.errors||[]).join('، ')+(attachmentError?' · تعذر رفع المرفق: '+attachmentError:'')+'. لم تدخل قائمة المراجعة؛ استكمل الأخطاء ثم أرسلها مرة أخرى.');
    }
    await refresh();
-   if(queued){
+   if(queued&&canFinance("review","view")){
     setTab('review');
     setSelected(old=>old&&old.id===result.id?Object.assign({},old,{attachmentUploadStatus:attachmentError?'pending':'',attachmentFileName:attachmentError&&invoiceFile?invoiceFile.name:'',attachmentUploadError:attachmentError,attachments:savedAttachment?Object.assign({},old.attachments||{},{[savedAttachment.id]:savedAttachment}):old.attachments||{}}):old);
    }
@@ -903,7 +911,7 @@ function FinanceModule(props){
   const totalsPanel = h('div',{className:'flex flex-wrap gap-4 items-center p-3 bg-white border rounded-xl'},
    h('b',null,'المدين: '+fmt(jDebit)),h('b',null,'الدائن: '+fmt(jCredit)),
    h('b',{className:Math.abs(jDebit-jCredit)<0.01?'text-emerald-700':'text-rose-700'},'الفرق: '+fmt(jDebit-jCredit)),
-   button('حفظ وإرسال للمراجعة',submitJournal,'primary',busy)
+   button('حفظ وإرسال للمراجعة',submitJournal,'primary',busy||!canFinance("journal",journal.id?"edit":"add"))
   );
   const draftRows = documents.filter(function(x){return x.type==='journal'&&['needs_correction','draft'].includes(x.status);}).map(function(x){
    return h('tr',{key:x.id,className:'border-t'},h('td',{className:'p-2'},x.id),h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},x.description),h('td',{className:'p-2'},status(x.status)),h('td',{className:'p-2'},button('تعديل',function(){editDoc(x);},'muted')));
@@ -1094,7 +1102,7 @@ function FinanceModule(props){
    Object.keys(selected.attachments||{}).length?panel('مرفقات المستند','الملفات محفوظة في مساحة المرفقات المالية المرتبطة بالفاتورة.',table(['اسم الملف','النوع','الحجم','الإجراء'],Object.values(selected.attachments||{}).map(function(attachment){return h('tr',{key:attachment.id,className:'border-t'},h('td',{className:'p-2'},attachment.fileName||'—'),h('td',{className:'p-2'},attachment.mimeType||'—'),h('td',{className:'p-2'},fmt((Number(attachment.size)||0)/1024)+' KB'),h('td',{className:'p-2'},button('تحميل المرفق',function(){downloadFinancialAttachment(selected.id,attachment);},'muted')));}))) : null,
    selected.type==='bankLine'?select('الحساب المقابل',offset,v=>setOffset(v),posting.map(a=>({value:a.code,label:a.code+' — '+a.name}))):null,
    selected.type==='bankLine'?button('حفظ الحساب المقابل',async()=>{try{await api('', 'POST',{action:'setBankOffset',id:selected.id,offsetAccountCode:offset});setNotice('تم حفظ الحساب المقابل');await refreshReviewQueue(true);}catch(e){setError(e.message);}}):null,
-   h('div',{className:'flex flex-wrap gap-2'},button('اعتماد وترحيل',()=>reviewAction(selected.status==='duplicate_review'?'approveDuplicate':'approve'),'success',busy),button('إعادة للتصحيح',()=>reviewAction('return'),'muted',busy),button('رفض',()=>reviewAction('reject'),'danger',busy))
+   h('div',{className:'flex flex-wrap gap-2'},canFinance("review","approve")?button('اعتماد وترحيل',()=>reviewAction(selected.status==='duplicate_review'?'approveDuplicate':'approve'),'success',busy):null,canFinance("review","edit")?button('إعادة للتصحيح',()=>reviewAction('return'),'muted',busy):null,canFinance("review","approve")?button('رفض',()=>reviewAction('reject'),'danger',busy):null)
   ):table(['المستند','النوع','التاريخ','الطرف','المبلغ','الحالة','المرفق','مراجعة'],review.map(x=>h('tr',{key:x.id,className:'border-t'},
    h('td',{className:'p-2'},x.title||x.id),
    h('td',{className:'p-2'},x.type==='invoice'?(x.invoiceType==='purchase'?'مشتريات':'مبيعات'):x.type==='cash'?'الخزينة':x.type),
