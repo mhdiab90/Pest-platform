@@ -346,14 +346,12 @@ export async function handleFinancialRequest(ctx){
   if(String(transaction.currency||"EGP").toUpperCase()!=="EGP")throw new Error("لا يمكن إرسال حركة العهدة للمراجعة المحاسبية بعملة أجنبية قبل تفعيل أسعار الصرف وإعادة التقييم.");
   const linkPath="cashCustodyJournalLinks/"+ownerUid+"/"+transactionId;
   const linkedId=await adminRead(linkPath),existingId=transaction.financialDocumentId||linkedId||"";
+  let existingDraft=null;
   if(existingId){
-   const existing=await adminRead("documents/"+id(existingId));
-   if(existing&&existing.status==="posted")return {success:true,id:existing.id,status:"posted",alreadyPosted:true};
-   if(existing&&["pending_review","needs_correction"].includes(existing.status)){
-    if(!existing.reviewQueue)await adminPatch({"reviewQueue/"+existing.id:reviewRecord(existing)});
-    return {success:true,id:existing.id,status:existing.status,existing:true};
-   }
-   if(existing&&existing.status==="cancelled")throw new Error("قيد العهدة السابق ملغي. سجّل حركة تسوية جديدة بدل إعادة استخدام نفس الحركة.");
+   existingDraft=await adminRead("documents/"+id(existingId));
+   if(existingDraft&&existingDraft.status==="posted")return {success:true,id:existingDraft.id,status:"posted",alreadyPosted:true};
+   if(existingDraft&&existingDraft.status==="cancelled")throw new Error("قيد العهدة السابق ملغي. سجّل حركة تسوية جديدة بدل إعادة استخدام نفس الحركة.");
+   if(existingDraft&&!["pending_review","needs_correction"].includes(existingDraft.status))throw new Error("حالة قيد العهدة لا تسمح بالتحديث. راجع النظام المالي.");
   }
   const amount=num(transaction.amount||0),movement=txt(transaction.type||"",40),dateValue=date(transaction.date||"");
   if(amount<=0)throw new Error("مبلغ حركة العهدة غير صحيح.");
@@ -384,8 +382,8 @@ export async function handleFinancialRequest(ctx){
     centers[projectCode]=center;rootUpdates["financial/costCenters/"+projectCode]=center;
    }
   }
-  const journalId=uid("CUST-JRN"),journal={
-   id:journalId,type:"journal",sourceType:"cashCustody",sourceId:ownerUid+"--"+transactionId,ownerUid,custodyTransactionId:transactionId,
+  const journalId=existingDraft?existingDraft.id:uid("CUST-JRN"),journal={
+   ...(existingDraft||{}),id:journalId,type:"journal",sourceType:"cashCustody",sourceId:ownerUid+"--"+transactionId,ownerUid,custodyTransactionId:transactionId,
    projectCode,date:dateValue,description:"قيد عهدة شخصية — "+txt(transaction.description||movement,300)+" — "+employeeName,
    reference:txt(transaction.reference||transactionId,120),currency:"EGP",lines,status:"pending_review",
    createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120)
