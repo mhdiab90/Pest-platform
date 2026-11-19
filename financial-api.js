@@ -21,11 +21,7 @@ function extractEtaInvoiceParties(value) {
 
 function extractInternalInvoiceNumber(value) {
   const source = String(value || "").replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "");
-  const marker = /\bInternal\s*id\s*[:：]\s*/i.exec(source);
-  if (!marker) return "";
-  const adjacent = source.slice(marker.index + marker[0].length);
-  // Return only the contiguous value immediately beside the label, never the rest of the row or lines below.
-  const valueMatch = /^([0-9\u0660-\u0669\u06F0-\u06F9]+)/.exec(adjacent);
+  const valueMatch = /\bInternal\s*id\s*[:：]\s*([0-9\u0660-\u0669\u06F0-\u06F9]+)/i.exec(source);
   return valueMatch ? normalizeTaxRegistrationNumber(valueMatch[1]).slice(0,120) : "";
 }
 
