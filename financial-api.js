@@ -257,7 +257,27 @@ function invoiceLineAmounts(inv){
   return {line:row.line,amount:rnd(Math.max(0,row.base-share))};
  });
 }
-function invoiceTotals(inv){const net=rnd(invoiceLineAmounts(inv).reduce(function(sum,row){return sum+row.amount;},0)),hasFixedTax=inv.taxAmount!==undefined&&inv.taxAmount!==null&&String(inv.taxAmount).trim()!=="",tax=rnd(hasFixedTax?num(inv.taxAmount):net*num(inv.taxRate||0)/100);return {net,tax,total:rnd(net+tax)};}
+function normalizeInvoiceOtherTaxes(rows){
+ if(!Array.isArray(rows))return [];
+ return rows.slice(0,20).filter(row=>row&&typeof row==="object"&&!Array.isArray(row)).map(row=>({
+  description:txt(row.description||"",180),
+  taxCode:txt(row.taxCode||"",80),
+  rate:row.rate===""||row.rate===null||row.rate===undefined?"":num(row.rate||0),
+  amount:row.amount===""||row.amount===null||row.amount===undefined?"":num(row.amount||0),
+  accountCode:txt(row.accountCode||"",32)
+ }));
+}
+function invoiceTotals(inv){
+ const net=rnd(invoiceLineAmounts(inv).reduce(function(sum,row){return sum+row.amount;},0));
+ const hasFixedVat=inv.taxAmount!==undefined&&inv.taxAmount!==null&&String(inv.taxAmount).trim()!=="";
+ const vat=rnd(hasFixedVat?num(inv.taxAmount):net*num(inv.taxRate||0)/100);
+ const otherTax=rnd(normalizeInvoiceOtherTaxes(inv.otherTaxes).reduce((sum,row)=>{
+  const hasFixed=row.amount!==""&&row.amount!==null&&row.amount!==undefined;
+  return sum+(hasFixed?num(row.amount):net*num(row.rate||0)/100);
+ },0));
+ const tax=rnd(vat+otherTax);
+ return {net,vat,otherTax,tax,total:rnd(net+tax)};
+}
 function invoiceReviewErrors(inv,taxCodes,chart,items){
  const errors=[],lines=Array.isArray(inv.lines)?inv.lines:[],rawDate=String(inv.date||"");
  if(!/^\d{4}-\d{2}-\d{2}$/.test(rawDate)||!Number.isFinite(Date.parse(rawDate+"T00:00:00Z")))errors.push("تاريخ الفاتورة مطلوب أو غير صحيح.");
@@ -272,9 +292,20 @@ function invoiceReviewErrors(inv,taxCodes,chart,items){
   else if(line.kind==="stock"){if(!line.itemCode||!items[line.itemCode]||items[line.itemCode].active===false)errors.push("حدد صنفًا مخزنيًا نشطًا للبند "+(index+1)+".");}
   else{const expected=inv.invoiceType==="purchase"?"expense":"revenue",code=String(inv.invoiceType==="purchase"?(line.accountCode||""):(line.incomeAccountCode||"")),account=chart[code];if(!account||account.isGroup||account.active===false||account.type!==expected)errors.push("حدد حساب "+(expected==="expense"?"مصروف":"إيراد")+" صحيحًا للبند "+(index+1)+".");}
  });
- const rate=Number(inv.taxRate||0),taxAmount=Number(inv.taxAmount||0);
- if(inv.taxCode){const code=taxCodes[id(inv.taxCode)],expected=inv.invoiceType==="purchase"?"vat_input":"vat_output";if(!code||code.active===false||code.taxType!==expected)errors.push("كود الضريبة غير نشط أو لا يتوافق مع نوع الفاتورة.");else{if(code.effectiveFrom&&rawDate&&rawDate<String(code.effectiveFrom))errors.push("كود الضريبة غير سارٍ بتاريخ الفاتورة.");if(Math.abs(Number(code.rate||0)-rate)>0.01)errors.push("نسبة كود الضريبة لا تطابق نسبة الفاتورة.");}}
- else if(rate>0||taxAmount>0)errors.push("يجب اختيار كود ضريبي نشط ومطابق لنوع الفاتورة وتاريخها ونسبتها.");
+ const rate=Number(inv.taxRate||0),expectedTaxType=inv.invoiceType==="purchase"?"vat_input":"vat_output";
+ const standardVatCode=inv.invoiceType==="purchase"?"VAT-IN-14":"VAT-OUT-14",standardVat=taxCodes[standardVatCode];
+ if(inv.taxCode!==standardVatCode)errors.push("يجب استخدام كود ضريبة القيمة المضافة الأساسي الثابت 14%.");
+ if(!standardVat||standardVat.active===false||standardVat.taxType!==expectedTaxType||Math.abs(Number(standardVat.rate||0)-14)>0.01)errors.push("كود ضريبة القيمة المضافة الأساسي 14% غير موجود أو غير نشط أو غير مطابق لنوع الفاتورة.");
+ else if(standardVat.effectiveFrom&&rawDate&&rawDate<String(standardVat.effectiveFrom))errors.push("كود ضريبة القيمة المضافة الأساسي غير سارٍ بتاريخ الفاتورة.");
+ if(Math.abs(rate-14)>0.01)errors.push("نسبة ضريبة القيمة المضافة الأساسية ثابتة عند 14%.");
+ normalizeInvoiceOtherTaxes(inv.otherTaxes).forEach((tax,index)=>{
+  const hasData=!!(tax.description||tax.accountCode||Number(tax.rate||0)||Number(tax.amount||0));
+  if(!hasData)return;
+  if(!tax.description)errors.push("وصف الضريبة أو الرسم الإضافي رقم "+(index+1)+" مطلوب.");
+  if(!(Number(tax.rate||0)>=0)||!(tax.amount===""||Number(tax.amount)>=0))errors.push("قيمة الضريبة الإضافية رقم "+(index+1)+" غير صحيحة.");
+  const taxAccount=chart[tax.accountCode];
+  if(!tax.accountCode||!taxAccount||taxAccount.isGroup||taxAccount.active===false)errors.push("اختر حسابًا مرحّلًا ونشطًا للضريبة أو الرسم الإضافي رقم "+(index+1)+".");
+ });
  try{invoiceTotals(inv);}catch(error){errors.push(String(error.message||error));}
  return [...new Set(errors)];
 }
@@ -734,8 +765,9 @@ export async function handleFinancialRequest(ctx){
   if(!["purchase","sales"].includes(direction))throw new Error("حدد نوع الفاتورة أولاً: مشتريات أو مبيعات.");
   const draftId=id(body.id||uid("INV")),previous=body.id?await adminRead("documents/"+draftId):null;
   requireFinanceArea("invoices",previous?"edit":"add");
-  if(previous&&(!(previous.type==="invoice"&&["draft","needs_correction","returned_to_creator"].includes(previous.status))||(previous.createdBy!==claims.sub&&previous.lastAssignedTo!==claims.sub)))throw new Error("لا يمكن تعديل هذه الفاتورة في حالتها الحالية.");
+  if(previous&&(!(previous.type==="invoice"&&["draft","needs_correction","returned_to_creator"].includes(previous.status))))throw new Error("لا يمكن تعديل هذه الفاتورة في حالتها الحالية. يجب أن تكون مسودة أو معادة للتصحيح.");
   const inv={...body,id:draftId,type:"invoice",invoiceType:direction,date:txt(body.date||"",10),number:txt(body.number||"",120),partyId:txt(body.partyId||"",120),partyName:txt(body.partyName||"",180),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:previous&&previous.createdAt||now,createdBy:previous&&previous.createdBy||claims.sub,createdByName:previous&&previous.createdByName||txt(profile.fullName||profile.username||profile.email,120),status:"draft"};
+  inv.taxCode=direction==="purchase"?"VAT-IN-14":"VAT-OUT-14";inv.taxType=direction==="purchase"?"vat_input":"vat_output";inv.taxRate=14;inv.otherTaxes=normalizeInvoiceOtherTaxes(body.otherTaxes);
   if(previous&&previous.returnedTaskId)inv.returnedTaskId=previous.returnedTaskId;
   if(previous&&previous.attachments)inv.attachments=previous.attachments;
    for(const field of ["assignmentId","assignmentSenderUid","assignmentChain","lastAssignedTo"])if(previous&&previous[field]!==undefined)inv[field]=previous[field];
@@ -934,22 +966,42 @@ if(action==="forwardInvoiceAssignment"){
    }
    return {success:true,id:invoice.id,assignmentId,nextAssignmentId:nextId,status:"assigned",pushNotification:{recipientUid:nextUid,eventType:"financialAssignment",eventId:nextId,content:{title:"فاتورة محولة إليك",body:instruction}}};
   }
+  if(action==="deleteInvoice"){
+   requireFinanceArea("invoices","delete");
+   const docId=id(body.id),previous=await adminRead("documents/"+docId);
+   if(!previous||previous.type!=="invoice")throw new Error("الفاتورة المطلوب حذفها غير موجودة.");
+   if(previous.status==="posted"||previous.journalId||previous.status==="assigned")throw new Error("لا يمكن حذف فاتورة مرحّلة أو محوّلة لمستخدم. أعدها أولًا لمسارها الصحيح أو استخدم مستندًا عكسيًا بعد الترحيل.");
+   const allowed=["draft","needs_correction","returned_to_creator","pending_review","duplicate_review","rejected"];
+   if(!allowed.includes(previous.status))throw new Error("لا يمكن حذف الفاتورة في حالتها الحالية.");
+   const nextStatus=["pending_review","duplicate_review"].includes(previous.status)?"cancelled":"deleted",updates={};
+   updates["documents/"+docId+"/status"]=nextStatus;
+   updates["documents/"+docId+"/deletedAt"]=now;
+   updates["documents/"+docId+"/deletedBy"]=claims.sub;
+   updates["documents/"+docId+"/deleteReason"]=txt(body.reason||"حذف/إلغاء بطلب المستخدم",300);
+   updates["reviewQueue/"+docId]=null;
+   if(previous.fingerprint){
+    const fingerprint=await adminRead("documentFingerprints/"+previous.fingerprint);
+    if(fingerprint&&fingerprint.documentId===docId)updates["documentFingerprints/"+previous.fingerprint]=null;
+   }
+   updates["audit/"+uid("AUD")]={action:nextStatus==="cancelled"?"cancel_invoice":"delete_invoice",documentId:docId,previousStatus:previous.status,uid:claims.sub,createdAt:now};
+   await adminPatch(updates);
+   return {success:true,id:docId,deleted:nextStatus==="deleted",status:nextStatus};
+  }
   if(action==="submitInvoice"){
    if(!["purchase","sales"].includes(body.type))throw new Error("حدد هل الفاتورة مشتريات من مورد أم مبيعات لعميل.");
    const inv={...body,id:id(body.id||uid("INV")),type:"invoice",invoiceType:body.type,date:txt(body.date||"",10),number:txt(body.number||"",120),partyId:txt(body.partyId||"",120),partyName:txt(body.partyName||"",180),currency:txt(body.currency||"EGP",3),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120)},errors=[];
    let previous=null;
    if(body.id){
     previous=await adminRead("documents/"+inv.id);requireFinanceArea("invoices","edit");
-    if(!previous||previous.type!=="invoice"||!["needs_correction","draft","returned_to_creator"].includes(previous.status)||(previous.createdBy!==claims.sub&&previous.lastAssignedTo!==claims.sub))throw new Error("لا يمكن تعديل هذه الفاتورة: قد تكون غير موجودة أو أُرسلت للمراجعة أو تم اعتمادها.");
+    if(!previous||previous.type!=="invoice"||!["needs_correction","draft","returned_to_creator"].includes(previous.status))throw new Error("لا يمكن تعديل هذه الفاتورة: يجب أن تكون مسودة أو معادة للتصحيح وغير معتمدة.");
     inv.createdAt=previous.createdAt||inv.createdAt;inv.createdBy=previous.createdBy||inv.createdBy;inv.createdByName=previous.createdByName||inv.createdByName||"";
     for(const field of ["attachments","attachmentUploadStatus","attachmentFileName","attachmentUploadError","returnedTaskId","assignmentId","assignmentSenderUid","assignmentChain","lastAssignedTo"])if(previous[field]!==undefined)inv[field]=previous[field];
    }else requireFinanceArea("invoices","add");
-   if(inv.taxCode){
-    const taxCode=await adminRead("taxCodes/"+id(inv.taxCode)),expected=inv.invoiceType==="purchase"?"vat_input":"vat_output";
-    if(!taxCode||taxCode.active===false||taxCode.taxType!==expected)errors.push("كود ضريبة القيمة المضافة لا يتوافق مع نوع الفاتورة أو أنه غير نشط.");
-    else if(taxCode.effectiveFrom&&inv.date&&inv.date<String(taxCode.effectiveFrom))errors.push("كود الضريبة "+taxCode.code+" غير سارٍ بتاريخ الفاتورة. تاريخ بداية السريان: "+taxCode.effectiveFrom);
-    else{inv.taxCode=taxCode.code||body.taxCode;inv.taxType=taxCode.taxType;inv.taxRate=num(taxCode.rate||0);}
-   }else if(Number(inv.taxRate||0)>0||Number(inv.taxAmount||0)>0)errors.push("يجب اختيار كود ضريبي نشط من نوع مدخلات للمشتريات أو مخرجات للمبيعات، ومطابق لتاريخ الفاتورة ونسبتها.");
+   const standardVatCode=inv.invoiceType==="purchase"?"VAT-IN-14":"VAT-OUT-14",standardVatType=inv.invoiceType==="purchase"?"vat_input":"vat_output";
+   const standardVat=await adminRead("taxCodes/"+standardVatCode);
+   inv.taxCode=standardVatCode;inv.taxType=standardVatType;inv.taxRate=14;inv.otherTaxes=normalizeInvoiceOtherTaxes(body.otherTaxes);
+   if(!standardVat||standardVat.active===false||standardVat.taxType!==standardVatType||Math.abs(Number(standardVat.rate||0)-14)>0.01)errors.push("كود ضريبة القيمة المضافة الأساسي 14% غير موجود أو غير نشط أو غير مطابق لنوع الفاتورة.");
+   else if(standardVat.effectiveFrom&&inv.date&&inv.date<String(standardVat.effectiveFrom))errors.push("كود ضريبة القيمة المضافة الأساسي غير سارٍ بتاريخ الفاتورة.");
    if(!inv.number)errors.push("رقم الفاتورة مطلوب");
    if(!/^\d{4}-\d{2}-\d{2}$/.test(inv.date)||!Number.isFinite(Date.parse(inv.date+"T00:00:00Z")))errors.push("تاريخ الفاتورة مطلوب أو غير صحيح.");
    if(inv.currency!=="EGP")errors.push("لا يمكن اعتماد فاتورة بعملة أجنبية قبل تفعيل أسعار الصرف وإعادة تقييم أرصدة العملات.");
@@ -1123,7 +1175,9 @@ if(action==="submitCash"){
    if(!["purchase","sales"].includes(next.invoiceType))throw new Error("نوع الفاتورة غير صحيح.");
    if(Array.isArray(body.lines))next.lines=body.lines.slice(0,100).map((line,index)=>{if(!line||typeof line!=="object"||Array.isArray(line))throw new Error("بيانات البند "+(index+1)+" غير صحيحة.");const row={...(previous.lines&&previous.lines[index]||{}),...line};row.description=txt(row.description||"",250);row.kind=txt(row.kind||"",16);for(const key of ["quantity","unitPrice","discount"])if(row[key]!==undefined&&row[key]!==""&&row[key]!==null)row[key]=num(row[key]);for(const key of ["itemCode","groupCode","warehouseCode","accountCode","incomeAccountCode","costCenterId","unit","itemType"])if(row[key]!==undefined)row[key]=txt(row[key]||"",120);return row;});
    const taxCodes=(await adminRead("taxCodes"))||{},chart=(await adminRead("chartOfAccounts"))||{},items=(await adminRead("items"))||{};
-   if(next.taxCode){const tax=taxCodes[id(next.taxCode)],expected=next.invoiceType==="purchase"?"vat_input":"vat_output";if(tax&&tax.active!==false&&tax.taxType===expected){next.taxCode=tax.code||next.taxCode;next.taxType=tax.taxType;next.taxRate=num(tax.rate||0);}}
+   const standardVatCode=next.invoiceType==="purchase"?"VAT-IN-14":"VAT-OUT-14",standardVatType=next.invoiceType==="purchase"?"vat_input":"vat_output",standardVat=taxCodes[standardVatCode];
+   next.taxCode=standardVatCode;next.taxType=standardVatType;next.taxRate=14;
+   if(Object.prototype.hasOwnProperty.call(editable,"otherTaxes"))next.otherTaxes=normalizeInvoiceOtherTaxes(editable.otherTaxes);
    let totals={net:0,tax:0,total:0};try{totals=invoiceTotals(next);next.totals=totals;next.netTotal=totals.net;next.total=totals.total;}catch(error){next.errors=[String(error.message||error)];}
    next.errors=invoiceReviewErrors(next,taxCodes,chart,items);
    const fingerprint=next.partyId&&next.number&&next.date?await sha([next.invoiceType,next.partyId,next.number,next.date,Number(totals.total||0).toFixed(2)].join("|").toLowerCase()):"";
@@ -1270,8 +1324,15 @@ if(action==="submitCash"){
      if(!account||account.isGroup||account.active===false||account.type!==expectedType)throw new Error("حساب بند الفاتورة غير صالح: "+accountCode);
     }
     lines.push(purchase?{accountCode:l.kind==="stock"?"1300":txt(l.accountCode||"6100",32),debit:value,credit:0,description:l.description,costCenterId:l.costCenterId||(projectCenter&&projectCenter.code)||"",projectCode:inv.projectCode||"",itemCode:l.kind==="stock"?l.itemCode:"",quantity:num(l.quantity),warehouseCode:l.warehouseCode||"default"}:{accountCode:l.kind==="stock"?"4100":txt(l.incomeAccountCode||"4200",32),debit:0,credit:value,description:l.description,costCenterId:l.costCenterId||(projectCenter&&projectCenter.code)||"",projectCode:inv.projectCode||"",itemCode:l.kind==="stock"?l.itemCode:"",quantity:num(l.quantity),warehouseCode:l.warehouseCode||"default"});}
-   if(purchase&&tot.tax)lines.push({accountCode:"1410",debit:tot.tax,credit:0,description:"ضريبة مدخلات",taxCode:inv.taxCode||"",taxType:inv.taxType||"vat_input"});
-   if(!purchase&&tot.tax)lines.push({accountCode:"2110",debit:0,credit:tot.tax,description:"ضريبة مخرجات",taxCode:inv.taxCode||"",taxType:inv.taxType||"vat_output"});
+   if(purchase&&tot.vat)lines.push({accountCode:"1410",debit:tot.vat,credit:0,description:"ضريبة مدخلات 14%",taxCode:inv.taxCode||"VAT-IN-14",taxType:inv.taxType||"vat_input"});
+   if(!purchase&&tot.vat)lines.push({accountCode:"2110",debit:0,credit:tot.vat,description:"ضريبة مخرجات 14%",taxCode:inv.taxCode||"VAT-OUT-14",taxType:inv.taxType||"vat_output"});
+   normalizeInvoiceOtherTaxes(inv.otherTaxes).forEach((tax,index)=>{
+    const fixed=tax.amount!==""&&tax.amount!==null&&tax.amount!==undefined,amount=rnd(fixed?num(tax.amount):tot.net*num(tax.rate||0)/100);
+    if(!amount)return;
+    lines.push(purchase
+     ?{accountCode:tax.accountCode,debit:amount,credit:0,description:tax.description||("ضريبة/رسم إضافي "+(index+1)),taxCode:tax.taxCode||"",taxType:"other"}
+     :{accountCode:tax.accountCode,debit:0,credit:amount,description:tax.description||("ضريبة/رسم إضافي "+(index+1)),taxCode:tax.taxCode||"",taxType:"other"});
+   });
    if(purchase){
     lines.push({accountCode:"281",debit:0,credit:tot.total,description:"فاتورة مشتريات",partyType:"vendor",partyId});
     const supplierLedger=(await adminRead("partyLedger/vendor/"+partyId))||{};
