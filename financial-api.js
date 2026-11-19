@@ -20,14 +20,13 @@ function extractEtaInvoiceParties(value) {
 }
 
 function extractInternalInvoiceNumber(value) {
-  const source = String(value || "").replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "");
-  const marker = /\bInternal\s*id\s*[:：]\s*/i.exec(source);
+  const source = String(value || "").replace(/[\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]/g, "");
+  const marker = /\\bInternal\\s*id\\s*[:：]\\s*/i.exec(source);
   if (!marker) return "";
-  let candidate = source.slice(marker.index + marker[0].length);
-  candidate = candidate.split(/\r?\n/, 1)[0];
-  const nextField = /\s+(?=(?:Document\s+Type(?:\s+Version)?|Date\s+Time\s+Issued|Issue\s+Date(?:\s+Time)?|Invoice\s+Date|Issuer\s*\(\s*From\s*\)|Recipients?\s*\(\s*To\s*\)|Seller\b|Buyer\b|Internal\s*id\s*[:：]|Total\s+(?:Sales\s+)?Amount|Taxable\s+Items|Items\s+Count|Payment\s+Method|Signature\b|QR\s+Code)(?:\s|[:：]|$))/i.exec(candidate);
-  if (nextField) candidate = candidate.slice(0, nextField.index);
-  return candidate.replace(/^\s*[:：#-]+\s*/, "").replace(/[\s|;,]+$/, "").replace(/\s+/g, " ").trim().slice(0, 120);
+  const adjacent = source.slice(marker.index + marker[0].length);
+  // Return only the contiguous value immediately beside the label, never the rest of the row or lines below.
+  const valueMatch = /^([A-Za-z0-9\\u0660-\\u0669\\u06F0-\\u06F9][A-Za-z0-9\\u0660-\\u0669\\u06F0-\\u06F9._/-]{0,119})/.exec(adjacent);
+  return valueMatch ? valueMatch[1].replace(/[.,;:]+$/, "").slice(0,120) : "";
 }
 
 const DEFAULT_VAT_CODES = [
@@ -414,7 +413,7 @@ export async function handleFinancialRequest(ctx){
    content=[{type:"image_url",image_url:{url:image}}];
   }
   const accounts=Array.isArray(body.expenseAccounts)?body.expenseAccounts.slice(0,80).map(x=>({code:txt(x&&x.code,32),name:txt(x&&x.name,120)})).filter(x=>x.code&&x.name):[];
-  const prompt="Read this Egyptian e-invoice page "+pageNumber+" of "+totalPages+". Return only valid JSON with fields type (purchase or sales or unknown), number, date YYYY-MM-DD, issuerName, issuerTaxNumber, recipientName, recipientTaxNumber, partyName, taxNumber, currency, netTotal, taxRate, taxAmount, total, discount, items array. IMPORTANT INVOICE NUMBER RULE: when the document contains the label 'Internal id :' (case-insensitive, with optional spaces and either colon style), the complete value immediately following that label is the invoice number. Copy that value exactly into number, preserving letters, digits, slashes and hyphens; stop only at the next printed field label. This value takes priority over any other serial, UUID, receipt ID or AI guess. The company's Egyptian tax registration number is "+COMPANY_TAX_REGISTRATION_NUMBER+". Read the two party blocks separately: Issuer (From) is the document issuer/seller; Recipients (To) is the recipient/buyer. Determine direction from exact tax-number match: when the company number appears in Recipients (To), this is a PURCHASE invoice received by the company from the Issuer; when the company number appears in Issuer (From), this is a SALES invoice issued by the company to the Recipient. In these cases set type accordingly, and set partyName and taxNumber to the OTHER party (supplier for purchase, customer for sales), not our own company. Do not infer direction from words like Total Sales Amount, item descriptions, or filename. If neither party tax number matches the company number, return the separately extracted issuer/recipient fields and use explicit invoice roles only; otherwise type=unknown. Each item must include description, quantity, unit, unitPrice, discount, kind (stock or service), itemCode if printed, and suggestedExpenseCode if it is an expense and a matching code exists in the allowed account list. Classify as stock ONLY goods that should enter inventory for resale or production. Classify maintenance, repairs, training, cleaning, pantry, hospitality, stationery, office supplies, transport, utilities, consulting and similar consumed services/costs as service. Allowed expense accounts: "+JSON.stringify(accounts)+". Select suggestedExpenseCode only from this list. This is one page of a possibly multi-page invoice: extract header fields when visible and only the line items actually visible on this page. Do not invent unreadable values. Preserve Arabic and English. Human review is mandatory.";
+  const prompt="Read this Egyptian e-invoice page "+pageNumber+" of "+totalPages+". Return only valid JSON with fields type (purchase or sales or unknown), internalIdValue, number, date YYYY-MM-DD, issuerName, issuerTaxNumber, recipientName, recipientTaxNumber, partyName, taxNumber, currency, netTotal, taxRate, taxAmount, total, discount, items array. IMPORTANT INVOICE NUMBER RULE: when the document contains the label 'Internal id' (case-insensitive, optional spaces and either colon style), read ONLY the first contiguous token immediately to the right of that label on THE SAME HORIZONTAL ROW. Return that token in both internalIdValue and number exactly as printed, preserving letters, digits, slashes, dots and hyphens. STOP at the first space or column separator. Do NOT include any other text or number to the right on that row, and NEVER include text, labels or numbers from lines below. Example: 'Internal id : INV-001 Document Type : eInvoice' means number='INV-001' only. This same-row token takes priority over any other serial, UUID, receipt ID or AI guess. The company's Egyptian tax registration number is "+COMPANY_TAX_REGISTRATION_NUMBER+". Read the two party blocks separately: Issuer (From) is the document issuer/seller; Recipients (To) is the recipient/buyer. Determine direction from exact tax-number match: when the company number appears in Recipients (To), this is a PURCHASE invoice received by the company from the Issuer; when the company number appears in Issuer (From), this is a SALES invoice issued by the company to the Recipient. In these cases set type accordingly, and set partyName and taxNumber to the OTHER party (supplier for purchase, customer for sales), not our own company. Do not infer direction from words like Total Sales Amount, item descriptions, or filename. If neither party tax number matches the company number, return the separately extracted issuer/recipient fields and use explicit invoice roles only; otherwise type=unknown. Each item must include description, quantity, unit, unitPrice, discount, kind (stock or service), itemCode if printed, and suggestedExpenseCode if it is an expense and a matching code exists in the allowed account list. Classify as stock ONLY goods that should enter inventory for resale or production. Classify maintenance, repairs, training, cleaning, pantry, hospitality, stationery, office supplies, transport, utilities, consulting and similar consumed services/costs as service. Allowed expense accounts: "+JSON.stringify(accounts)+". Select suggestedExpenseCode only from this list. This is one page of a possibly multi-page invoice: extract header fields when visible and only the line items actually visible on this page. Do not invent unreadable values. Preserve Arabic and English. Human review is mandatory.";
   const messages=[{role:"user",content:[{type:"text",text:prompt},...content]}];
   const out=await env.AI.run("@cf/meta/llama-4-scout-17b-16e-instruct",{messages,max_tokens:2200,temperature:0.1});
   let raw=String(out&&out.response||"").trim();const first=raw.indexOf("{"),last=raw.lastIndexOf("}");
@@ -422,8 +421,9 @@ export async function handleFinancialRequest(ctx){
   let data;try{data=JSON.parse(raw.slice(first,last+1));}catch(_){throw new Error("نتيجة قراءة الفاتورة غير مكتملة. أدخل البيانات يدويًا.");}
   if(!data||typeof data!=="object"||Array.isArray(data))throw new Error("نتيجة قراءة الفاتورة غير صالحة.");
   const etaParties=textOnly?extractEtaInvoiceParties(body.text):{};
-  const internalInvoiceNumber=textOnly?extractInternalInvoiceNumber(body.text):"";
+  const internalInvoiceNumber=textOnly?extractInternalInvoiceNumber(body.text):String(data.internalIdValue||"").trim().split(/\\s+/)[0].replace(/[.,;:]+$/,"").slice(0,120);
   if(internalInvoiceNumber)data.number=internalInvoiceNumber;
+  delete data.internalIdValue;
   ["issuerName","issuerTaxNumber","recipientName","recipientTaxNumber"].forEach(key=>{if(etaParties[key])data[key]=etaParties[key];else if(key.endsWith("TaxNumber"))data[key]=normalizeTaxRegistrationNumber(data[key]);});
   const issuerIsCompany=normalizeTaxRegistrationNumber(data.issuerTaxNumber)===COMPANY_TAX_REGISTRATION_NUMBER;
   const recipientIsCompany=normalizeTaxRegistrationNumber(data.recipientTaxNumber)===COMPANY_TAX_REGISTRATION_NUMBER;
@@ -811,8 +811,10 @@ export async function handleFinancialRequest(ctx){
   financialUpdates["reviewQueue/"+invoice.id]=decision==="submit_for_review"?reviewRecord(savedInvoice):null;
 
   const taskUpdates={};
-  if(assignment.taskId)taskUpdates[claims.sub+"/"+assignment.taskId+"/status"]="completed";
-  taskUpdates[claims.sub+"/"+assignment.taskId+"/completedAt"]=nowCompleted;
+  if(assignment.taskId){
+   taskUpdates[claims.sub+"/"+assignment.taskId+"/status"]="completed";
+   taskUpdates[claims.sub+"/"+assignment.taskId+"/completedAt"]=nowCompleted;
+  }
   const notificationUpdates={};
   let ownerTaskId="",ownerNotification=null,reviewNotifications=[],reviewers=[];
   if(decision==="return_to_creator"){
