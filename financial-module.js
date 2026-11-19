@@ -141,8 +141,8 @@ function FinanceModule(props){
   "لا توجد فواتير معتمدة في الفترة المحددة.":"No approved invoices in the selected period.",
   "الرقم الضريبي":"Tax Number","رقم التسجيل الضريبي":"Tax Registration Number",
   "الخصم / الاستقطاع":"Withholding Tax","دفعات مقدمة":"Advance Payments",
-  "العملة":"Currency","تاريخ السريان":"Effective Date","الملاحظات":"Notes"
-"رقم الفاتورة":"Invoice Number","المورد":"Supplier","العميل":"Customer",
+  "العملة":"Currency","تاريخ السريان":"Effective Date","الملاحظات":"Notes",
+  "رقم الفاتورة":"Invoice Number","المورد":"Supplier","العميل":"Customer",
   "المشروع المرتبط":"Related Project","بدون مشروع":"No Project","بدون":"None","بدون طرف":"No Party",
   "بدون كود ضريبي":"No Tax Code","بدون مجموعة":"No Group","بدون مركز تكلفة":"No Cost Center",
   "بدون مركز تكلفة (اختياري)":"No Cost Center (Optional)","كود ضريبة القيمة المضافة (ثابت 14%)":"VAT Code (Fixed 14%)",
