@@ -37,7 +37,8 @@ const n=v=>Number(v)||0;
 const fmt=v=>new Intl.NumberFormat('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n(v));
 const dl=(name,txt)=>{const b=new Blob([txt],{type:'text/csv;charset=utf-8'}),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1200);};
 function FinanceModule(props){
- const {db,currentUser,rtl=true,workerBase,userDirectory=[],can:permissionCheck}=props;
+ const {db,currentUser,rtl:rtlProp,language,workerBase,userDirectory=[],can:permissionCheck}=props;
+ const rtl=language?language==="ar":rtlProp!==false;
  const t=(ar,en)=>rtl?ar:en,base=workerBase||window.location.origin;
 
  const financeEnglishLabels=Object.freeze({
@@ -846,7 +847,22 @@ function FinanceModule(props){
   const netChange=operatingIn-operatingOut+investingIn-investingOut+financingIn-financingOut+unclassified;
   return {openingCash,operatingIn,operatingOut,investingIn,investingOut,financingIn,financingOut,unclassified,unclassifiedIn,unclassifiedOut,netChange,closingCash:openingCash+netChange};
  })();
- const status=s=>({pending_review:'بانتظار المراجعة',needs_correction:'يحتاج تصحيح',duplicate_review:'تكرار محتمل',posted:'مُرحّل',rejected:'مرفوض'}[s]||s||'—');
+ const status=s=>({
+  pending_review:t('بانتظار المراجعة','Pending Review'),
+  needs_correction:t('يحتاج تصحيح','Needs Correction'),
+  duplicate_review:t('تكرار محتمل','Potential Duplicate'),
+  posted:t('مُرحّل','Posted'),rejected:t('مرفوض','Rejected'),
+  assigned:t('محول لمستخدم','Assigned'),draft:t('مسودة','Draft'),
+  deleted:t('محذوف','Deleted'),cancelled:t('ملغي','Cancelled'),
+  returned_to_creator:t('معاد للمنشئ','Returned to Creator'),
+  pending:t('معلق','Pending'),approved:t('معتمد','Approved'),
+  open:t('مفتوح','Open'),completed:t('مكتمل','Completed')
+ }[s]||s||'—');
+ const documentType=s=>({
+  invoice:t('فاتورة','Invoice'),journal:t('قيد يومية','Journal Entry'),
+  cash:t('حركة خزينة','Cash Transaction'),bankLine:t('حركة بنك','Bank Transaction')
+ }[s]||s||'—');
+ const moneyLabel=value=>fmt(value)+(rtl?' ج.م':' EGP');
  const button=(label,fn,kind,disabled)=>h('button',{type:'button',onClick:fn,disabled:!!disabled,className:'rounded-xl px-3 py-2 text-sm font-bold border '+(kind==='primary'?'bg-blue-700 text-white border-blue-700':kind==='success'?'bg-emerald-600 text-white border-emerald-600':kind==='danger'?'bg-rose-50 text-rose-700 border-rose-200':'bg-white text-slate-700 border-slate-200')},label);
  const field=(label,value,onChange,type,extra)=>h('label',{className:'block text-sm font-bold text-slate-700'},label,h('input',Object.assign({type:type||'text',value:value==null?'':value,onChange:e=>onChange(e.target.value),className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal bg-white',step:'any'},extra||{})));
  const select=(label,value,onChange,options)=>h('label',{className:'block text-sm font-bold text-slate-700'},label,h('select',{value:value||'',onChange:e=>onChange(e.target.value),className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal bg-white'},options.map(x=>h('option',{key:x.value,value:x.value},x.label))));
@@ -1376,7 +1392,7 @@ const deleteJournalDocument=async(doc)=>{
   else if(doc.type==='invoice'){const type=doc.invoiceType||'purchase';setInvoice({id:doc.id,type,date:doc.date,number:doc.number,partyId:doc.partyId,partyName:doc.partyName,partyTaxNumber:doc.partyTaxNumber||'',currency:doc.currency||'EGP',taxCode:defaultVatCodeForInvoice(type),taxType:vatTypeForInvoice(type),taxRate:'14',taxAmount:doc.taxAmount==null?'':String(doc.taxAmount),otherTaxes:(doc.otherTaxes||[]).map(x=>Object.assign({},x)),discount:String(doc.discount||''),projectCode:doc.projectCode||'',lines:(doc.lines||[]).map(x=>Object.assign({},x))});setInvoicePartySearch(doc.partyName||doc.partyId||'');setInvoiceTypeManuallySelected(true);setTab('invoices');}
  };
  const nav=[
- ['overview','ملخص مالي'],['journal','القيود اليومية'],['review','المراجعة والاعتماد'],['invoices','فواتير العملاء والموردين'],['assignments','الإجراءات المحولة إليّ'],['partyStatements','كشوف الأطراف والعاملين'],['masters','البيانات الأساسية والاستيراد'],['accounts','دليل الحسابات'],['centers','مراكز التكلفة'],['inventory','المخزون والأكواد'],['cash','الخزينة والتحصيل والسداد'],['bank','كشوف البنوك'],['tax','الضرائب'],['reports','القوائم المالية']
+ ['overview','ملخص مالي','Financial Summary'],['journal','القيود اليومية','Journal Entries'],['review','المراجعة والاعتماد','Review & Approval'],['invoices','فواتير العملاء والموردين','Customer & Supplier Invoices'],['assignments','الإجراءات المحولة إليّ','Tasks Assigned to Me'],['partyStatements','كشوف الأطراف والعاملين','Party & Employee Statements'],['masters','البيانات الأساسية والاستيراد','Master Data & Import'],['accounts','دليل الحسابات','Chart of Accounts'],['centers','مراكز التكلفة','Cost Centers'],['inventory','المخزون والأكواد','Inventory & Item Codes'],['cash','الخزينة والتحصيل والسداد','Cash, Receipts & Payments'],['bank','كشوف البنوك','Bank Statements'],['tax','الضرائب','Taxes'],['reports','القوائم المالية','Financial Statements']
  ];
  const visibleNav=nav.filter(item=>canFinance(financeTabAreas[item[0]],"view"));
  React.useEffect(()=>{
@@ -1387,12 +1403,35 @@ const deleteJournalDocument=async(doc)=>{
   }
  },[tab,currentUser&&currentUser.uid]);
  const renderOverview=()=>h('div',{className:'space-y-4'},
-  h('div',{className:'grid grid-cols-2 xl:grid-cols-4 gap-3'},metric('إجمالي المدين',fmt(trial.reduce((s,x)=>s+x.amount.debit,0))+' ج.م'),metric('إجمالي الدائن',fmt(trial.reduce((s,x)=>s+x.amount.credit,0))+' ج.م'),metric('صافي الربح / الخسارة',fmt(profit)+' ج.م'),metric('بانتظار المراجعة',String(review.length))),
-  h('div',{className:'flex flex-wrap gap-2 items-end'},field('من شهر',period.from,v=>setPeriod(o=>Object.assign({},o,{from:v})),'month'),field('إلى شهر',period.to,v=>setPeriod(o=>Object.assign({},o,{to:v})),'month'),button('تحديث التقارير',loadPeriod,'primary')),
-  panel('الأداء المالي','يعتمد الملخص على القيود المرحّلة بالفترة المحددة.',h('div',{className:'grid md:grid-cols-4 gap-3'},metric('الإيرادات',fmt(revenue)+' ج.م'),metric('المصروفات',fmt(expenses)+' ج.م'),metric('الأصول',fmt(assets)+' ج.م'),metric('الالتزامات',fmt(liabilities)+' ج.م'))),
-  panel('المستندات الأخيرة','',table(['المستند','النوع','التاريخ','الحالة'],documents.slice(0,12).map(x=>h('tr',{key:x.id,className:'border-t'},h('td',{className:'p-2'},x.title||x.number||x.id),h('td',{className:'p-2'},x.type),h('td',{className:'p-2'},x.date||'—'),h('td',{className:'p-2'},status(x.status))))))
+  h('div',{className:'grid grid-cols-2 xl:grid-cols-4 gap-3'},
+   metric(t('إجمالي المدين','Total Debit'),moneyLabel(trial.reduce((s,x)=>s+x.amount.debit,0))),
+   metric(t('إجمالي الدائن','Total Credit'),moneyLabel(trial.reduce((s,x)=>s+x.amount.credit,0))),
+   metric(t('صافي الربح / الخسارة','Net Profit / Loss'),moneyLabel(profit)),
+   metric(t('بانتظار المراجعة','Pending Review'),String(review.length))
+  ),
+  h('div',{className:'flex flex-wrap gap-2 items-end'},
+   field(t('من شهر','From Month'),period.from,v=>setPeriod(o=>Object.assign({},o,{from:v})),'month'),
+   field(t('إلى شهر','To Month'),period.to,v=>setPeriod(o=>Object.assign({},o,{to:v})),'month'),
+   button(t('تحديث التقارير','Refresh Reports'),loadPeriod,'primary')
+  ),
+  panel(t('الأداء المالي','Financial Performance'),t('يعتمد الملخص على القيود المرحّلة بالفترة المحددة.','This summary is based on journal entries posted during the selected period.'),
+   h('div',{className:'grid md:grid-cols-4 gap-3'},
+    metric(t('الإيرادات','Revenue'),moneyLabel(revenue)),
+    metric(t('المصروفات','Expenses'),moneyLabel(expenses)),
+    metric(t('الأصول','Assets'),moneyLabel(assets)),
+    metric(t('الالتزامات','Liabilities'),moneyLabel(liabilities))
+   )
+  ),
+  panel(t('المستندات الأخيرة','Recent Documents'),'',
+   table([t('المستند','Document'),t('النوع','Type'),t('التاريخ','Date'),t('الحالة','Status')],documents.slice(0,12).map(x=>h('tr',{key:x.id,className:'border-t'},
+    h('td',{className:'p-2'},x.title||x.number||x.id),
+    h('td',{className:'p-2'},documentType(x.type)),
+    h('td',{className:'p-2'},x.date||'—'),
+    h('td',{className:'p-2'},status(x.status))
+   )))
+  )
  );
- const renderJournal = function() {
+const renderJournal = function() {
   const lineCards = journal.lines.map(function(line,index) {
    const analyticType=line.partyType||((accounts.find(a=>a.code===line.accountCode)||{}).subledgerType)||'customer';
    const analyticList=analyticType==='vendor'?activeVendors:activeClients;
@@ -2192,10 +2231,11 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
  if(tab==='tax')content=renderTax();
  if(tab==='reports')content=renderReports();
  return h('div',{className:'p-2 md:p-3 space-y-2',dir:rtl?'rtl':'ltr'},
-  h('header',{className:'flex flex-wrap items-center justify-between gap-3'},h('div',null,h('h2',{className:'text-2xl font-extrabold'},'النظام المالي والمحاسبي'),h('p',{className:'text-xs text-slate-500'},'دفتر أستاذ مستقل — لا ترحيل قبل المراجعة والاعتماد')),button(busy?'جارٍ التحديث':'تحديث البيانات',refresh,'muted',busy)),
-  h('nav',{className:'flex flex-wrap gap-2'},visibleNav.map(x=>button(x[1],()=>{setTab(x[0]);setNotice('');setError('');},tab===x[0]?'primary':'muted'))),
+  h('header',{className:'flex flex-wrap items-center justify-between gap-3'},h('div',null,h('h2',{className:'text-2xl font-extrabold'},t('النظام المالي والمحاسبي','Financial & Accounting System')),h('p',{className:'text-xs text-slate-500'},t('دفتر أستاذ مستقل — لا ترحيل قبل المراجعة والاعتماد','Separate General Ledger — No Posting Before Review & Approval'))),button(busy?t('جارٍ التحديث','Updating'):t('تحديث البيانات','Refresh Data'),refresh,'muted',busy)),
+  h('nav',{className:'flex flex-wrap gap-2'},visibleNav.map(x=>button(rtl?x[1]:x[2],()=>{setTab(x[0]);setNotice('');setError('');},tab===x[0]?'primary':'muted'))),
   noticeElement,content,renderQuickAdd(),busy?h('p',{className:'text-xs text-slate-500'},'جارٍ تحميل البيانات...'):null,
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
+ window.PEST_FINANCE_MODULE_VERSION="20261119-finance-i18n-v2";
 })();
