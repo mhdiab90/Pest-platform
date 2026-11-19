@@ -2399,7 +2399,7 @@ async function validateAttachmentEntity(type,id,claims,profile,token,action,owne
   const entityType=cleanText(type,24),entityId=entityType==="company"?"company":safeSegment(id,"attachment record id"),moduleId=attachmentEntityModule(entityType);
   if(entityType==="company"){if(profile.role!=="admin")throw new Error("Company-wide attachments are restricted to administrators.");}
   else{
-    requirePermission(profile,"attachments",action==="view"?"view":action==="upload"?"add":action==="edit"?"edit":"delete");
+    if(entityType!=="financial")requirePermission(profile,"attachments",action==="view"?"view":action==="upload"?"add":action==="edit"?"edit":"delete");
     const requireEntityPermission=(targetModule)=>{
       if(action==="view")requirePermission(profile,targetModule,"view");
       else if(action==="edit")requirePermission(profile,targetModule,"edit");
