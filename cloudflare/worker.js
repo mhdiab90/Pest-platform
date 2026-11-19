@@ -432,7 +432,7 @@ async function sendFcmToDevice(deviceToken, accessToken, eventType, eventId, dev
   const appBase = isAllowedOrigin(deviceOrigin)
     ? (deviceOrigin === ALLOWED_ORIGIN ? APP_PUBLIC_URL : deviceOrigin + "/")
     : APP_PUBLIC_URL;
-  const route = eventType === "cashCustody" ? "cashCustody" : eventType === "userRequest" ? "userRequests" : (eventType === "financialAssignment" || eventType === "financialAssignmentReturned") ? "financialAssignments" : "messages";
+  const route = eventType === "cashCustody" ? "cashCustody" : eventType === "userRequest" ? "userRequests" : eventType === "financialReviewRequired" ? "financialReview" : (eventType === "financialAssignment" || eventType === "financialAssignmentReturned") ? "financialAssignments" : "messages";
   const clickUrl = new URL(appBase);
   clickUrl.searchParams.set("pushType", eventType);
   clickUrl.searchParams.set("pushId", String(eventId || ""));
@@ -2735,6 +2735,23 @@ export default {
           // Retain root multi-location updates for existing cross-module transactions.
           const adminPatchRoot = updates => adminDatabaseRequest("", accessToken, "PATCH", updates);
           const output = await handleFinancialRequest({request,url,body,claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch,adminReadRoot,adminPutRoot,adminPatchRoot,adminPatchRootAt,accessToken});
+          if(output&&Array.isArray(output.pushNotifications)){
+            const pushes=output.pushNotifications;
+            delete output.pushNotifications;
+            try{
+              if(pushes.length){
+                const first=pushes[0];
+                output.pushDelivery=await dispatchPushToUsers(
+                  env,pushes.map(push=>push.recipientUid),first.eventType,first.eventId,
+                  first.dispatchPrefix||("finance:"+first.eventType+":"+first.eventId),
+                  first.content||{title:"PEST Platform",body:"لديك إجراء مالي جديد."}
+                );
+              }else output.pushDelivery={recipients:0,sent:0,failed:0,skipped:0};
+            }catch(pushError){
+              console.error("Financial approval notifications failed after the review transaction was saved:",String(pushError&&pushError.message||pushError).slice(0,220));
+              output.pushDelivery={sent:0,failed:pushes.length,error:"تم إدخال الفاتورة في قائمة المراجعة، لكن تعذر إرسال بعض الإشعارات الفورية."};
+            }
+          }
           if(output&&output.pushNotification){
             const push=output.pushNotification;
             delete output.pushNotification;
