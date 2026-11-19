@@ -4533,6 +4533,18 @@ function App(){
     if(!requirePermission('projects','delete')||!ev)return;
     const financialEffect=['cash_in','cash_out','receivable','payable'].includes(String(ev.financialEffect||''));
     const settled=Number(ev.settledAmount||0)>0||['full','completed','paid','collected','تم السداد','تم التحصيل','تم الدفع','تم القبض','تم التنفيذ','منفذ'].includes(String(ev.status||'').toLowerCase());
+    if(ev.accountingDocumentId){
+      if(ev.accountingStatus==='posted')return alert(rtl?'تم ترحيل أثر هذا الحدث. لا يمكن حذفه؛ استخدم قيدًا عكسيًا من شاشة القيود اليومية.':'This event has a posted accounting effect. It cannot be deleted; use a reversing journal from Daily Journals.');
+      if(!window.confirm(rtl?'سيتم إلغاء الحدث والقيد المرسل للمراجعة مع الاحتفاظ بالسجل والمرفقات. هل تريد المتابعة؟':'This will cancel the event and its unposted review journal while retaining its history and attachments. Continue?'))return;
+      try{
+        const cancelled={...ev,amount:0,settledAmount:0,status:'cancelled',cancelledAt:Date.now(),cancelledBy:currentUser.uid,cancelledByName:currentUser.fullName||currentUser.username||'',cancellationNote:'Cancelled by user from project timeline'};
+        const result=await sendPushWorkerRequest('/finance',{action:'submitProjectEvent',projectCode:selectedProjectCode,event:cancelled});
+        if(!result||result.success!==true)throw new Error(rtl?'لم يتم تأكيد إلغاء الحدث والقيد.':'The event and journal cancellation was not confirmed.');
+        await addLog('إلغاء حدث وقيد مشروع: '+(ev.actionName||eventLabel(ev.type)),currentUser,{entityType:'project-event',entityId:selectedProjectCode+'/'+ev.id,changes:auditChanges(ev,result.event||cancelled),metadata:{journalId:ev.accountingDocumentId}});
+        alert(rtl?'تم إلغاء الحدث والقيد غير المرحل.':'The event and unposted journal were cancelled.');
+      }catch(err){alert(firebaseErrorMessage(err,tr));}
+      return;
+    }
     if(financialEffect&&settled){
       return alert(rtl?'لا يمكن حذف حدث مالي تمت تسويته أو تسجيل تحصيل/سداد له. صحّح الحركة من شاشة العهدة أو النظام المالي حتى لا يتغير رصيد محاسبي سابق.':'A settled financial event cannot be deleted here. Correct it from Cash Custody or Financial Accounting so posted balances are not changed.');
     }
