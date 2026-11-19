@@ -467,7 +467,7 @@ function FinanceModule(props){
    if(kind==='parties'&&(!item.code||!item.name))throw new Error('أدخل كود واسم المورد/العميل أولاً.');
    if(kind==='parties'&&!['customer','vendor'].includes(item.partyType))throw new Error('حدد نوع الطرف عميل أو مورد.');
    const originalCode=quickAddOriginalCode;
-   const result=await api('', 'POST',{action:'saveMaster',kind,item,...(originalCode?{originalCode}:{})});
+   const result=await api('', 'POST',{action:'saveMaster',kind,permissionModule:kind==='parties'?'master':'financial',item,...(originalCode?{originalCode}:{})});
    if(!result||result.success!==true||!result.item)throw new Error('لم يؤكد الخادم حفظ البيانات. لم يتم إغلاق شاشة الإضافة.');
    let savedItem=result.item;
    if(kind==='parties'){
@@ -1141,7 +1141,7 @@ function FinanceModule(props){
   if(!window.confirm("هل تريد حذف "+(labels[kind]||"السجل")+" "+(item.code||item.name||"")+"؟ إذا كان مرتبطًا بحركات أو أرصدة، سيوقف النظام استخدامه بدلًا من حذف تاريخه المحاسبي."))return;
   setBusy(true);setError("");setNotice("");
   try{
-   const result=await api("", "POST",{action:"deleteMaster",kind,code:item.code||item.id});
+   const result=await api("", "POST",{action:"deleteMaster",kind,permissionModule:kind==="parties"?"master":"financial",code:item.code||item.id});
    if(result.deactivated)setNotice("السجل مرتبط ببيانات سابقة؛ تم إيقاف استخدامه مع الاحتفاظ بالحركات والتقارير: "+(result.references||[]).join("، "));
    else setNotice("تم حذف السجل غير المستخدم بنجاح.");
    await refresh();
