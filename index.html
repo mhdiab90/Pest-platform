@@ -4302,7 +4302,22 @@ function App(){
       const previousSnap=editingProjectCode?await db.ref('projects/'+editingProjectCode).once('value'):null;
       const previousRecord=previousSnap?previousSnap.val():null;
       if(!editingProjectCode){const exists=await db.ref('projects/'+code).once('value');if(exists.exists()) return alert(rtl?'كود المشروع موجود بالفعل.':'Project code already exists.');record.createdAt=firebase.database.ServerValue.TIMESTAMP;}
-      await db.ref('projects/'+code).update(record);
+      if(editingProjectCode&&editingProjectCode!==code){
+        const target=await db.ref('projects/'+code).once('value');
+        if(target.exists())return alert(rtl?'كود المشروع الجديد مستخدم بالفعل.':'The new project code is already in use.');
+        const existingEvents=projectEvents(previousRecord||{});
+        const [quoteSnap,inflowSnap,outflowSnap]=await Promise.all([
+          db.ref('quotes').once('value'),db.ref('inflows').once('value'),db.ref('outflows').once('value')
+        ]);
+        const hasLegacyReferences=[quoteSnap,inflowSnap,outflowSnap].some(snapshot=>Object.values(snapshot.val()||{}).some(row=>String(row&&row.projectCode||'')===String(editingProjectCode)));
+        if(existingEvents.length||hasLegacyReferences){
+          return alert(rtl?'لا يمكن تغيير كود المشروع لأنه مرتبط بأحداث أو عروض أسعار أو تحصيلات أو مدفوعات. يمكنك تعديل الاسم وباقي البيانات مع الاحتفاظ بالكود حتى لا تنقطع روابط التقارير.':'The project code cannot be changed because it is referenced by events, quotations, collections or payments. You can edit the name and other fields while keeping the existing code.');
+        }
+        await db.ref('projects/'+code).set(record);
+        await db.ref('projects/'+editingProjectCode).remove();
+      }else{
+        await db.ref('projects/'+code).update(record);
+      }
       try{if(projectPendingAttachments.length)await uploadInlineAttachments(projectPendingAttachments,'project',code,setProjectPendingAttachments);}
       catch(attachmentError){setProject({...blankProject(),...record});setEditingProjectCode(code);setProjectFormOpen(true);setSelectedProjectCode(code);alert((rtl?'تم حفظ المشروع، لكن تعذر رفع بعض المرفقات. أصلح الاتصال ثم اضغط حفظ مرة أخرى لإكمال الرفع.\n':'The project was saved, but some attachments could not be uploaded. Fix the connection and press Save again to finish uploading.\n')+String(attachmentError.message||attachmentError));return;}
       await addLog((editingProjectCode?'تعديل ':'إضافة مشروع: ')+name,currentUser,{entityType:'project',entityId:code,changes:auditChanges(previousRecord,{...(previousRecord||{}),...record})});
