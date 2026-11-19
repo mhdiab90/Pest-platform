@@ -197,26 +197,33 @@ async function findMasterReferences(kind,code,partyType="") {
   check(entries,["costCenterId"],"قيود اليومية");
   check(docs,["costCenterId"],"المستندات المالية");
  }else if(kind==="items"){
-  const balances=await adminRead("inventory/balances");
-  check(balances||{},["itemCode","code"],"أرصدة المخزون");
+  const balances=(await adminRead("inventory/balances"))||{},movements=(await adminRead("inventory/movements"))||{};
+  const hasBalance=Object.values(balances).some(warehouseRows=>warehouseRows&&typeof warehouseRows==="object"&&warehouseRows[code]&&Number(warehouseRows[code].quantity||0)!==0);
+  if(hasBalance)references.push("رصيد الصنف في المخازن");
+  check(movements,["itemCode"],"حركات المخزون");
   check(docs,["itemCode"],"فواتير وحركات الأصناف");
  }else if(kind==="itemGroups"){
   check(await adminRead("items")||{},["groupCode"],"الأصناف المرتبطة بالمجموعة");
  }else if(kind==="warehouses"){
   check(await adminRead("items")||{},["warehouseCode"],"الأصناف المرتبطة بالمخزن");
-  check(await adminRead("inventory/balances")||{},["warehouseCode"],"أرصدة المخزون");
+  const balances=(await adminRead("inventory/balances"))||{},movements=(await adminRead("inventory/movements"))||{};
+  if(hasStoredRecords(balances[code]))references.push("أرصدة المخزن");
+  check(movements,["warehouseCode"],"حركات المخزون");
  }else if(kind==="bankAccounts"){
   check(await adminRead("bankImports")||{},["bankAccountCode","accountCode"],"كشوف وحركات البنوك");
   check(docs,["bankAccountCode"],"المستندات المالية");
+  check(entries,["bankAccountCode","accountCode"],"قيود اليومية");
   check(await adminRead("cashMovements")||{},["bankAccountCode"],"حركات النقدية والبنوك");
  }else if(kind==="taxCodes"){
   check(docs,["taxCode"],"الفواتير والمستندات الضريبية");
+  check(entries,["taxCode"],"قيود اليومية الضريبية");
  }else if(kind==="parties"){
   const type=partyType==="vendor"?"vendor":"customer";
   const partyLedger=await adminRead("partyLedger/"+type+"/"+code);
   if(hasStoredRecords(partyLedger))references.push("كشف حساب الطرف");
-  check(docs,["partyId"],"الفواتير والمستندات المالية");
-  check(entries,["partyId"],"قيود اليومية");
+  check(docs,["partyId","partyCode"],"الفواتير والمستندات المالية");
+  check(entries,["partyId","partyCode"],"قيود اليومية");
+  check(await adminRead("cashMovements")||{},["partyId","partyCode"],"حركات النقدية");
   const projects=adminReadRoot?(await adminReadRoot("projects").catch(()=>({})))||{}:{};
   const projectFields=type==="vendor"?["vendorCodes","partyCode"]:["clientCodes","clientCode","partyCode"];
   if(containsMasterReference(projects,new Set(projectFields),code))references.push("المشروعات وأحداثها");
