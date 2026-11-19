@@ -4245,24 +4245,26 @@ function App(){
     const code=String(master.code||'').trim();const name=String(master.name||'').trim();
     if(!code||!name) return alert(tr('noData'));
     if(/[.#$\[\]/]/.test(code)) return alert('Invalid code: . # $ [ ] /');
-    const record={...master,code,name,createdAt:master.createdAt||firebase.database.ServerValue.TIMESTAMP,updatedAt:firebase.database.ServerValue.TIMESTAMP};
+    const record={...master,code,name,partyType:type==='vendor'?'vendor':'customer',companyName:name,createdAt:master.createdAt||Date.now(),updatedAt:Date.now()};
     delete record.type;
     try{
       const previousSnap=editingMasterCode?await db.ref(path+'/'+editingMasterCode).once('value'):null;
       const previousRecord=previousSnap?previousSnap.val():null;
-      if(editingMasterCode && editingMasterCode!==code){
-        await db.ref(path+'/'+editingMasterCode).remove();
-      }
-      await db.ref(path+'/'+code).set(record);
+      const response=await attachmentWorkerRequest('/finance','POST',{
+        action:'saveMaster',kind:'parties',permissionModule:'master',
+        ...(editingMasterCode?{originalCode:editingMasterCode}:{}),item:record
+      });
+      if(!response||response.success!==true||!response.item)throw new Error('تعذر تأكيد حفظ بيانات العميل / المورد.');
+      const savedRecord=response.item;
       try{if(masterPendingAttachments.length)await uploadInlineAttachments(masterPendingAttachments,type,code,setMasterPendingAttachments);}
-      catch(attachmentError){setMaster({...record,type});setEditingMasterCode(code);setMasterFormOpen(true);alert((rtl?'تم حفظ البيانات، لكن تعذر رفع بعض المرفقات. أصلح الاتصال ثم اضغط حفظ مرة أخرى لإكمال الرفع.\n':'The record was saved, but some attachments could not be uploaded. Fix the connection and press Save again to finish uploading.\n')+String(attachmentError.message||attachmentError));return;}
-      await addLog((editingMasterCode?'تعديل ':'إضافة ')+(type==='client'?'عميل: ':'مورد: ')+name,currentUser,{entityType:type,entityId:code,changes:auditChanges(previousRecord,record),metadata:{oldCode:editingMasterCode||''}});
+      catch(attachmentError){setMaster({...savedRecord,type});setEditingMasterCode(code);setMasterFormOpen(true);alert((rtl?'تم حفظ البيانات، لكن تعذر رفع بعض المرفقات. أصلح الاتصال ثم اضغط حفظ مرة أخرى لإكمال الرفع.\n':'The record was saved, but some attachments could not be uploaded. Fix the connection and press Save again to finish uploading.\n')+String(attachmentError.message||attachmentError));return;}
+      await addLog((editingMasterCode?'تعديل ':'إضافة ')+(type==='client'?'عميل: ':'مورد: ')+name,currentUser,{entityType:type,entityId:code,changes:auditChanges(previousRecord,savedRecord),metadata:{oldCode:editingMasterCode||''}});
       const returnContext=financialPartyReturn;
       setMaster(blankMaster(type));setMasterPendingAttachments([]);setEditingMasterCode('');setMasterFormOpen(false);
       if(returnContext&&typeof returnContext.onSaved==='function'&&(type==='client'||type==='vendor')){
         setFinancialPartyReturn(null);
         setTab('financial');
-        await returnContext.onSaved(Object.assign({},record,{type,partyType:type==='vendor'?'vendor':'customer'}));
+        await returnContext.onSaved(Object.assign({},savedRecord,{type,partyType:type==='vendor'?'vendor':'customer'}));
       }else alert(tr('saved'));
     }catch(err){alert(firebaseErrorMessage(err,tr));}
   }
@@ -4271,7 +4273,23 @@ function App(){
     setMasterPendingAttachments([]);setMaster({...blankMaster(type),...item,type});setEditingMasterCode(item.code||'');setMasterFormOpen(true);
     setTab('master');window.scrollTo({top:0,behavior:'smooth'});
   }
-  async function deleteMasterRecord(type,item){if(!item||!requirePermission('master','delete'))return;const path=type==='client'?'clients':'vendors',linkedProjects=projects.filter(p=>(p.clientCodes||(p.clientCode?[p.clientCode]:[])).includes(item.code)||(p.vendorCodes||[]).includes(item.code));const warning=rtl?'سيتم حذف السجل من البيانات الرئيسية. لن يتم حذف المشروعات أو الأحداث السابقة، لكن قد تظل تشير إلى كوده.':'This removes the master record. Historical projects/events remain and may still reference its code.';if(!window.confirm(warning+(linkedProjects.length?'\n\n'+(rtl?'عدد المشروعات المرتبطة: ':'Linked projects: ')+linkedProjects.length:'')))return;try{await deleteRecordAttachments(type,item.code);await db.ref(path+'/'+item.code).remove();await addLog('حذف '+(type==='client'?'عميل: ':'مورد: ')+(item.name||item.code),currentUser,{entityType:type,entityId:item.code,changes:auditChanges(item,null),metadata:{linkedProjects:linkedProjects.length}});if(editingMasterCode===item.code){setEditingMasterCode('');setMaster(blankMaster());setMasterFormOpen(false);}alert(rtl?'تم حذف السجل.':'Record deleted.');}catch(err){alert(firebaseErrorMessage(err,tr));}}
+  async function deleteMasterRecord(type,item){
+    if(!item||!requirePermission('master','delete'))return;
+    const warning=rtl?'سيتم حذف السجل إذا لم يكن مرتبطًا بحركات أو أرصدة. إذا كان مستخدمًا، سيتم إيقافه مع الاحتفاظ بالتاريخ المحاسبي.':'Unused records are deleted. Referenced records are deactivated so historical accounting remains intact.';
+    if(!window.confirm(warning+'\n\n'+(item.name||item.code)+' ('+item.code+')'))return;
+    try{
+      const result=await attachmentWorkerRequest('/finance','POST',{action:'deleteMaster',kind:'parties',permissionModule:'master',code:item.code});
+      if(result.deactivated){
+        await addLog('إيقاف '+(type==='client'?'عميل: ':'مورد: ')+(item.name||item.code),currentUser,{entityType:type,entityId:item.code,changes:auditChanges(item,result.item),metadata:{references:result.references||[]}});
+        alert((rtl?'هذا السجل مستخدم في بيانات سابقة، لذلك تم إيقافه بدلًا من محو تاريخه: ':'This record is referenced, so it was deactivated instead of erasing its history: ')+(result.references||[]).join('، '));
+      }else{
+        await deleteRecordAttachments(type,item.code);
+        await addLog('حذف '+(type==='client'?'عميل: ':'مورد: ')+(item.name||item.code),currentUser,{entityType:type,entityId:item.code,changes:auditChanges(item,null)});
+        alert(rtl?'تم حذف السجل غير المستخدم.':'Unused record deleted.');
+      }
+      if(editingMasterCode===item.code){setEditingMasterCode('');setMaster(blankMaster());setMasterFormOpen(false);}
+    }catch(err){alert(firebaseErrorMessage(err,tr));}
+  }
 
   async function addProject(e){
     e.preventDefault();if(!requirePermission('projects',editingProjectCode?'edit':'add'))return;
