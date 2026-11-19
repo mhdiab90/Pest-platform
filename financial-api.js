@@ -604,7 +604,7 @@ export async function handleFinancialRequest(ctx){
    if(!adminPatchRootAt)throw new Error("خدمة سجل العملاء والموردين غير متاحة.");
    if(Object.keys(rootUpdates).length)await adminPatchRootAt(partyRoot,rootUpdates);
    if(Object.keys(updates).length)await adminPatch(updates);
-   await adminPatch({"audit/"+uid("AUD"):audit});
+   await adminPatch({["audit/"+uid("AUD")]:audit});
   }else{
    updates["audit/"+uid("AUD")]=audit;
    await adminPatch(updates);
