@@ -722,7 +722,7 @@ export async function handleFinancialRequest(ctx){
   financialUpdates["documents/"+invoiceId+"/assignedAt"]=now;
   financialUpdates["reviewQueue/"+invoiceId]=null;
   financialUpdates["assignments/"+assigneeUid+"/"+assignmentId]=assignment;
-  financialUpdates["sentAssignments/"+claims.sub+"/"+assignmentId]=assignment;
+  financialUpdates["sentAssignments/"+claims.sub+"/"+assignmentId]={...assignment};
   financialUpdates["audit/"+uid("AUD")]={action:"assign_invoice",documentId:invoiceId,assignmentId,assigneeUid,uid:claims.sub,createdAt:now};
   const notification={id:assignmentId,type:"financialAssignment",recipientUid:assigneeUid,assignmentId,invoiceId,senderUid:claims.sub,senderName:createdByName,title:"فاتورة محولة إليك",description:instruction,createdAt:now,read:false};
   let taskSaved=false,notificationSaved=false;
