@@ -1104,7 +1104,8 @@ const deleteJournalDocument=async(doc)=>{
   if(!selectedAssignment)return h('div',{className:'space-y-4'},inbox,sentOutbox);
   const inv=assignmentHeader||selectedAssignment.invoice||{},purchase=inv.invoiceType==='purchase';
   const setHeader=(key,value)=>setAssignmentHeader(old=>Object.assign({},old,{[key]:value}));
-  const activeForwardUsers=(userDirectory||[]).filter(user=>user.uid&&user.uid!==currentUser.uid&&["active","نشط","مفعل","enabled"].includes(String(user.status||"").toLowerCase()));
+  // Prevent a circular handoff: do not offer the active assignee or the direct sender as the next recipient.
+  const activeForwardUsers=(userDirectory||[]).filter(user=>user.uid&&user.uid!==currentUser.uid&&user.uid!==selectedAssignment.createdBy&&["active","نشط","مفعل","enabled"].includes(String(user.status||"").toLowerCase()));
   const partyOptions=(purchase?activeVendors:activeClients).filter(p=>p.active!==false).map(p=>({value:p.code||p.id,label:(p.code||p.id)+" — "+partyName(p)}));
   if(inv.partyId&&!partyOptions.some(p=>p.value===inv.partyId))partyOptions.unshift({value:inv.partyId,label:inv.partyId+" — "+(inv.partyName||"طرف غير نشط")});
   const taxType=purchase?"vat_input":"vat_output";
