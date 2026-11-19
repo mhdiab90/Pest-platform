@@ -416,9 +416,6 @@ function FinanceModule(props){
      if(!persisted||persisted.partyType!==partyType||String(persisted.name||persisted.companyName||'').trim()!==name)throw new Error('تم حفظ الطرف في البيانات الرئيسية، لكن لم يظهر في سجل الحسابات بعد إعادة القراءة. لم يتم اختياره في الفاتورة.');
      const saved=Object.assign({},persisted,result.item);
      setMaster(old=>Object.assign({},old,latest,{parties:Object.assign({},old.parties||{},latest.parties||{})}));
-    const refreshedPartyRows=rows(latest.parties||{});
-    setClients(refreshedPartyRows.filter(item=>item.partyType==='customer'));
-    setVendors(refreshedPartyRows.filter(item=>item.partyType==='vendor'));
      const refreshedPartyRows=rows(latest.parties||{});
      setClients(refreshedPartyRows.filter(item=>item.partyType==='customer'));
      setVendors(refreshedPartyRows.filter(item=>item.partyType==='vendor'));
@@ -482,6 +479,9 @@ function FinanceModule(props){
     }
     savedItem=Object.assign({},persisted,result.item);
     setMaster(old=>Object.assign({},old,latest,{parties:Object.assign({},old.parties||{},latest.parties||{})}));
+    const refreshedPartyRows=rows(latest.parties||{});
+    setClients(refreshedPartyRows.filter(item=>item.partyType==='customer'));
+    setVendors(refreshedPartyRows.filter(item=>item.partyType==='vendor'));
    }else{
     await refresh();
    }
