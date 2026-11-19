@@ -174,7 +174,8 @@ function containsMasterReference(value,fields,code,parentKey="") {
  });
 }
 const hasStoredRecords=value=>!!value&&typeof value==="object"&&Object.keys(value).length>0;
-async function findMasterReferences(kind,code,partyType="") {
+async function findMasterReferences(ctx,kind,code,partyType="") {
+ const {adminRead,adminReadRoot}=ctx;
  const references=[];
  const [documents,journals]=await Promise.all([
   adminRead("documents").catch(()=>({})),
@@ -384,14 +385,14 @@ export async function handleFinancialRequest(ctx){
    previous=await adminReadRoot("clients/"+originalCode)||await adminReadRoot("vendors/"+originalCode);
   }
   if(body.originalCode&&!previous)throw new Error("السجل المراد تعديله لم يعد موجودًا. حدّث القائمة ثم حاول مرة أخرى.");
-  const sameKey=originalCode===code;
-  const target= sameKey ? previous : await adminRead(kind+"/"+code);
+  const sameKey=Boolean(body.originalCode)&&originalCode===code;
+  const target=sameKey?previous:await adminRead(kind+"/"+code);
   if(target&&!sameKey)throw new Error("الكود الجديد مستخدم بالفعل. اختر كودًا غير مستخدم.");
   if(!txt(item.name,180))throw new Error("الاسم مطلوب");
   requirePermission(profile,permissionModule,previous?"edit":"add");
   if(!previous&&target&&kind!=="parties")throw new Error("هذا الكود مسجل بالفعل. اختر كودًا آخر حتى لا يتم استبدال بياناته.");
   if(previous&&!sameKey){
-   const usages=await findMasterReferences(kind,originalCode,previous.partyType||item.partyType||"");
+   const usages=await findMasterReferences(ctx,kind,originalCode,previous.partyType||item.partyType||"");
    if(usages.length)throw new Error("لا يمكن تغيير الكود "+originalCode+" لأنه مرتبط بـ: "+usages.join("، ")+". يمكنك تعديل الاسم وباقي البيانات مع الاحتفاظ بالكود حتى لا تتأثر الحركات والتقارير.");
   }
   if(kind==="chartOfAccounts"){
@@ -437,9 +438,11 @@ export async function handleFinancialRequest(ctx){
    if(!saved.taxRegistrationNumber&&saved.taxNumber)saved.taxRegistrationNumber=saved.taxNumber;
    const root=saved.partyType==="customer"?"clients":"vendors";
    saved.companyName=saved.companyName||saved.name;
-   const rootUpdates={[root+"/"+code]:saved};
-   if(previous&&!sameKey)rootUpdates[root+"/"+originalCode]=null;
-   await adminPatchRoot(rootUpdates);
+   if(previous&&!sameKey){
+    await adminPatchRoot({[root+"/"+code]:saved,[root+"/"+originalCode]:null});
+   }else{
+    await adminPutRoot(root+"/"+code,saved);
+   }
    updates["parties/"+code]=saved;
    if(previous&&!sameKey)updates["parties/"+originalCode]=null;
   }else{
@@ -465,7 +468,7 @@ export async function handleFinancialRequest(ctx){
   if(!existing)throw new Error("السجل غير موجود أو تم حذفه بالفعل.");
   requirePermission(profile,permissionModule,"delete");
   const partyType=existing.partyType||(crmVendor?"vendor":"customer");
-  const usages=await findMasterReferences(kind,code,partyType);
+  const usages=await findMasterReferences(ctx,kind,code,partyType);
   const now=Date.now();
   const updated={...existing,code,active:false,updatedAt:now,updatedBy:claims.sub};
   if(usages.length){
