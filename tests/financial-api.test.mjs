@@ -271,19 +271,46 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
   assert.equal(purchase.totals.tax,12.6);
   assert.equal(read("documents/"+purchase.id).taxCode,"VAT-IN-14","input VAT code is retained on the purchase invoice");
   const earlySpecialRate=await invoke("POST","",{action:"submitInvoice",type:"purchase",date:"2026-07-01",number:"PUR-5-EARLY",partyId:"VENDOR-001",partyName:"Supplier Test",currency:"EGP",taxCode:"VAT-IN-05",lines:[{description:"Production machine",kind:"stock",itemCode:"ITEM-001",quantity:1,unitPrice:100}]});
-  assert.equal(earlySpecialRate.status,"pending_review","an invalid effective date must be sent to review for correction");
-  assert.ok(earlySpecialRate.errors.some(x=>x.includes("غير سارٍ بتاريخ الفاتورة")));
+  assert.equal(earlySpecialRate.status,"pending_review");
+  assert.equal(read("documents/"+earlySpecialRate.id).taxCode,"VAT-IN-14","purchase invoices always use the fixed standard input VAT code");
+  assert.equal(read("documents/"+earlySpecialRate.id).taxRate,14,"the primary VAT rate is fixed at 14%, even when OCR suggests another rate");
+  assert.ok(!earlySpecialRate.errors.some(x=>x.includes("غير سارٍ بتاريخ الفاتورة")));
   assert.ok(read("reviewQueue/"+earlySpecialRate.id));
-  assert.ok(earlySpecialRate.errors.some(x=>x.includes("غير سارٍ بتاريخ الفاتورة")));
   const unclassifiedVat=await invoke("POST","",{action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-VAT-NO-CODE",partyId:"VENDOR-001",partyName:"Supplier Test",currency:"EGP",taxRate:5,lines:[{description:"Equipment",kind:"stock",itemCode:"ITEM-001",quantity:1,unitPrice:100}]});
-  assert.equal(unclassifiedVat.status,"pending_review","a missing VAT code must be queued for reviewer completion");
-  assert.ok(unclassifiedVat.errors.some(x=>x.includes("كود ضريبي")));
+  assert.equal(unclassifiedVat.status,"pending_review","a missing or nonstandard VAT choice is normalized to the fixed 14% code");
+  assert.equal(read("documents/"+unclassifiedVat.id).taxCode,"VAT-IN-14");
+  assert.equal(read("documents/"+unclassifiedVat.id).taxRate,14);
+  assert.equal(unclassifiedVat.totals.vat,14);
+  assert.ok(!unclassifiedVat.errors.some(x=>x.includes("كود ضريبي")));
   assert.ok(read("reviewQueue/"+unclassifiedVat.id));
   await invoke("POST","",{
     action:"saveMaster",kind:"bankAccounts",
     item:{code:"1120",name:"Main Test Bank",accountCode:"1120"}
   });
   assert.equal(read("bankAccounts/1120").accountCode,"1120","bank account master is linked to a valid ledger account");
+
+  write("chartOfAccounts/6200",{code:"6200",name:"رسوم وضرائب أخرى",type:"expense",nature:"debit",active:true});
+  const additionalTax=await invoke("POST","",{
+    action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-OTHER-TAX-01",
+    partyId:"VENDOR-001",partyName:"Supplier Test",currency:"EGP",taxCode:"",taxRate:4,taxAmount:"",
+    otherTaxes:[{description:"Stamp tax",rate:1,amount:"",accountCode:"6200"}],
+    lines:[{description:"Maintenance service",kind:"service",accountCode:"6100",quantity:1,unitPrice:100}]
+  });
+  assert.equal(additionalTax.status,"pending_review");
+  assert.equal(additionalTax.totals.vat,14,"the fixed primary VAT is calculated at 14%");
+  assert.equal(additionalTax.totals.otherTax,1,"an additional tax is calculated separately");
+  assert.equal(additionalTax.totals.total,115,"the supplier total includes both taxes");
+  assert.equal(read("documents/"+additionalTax.id).taxCode,"VAT-IN-14");
+  const additionalTaxPosted=await invoke("POST","",{action:"review",id:additionalTax.id,decision:"approve",reason:"separate tax test"});
+  assert.equal(additionalTaxPosted.status,"posted");
+  const additionalTaxJournal=read("journals/"+additionalTaxPosted.journalId);
+  assert.ok(additionalTaxJournal.lines.some(line=>line.accountCode==="1410"&&line.debit===14),"primary VAT posts to input VAT only");
+  assert.ok(additionalTaxJournal.lines.some(line=>line.accountCode==="6200"&&line.debit===1),"additional tax posts to its selected account");
+  assert.ok(additionalTaxJournal.lines.some(line=>line.accountCode==="281"&&line.credit===115),"supplier control includes both taxes");
+
+  const fixedOverride=await invoke("POST","",{action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-VAT-OVERRIDE-01",partyId:"VENDOR-001",partyName:"Supplier Test",currency:"EGP",taxAmount:12,otherTaxes:[],lines:[{description:"Tax override test",kind:"service",accountCode:"6100",quantity:1,unitPrice:100}]});
+  assert.equal(fixedOverride.totals.vat,12,"a user-entered fixed primary VAT amount overrides the 14% calculation");
+  assert.equal(read("documents/"+fixedOverride.id).taxRate,14,"manual VAT amount does not change the fixed VAT code rate");
 
   const correction = await invoke("POST","",{
     action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-CORR-01",
@@ -978,7 +1005,9 @@ test("forwarded invoices preserve full details and attachments through a multi-u
   });
   assert.equal(completed.status,"pending_review","the third user can send an incomplete invoice to review");
   assert.ok(read("reviewQueue/"+invoiceId));
-  assert.ok(read("documents/"+invoiceId).errors.some(error=>error.includes("كود ضريبي")),"missing VAT code is recorded for the reviewer");
+  assert.equal(read("documents/"+invoiceId).taxCode,"VAT-IN-14","completed delegated invoices also receive the fixed input VAT code");
+  assert.equal(read("documents/"+invoiceId).taxRate,14);
+  assert.ok(!read("documents/"+invoiceId).errors.some(error=>error.includes("كود ضريبي")),"the fixed VAT code is already available when the invoice reaches review");
   assert.equal(read("documents/"+invoiceId).attachments["ATT-FORWARD-01"].fileName,"13672.pdf");
   const completedPatch=adminPatchCalls.slice(completePatchStart).find(patch=>Object.prototype.hasOwnProperty.call(patch,"documents/"+invoiceId));
   assert.ok(completedPatch,"completion writes the full invoice once");
@@ -1043,4 +1072,26 @@ test("journal edit and delete permissions work for any manual journal and clean 
   assert.equal(read("periods/2026-11/entries/"+draft.id),null);
   assert.equal(read("ledger/6200/2026-11/"+draft.id+"_1"),null);
   assert.equal(read("ledger/1110/2026-11/"+draft.id+"_2"),null);
+});
+
+test("invoice drafts can be deleted and review invoices can be safely cancelled", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const draft=await invoke("POST","",{action:"saveInvoiceDraft",type:"purchase",date:"2026-11-19",number:"PUR-DELETE-01",partyId:"",lines:[{description:"Draft item",kind:"stock",itemCode:"",quantity:1,unitPrice:10}]});
+  assert.equal(draft.status,"draft");
+  const removed=await invoke("POST","",{action:"deleteInvoice",id:draft.id,reason:"wrong upload"});
+  assert.equal(removed.status,"deleted");
+  assert.equal(removed.deleted,true);
+  assert.equal(read("documents/"+draft.id+"/status"),"deleted");
+  assert.equal(read("reviewQueue/"+draft.id),null);
+
+  write("vendors/VENDOR-CANCEL-01",{code:"VENDOR-CANCEL-01",name:"Cancel Supplier",partyType:"vendor"});
+  write("parties/VENDOR-CANCEL-01",{code:"VENDOR-CANCEL-01",name:"Cancel Supplier",partyType:"vendor"});
+  const pending=await invoke("POST","",{action:"submitInvoice",type:"purchase",date:"2026-11-19",number:"PUR-CANCEL-01",partyId:"VENDOR-CANCEL-01",partyName:"Cancel Supplier",currency:"EGP",lines:[{description:"Service",kind:"service",accountCode:"6100",quantity:1,unitPrice:100}]});
+  assert.equal(pending.status,"pending_review");
+  assert.ok(read("reviewQueue/"+pending.id));
+  const cancelled=await invoke("POST","",{action:"deleteInvoice",id:pending.id,reason:"uploaded by mistake"});
+  assert.equal(cancelled.status,"cancelled");
+  assert.equal(read("documents/"+pending.id+"/status"),"cancelled");
+  assert.equal(read("reviewQueue/"+pending.id),null);
+  await assert.rejects(invoke("POST","",{action:"deleteInvoice",id:pending.id}),/حالتها الحالية/);
 });
