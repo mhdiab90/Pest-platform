@@ -721,7 +721,11 @@ function FinanceModule(props){
   finally{setBusy(false);}
  };
  const reviewAction=async(decision)=>{
-  if(!selected)return;setBusy(true);setError('');
+  if(!selected)return;
+  if(decision==="approve"||decision==="approveDuplicate"||decision==="reject"){
+   if(!canFinance("review","approve")){setError("ليس لديك صلاحية اعتماد أو رفض مستندات المراجعة.");return;}
+  }else if(!canFinance("review","edit")){setError("ليس لديك صلاحية إعادة المستند للتصحيح.");return;}
+  setBusy(true);setError('');
   try{const r=await api('', 'POST',{action:'review',id:selected.id,decision,reason:decision==='approve'?'تمت المراجعة والاعتماد':decision==='return'?'إعادة للتصحيح':'رفض المستند',allowDuplicate:decision==='approveDuplicate'});setNotice(r.status==='posted'?'تم الاعتماد والترحيل': 'تم تحديث المستند');setSelected(null);await refresh();await loadPeriod();}
   catch(e){setError(e.message||String(e));}finally{setBusy(false);}
  };
@@ -859,6 +863,7 @@ function FinanceModule(props){
  };
  const submitMasterImport=async()=>{
   const config=masterImportConfig[masterImportKind];
+  if(!config||!canFinance(financeAreaForMaster(config.kind),"add")){setError("ليس لديك صلاحية استيراد هذا النوع من البيانات.");return;}
   if(!masterImportRows.length){setError('اختر ملفًا صالحًا وراجع بياناته أولاً.');return;}
   setBusy(true);setError('');
   try{
@@ -1101,7 +1106,7 @@ function FinanceModule(props){
    (selected.reviewReason||'')?h('p',{className:'rounded-lg border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900'},'ملاحظة المراجعة السابقة: '+selected.reviewReason):null,
    (selected.errors||[]).length?h('ul',{className:'list-disc pr-5 text-rose-700'},selected.errors.map((x,i)=>h('li',{key:i},x))):null,
    (selected.warnings||[]).length?h('ul',{className:'list-disc pr-5 text-amber-700'},selected.warnings.map((x,i)=>h('li',{key:i},x))):null,
-   selected.type==='invoice'?panel(selected.attachmentUploadStatus==='pending'?'المرفق لم يتم رفعه بعد':'إضافة مرفق للفاتورة',selected.attachmentUploadError||'يمكنك رفع صورة أو ملف الفاتورة وربطه بالمستند من هنا.',h('label',{className:'inline-flex flex-col gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-sm font-bold cursor-pointer'},'اختيار صورة أو ملف وإرفاقه',h('input',{type:'file',accept:'image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt',disabled:busy,className:'text-xs font-normal',onChange:e=>{const file=e.target.files&&e.target.files[0];if(file)void retryInvoiceAttachment(file,selected.id);e.target.value='';}}))):null,
+   selected.type==='invoice'&&(canFinance("invoices","edit")||(selected.createdBy===currentUser.uid&&canFinance("invoices","add")))?panel(selected.attachmentUploadStatus==='pending'?'المرفق لم يتم رفعه بعد':'إضافة مرفق للفاتورة',selected.attachmentUploadError||'يمكنك رفع صورة أو ملف الفاتورة وربطه بالمستند من هنا.',h('label',{className:'inline-flex flex-col gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-sm font-bold cursor-pointer'},'اختيار صورة أو ملف وإرفاقه',h('input',{type:'file',accept:'image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt',disabled:busy,className:'text-xs font-normal',onChange:e=>{const file=e.target.files&&e.target.files[0];if(file)void retryInvoiceAttachment(file,selected.id);e.target.value='';}}))):null,
    Object.keys(selected.attachments||{}).length?panel('مرفقات المستند','الملفات محفوظة في مساحة المرفقات المالية المرتبطة بالفاتورة.',table(['اسم الملف','النوع','الحجم','الإجراء'],Object.values(selected.attachments||{}).map(function(attachment){return h('tr',{key:attachment.id,className:'border-t'},h('td',{className:'p-2'},attachment.fileName||'—'),h('td',{className:'p-2'},attachment.mimeType||'—'),h('td',{className:'p-2'},fmt((Number(attachment.size)||0)/1024)+' KB'),h('td',{className:'p-2'},button('تحميل المرفق',function(){downloadFinancialAttachment(selected.id,attachment);},'muted')));}))) : null,
    selected.type==='bankLine'?select('الحساب المقابل',offset,v=>setOffset(v),posting.map(a=>({value:a.code,label:a.code+' — '+a.name}))):null,
    selected.type==='bankLine'?canFinance("bank","edit")?button('حفظ الحساب المقابل',async()=>{try{await api('', 'POST',{action:'setBankOffset',id:selected.id,offsetAccountCode:offset});setNotice('تم حفظ الحساب المقابل');await refreshReviewQueue(true);}catch(e){setError(e.message);}}):null:null,
