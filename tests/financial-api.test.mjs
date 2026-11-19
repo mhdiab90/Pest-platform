@@ -97,7 +97,7 @@ test("PDF page text is sent through invoice extraction and preserves suggested e
 });
 
 test("invoice number is extracted from Internal id before the AI suggestion for PDF text and image OCR", async () => {
-  const pdfText = "Egyptian e-invoice Internal id : ASFOUR/INV-2026-00127 Issue Date : 2026-11-18 Issuer (From) Supplier Registration Number : 329566725";
+  const pdfText = "Egyptian e-invoice Internal id : ASFOUR/INV-2026-00127 EXTRA COLUMN: 999999 Issue Date : 2026-11-18 Issuer (From) Supplier Registration Number : 329566725\\nOther Reference: 202611180001";
   env.AI = {run:async(_model,request)=>{
     const prompt=request.messages[0].content.map(part=>part.text||"").join(" ");
     assert.match(prompt,/Internal id/i);
@@ -111,7 +111,7 @@ test("invoice number is extracted from Internal id before the AI suggestion for 
     const prompt=request.messages[0].content.map(part=>part.text||"").join(" ");
     assert.match(prompt,/Internal id/i);
     assert.match(prompt,/preserving letters, digits, slashes, dots and hyphens/i);
-    return {response:JSON.stringify({type:"purchase",number:"IMG-INTERNAL-7788",items:[]})};
+    return {response:JSON.stringify({type:"purchase",internalIdValue:"IMG-INTERNAL-7788 EXTRA-COLUMN-999",number:"AI-WRONG-IMAGE-0001",items:[]})};
   };
   const fromImage=await invoke("POST","",{action:"ocr",image:"data:image/jpeg;base64,AAAA",pageNumber:1,totalPages:1});
   assert.equal(fromImage.extracted.number,"IMG-INTERNAL-7788","image OCR prompt explicitly prioritizes the Internal id field");
