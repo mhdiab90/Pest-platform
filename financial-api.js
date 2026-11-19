@@ -254,7 +254,7 @@ function invoiceTotals(inv){const net=rnd(invoiceLineAmounts(inv).reduce(functio
 async function sha(v){const a=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(v));return Array.from(new Uint8Array(a)).map(x=>x.toString(16).padStart(2,"0")).join("");}
 
 export async function handleFinancialRequest(ctx){
- const {request,url,body,claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch,adminReadRoot,adminPutRoot,adminPatchRoot}=ctx;
+ const {request,url,body,claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch,adminReadRoot,adminPutRoot,adminPatchRoot,adminPatchRootAt}=ctx;
  if(!profile||!["active","نشط","مفعل","enabled"].includes(String(profile.status||"").toLowerCase()))throw new Error("This user account is not active.");
  if(request.method==="GET"){
   requirePermission(profile,"financial","view");const res=txt(url.searchParams.get("resource")||"bootstrap",40);
@@ -441,7 +441,8 @@ export async function handleFinancialRequest(ctx){
    const root=saved.partyType==="customer"?"clients":"vendors";
    saved.companyName=saved.companyName||saved.name;
    if(previous&&!sameKey){
-    await adminPatchRoot({[root+"/"+code]:saved,[root+"/"+originalCode]:null});
+    if(!adminPatchRootAt)throw new Error("خدمة تحديث سجل العملاء والموردين غير متاحة.");
+    await adminPatchRootAt(root,{[code]:saved,[originalCode]:null});
    }else{
     await adminPutRoot(root+"/"+code,saved);
    }
@@ -456,6 +457,47 @@ export async function handleFinancialRequest(ctx){
   const persisted=await adminRead(kind+"/"+code);
   if(!persisted||String(persisted.code||code)!==code)throw new Error("تعذر التأكد من حفظ السجل. حدّث القائمة قبل إعادة المحاولة.");
   return {success:true,item:saved,linkedExisting:kind==="parties"&&linkedExisting,created:!previous&&!target};
+ }
+ if(action==="deleteMasters"){
+  const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties"];
+  if(!allowed.includes(kind))throw new Error("Unsupported master data type.");
+  const rawCodes=Array.isArray(body.codes)?body.codes:[];
+  const codes=Array.from(new Set(rawCodes.map(value=>id(value))));
+  if(!codes.length)throw new Error("حدد سجلًا واحدًا على الأقل للحذف.");
+  if(codes.length>50)throw new Error("الحد الأقصى 50 سجلًا في عملية الحذف المتعدد.");
+  const permissionModule=kind==="parties"&&body.permissionModule==="master"?"master":"financial";
+  requirePermission(profile,permissionModule,"delete");
+  const now=Date.now(),updates={},rootUpdates={},results=[];
+  let deleted=0,deactivated=0,notFound=0,failed=0;
+  const rootName=kind==="parties"?(body.partyType==="vendor"?"vendors":"clients"):"";
+  if(kind==="parties"&&!["customer","vendor"].includes(body.partyType))throw new Error("حدد نوع الأطراف قبل الحذف المتعدد.");
+  for(const code of codes){
+   try{
+    let existing=await adminRead(kind+"/"+code);
+    if(kind==="parties"&&adminReadRoot){
+     const rootRecord=await adminReadRoot(rootName+"/"+code);
+     existing=existing||rootRecord;
+    }
+    if(!existing){notFound++;results.push({code,status:"not_found"});continue;}
+    if(kind==="parties"&&existing.partyType&&existing.partyType!==body.partyType)throw new Error("نوع الطرف لا يطابق القائمة المحددة.");
+    const usages=await findMasterReferences(ctx,kind,code,kind==="parties"?body.partyType:"");
+    const updatedRecord={...existing,code,active:false,updatedAt:now,updatedBy:claims.sub};
+    const wasReferenced=usages.length>0;
+    updates[kind+"/"+code]=wasReferenced?updatedRecord:null;
+    updates["audit/"+uid("AUD")]={action:wasReferenced?"deactivate_master":"delete_master",kind,code,uid:claims.sub,createdAt:now,...(wasReferenced?{references:usages}:{})};
+    if(kind==="parties")rootUpdates[code]=wasReferenced?updatedRecord:null;
+    if(wasReferenced){deactivated++;results.push({code,status:"deactivated",references:usages});}
+    else{deleted++;results.push({code,status:"deleted"});}
+   }catch(error){
+    failed++;results.push({code,status:"failed",error:String(error&&error.message||error)});
+   }
+  }
+  if(kind==="parties"&&Object.keys(rootUpdates).length){
+   if(!adminPatchRootAt)throw new Error("خدمة سجل العملاء والموردين غير متاحة.");
+   await adminPatchRootAt(rootName,rootUpdates);
+  }
+  if(Object.keys(updates).length)await adminPatch(updates);
+  return {success:failed===0,kind,requested:codes.length,deleted,deactivated,notFound,failed,results};
  }
  if(action==="deleteMaster"){
   const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties"];
@@ -480,8 +522,8 @@ export async function handleFinancialRequest(ctx){
    updates["audit/"+uid("AUD")]={action:"deactivate_master",kind,code,uid:claims.sub,createdAt:now,references:usages};
    if(kind==="parties"){
     const root=partyType==="vendor"?"vendors":"clients";
-    if(!adminPatchRoot)throw new Error("خدمة سجل العملاء والموردين غير متاحة.");
-    await adminPatchRoot({[root+"/"+code]:updated});
+    if(!adminPatchRootAt)throw new Error("خدمة تحديث سجل العملاء والموردين غير متاحة.");
+    await adminPatchRootAt(root,{[code]:updated});
    }
    await adminPatch(updates);
    return {success:true,deleted:false,deactivated:true,code,references:usages,item:updated};
@@ -489,8 +531,9 @@ export async function handleFinancialRequest(ctx){
   const updates={[kind+"/"+code]:null};
   updates["audit/"+uid("AUD")]={action:"delete_master",kind,code,uid:claims.sub,createdAt:now};
   if(kind==="parties"){
-   if(!adminPatchRoot)throw new Error("خدمة سجل العملاء والموردين غير متاحة.");
-   await adminPatchRoot({["clients/"+code]:null,["vendors/"+code]:null});
+   if(!adminPatchRootAt)throw new Error("خدمة تحديث سجل العملاء والموردين غير متاحة.");
+   await adminPatchRootAt("clients",{[code]:null});
+   await adminPatchRootAt("vendors",{[code]:null});
   }
   await adminPatch(updates);
   return {success:true,deleted:true,deactivated:false,code,references:[]};
@@ -507,11 +550,16 @@ export async function handleFinancialRequest(ctx){
   if(kind==="parties"&&!partyRoot)throw new Error("حدد هل ملف الأطراف للعملاء أم الموردين.");
   const legacy=partyRoot&&adminReadRoot?(await adminReadRoot(partyRoot))||{}:{};
   const otherLegacy=partyRoot&&adminReadRoot?(await adminReadRoot(partyRoot==="clients"?"vendors":"clients"))||{}:{};
-  let count=0;
+  let count=0,created=0,updated=0,unchanged=0;
   for(let i=0;i<sourceRows.length;i++){
    const row=sourceRows[i]||{},code=id(row.code),name=txt(row.name,180);
    if(!name)throw new Error("الصف "+(i+2)+": الاسم مطلوب.");
-   if(seen.has(code)||existing[code]||(legacy&&legacy[code])||(otherLegacy&&otherLegacy[code]))throw new Error("الصف "+(i+2)+": الكود "+code+" موجود بالفعل أو مكرر في سجل العملاء/الموردين أو الملف.");
+   if(seen.has(code))throw new Error("الصف "+(i+2)+": الكود "+code+" مكرر داخل الملف.");
+   if(kind==="parties"&&otherLegacy&&otherLegacy[code])throw new Error("الصف "+(i+2)+": الكود "+code+" مسجل بالفعل كنوع طرف مختلف.");
+   const rootPrevious=kind==="parties"?(legacy&&legacy[code]||null):null;
+   const financePrevious=existing[code]||null;
+   const previous=financePrevious||rootPrevious;
+   if(previous&&kind==="parties"&&previous.partyType&&previous.partyType!==body.partyType)throw new Error("الصف "+(i+2)+": الكود "+code+" مسجل بنوع طرف مختلف.");
    seen.add(code);
    if(kind==="chartOfAccounts"){
     if(!["asset","liability","equity","revenue","expense"].includes(row.type)||!["debit","credit"].includes(row.nature))throw new Error("الصف "+(i+2)+": نوع أو طبيعة الحساب غير صحيحة.");
@@ -525,16 +573,43 @@ export async function handleFinancialRequest(ctx){
    if(kind==="itemGroups"&&!["raw_material","finished_good","spare_part","consumable","office_supply","packaging","other"].includes(row.groupType||"other"))throw new Error("الصف "+(i+2)+": نوع مجموعة الأصناف غير صحيح.");
    if(kind==="bankAccounts"){const account=await adminRead("chartOfAccounts/"+id(row.accountCode||code));if(!account||account.isGroup||account.active===false)throw new Error("الصف "+(i+2)+": حساب البنك المحاسبي غير موجود أو غير قابل للترحيل.");}
    if(kind==="taxCodes"&&!["vat_input","vat_output","withholding","addition"].includes(row.taxType))throw new Error("الصف "+(i+2)+": نوع الضريبة غير صحيح.");
-   const saved={...row,code,name,active:row.active!==false,createdAt:now,createdBy:claims.sub,updatedAt:now,updatedBy:claims.sub};
-   if(kind==="parties")saved.partyType=body.partyType;
-   updates[kind+"/"+code]=saved;
-   if(kind==="parties")rootUpdates[partyRoot+"/"+code]=saved;
+   // Empty spreadsheet cells mean "leave the current value unchanged"; false and zero remain valid updates.
+   const supplied=Object.fromEntries(Object.entries(row).filter(([,value])=>value!==undefined&&value!==null&&value!==""));
+   const changed=!previous||Object.entries(supplied).some(([field,value])=>JSON.stringify(previous[field])!==JSON.stringify(value));
+   const saved={
+    ...(previous||{}),...supplied,code,name,
+    active:previous?previous.active!==false:row.active!==false,
+    createdAt:(previous&&previous.createdAt)||now,
+    createdBy:(previous&&previous.createdBy)||claims.sub,
+    updatedAt:changed?now:(previous&&previous.updatedAt)||now,
+    updatedBy:changed?claims.sub:(previous&&previous.updatedBy)||claims.sub
+   };
+   if(kind==="parties"){
+    saved.partyType=body.partyType;
+    saved.companyName=saved.companyName||saved.name;
+    if(!saved.taxNumber&&saved.taxRegistrationNumber)saved.taxNumber=saved.taxRegistrationNumber;
+    if(!saved.taxRegistrationNumber&&saved.taxNumber)saved.taxRegistrationNumber=saved.taxNumber;
+   }
+   const financeChanged=!financePrevious||Object.entries(supplied).some(([field,value])=>JSON.stringify(financePrevious[field])!==JSON.stringify(value));
+   if(financeChanged||!financePrevious)updates[kind+"/"+code]=saved;
+   if(kind==="parties"){
+    const rootChanged=!rootPrevious||Object.entries(supplied).some(([field,value])=>JSON.stringify(rootPrevious[field])!==JSON.stringify(value));
+    if(rootChanged)rootUpdates[code]=saved;
+   }
+   if(previous){if(changed)updated++;else unchanged++;}else created++;
    count++;
   }
-  const audit={action:"import_masters",kind,count,uid:claims.sub,createdAt:now};
-  if(kind==="parties"&&adminPatchRoot){Object.entries(updates).forEach(([path,value])=>{rootUpdates["financial/"+path]=value;});rootUpdates["financial/audit/"+uid("AUD")]=audit;await adminPatchRoot(rootUpdates);}
-  else{updates["audit/"+uid("AUD")]=audit;await adminPatch(updates);}
-  return {success:true,kind,count};
+  const audit={action:"import_masters_upsert",kind,count,created,updated,unchanged,uid:claims.sub,createdAt:now};
+  if(kind==="parties"){
+   if(!adminPatchRootAt)throw new Error("خدمة سجل العملاء والموردين غير متاحة.");
+   if(Object.keys(rootUpdates).length)await adminPatchRootAt(partyRoot,rootUpdates);
+   if(Object.keys(updates).length)await adminPatch(updates);
+   await adminPatch({"audit/"+uid("AUD"):audit});
+  }else{
+   updates["audit/"+uid("AUD")]=audit;
+   await adminPatch(updates);
+  }
+  return {success:true,kind,count,created,updated,unchanged};
  }
  if(action==="submitJournal"){
   requirePermission(profile,"financial","add");let previous=null;const journalId=id(body.id||uid("DOC"));if(body.id){previous=await adminRead("documents/"+journalId);if(!previous||previous.type!=="journal"||!["needs_correction","draft","returned_to_creator"].includes(previous.status)||previous.createdBy!==claims.sub)throw new Error("لا يمكن تعديل هذا القيد: قد يكون غير موجود أو أُرسل للمراجعة أو تم اعتماده.");}const j={id:journalId,type:"journal",date:date(body.date),description:txt(body.description,500),reference:txt(body.reference,120),currency:txt(body.currency||"EGP",3),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:previous&&previous.createdAt||now,createdBy:previous&&previous.createdBy||claims.sub,createdByName:previous&&previous.createdByName||txt(profile.fullName||profile.username||profile.email,120)};
