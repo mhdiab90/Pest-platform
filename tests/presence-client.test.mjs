@@ -19,6 +19,12 @@ test("a denied onDisconnect registration cannot prevent the initial online marke
   assert.match(source, /heartbeatTimer=window\.setInterval\(writePresence,45000\)/);
 });
 
+test("presence write denials show the actual signed-in account status", () => {
+  assert.match(source, /db\.ref\('users\/'\+uid\+'\/status'\)\.once\('value'\)/);
+  assert.match(source, /Current users\/\{uid\}\/status/);
+  assert.match(source, /complete v13 rules file/);
+});
+
 test("stale presence markers expire from the online list", () => {
   assert.match(source, /onlinePresenceFreshnessCutoff=onlinePresenceClock-120000/);
   assert.match(source, /Number\(connection\.lastChanged\|\|0\)>=onlinePresenceFreshnessCutoff/);
