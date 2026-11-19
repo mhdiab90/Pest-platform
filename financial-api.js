@@ -766,7 +766,9 @@ export async function handleFinancialRequest(ctx){
    if(!invoice||invoice.status!=="assigned"||invoice.assignedTo!==claims.sub||invoice.assignmentId!==assignmentId)throw new Error("الفاتورة لم تعد في عهدة هذا المستخدم.");
    const chart=(await adminRead("chartOfAccounts"))||{},items=(await adminRead("items"))||{},groups=(await adminRead("itemGroups"))||{},taxCodes=(await adminRead("taxCodes"))||{};
    const editable=body.invoice&&typeof body.invoice==="object"&&!Array.isArray(body.invoice)?body.invoice:{};
-   const savedInvoice={...invoice,...editable};
+   const savedInvoice={...invoice};
+   for(const key of ["invoiceType","date","number","partyId","partyName","partyTaxNumber","currency","taxCode","taxType","projectCode"])if(Object.prototype.hasOwnProperty.call(editable,key))savedInvoice[key]=txt(editable[key]||"",key==="partyName"?180:key==="partyTaxNumber"?32:key==="number"?120:key==="date"?10:key==="currency"?3:120);
+   for(const key of ["taxRate","taxAmount","discount"])if(Object.prototype.hasOwnProperty.call(editable,key))savedInvoice[key]=editable[key]===""?"":num(editable[key]||0);
    const sourceLines=Array.isArray(body.lines)?body.lines.slice(0,100):(invoice.lines||[]);
    const nextLines=sourceLines.map((source,index)=>{
     if(!source||typeof source!=="object"||Array.isArray(source))throw new Error("بيانات البند "+(index+1)+" غير صحيحة.");
