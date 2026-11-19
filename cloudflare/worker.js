@@ -171,8 +171,10 @@ function hasPermission(profile, moduleId, action) {
   }
   if (moduleId.startsWith("financial_")) {
     const specific = permissions[moduleId];
-    if (moduleId === "financial_review" && action === "view" && specific && specific.approve === true) return true;
-    if (specific && typeof specific === "object") return specific[action] === true;
+    if (specific && typeof specific === "object") {
+      if (action === "view") return specific.view === true || ["add","edit","delete","approve"].some(permission => specific[permission] === true);
+      return specific[action] === true;
+    }
     const hasScopedFinancialPermissions = FINANCIAL_PERMISSION_AREAS.some(key =>
       permissions[key] && typeof permissions[key] === "object"
     );
