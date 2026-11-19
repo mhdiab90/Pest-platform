@@ -1429,19 +1429,21 @@ if(action==="submitCash"){
   if(decision==="approve"&&doc.status==="duplicate_review"&&doc.duplicateOf)throw new Error("هذه الحركة مكررة محتملة. لا تعتمدها إلا باستخدام قرار اعتماد التكرار الصريح.");
   if(decision==="approveDuplicate"&&doc.status!=="duplicate_review")throw new Error("هذا المستند ليس تكرارًا محتملاً.");
   if(decision==="reject"||decision==="return"){
-   const status=decision==="reject"?"rejected":"needs_correction",u={};
+   const status=decision==="reject"?"rejected":"needs_correction",u={};let sourceRootUpdate=null;
    u["documents/"+docId+"/status"]=status;u["documents/"+docId+"/reviewReason"]=txt(body.reason,1000);u["documents/"+docId+"/reviewedBy"]=claims.sub;u["documents/"+docId+"/reviewedAt"]=now;u["reviewQueue/"+docId]=null;
    u["audit/"+uid("AUD")]={action:status,documentId:docId,uid:claims.sub,createdAt:now};
    if(doc.type==="journal"&&doc.sourceType==="projectEvent"&&doc.sourceId&&adminPatchRootAt){
     const separator=String(doc.sourceId).lastIndexOf("--");
-    if(separator>0)await adminPatchRootAt("projects/"+id(doc.sourceId.slice(0,separator))+"/events/"+id(doc.sourceId.slice(separator+2)),{accountingStatus:status,accountingReviewReason:txt(body.reason,1000),accountingReviewedAt:now,accountingReviewedBy:claims.sub});
+    if(separator>0)sourceRootUpdate={path:"projects/"+id(doc.sourceId.slice(0,separator))+"/events/"+id(doc.sourceId.slice(separator+2)),value:{accountingStatus:status,accountingReviewReason:txt(body.reason,1000),accountingReviewedAt:now,accountingReviewedBy:claims.sub}};
    }else if(doc.type==="journal"&&doc.sourceType==="cashCustody"&&doc.sourceId&&adminPatchRootAt){
     const separator=String(doc.sourceId).indexOf("--");
-    if(separator>0)await adminPatchRootAt("cashCustodies/"+id(doc.sourceId.slice(0,separator))+"/transactions/"+id(doc.sourceId.slice(separator+2)),{financialReviewStatus:status,financialReviewReason:txt(body.reason,1000),financialReviewedAt:now,financialReviewedBy:claims.sub});
+    if(separator>0)sourceRootUpdate={path:"cashCustodies/"+id(doc.sourceId.slice(0,separator))+"/transactions/"+id(doc.sourceId.slice(separator+2)),value:{financialReviewStatus:status,financialReviewReason:txt(body.reason,1000),financialReviewedAt:now,financialReviewedBy:claims.sub}};
    }
-   await adminPatch(u);return {success:true,status};
+   await adminPatch(u);
+   if(sourceRootUpdate)await adminPatchRootAt(sourceRootUpdate.path,sourceRootUpdate.value);
+   return {success:true,status};
   }
-  if(decision!=="approve"&&decision!=="approveDuplicate")throw new Error("قرار المراجعة غير صحيح");const updates={};let j;
+  if(decision!=="approve"&&decision!=="approveDuplicate")throw new Error("قرار المراجعة غير صحيح");const updates={};let j,sourceRootUpdate=null;
   if(doc.type==="journal"){const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{},v=validateJournal(doc,chart,centers);if(v.errors.length)throw new Error(v.errors.join("؛ "));j={...doc,status:"posted",approvedAt:now,approvedBy:claims.sub,postedAt:now};Object.assign(updates,journalUpdates(j));}
   else if(doc.type==="cash"){
    const amount=num(doc.amount),cash=txt(doc.cashAccountCode||"1110",32),movement=txt(doc.movementType||"",40),chart=(await adminRead("chartOfAccounts"))||{};
@@ -1587,17 +1589,22 @@ if(action==="submitCash"){
   if(doc.type==="journal"&&doc.reversalOf)updates["journals/"+id(doc.reversalOf)+"/reversedByJournalId"]=j.id;
   if(doc.type==="journal"&&doc.sourceType==="projectEvent"&&doc.sourceId&&adminPatchRootAt){
    const separator=String(doc.sourceId).lastIndexOf("--");
-   if(separator>0)await adminPatchRootAt("projects/"+id(doc.sourceId.slice(0,separator))+"/events/"+id(doc.sourceId.slice(separator+2)),{accountingStatus:"posted",accountingImpact:true,accountingJournalId:j.id,accountingApprovedAt:now,accountingApprovedBy:claims.sub,accountingErrors:null});
+   if(separator>0)sourceRootUpdate={path:"projects/"+id(doc.sourceId.slice(0,separator))+"/events/"+id(doc.sourceId.slice(separator+2)),value:{accountingStatus:"posted",accountingImpact:true,accountingJournalId:j.id,accountingApprovedAt:now,accountingApprovedBy:claims.sub,accountingErrors:null}};
   }else if(doc.type==="journal"&&doc.sourceType==="cashCustody"&&doc.sourceId&&adminPatchRootAt){
    const separator=String(doc.sourceId).indexOf("--");
    if(separator>0){
     const ownerUid=id(doc.sourceId.slice(0,separator)),transactionId=id(doc.sourceId.slice(separator+2)),custody=adminReadRoot?await adminReadRoot("cashCustodies/"+ownerUid+"/transactions/"+transactionId):null;
     const custodyUpdates={financialReviewStatus:"posted",financialJournalId:j.id,financialReviewedAt:now,financialReviewedBy:claims.sub};
-    if(custody){custodyUpdates.status="approved";if(custody.linkedOwnerUid&&custody.linkedTransactionId){await adminPatchRootAt("cashCustodies/"+id(custody.linkedOwnerUid)+"/transactions/"+id(custody.linkedTransactionId),{status:"approved",financialReviewStatus:"posted",financialJournalId:j.id,financialReviewedAt:now,financialReviewedBy:claims.sub});}}
-    await adminPatchRootAt("cashCustodies/"+ownerUid+"/transactions/"+transactionId,custodyUpdates);
+    if(custody){
+     custodyUpdates.status="approved";
+     if(custody.linkedOwnerUid&&custody.linkedTransactionId)await adminPatchRootAt("cashCustodies/"+id(custody.linkedOwnerUid)+"/transactions/"+id(custody.linkedTransactionId),{status:"approved",financialReviewStatus:"posted",financialJournalId:j.id,financialReviewedAt:now,financialReviewedBy:claims.sub});
+    }
+    sourceRootUpdate={path:"cashCustodies/"+ownerUid+"/transactions/"+transactionId,value:custodyUpdates};
    }
   }
-  await adminPatch(updates);return {success:true,status:"posted",journalId:j.id};
+  await adminPatch(updates);
+  if(sourceRootUpdate)await adminPatchRootAt(sourceRootUpdate.path,sourceRootUpdate.value);
+  return {success:true,status:"posted",journalId:j.id};
  }
  if(action==="returnToReview"){requireFinanceArea("review","edit");throw new Error("إعادة الإرسال المباشر غير مسموح بها لأنها تتجاوز التحقق المحاسبي. أعد حفظ القيد أو الفاتورة من الشاشة المخصصة ليُعاد احتساب الأخطاء والتحقق من البيانات قبل دخول قائمة المراجعة.");}
  throw new Error("Unknown financial action.");
