@@ -40,20 +40,25 @@ async function adminPatchRoot(updates) {
 const profile = {uid:"test-admin",role:"admin",status:"active",fullName:"Finance Test"};
 const claims = {sub:"test-admin"};
 const env = {};
-let grantedPermissions = {};
 const hasPermission = (targetProfile, moduleName, action) =>
-  targetProfile.role === "admin" || grantedPermissions[moduleName]?.[action] === true;
+  targetProfile.role === "admin";
 const requirePermission = (targetProfile, moduleName, action) => {
   if (!hasPermission(targetProfile, moduleName, action)) {
     throw new Error("Permission denied: " + moduleName + "." + action + ".");
   }
 };
-async function invoke(method, path, body) {
+async function invoke(method, path, body, options = {}) {
+  const requestProfile=options.profile||profile;
+  const requestClaims=options.claims||claims;
+  const requestHasPermission=options.hasPermission||hasPermission;
+  const requestRequirePermission=options.requirePermission||requirePermission;
   return handleFinancialRequest({
     request:{method},
     url:new URL("https://example.test/finance" + (path || "")),
     body:body || {},
-    claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch,adminReadRoot,adminPutRoot,adminPatchRoot
+    claims:requestClaims,profile:requestProfile,env,
+    hasPermission:requestHasPermission,requirePermission:requestRequirePermission,
+    adminRead,adminPatch,adminReadRoot,adminPutRoot,adminPatchRoot
   });
 }
 
@@ -673,26 +678,29 @@ test("master records support editing, safe code changes and protected deletion",
 
 test("master permission cannot be used to edit or delete financial master records", async () => {
   write("items/SECURE-ITEM-001",{code:"SECURE-ITEM-001",name:"Protected item",itemType:"stock",active:true});
-  profile.role="user";
-  grantedPermissions={master:{add:true,edit:true,delete:true}};
-  try {
-    await assert.rejects(
-      invoke("POST","",{action:"saveMaster",kind:"items",permissionModule:"master",item:{code:"SECURE-ITEM-002",name:"Unauthorized item",itemType:"stock"}}),
-      /Permission denied: financial.add/
-    );
-    await assert.rejects(
-      invoke("POST","",{action:"deleteMaster",kind:"items",permissionModule:"master",code:"SECURE-ITEM-001"}),
-      /Permission denied: financial.delete/
-    );
-    assert.ok(read("items/SECURE-ITEM-001"),"the protected financial master record must remain untouched");
+  const userProfile={uid:"test-user",role:"user",status:"active",fullName:"Master Data Test"};
+  const userClaims={sub:userProfile.uid};
+  const userPermissions={master:{add:true,edit:true,delete:true}};
+  const userHasPermission=(_profile,moduleName,action)=>userPermissions[moduleName]?.[action]===true;
+  const userRequirePermission=(_profile,moduleName,action)=>{
+    if(!userHasPermission(_profile,moduleName,action))throw new Error("Permission denied: "+moduleName+"."+action+".");
+  };
+  const invokeAsUser=(method,path,body)=>invoke(method,path,body,{
+    profile:userProfile,claims:userClaims,hasPermission:userHasPermission,requirePermission:userRequirePermission
+  });
+  await assert.rejects(
+    invokeAsUser("POST","",{action:"saveMaster",kind:"items",permissionModule:"master",item:{code:"SECURE-ITEM-002",name:"Unauthorized item",itemType:"stock"}}),
+    /Permission denied: financial.add/
+  );
+  await assert.rejects(
+    invokeAsUser("POST","",{action:"deleteMaster",kind:"items",permissionModule:"master",code:"SECURE-ITEM-001"}),
+    /Permission denied: financial.delete/
+  );
+  assert.ok(read("items/SECURE-ITEM-001"),"the protected financial master record must remain untouched");
 
-    const party=await invoke("POST","",{action:"saveMaster",kind:"parties",permissionModule:"master",item:{code:"PERMITTED-CLIENT-001",name:"Permitted customer",partyType:"customer"}});
-    assert.equal(party.success,true,"the master permission is still valid for customer/supplier records");
-    assert.equal(read("clients/PERMITTED-CLIENT-001").name,"Permitted customer");
-    const deleted=await invoke("POST","",{action:"deleteMaster",kind:"parties",permissionModule:"master",code:"PERMITTED-CLIENT-001"});
-    assert.equal(deleted.deleted,true,"the master permission can delete an unused customer/supplier record");
-  } finally {
-    profile.role="admin";
-    grantedPermissions={};
-  }
+  const party=await invokeAsUser("POST","",{action:"saveMaster",kind:"parties",permissionModule:"master",item:{code:"PERMITTED-CLIENT-001",name:"Permitted customer",partyType:"customer"}});
+  assert.equal(party.success,true,"the master permission is still valid for customer/supplier records");
+  assert.equal(read("clients/PERMITTED-CLIENT-001").name,"Permitted customer");
+  const deleted=await invokeAsUser("POST","",{action:"deleteMaster",kind:"parties",permissionModule:"master",code:"PERMITTED-CLIENT-001"});
+  assert.equal(deleted.deleted,true,"the master permission can delete an unused customer/supplier record");
 });
