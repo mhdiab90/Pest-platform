@@ -840,109 +840,72 @@ export async function handleFinancialRequest(ctx){
    if(decision==="submit_for_review")return {success:true,id:invoice.id,assignmentId,status:savedInvoice.status,errors:reviewErrors,reviewersNotified:reviewers.length,pushNotifications};
    return {success:true,id:invoice.id,assignmentId,status:"returned_to_creator",pushNotifications};
   }
-if(action==="submitInvoice"){if(!["purchase","sales"].includes(body.type))throw new Error("حدد هل الفاتورة مشتريات من مورد أم مبيعات لعميل.");const inv={...body,id:id(body.id||uid("INV")),type:"invoice",invoiceType:body.type,date:date(body.date),number:txt(body.number,120),partyId:txt(body.partyId,120),partyName:txt(body.partyName,180),currency:txt(body.currency||"EGP",3),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120)},errors=[];
-  if(body.taxCode){
-   const taxCode=await adminRead("taxCodes/"+id(body.taxCode)),expectedTaxType=inv.invoiceType==="purchase"?"vat_input":"vat_output";
-   if(!taxCode||taxCode.active===false||taxCode.taxType!==expectedTaxType)errors.push("كود ضريبة القيمة المضافة لا يتوافق مع نوع الفاتورة أو أنه غير نشط.");
-   else if(taxCode.effectiveFrom&&inv.date<String(taxCode.effectiveFrom))errors.push("كود الضريبة "+taxCode.code+" غير سارٍ بتاريخ الفاتورة. تاريخ بداية السريان: "+taxCode.effectiveFrom);
-   else{inv.taxCode=taxCode.code||body.taxCode;inv.taxType=taxCode.taxType;inv.taxRate=num(taxCode.rate||0);}
-  }
-  else if(Number(inv.taxRate||0)>0||Number(inv.taxAmount||0)>0)errors.push("يجب اختيار كود ضريبي نشط من نوع مدخلات للمشتريات أو مخرجات للمبيعات، ومطابق لتاريخ الفاتورة ونسبتها.");
-  if(inv.currency!=="EGP")errors.push("لا يمكن ترحيل فاتورة بعملة أجنبية قبل تفعيل أسعار الصرف وإعادة تقييم أرصدة العملات. اختر الجنيه المصري أو اترك المستند مسودة.");
-  if(!inv.partyId)errors.push("اختيار العميل أو المورد مطلوب");
-  else{
-   const expectedPartyType=inv.invoiceType==="purchase"?"vendor":"customer",masterParty=await adminRead("parties/"+id(inv.partyId));
-   const legacyParty=adminReadRoot?await adminReadRoot((expectedPartyType==="vendor"?"vendors/":"clients/")+id(inv.partyId)):null;
-   const oppositeParty=adminReadRoot?await adminReadRoot((expectedPartyType==="vendor"?"clients/":"vendors/")+id(inv.partyId)):null;
-   const party=masterParty&&masterParty.partyType===expectedPartyType?masterParty:legacyParty;
-   if(oppositeParty&&!legacyParty)errors.push("نوع الطرف المحدد لا يتوافق مع نوع الفاتورة.");
-   else if(!party)errors.push("المورد أو العميل غير مسجل في البيانات الأساسية بالنوع الصحيح.");
+if(action==="submitInvoice"){
+   if(!["purchase","sales"].includes(body.type))throw new Error("حدد هل الفاتورة مشتريات من مورد أم مبيعات لعميل.");
+   const inv={...body,id:id(body.id||uid("INV")),type:"invoice",invoiceType:body.type,date:txt(body.date||"",10),number:txt(body.number||"",120),partyId:txt(body.partyId||"",120),partyName:txt(body.partyName||"",180),currency:txt(body.currency||"EGP",3),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120)},errors=[];
+   let previous=null;
+   if(body.id){
+    previous=await adminRead("documents/"+inv.id);requireFinanceArea("invoices","edit");
+    if(!previous||previous.type!=="invoice"||!["needs_correction","draft","returned_to_creator"].includes(previous.status)||(previous.createdBy!==claims.sub&&previous.lastAssignedTo!==claims.sub))throw new Error("لا يمكن تعديل هذه الفاتورة: قد تكون غير موجودة أو أُرسلت للمراجعة أو تم اعتمادها.");
+    inv.createdAt=previous.createdAt||inv.createdAt;inv.createdBy=previous.createdBy||inv.createdBy;inv.createdByName=previous.createdByName||inv.createdByName||"";
+    for(const field of ["attachments","attachmentUploadStatus","attachmentFileName","attachmentUploadError","returnedTaskId","assignmentId","assignmentSenderUid","assignmentChain","lastAssignedTo"])if(previous[field]!==undefined)inv[field]=previous[field];
+   }else requireFinanceArea("invoices","add");
+   if(inv.taxCode){
+    const taxCode=await adminRead("taxCodes/"+id(inv.taxCode)),expected=inv.invoiceType==="purchase"?"vat_input":"vat_output";
+    if(!taxCode||taxCode.active===false||taxCode.taxType!==expected)errors.push("كود ضريبة القيمة المضافة لا يتوافق مع نوع الفاتورة أو أنه غير نشط.");
+    else if(taxCode.effectiveFrom&&inv.date&&inv.date<String(taxCode.effectiveFrom))errors.push("كود الضريبة "+taxCode.code+" غير سارٍ بتاريخ الفاتورة. تاريخ بداية السريان: "+taxCode.effectiveFrom);
+    else{inv.taxCode=taxCode.code||body.taxCode;inv.taxType=taxCode.taxType;inv.taxRate=num(taxCode.rate||0);}
+   }else if(Number(inv.taxRate||0)>0||Number(inv.taxAmount||0)>0)errors.push("يجب اختيار كود ضريبي نشط من نوع مدخلات للمشتريات أو مخرجات للمبيعات، ومطابق لتاريخ الفاتورة ونسبتها.");
+   if(!inv.number)errors.push("رقم الفاتورة مطلوب");
+   if(!/^\d{4}-\d{2}-\d{2}$/.test(inv.date)||!Number.isFinite(Date.parse(inv.date+"T00:00:00Z")))errors.push("تاريخ الفاتورة مطلوب أو غير صحيح.");
+   if(inv.currency!=="EGP")errors.push("لا يمكن اعتماد فاتورة بعملة أجنبية قبل تفعيل أسعار الصرف وإعادة تقييم أرصدة العملات.");
+   if(!inv.partyId)errors.push("اختيار العميل أو المورد مطلوب");
    else{
-    inv.partyName=txt(party.name||party.companyName||party.legalName||party.supplierName||party.vendorName||party.customerName||party.clientName||inv.partyName,180);
-    inv.partyTaxNumber=party.taxNumber||party.taxRegistrationNumber||party.registrationNumber||party.registrationNo||party.vatNumber||party.taxId||inv.partyTaxNumber||"";
+    const expectedPartyType=inv.invoiceType==="purchase"?"vendor":"customer",masterParty=await adminRead("parties/"+id(inv.partyId));
+    const legacyParty=adminReadRoot?await adminReadRoot((expectedPartyType==="vendor"?"vendors/":"clients/")+id(inv.partyId)):null,oppositeParty=adminReadRoot?await adminReadRoot((expectedPartyType==="vendor"?"clients/":"vendors/")+id(inv.partyId)):null;
+    const party=masterParty&&masterParty.partyType===expectedPartyType?masterParty:legacyParty;
+    if(oppositeParty&&!legacyParty)errors.push("نوع الطرف المحدد لا يتوافق مع نوع الفاتورة.");
+    else if(!party)errors.push("المورد أو العميل غير مسجل في البيانات الأساسية بالنوع الصحيح.");
+    else{inv.partyName=txt(party.name||party.companyName||party.legalName||party.supplierName||party.vendorName||party.customerName||party.clientName||inv.partyName,180);inv.partyTaxNumber=party.taxNumber||party.taxRegistrationNumber||party.registrationNumber||party.registrationNo||party.vatNumber||party.taxId||inv.partyTaxNumber||"";}
    }
-  }
-  if(!inv.number)errors.push("رقم الفاتورة مطلوب");if(!inv.lines.length)errors.push("أضف بندًا واحدًا على الأقل");
-  const invoiceChart=(await adminRead("chartOfAccounts"))||{};
-  inv.lines.forEach((l,i)=>{
-   if(!txt(l.description,250))errors.push("وصف البند "+(i+1)+" مطلوب");
-   if(!["stock","service"].includes(l.kind))errors.push("حدد طبيعة البند "+(i+1)+" هل هو مخزني أم مصروف/خدمة");
-   if(!(Number(l.quantity)>0))errors.push("الكمية غير صحيحة في البند "+(i+1));
-   if(l.kind==="stock"&&!l.itemCode)errors.push("حدد الصنف المخزني في البند "+(i+1));
-   if(l.kind==="service"){
-    const expectedType=inv.invoiceType==="purchase"?"expense":"revenue";
-    const code=txt(inv.invoiceType==="purchase"?(l.accountCode||"6100"):(l.incomeAccountCode||"4200"),32);
-    const account=invoiceChart[code];
-    if(!account||account.isGroup||account.active===false||account.type!==expectedType)errors.push("حدد حساب "+(expectedType==="expense"?"مصروف صحيح":"إيراد صحيح")+" للبند "+(i+1));
+   const invoiceChart=(await adminRead("chartOfAccounts"))||{},invoiceItems=(await adminRead("items"))||{};
+   inv.lines.forEach((line,index)=>{
+    if(!txt(line.description,250))errors.push("وصف البند "+(index+1)+" مطلوب");
+    if(!(Number(line.quantity)>0))errors.push("الكمية غير صحيحة في البند "+(index+1));
+    if(!["stock","service"].includes(line.kind))errors.push("حدد طبيعة البند "+(index+1)+" هل هو مخزني أم مصروف/خدمة");
+    if(line.kind==="stock"&&(!line.itemCode||!invoiceItems[line.itemCode]||invoiceItems[line.itemCode].active===false))errors.push("حدد الصنف المخزني الصحيح في البند "+(index+1));
+    if(line.kind==="service"){const expected=inv.invoiceType==="purchase"?"expense":"revenue",code=txt(inv.invoiceType==="purchase"?(line.accountCode||""):(line.incomeAccountCode||""),32),account=invoiceChart[code];if(!account||account.isGroup||account.active===false||account.type!==expected)errors.push("حدد حساب "+(expected==="expense"?"مصروف صحيح":"إيراد صحيح")+" للبند "+(index+1));}
+   });
+   let totals={net:0,tax:0,total:0};try{totals=invoiceTotals(inv);}catch(error){errors.push(String(error.message||error));}
+   const fingerprint=inv.partyId&&inv.number&&inv.date&&/^\d{4}-\d{2}-\d{2}$/.test(inv.date)?await sha([inv.invoiceType,inv.partyId,inv.number,inv.date,Number(totals.total||0).toFixed(2)].join("|").toLowerCase()):"";
+   const duplicate=fingerprint?await adminRead("documentFingerprints/"+fingerprint):null;
+   inv.totals=totals;inv.netTotal=totals.net;inv.total=totals.total;inv.errors=[...new Set(errors)];inv.fingerprint=fingerprint;
+   inv.duplicateOf=duplicate&&duplicate.documentId!==inv.id?duplicate.documentId:"";
+   inv.warnings=inv.duplicateOf?["مستند مشابه مسجل سابقًا: "+inv.duplicateOf]:[];
+   inv.status=inv.duplicateOf?"duplicate_review":"pending_review";
+   const updates={};updates["documents/"+inv.id]=inv;updates["reviewQueue/"+inv.id]=reviewRecord(inv);
+   updates["audit/"+uid("AUD")]={action:"submit_invoice",documentId:inv.id,status:inv.status,errors:inv.errors,uid:claims.sub,createdAt:now};
+   const originalSender=previous&&(previous.assignmentSenderUid||previous.createdBy)||claims.sub;
+   if(previous&&previous.assignmentId){
+    updates["sentAssignments/"+id(originalSender)+"/"+id(previous.assignmentId)+"/status"]="sent_for_review";
+    updates["sentAssignments/"+id(originalSender)+"/"+id(previous.assignmentId)+"/resubmittedAt"]=now;
+    updates["sentAssignments/"+id(originalSender)+"/"+id(previous.assignmentId)+"/decision"]="creator_resubmitted";
    }
-  });
-  let previous=null;
-  if(body.id){
-   previous=await adminRead("documents/"+inv.id);
-   requireFinanceArea("invoices","edit");
-   if(!previous||previous.type!=="invoice"||!["needs_correction","draft","returned_to_creator"].includes(previous.status)||previous.createdBy!==claims.sub)throw new Error("لا يمكن تعديل هذه الفاتورة: قد تكون غير موجودة أو أُرسلت للمراجعة أو تم اعتمادها.");
-   inv.createdAt=previous.createdAt||inv.createdAt;
-   inv.createdBy=previous.createdBy||inv.createdBy;
-   inv.createdByName=previous.createdByName||inv.createdByName||"";
-   if(previous.attachments)inv.attachments=previous.attachments;
-   if(previous.returnedTaskId)inv.returnedTaskId=previous.returnedTaskId;
-   for(const field of ["attachmentUploadStatus","attachmentFileName","attachmentUploadError"])if(previous[field])inv[field]=previous[field];
-  }
-  if(!body.id)requireFinanceArea("invoices","add");
-   const totals=invoiceTotals(inv);inv.totals=totals;inv.total=totals.total;inv.errors=errors;inv.fingerprint=await sha([inv.invoiceType,inv.partyId,inv.number,inv.date,totals.total.toFixed(2)].join("|").toLowerCase());const duplicate=await adminRead("documentFingerprints/"+inv.fingerprint);inv.duplicateOf=duplicate&&duplicate.documentId||"";inv.warnings=duplicate?["مستند مشابه مسجل سابقًا: "+duplicate.documentId]:[];inv.status=errors.length?"needs_correction":duplicate?"duplicate_review":"pending_review";
-  const u={};u["documents/"+inv.id]=inv;u["reviewQueue/"+inv.id]=errors.length?null:reviewRecord(inv);u["audit/"+uid("AUD")]={action:"submit_invoice",documentId:inv.id,status:inv.status,uid:claims.sub,createdAt:now};if(!errors.length&&previous&&previous.assignmentId){
-   u["sentAssignments/"+claims.sub+"/"+id(previous.assignmentId)+"/status"]="sent_for_review";
-   u["sentAssignments/"+claims.sub+"/"+id(previous.assignmentId)+"/resubmittedAt"]=now;
-   u["sentAssignments/"+claims.sub+"/"+id(previous.assignmentId)+"/decision"]="creator_resubmitted";
-  }
-  await adminPatch(u);
-  let reviewPushNotifications=[],reviewersNotified=0;
-  if(["pending_review","duplicate_review"].includes(inv.status)){
+   await adminPatch(updates);
+   let reviewPushNotifications=[],reviewersNotified=0;
    try{
     const allUsers=adminReadRoot?(await adminReadRoot("users"))||{}:{},notificationUpdates={};
-    const reviewers=Object.entries(allUsers).filter(([reviewerUid,user])=>{
-     if(!user||reviewerUid===claims.sub||!["active","نشط","مفعل","enabled"].includes(String(user.status||"").toLowerCase()))return false;
-     return hasPermission(user,"financial_review","view")&&hasPermission(user,"financial_review","approve");
-    });
+    const reviewers=Object.entries(allUsers).filter(([reviewerUid,user])=>user&&reviewerUid!==claims.sub&&["active","نشط","مفعل","enabled"].includes(String(user.status||"").toLowerCase())&&hasPermission(user,"financial_review","view")&&hasPermission(user,"financial_review","approve"));
     for(const [reviewerUid,user] of reviewers){
-     const notificationId=uid("FIN-REV"),reviewerName=txt(user.fullName||user.username||user.email||reviewerUid,120);
-     const notification={
-      id:notificationId,type:"financialReviewRequired",recipientUid:reviewerUid,
-      assignmentId:previous&&previous.assignmentId||"",invoiceId:inv.id,
-      senderUid:claims.sub,senderName:txt(profile.fullName||profile.username||profile.email,120),
-      title:"فاتورة جديدة بانتظار المراجعة",description:"الفاتورة "+(inv.number||inv.id)+" — "+(inv.partyName||"")+" — مطلوب المراجعة والاعتماد.",
-      createdAt:now,read:false
-     };
-     notificationUpdates[reviewerUid+"/"+notificationId]=notification;
-     reviewPushNotifications.push({
-      recipientUid:reviewerUid,eventType:"financialReviewRequired",eventId:inv.id,
-      dispatchPrefix:"finance:review:"+inv.id,
-      content:{title:notification.title,body:notification.description}
-     });
+     const notificationId=uid("FIN-REV"),notification={id:notificationId,type:"financialReviewRequired",recipientUid:reviewerUid,assignmentId:previous&&previous.assignmentId||"",invoiceId:inv.id,senderUid:claims.sub,senderName:txt(profile.fullName||profile.username||profile.email,120),title:"فاتورة جديدة بانتظار المراجعة",description:"الفاتورة "+(inv.number||inv.id)+" — "+(inv.partyName||"")+(inv.errors.length?" — تحتاج إلى استكمال بيانات":" — مطلوب المراجعة والاعتماد."),createdAt:now,read:false};
+     notificationUpdates[reviewerUid+"/"+notificationId]=notification;reviewPushNotifications.push({recipientUid:reviewerUid,eventType:"financialReviewRequired",eventId:inv.id,dispatchPrefix:"finance:review:"+inv.id,content:{title:notification.title,body:notification.description}});
     }
-    if(Object.keys(notificationUpdates).length)await patchExternalBranch("cashCustodyNotifications",notificationUpdates);
-    reviewersNotified=reviewers.length;
-   }catch(notificationError){
-    console.error("Invoice entered review queue, but reviewer notifications could not be saved:",String(notificationError&&notificationError.message||notificationError));
-    inv.warnings=(inv.warnings||[]).concat(["تم إدخال الفاتورة في قائمة المراجعة، لكن تعذر حفظ بعض إشعارات المراجعين."]);
-    reviewPushNotifications=[];
-   }
+    if(Object.keys(notificationUpdates).length)await patchExternalBranch("cashCustodyNotifications",notificationUpdates);reviewersNotified=reviewers.length;
+   }catch(notificationError){console.error("Invoice entered review queue, but reviewer notifications could not be saved:",String(notificationError&&notificationError.message||notificationError));reviewPushNotifications=[];}
+   if(previous&&previous.returnedTaskId){try{const taskId=id(previous.returnedTaskId),taskUpdates={};taskUpdates[claims.sub+"/"+taskId+"/status"]="completed";taskUpdates[claims.sub+"/"+taskId+"/completedAt"]=now;taskUpdates[claims.sub+"/"+taskId+"/completedBy"]=claims.sub;await patchExternalBranch("tasks",taskUpdates);}catch(taskError){console.error("Invoice was submitted to review, but its return-task could not be closed:",String(taskError&&taskError.message||taskError));}}
+   return {success:true,id:inv.id,status:inv.status,errors:inv.errors,warnings:inv.warnings,totals,reviewersNotified,pushNotifications:reviewPushNotifications};
   }
-  if(!errors.length&&previous&&previous.returnedTaskId){
-   try{
-    const taskId=id(previous.returnedTaskId),taskUpdates={};
-    taskUpdates[claims.sub+"/"+taskId+"/status"]="completed";
-    taskUpdates[claims.sub+"/"+taskId+"/completedAt"]=now;
-    taskUpdates[claims.sub+"/"+taskId+"/completedBy"]=claims.sub;
-    await patchExternalBranch("tasks",taskUpdates);
-   }catch(taskError){
-    console.error("Invoice was successfully submitted to review, but its return-task could not be closed:",String(taskError&&taskError.message||taskError));
-    inv.warnings=(inv.warnings||[]).concat(["تم إرسال الفاتورة للمراجعة، لكن تعذر إغلاق مهمة الإرجاع القديمة تلقائيًا."]);
-   }
-  }
-  return {success:true,id:inv.id,status:inv.status,errors,warnings:inv.warnings,totals,reviewersNotified,pushNotifications:reviewPushNotifications};
- }
- if(action==="submitCash"){
+if(action==="submitCash"){
   requireFinanceArea("cash","add");
   const movementTypes=["customer_receipt","supplier_payment","other_receipt","other_payment","cash_to_bank","bank_to_cash","employee_custody","employee_custody_return","employee_advance","employee_advance_recovery"];
   const movementType=txt(body.movementType||"",40);
