@@ -1128,8 +1128,14 @@ function FinanceModule(props){
   const detailsPanel=panel('تفاصيل الأصناف والإصدارات','الرصيد والتكلفة محفوظان على مستوى كود الصنف والإصدار والمخزن.',table(['الكود','الصنف','المجموعة','الإصدار','الوحدة','المخزن','الكمية','متوسط التكلفة','القيمة'],stockRows));
   return h('div',{className:'space-y-4'},groupPanel,detailsPanel);
  };
- const editMasterRecord=(kind,item)=>openQuickAdd(kind,null,Object.assign({},item,{partyType:item.partyType||(kind==="parties"?(masterViewKind==="suppliers"?"vendor":"customer"):undefined)}),item.code||item.id||"");
+ const masterPermissionModule=kind=>kind==="parties"?"master":"financial";
+ const canMasterAction=(kind,action)=>currentUser?.role==="admin"||currentUser?.permissions?.[masterPermissionModule(kind)]?.[action]===true;
+ const editMasterRecord=(kind,item)=>{
+  if(!canMasterAction(kind,"edit"))return setError("ليس لديك صلاحية تعديل هذا النوع من البيانات.");
+  openQuickAdd(kind,null,Object.assign({},item,{partyType:item.partyType||(kind==="parties"?(masterViewKind==="suppliers"?"vendor":"customer"):undefined)}),item.code||item.id||"");
+ };
  const deleteMasterRecord=async(kind,item)=>{
+  if(!canMasterAction(kind,"delete"))return setError("ليس لديك صلاحية حذف هذا النوع من البيانات.");
   if(!item||busy)return;
   const labels={chartOfAccounts:"الحساب",costCenters:"مركز التكلفة",items:"الصنف",itemGroups:"مجموعة الأصناف",warehouses:"المخزن",bankAccounts:"حساب البنك",taxCodes:"الكود الضريبي",parties:item.partyType==="vendor"?"المورد":"العميل"};
   if(!window.confirm("هل تريد حذف "+(labels[kind]||"السجل")+" "+(item.code||item.name||"")+"؟ إذا كان مرتبطًا بحركات أو أرصدة، سيوقف النظام استخدامه بدلًا من حذف تاريخه المحاسبي."))return;
@@ -1143,8 +1149,8 @@ function FinanceModule(props){
   finally{setBusy(false);}
  };
  const masterActions=(kind,item)=>h("div",{className:"flex items-center gap-2 whitespace-nowrap"},
-  button("تعديل",()=>editMasterRecord(kind,item),"muted",busy),
-  button("حذف",()=>deleteMasterRecord(kind,item),"danger",busy)
+  canMasterAction(kind,"edit")?button("تعديل",()=>editMasterRecord(kind,item),"muted",busy):null,
+  canMasterAction(kind,"delete")?button("حذف",()=>deleteMasterRecord(kind,item),"danger",busy):null
  );
  const renderMasters=()=>{
   const config=masterImportConfig[masterImportKind];
