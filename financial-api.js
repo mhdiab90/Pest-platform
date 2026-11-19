@@ -20,12 +20,12 @@ function extractEtaInvoiceParties(value) {
 }
 
 function extractInternalInvoiceNumber(value) {
-  const source = String(value || "").replace(/[\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]/g, "");
-  const marker = /\\bInternal\\s*id\\s*[:：]\\s*/i.exec(source);
+  const source = String(value || "").replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "");
+  const marker = /\bInternal\s*id\s*[:：]\s*/i.exec(source);
   if (!marker) return "";
   const adjacent = source.slice(marker.index + marker[0].length);
   // Return only the contiguous value immediately beside the label, never the rest of the row or lines below.
-  const valueMatch = /^([A-Za-z0-9\\u0660-\\u0669\\u06F0-\\u06F9][A-Za-z0-9\\u0660-\\u0669\\u06F0-\\u06F9._/-]{0,119})/.exec(adjacent);
+  const valueMatch = /^([A-Za-z0-9\u0660-\u0669\u06F0-\u06F9][A-Za-z0-9\u0660-\u0669\u06F0-\u06F9._/-]{0,119})/.exec(adjacent);
   return valueMatch ? valueMatch[1].replace(/[.,;:]+$/, "").slice(0,120) : "";
 }
 
@@ -421,7 +421,7 @@ export async function handleFinancialRequest(ctx){
   let data;try{data=JSON.parse(raw.slice(first,last+1));}catch(_){throw new Error("نتيجة قراءة الفاتورة غير مكتملة. أدخل البيانات يدويًا.");}
   if(!data||typeof data!=="object"||Array.isArray(data))throw new Error("نتيجة قراءة الفاتورة غير صالحة.");
   const etaParties=textOnly?extractEtaInvoiceParties(body.text):{};
-  const internalInvoiceNumber=textOnly?extractInternalInvoiceNumber(body.text):String(data.internalIdValue||"").trim().split(/\\s+/)[0].replace(/[.,;:]+$/,"").slice(0,120);
+  const internalInvoiceNumber=textOnly?extractInternalInvoiceNumber(body.text):String(data.internalIdValue||"").trim().split(/\s+/)[0].replace(/[.,;:]+$/,"").slice(0,120);
   if(internalInvoiceNumber)data.number=internalInvoiceNumber;
   delete data.internalIdValue;
   ["issuerName","issuerTaxNumber","recipientName","recipientTaxNumber"].forEach(key=>{if(etaParties[key])data[key]=etaParties[key];else if(key.endsWith("TaxNumber"))data[key]=normalizeTaxRegistrationNumber(data[key]);});
