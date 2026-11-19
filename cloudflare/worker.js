@@ -2395,7 +2395,7 @@ async function googleDriveDelete(accessToken,id){
   if(!response.ok&&response.status!==404)throw new Error("Google Drive file deletion failed (HTTP "+response.status+").");
 }
 function attachmentEntityModule(type){const map={project:"projects",projectEvent:"projects",client:"master",vendor:"master",task:"tasks",message:"messages",cashCustody:"cashCustody",cashCustodyDraft:"cashCustody",financial:"reports",company:"settings"};if(!map[type])throw new Error("Unsupported attachment record type.");return map[type];}
-async function validateAttachmentEntity(type,id,claims,profile,token,action,ownerUid){
+async function validateAttachmentEntity(type,id,claims,profile,token,action,ownerUid,env){
   const entityType=cleanText(type,24),entityId=entityType==="company"?"company":safeSegment(id,"attachment record id"),moduleId=attachmentEntityModule(entityType);
   if(entityType==="company"){if(profile.role!=="admin")throw new Error("Company-wide attachments are restricted to administrators.");}
   else{
@@ -2446,9 +2446,12 @@ async function validateAttachmentEntity(type,id,claims,profile,token,action,owne
       // to another user's rows still requires the explicit viewOthers grant.
       if(ownerUid!==claims.sub&&!hasPermission(profile,"cashCustody","viewOthers"))throw new Error("Permission denied: viewing another user's cash custody.");
     }else if(entityType==="financial"){
-      const invoice=await databaseRequest("financial/documents/"+entityId,token,"GET");
+      // Financial data is private under RTDB Rules. Resolve attachment ownership
+      // with the Worker's service account, then apply the caller's module rights below.
+      const databaseAccessToken=await getFirebaseDatabaseAccessToken(env);
+      const invoice=await adminDatabaseRequest("financial/documents/"+entityId,databaseAccessToken,"GET");
       const assignment=invoice&&invoice.status==="assigned"&&invoice.assignedTo===claims.sub&&invoice.assignmentId
-        ?await databaseRequest("financial/assignments/"+claims.sub+"/"+invoice.assignmentId,token,"GET"):null;
+        ?await adminDatabaseRequest("financial/assignments/"+claims.sub+"/"+safeSegment(invoice.assignmentId,"financial assignment id"),databaseAccessToken,"GET"):null;
       const currentAssignee=!!(assignment&&assignment.status==="open"&&assignment.assigneeUid===claims.sub);
       const reviewEditor=!!(invoice&&["pending_review","duplicate_review"].includes(invoice.status)&&hasPermission(profile,"financial_review",action==="view"?"view":"edit"));
       if(currentAssignee){
@@ -2533,7 +2536,7 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
   if(url.pathname==="/attachments/usage"&&request.method==="GET"){requirePermission(profile,"attachments","view");return driveStorageRequest(env,"/attachment-usage","GET");}
   if(url.pathname==="/attachments"&&request.method==="GET"){
     const type=cleanText(url.searchParams.get("entityType"),24),entityId=cleanText(url.searchParams.get("entityId"),120);
-    await validateAttachmentEntity(type,entityId,claims,profile,token,"view");
+    await validateAttachmentEntity(type,entityId,claims,profile,token,"view",undefined,env);
     const result=await driveStorageRequest(env,"/attachment-records","GET",null,{entityType:type,entityId});
     return {attachments:result.attachments||[]};
   }
@@ -2548,7 +2551,7 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     const mime=String(request.headers.get("Content-Type")||"application/octet-stream").split(";")[0].trim().toLowerCase();
     const ext=(fileName.match(/\.([a-z0-9]{1,10})$/i)||[])[1]?.toLowerCase()||"";
     if(!ATTACHMENT_ALLOWED_TYPES[mime]||!ATTACHMENT_ALLOWED_TYPES[mime].includes(ext))throw new Error("This file type is not allowed. Supported: PDF, JPG, PNG, WebP, DOC, DOCX, XLS, XLSX, CSV and TXT.");
-    await validateAttachmentEntity(type,entityId,claims,profile,token,"upload");
+    await validateAttachmentEntity(type,entityId,claims,profile,token,"upload",undefined,env);
     const length=Number(request.headers.get("Content-Length")||0);if(length>ATTACHMENT_MAX_FILE_BYTES)throw new Error("الحد الأقصى لحجم الملف الواحد 20 MB.");
     const bytes=await request.arrayBuffer();if(!bytes.byteLength)throw new Error("الملف المحدد فارغ.");
     if(bytes.byteLength>ATTACHMENT_MAX_FILE_BYTES)throw new Error("الحد الأقصى لحجم الملف الواحد 20 MB.");
@@ -2578,15 +2581,15 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     if(targetOwner!==claims.sub&&!(profile.role==="admin"&&hasPermission(profile,"cashCustody","viewOthers")))throw new Error("Permission denied: managing another user's cash-custody attachments requires administrator access and cashCustody.viewOthers.");
     const attachment=await findAttachment(env,sourceType,sourceId,id);
     if(attachment.ownerUid!==claims.sub)throw new Error("Permission denied: staged attachment belongs to another user.");
-    await validateAttachmentEntity(sourceType,sourceId,claims,profile,token,"upload",attachment.ownerUid);
-    await validateAttachmentEntity(targetType,targetId,claims,profile,token,"upload",attachment.ownerUid);
+    await validateAttachmentEntity(sourceType,sourceId,claims,profile,token,"upload",attachment.ownerUid,env);
+    await validateAttachmentEntity(targetType,targetId,claims,profile,token,"upload",attachment.ownerUid,env);
     const result=await driveStorageRequest(env,"/attachment-transfer","POST",{id,sourceEntityType:sourceType,sourceEntityId:sourceId,targetEntityType:targetType,targetEntityId:targetId,ownerUid:claims.sub});
     return {success:true,linked:true,attachment:result.attachment};
   }
   if(url.pathname==="/attachments/replace"&&request.method==="POST"){
     const type=cleanText(request.headers.get("X-Attachment-Entity-Type"),24),entityId=cleanText(request.headers.get("X-Attachment-Entity-Id"),120),id=safeSegment(request.headers.get("X-Attachment-Id"),"attachment id");
     const attachment=await findAttachment(env,type,entityId,id);
-    await validateAttachmentEntity(type,entityId,claims,profile,token,"upload",attachment.ownerUid);
+    await validateAttachmentEntity(type,entityId,claims,profile,token,"upload",attachment.ownerUid,env);
     const fileNameHeader=request.headers.get("X-Attachment-File-Name");
     let fileName=attachment.fileName;
     if(fileNameHeader){try{fileName=decodeURIComponent(fileNameHeader);}catch(_){}}
@@ -2613,7 +2616,7 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
   if(url.pathname==="/attachments/annotate"&&request.method==="POST"){
     const type=cleanText(body.entityType,24),entityId=cleanText(body.entityId,120),id=safeSegment(body.id,"attachment id");
     const attachment=await findAttachment(env,type,entityId,id);
-    await validateAttachmentEntity(type,entityId,claims,profile,token,"edit",attachment.ownerUid);
+    await validateAttachmentEntity(type,entityId,claims,profile,token,"edit",attachment.ownerUid,env);
     const note=cleanText(body.note||"",2000);
     const updated={...attachment,note,updatedAt:new Date().toISOString(),updatedByName:String(profile.fullName||profile.username||"").slice(0,120)};
     await driveStorageRequest(env,"/attachment-record","POST",{attachment:updated});
@@ -2622,7 +2625,7 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
   if(url.pathname==="/attachments/file"&&request.method==="GET"){
     const type=cleanText(url.searchParams.get("entityType"),24),entityId=cleanText(url.searchParams.get("entityId"),120),id=safeSegment(url.searchParams.get("id"),"attachment id");
     const attachment=await findAttachment(env,type,entityId,id);
-    await validateAttachmentEntity(type,entityId,claims,profile,token,"view",attachment.ownerUid);
+    await validateAttachmentEntity(type,entityId,claims,profile,token,"view",attachment.ownerUid,env);
     const connection=await getGoogleDriveConnection(env);if(!connection||!connection.encryptedRefreshToken)throw new Error("Google Drive is disconnected.");
     const accessToken=await googleDriveAccessToken(env,connection);
     const response=await fetch("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(attachment.driveFileId)+"?alt=media",{headers:{Authorization:"Bearer "+accessToken}});
@@ -2634,7 +2637,7 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
   if(url.pathname==="/attachments"&&request.method==="DELETE"){
     const type=cleanText(body.entityType,24),entityId=cleanText(body.entityId,120),id=safeSegment(body.id,"attachment id");
     const attachment=await findAttachment(env,type,entityId,id);
-    await validateAttachmentEntity(type,entityId,claims,profile,token,"delete",attachment.ownerUid);
+    await validateAttachmentEntity(type,entityId,claims,profile,token,"delete",attachment.ownerUid,env);
     const connection=await getGoogleDriveConnection(env);if(!connection||!connection.encryptedRefreshToken)throw new Error("Google Drive is disconnected.");
     const accessToken=await googleDriveAccessToken(env,connection);await googleDriveDelete(accessToken,attachment.driveFileId);
     await driveStorageRequest(env,"/attachment-record","DELETE",null,{entityType:type,entityId,id});
