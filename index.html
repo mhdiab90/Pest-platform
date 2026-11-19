@@ -4305,7 +4305,7 @@ function App(){
   }
 
   function openFinancialPartyMaster(payload){
-    if(!requirePermission('master','add'))return;
+    if(!requirePermission('master','add')&&!requirePermission('financial_masters','add'))return;
     const type=payload&&payload.partyType==='vendor'?'vendor':'client';
     const defaults=Object.assign({},payload&&payload.defaults||{});
     delete defaults.partyType;
@@ -4320,7 +4320,9 @@ function App(){
   }
 
   async function addMaster(e){
-    e.preventDefault();if(!requirePermission('master',editingMasterCode?'edit':'add'))return;
+    e.preventDefault();
+    const masterAction=editingMasterCode?'edit':'add';
+    if(!requirePermission('master',masterAction)&&!requirePermission('financial_masters',masterAction))return;
     const type=master.type;const path=type==='client'?'clients':'vendors';
     const code=String(master.code||'').trim();const name=String(master.name||'').trim();
     if(!code||!name) return alert(tr('noData'));
@@ -4331,7 +4333,7 @@ function App(){
       const previousSnap=editingMasterCode?await db.ref(path+'/'+editingMasterCode).once('value'):null;
       const previousRecord=previousSnap?previousSnap.val():null;
       const response=await attachmentWorkerRequest('/finance','POST',{
-        action:'saveMaster',kind:'parties',permissionModule:'master',
+        action:'saveMaster',kind:'parties',
         ...(editingMasterCode?{originalCode:editingMasterCode}:{}),item:record
       });
       if(!response||response.success!==true||!response.item)throw new Error('تعذر تأكيد حفظ بيانات العميل / المورد.');
@@ -4354,16 +4356,16 @@ function App(){
     }catch(err){alert(firebaseErrorMessage(err,tr));}
   }
 
-  function editMasterRecord(type,item){if(!requirePermission('master','edit'))return;
+  function editMasterRecord(type,item){if(!requirePermission('master','edit')&&!requirePermission('financial_masters','edit'))return;
     setMasterPendingAttachments([]);setMaster({...blankMaster(type),...item,type});setEditingMasterCode(item.code||'');setMasterFormOpen(true);
     setTab('master');window.scrollTo({top:0,behavior:'smooth'});
   }
   async function deleteMasterRecord(type,item){
-    if(!item||!requirePermission('master','delete'))return;
+    if(!item||(!requirePermission('master','delete')&&!requirePermission('financial_masters','delete')))return;
     const warning=rtl?'سيتم حذف السجل إذا لم يكن مرتبطًا بحركات أو أرصدة. إذا كان مستخدمًا، سيتم إيقافه مع الاحتفاظ بالتاريخ المحاسبي.':'Unused records are deleted. Referenced records are deactivated so historical accounting remains intact.';
     if(!window.confirm(warning+'\n\n'+(item.name||item.code)+' ('+item.code+')'))return;
     try{
-      const result=await attachmentWorkerRequest('/finance','POST',{action:'deleteMaster',kind:'parties',permissionModule:'master',code:item.code});
+      const result=await attachmentWorkerRequest('/finance','POST',{action:'deleteMaster',kind:'parties',code:item.code});
       if(result.deactivated){
         await addLog('إيقاف '+(type==='client'?'عميل: ':'مورد: ')+(item.name||item.code),currentUser,{entityType:type,entityId:item.code,changes:auditChanges(item,result.item),metadata:{references:result.references||[]}});
         alert((rtl?'هذا السجل مستخدم في بيانات سابقة، لذلك تم إيقافه بدلًا من محو تاريخه: ':'This record is referenced, so it was deactivated instead of erasing its history: ')+(result.references||[]).join('، '));
