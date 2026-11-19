@@ -31,7 +31,9 @@ async function adminPutRoot(path, value) {
   write(path, value);
   return true;
 }
+const adminPatchRootCalls = [];
 async function adminPatchRoot(updates) {
+  adminPatchRootCalls.push(updates);
   for (const [path, value] of Object.entries(updates)) {
     write(path.startsWith("financial/") ? path.slice("financial/".length) : path, value);
   }
@@ -730,4 +732,79 @@ test("master permission cannot be used to edit or delete financial master record
   assert.equal(read("clients/PERMITTED-CLIENT-001").name,"Permitted customer");
   const deleted=await invokeAsUser("POST","",{action:"deleteMaster",kind:"parties",permissionModule:"master",code:"PERMITTED-CLIENT-001"});
   assert.equal(deleted.deleted,true,"the master permission can delete an unused customer/supplier record");
+});
+
+
+test("invoice delegation and return use scoped RTDB writes and return-to-review queue is preserved", async () => {
+  const invoiceId = "INV-DELEGATION-SCOPED-01";
+  const assigneeUid = "finance-assignee-01";
+  const ownerUid = claims.sub;
+  const rootPatchCount = adminPatchRootCalls.length;
+  write("financial/chartOfAccounts/6100", {code:"6100",name:"مصروفات تشغيل",type:"expense",nature:"debit",active:true});
+  write("financial/parties/VENDOR-DELEGATION-01", {code:"VENDOR-DELEGATION-01",name:"Supplier Delegation",partyType:"vendor",active:true});
+  write("users/" + assigneeUid, {uid:assigneeUid,status:"active",fullName:"Finance Assignee"});
+  write("financial/documents/" + invoiceId, {
+    id:invoiceId,type:"invoice",invoiceType:"purchase",status:"draft",createdBy:ownerUid,
+    createdByName:"Finance Test",number:"PUR-DELEGATION-01",date:"2026-11-19",
+    partyId:"VENDOR-DELEGATION-01",partyName:"Supplier Delegation",currency:"EGP",
+    lines:[{description:"Maintenance service",kind:"service",accountCode:"6100",quantity:1,unitPrice:100}]
+  });
+
+  const assigned = await invoke("POST","",{
+    action:"assignInvoice",invoiceId,assigneeUid,instruction:"استكمال تصنيف بنود الفاتورة"
+  });
+  assert.equal(assigned.success,true);
+  assert.equal(assigned.status,"assigned");
+  assert.equal(read("financial/documents/" + invoiceId).status,"assigned");
+  assert.equal(read("financial/documents/" + invoiceId).assignedTo,assigneeUid);
+  assert.equal(read("financial/assignments/" + assigneeUid + "/" + assigned.assignmentId).status,"open");
+  assert.equal(read("tasks/" + assigneeUid + "/" + assigned.taskId).kind,"financialAssignment");
+  assert.equal(read("cashCustodyNotifications/" + assigneeUid + "/" + assigned.assignmentId).type,"financialAssignment");
+  assert.ok(adminPatchRootAtCalls.some(call=>call.path==="tasks"));
+  assert.ok(adminPatchRootAtCalls.some(call=>call.path==="cashCustodyNotifications"));
+  assert.equal(adminPatchRootCalls.length,rootPatchCount,"assignment must not PATCH the RTDB root");
+
+  const assigneeProfile={uid:assigneeUid,role:"user",status:"active",fullName:"Finance Assignee"};
+  const completed = await invoke("POST","",{
+    action:"completeInvoiceAssignment",assignmentId:assigned.assignmentId,
+    lines:[{index:0,kind:"service",accountCode:"6100"}]
+  },{profile:assigneeProfile,claims:{sub:assigneeUid}});
+  assert.equal(completed.success,true);
+  assert.equal(completed.status,"returned_to_creator");
+  assert.equal(read("financial/documents/" + invoiceId).status,"returned_to_creator");
+  assert.equal(read("financial/documents/" + invoiceId).assignedTo,null);
+  assert.equal(read("financial/documents/" + invoiceId).lines[0].accountCode,"6100");
+  assert.equal(read("financial/assignments/" + assigneeUid + "/" + assigned.assignmentId).status,"completed");
+  const returnedTaskId=read("financial/documents/" + invoiceId).returnedTaskId;
+  assert.equal(read("tasks/" + ownerUid + "/" + returnedTaskId).kind,"financialAssignmentReturned");
+  assert.equal(read("cashCustodyNotifications/" + ownerUid + "/" + returnedTaskId).type,"financialAssignmentReturned");
+  assert.equal(adminPatchRootCalls.length,rootPatchCount,"returning the invoice must not PATCH the RTDB root");
+
+  const resubmitted = await invoke("POST","",{
+    action:"submitInvoice",id:invoiceId,type:"purchase",date:"2026-11-19",
+    number:"PUR-DELEGATION-01",partyId:"VENDOR-DELEGATION-01",partyName:"Supplier Delegation",
+    currency:"EGP",taxRate:0,taxAmount:0,
+    lines:[{description:"Maintenance service",kind:"service",accountCode:"6100",quantity:1,unitPrice:100}]
+  });
+  assert.equal(resubmitted.status,"pending_review");
+  assert.equal(read("financial/documents/" + invoiceId).status,"pending_review");
+  assert.ok(read("financial/reviewQueue/" + invoiceId),"resubmitted invoice must reappear in the review queue");
+  assert.equal(read("tasks/" + ownerUid + "/" + returnedTaskId + "/status"),"completed");
+  assert.equal(adminPatchRootCalls.length,rootPatchCount,"invoice resubmission must not PATCH the RTDB root");
+});
+
+test("finance endpoints request screen-specific permission scopes", async () => {
+  const seen=[];
+  const requireScoped=(requestProfile,moduleId,action)=>{
+    seen.push([moduleId,action]);
+    if(moduleId!=="financial_assignments"||action!=="add")throw new Error("wrong permission scope: "+moduleId+"."+action);
+    return true;
+  };
+  write("financial/documents/INV-PERMISSION-SCOPE",{id:"INV-PERMISSION-SCOPE",type:"invoice",status:"draft",createdBy:claims.sub});
+  write("users/finance-assignee-permission",{uid:"finance-assignee-permission",status:"active"});
+  const result=await invoke("POST","",{
+    action:"assignInvoice",invoiceId:"INV-PERMISSION-SCOPE",assigneeUid:"finance-assignee-permission"
+  },{requirePermission:requireScoped});
+  assert.equal(result.status,"assigned");
+  assert.deepEqual(seen[0],["financial_assignments","add"]);
 });
