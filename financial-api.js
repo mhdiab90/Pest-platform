@@ -372,12 +372,7 @@ export async function handleFinancialRequest(ctx){
    requireFinanceArea("assignments","view");
    const assigned=(await adminRead("assignments/"+claims.sub))||{};
    const sent=(await adminRead("sentAssignments/"+claims.sub))||{};
-   const toInvoiceSummary=invoice=>invoice?{
-    id:invoice.id,date:invoice.date,number:invoice.number,invoiceType:invoice.invoiceType,
-    partyName:invoice.partyName,partyId:invoice.partyId,lines:invoice.lines||[],
-    currency:invoice.currency||"EGP",total:invoice.total||0,projectCode:invoice.projectCode||"",
-    status:invoice.status
-   }:null;
+   const toInvoiceSummary=invoice=>invoice?{...invoice,lines:Array.isArray(invoice.lines)?invoice.lines.map(line=>({...line})):[],attachments:invoice.attachments||{}}:null;
    const output=[];
    for(const [assignmentId,record] of Object.entries(assigned)){
     if(!record||record.assigneeUid!==claims.sub||record.status!=="open")continue;
