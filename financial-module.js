@@ -112,6 +112,9 @@ function FinanceModule(props){
    const b=await api('?resource=bootstrap');
    const [r,d]=await Promise.all([api('?resource=review'),api('?resource=documents')]);
    setMaster(Object.assign({chartOfAccounts:{},costCenters:{},items:{},itemGroups:{},warehouses:{},bankAccounts:{},taxCodes:{},parties:{},settings:{},inventory:{balances:{}}},b));
+   const partyRows=rows(b.parties||{});
+   setClients(partyRows.filter(item=>item.partyType==='customer'));
+   setVendors(partyRows.filter(item=>item.partyType==='vendor'));
    setAccountingStartMonth(b.settings&&b.settings.accountingStartMonth||'');
    setReview(rows(r.items).filter(item=>['pending_review','duplicate_review'].includes(item.status)).sort((a,b)=>n(b.createdAt)-n(a.createdAt)));
    setDocuments(rows(d.items).sort((a,b)=>n(b.createdAt)-n(a.createdAt)));
