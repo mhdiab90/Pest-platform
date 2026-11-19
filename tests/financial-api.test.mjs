@@ -421,8 +421,12 @@ test("review inbox retains incomplete invoices and lets reviewers correct them w
   write("documents/"+submitted.id+"/attachmentUploadStatus","pending");
   write("documents/"+submitted.id+"/attachmentFileName","invoice-original.pdf");
 
-  const incomplete=await invoke("POST","",{...payload,id:submitted.id,lines:[]});
-  assert.equal(incomplete.status,"pending_review","incomplete resubmission stays in the review queue");
+  const incomplete=await invoke("POST","",{
+    action:"updateReviewInvoice",id:submitted.id,
+    invoice:{invoiceType:"purchase",date:"2026-11-18",number:"PUR-REVIEW-FLOW-01",partyId:"VENDOR-REVIEW-01",partyName:"Review Supplier",currency:"EGP",taxCode:"VAT-IN-14",taxType:"vat_input",taxRate:14,taxAmount:"",discount:0},
+    lines:[]
+  });
+  assert.equal(incomplete.status,"pending_review","reviewer can retain an incomplete invoice in the queue while correcting it");
   assert.equal(read("reviewQueue/"+submitted.id).status,"pending_review");
   assert.equal(read("documents/"+submitted.id+"/status"),"pending_review");
   assert.ok(read("documents/"+submitted.id+"/errors").length>0,"missing invoice lines are visible to the reviewer as validation errors");
