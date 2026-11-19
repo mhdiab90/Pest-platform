@@ -2923,7 +2923,7 @@ function App(){
   const totalPayablesEgp=cashMapToEgpTotal(payablesMap);
   const netPositionEgp=totalReceivablesEgp===null||totalPayablesEgp===null?null:totalReceivablesEgp-totalPayablesEgp;
   const missingPositionRates=[...new Set([...cashMapMissingRates(receivablesMap),...cashMapMissingRates(payablesMap)])];
-  const isProjectCompleted=p=>/complete|completed|مكتمل|مغلق|منتهي|منتهى|done/i.test(String(p.status||''));
+  const isProjectCompleted=p=>/complete|completed|مكتمل|مغلق|منتهي|منتهى|done|archived|مؤرشف/i.test(String(p.status||''))||p.active===false;
   const nowLocal=new Date();
   const todayKey=`${nowLocal.getFullYear()}-${String(nowLocal.getMonth()+1).padStart(2,'0')}-${String(nowLocal.getDate()).padStart(2,'0')}`;
   const completedProjectCount=selectedProjectsForCash.filter(isProjectCompleted).length;
@@ -4359,8 +4359,40 @@ function App(){
     setProjectPendingAttachments([]);setProject({...blankProject(),...item,clientCodes:item.clientCodes|| (item.clientCode?[item.clientCode]:[]),vendorCodes:item.vendorCodes||[]});
     setEditingProjectCode(item.code);setProjectFormOpen(true);setTab('projects');window.scrollTo({top:0,behavior:'smooth'});
   }
-  async function deleteProjectRecord(item){if(!item||!requirePermission('projects','delete'))return;const events=projectEvents(item),financialEvents=events.filter(ev=>Number(ev.amount||0)>0||['cash_in','cash_out','receivable','payable'].includes(ev.financialEffect||''));const warning=rtl?'سيتم حذف المشروع وجميع أحداثه وملخصاته التابعة، وسيظل أثر الحذف في سجل النشاط.':'This permanently removes the project and its timeline events. The deletion remains recorded in the audit log.';if(!window.confirm(warning+'\n\n'+(rtl?'عدد الأحداث: ':'Timeline events: ')+events.length+' · '+(rtl?'أحداث مالية: ':'Financial events: ')+financialEvents.length))return;try{await deleteRecordAttachments('project',item.code);for(const ev of events)await deleteRecordAttachments('projectEvent',item.code+'--'+ev.id);await db.ref('projects/'+item.code).remove();await addLog('حذف مشروع: '+(item.name||item.code),currentUser,{entityType:'project',entityId:item.code,changes:auditChanges(item,null),metadata:{deletedEvents:events.length,deletedFinancialEvents:financialEvents.length}});if(selectedProjectCode===item.code)setSelectedProjectCode('');if(editingProjectCode===item.code){setEditingProjectCode('');setProject(blankProject());setProjectFormOpen(false);}setTab('projects');}catch(err){alert((rtl?'تعذر حذف المشروع بالكامل: ':'Could not complete project deletion: ')+String(err.message||err));}}
-
+  async function deleteProjectRecord(item){
+    if(!item||!requirePermission('projects','delete'))return;
+    const events=projectEvents(item);
+    const financialEvents=events.filter(ev=>Number(ev.amount||0)>0||['cash_in','cash_out','receivable','payable'].includes(ev.financialEffect||''));
+    try{
+      const [quoteSnap,inflowSnap,outflowSnap]=await Promise.all([
+        db.ref('quotes').once('value'),db.ref('inflows').once('value'),db.ref('outflows').once('value')
+      ]);
+      const linkedLegacy={
+        quotes:Object.values(quoteSnap.val()||{}).filter(row=>String(row&&row.projectCode||'')===String(item.code)).length,
+        inflows:Object.values(inflowSnap.val()||{}).filter(row=>String(row&&row.projectCode||'')===String(item.code)).length,
+        outflows:Object.values(outflowSnap.val()||{}).filter(row=>String(row&&row.projectCode||'')===String(item.code)).length
+      };
+      const hasFinancialHistory=financialEvents.length||linkedLegacy.quotes||linkedLegacy.inflows||linkedLegacy.outflows;
+      if(hasFinancialHistory){
+        if(!window.confirm((rtl?'المشروع مرتبط بحركات أو مستندات مالية. سيتم أرشفته وإخفاؤه من المشروعات النشطة مع الاحتفاظ بكل الأحداث والأرصدة والتقارير.':'This project has financial history. It will be archived and excluded from active projects while all events, balances and reports are preserved.')+'\n\n'+(rtl?'عدد الأحداث المالية: ':'Financial events: ')+financialEvents.length+' · '+(rtl?'عروض أسعار: ':'Quotations: ')+linkedLegacy.quotes+' · '+(rtl?'تحصيلات: ':'Collections: ')+linkedLegacy.inflows+' · '+(rtl?'مدفوعات: ':'Payments: ')+linkedLegacy.outflows))return;
+        const archived={...item,status:'مؤرشف',active:false,archivedAt:firebase.database.ServerValue.TIMESTAMP,archivedBy:currentUser.uid,archivedByName:currentUser.fullName||currentUser.username||''};
+        await db.ref('projects/'+item.code).update({status:archived.status,active:false,archivedAt:archived.archivedAt,archivedBy:archived.archivedBy,archivedByName:archived.archivedByName});
+        await addLog('أرشفة مشروع ذي تاريخ مالي: '+(item.name||item.code),currentUser,{entityType:'project',entityId:item.code,changes:auditChanges(item,archived),metadata:{financialEvents:financialEvents.length,linkedLegacy}});
+        setTab('projects');
+        alert(rtl?'تمت أرشفة المشروع مع الحفاظ على تاريخه المالي.':'The project was archived and its financial history was preserved.');
+        return;
+      }
+      if(!window.confirm((rtl?'حذف المشروع وجميع أحداثه غير المالية نهائيًا؟ ':'Permanently delete this project and its non-financial events? ')+item.code+' · '+events.length+' '+(rtl?'حدث':'events')))return;
+      await deleteRecordAttachments('project',item.code);
+      for(const ev of events)await deleteRecordAttachments('projectEvent',item.code+'--'+ev.id);
+      await db.ref('projects/'+item.code).remove();
+      await addLog('حذف مشروع: '+(item.name||item.code),currentUser,{entityType:'project',entityId:item.code,changes:auditChanges(item,null),metadata:{deletedEvents:events.length,deletedFinancialEvents:0}});
+      if(selectedProjectCode===item.code)setSelectedProjectCode('');
+      if(editingProjectCode===item.code){setEditingProjectCode('');setProject(blankProject());setProjectFormOpen(false);}
+      setTab('projects');
+      alert(rtl?'تم حذف المشروع.':'Project deleted.');
+    }catch(err){alert((rtl?'تعذر حذف / أرشفة المشروع: ':'Could not delete/archive project: ')+String(err.message||err));}
+  }
 
   async function closeProjectFinancialEvent(projectRecord,eventRecord){
     if(!requirePermission('projects','edit')||!projectRecord||!eventRecord||!['receivable','payable'].includes(eventRecord.financialEffect)||isClosedFinancialEvent(eventRecord))return;
@@ -4420,7 +4452,33 @@ function App(){
   }
 
   function editProjectEventRecord(ev){if(ev?.linkedCashCustodyId)return alert(rtl?'هذا الحدث مرتبط بحركة عهدة. عدّل حركة العهدة الأصلية حتى يتم تحديث التقرير.':'This event is linked to a custody movement. Edit the original custody entry to keep records synchronized.');if(!requirePermission('projects','edit'))return;setEventPendingAttachments([]);setProjectEvent({...blankProjectEvent(),...ev,actionCode:ev.actionCode||ev.type||'general_note',actionName:ev.actionName||eventLabel(ev.type),settledAmount:ev.settledAmount??'',dueDate:ev.dueDate||''});setEditingProjectEventId(ev.id);window.scrollTo({top:0,behavior:'smooth'});}
-  async function deleteProjectEventRecord(ev){if(ev?.linkedCashCustodyId)return alert(rtl?'هذا الحدث مرتبط بحركة عهدة. احذف حركة العهدة الأصلية إذا أردت حذف الحدث.':'This event is linked to a custody movement. Delete the original custody entry to remove this event.');if(!requirePermission('projects','delete'))return;if(!window.confirm(rtl?'هل تريد حذف هذا الحدث؟ سيتم تحديث ملخصات المشروع والتقارير، وستظل عملية الحذف مسجلة في سجل النشاط.':'Delete this event? Project summaries and reports will be recalculated; the deletion will remain in the audit log.'))return;try{await deleteRecordAttachments('projectEvent',selectedProjectCode+'--'+ev.id);await db.ref('projects/'+selectedProjectCode+'/events/'+ev.id).remove();await addLog('حذف حدث '+(ev.actionName||eventLabel(ev.type)),currentUser,{entityType:'project-event',entityId:selectedProjectCode+'/'+ev.id,changes:auditChanges(ev,null)});if(editingProjectEventId===ev.id){setEditingProjectEventId('');setProjectEvent(blankProjectEvent());}}catch(err){alert(firebaseErrorMessage(err,tr));}}
+  async function deleteProjectEventRecord(ev){
+    if(ev?.linkedCashCustodyId)return alert(rtl?'هذا الحدث مرتبط بحركة عهدة. احذف حركة العهدة الأصلية إذا أردت حذف الحدث.':'This event is linked to a custody movement. Delete the original custody entry to remove this event.');
+    if(!requirePermission('projects','delete')||!ev)return;
+    const financialEffect=['cash_in','cash_out','receivable','payable'].includes(String(ev.financialEffect||''));
+    const settled=Number(ev.settledAmount||0)>0||['full','completed','paid','collected','تم السداد','تم التحصيل','تم الدفع','تم القبض','تم التنفيذ','منفذ'].includes(String(ev.status||'').toLowerCase());
+    if(financialEffect&&settled){
+      return alert(rtl?'لا يمكن حذف حدث مالي تمت تسويته أو تسجيل تحصيل/سداد له. صحّح الحركة من شاشة العهدة أو النظام المالي حتى لا يتغير رصيد محاسبي سابق.':'A settled financial event cannot be deleted here. Correct it from Cash Custody or Financial Accounting so posted balances are not changed.');
+    }
+    if(financialEffect||Number(ev.amount||0)>0){
+      if(!window.confirm(rtl?'هذا حدث مالي غير مسوّى. سيتم إلغاؤه مع الاحتفاظ بسجله وعدم حذفه نهائيًا. هل تريد المتابعة؟':'This is an unsettled financial event. It will be cancelled and retained in history, not physically erased. Continue?'))return;
+      const cancelled={...ev,status:'cancelled',cancelledAt:firebase.database.ServerValue.TIMESTAMP,cancelledBy:currentUser.uid,cancelledByName:currentUser.fullName||currentUser.username||'',cancellationNote:'Cancelled by user from project timeline'};
+      try{
+        await db.ref('projects/'+selectedProjectCode+'/events/'+ev.id).update({status:'cancelled',cancelledAt:cancelled.cancelledAt,cancelledBy:cancelled.cancelledBy,cancelledByName:cancelled.cancelledByName,cancellationNote:cancelled.cancellationNote});
+        await addLog('إلغاء حدث مالي: '+(ev.actionName||eventLabel(ev.type)),currentUser,{entityType:'project-event',entityId:selectedProjectCode+'/'+ev.id,changes:auditChanges(ev,cancelled)});
+        alert(rtl?'تم إلغاء الحدث مع الاحتفاظ بتاريخه.':'Financial event cancelled; its history was preserved.');
+      }catch(err){alert(firebaseErrorMessage(err,tr));}
+      return;
+    }
+    if(!window.confirm(rtl?'هل تريد حذف هذا الحدث نهائيًا؟ ستظل عملية الحذف مسجلة في سجل النشاط.':'Permanently delete this non-financial event? The deletion remains in the audit log.'))return;
+    try{
+      await deleteRecordAttachments('projectEvent',selectedProjectCode+'--'+ev.id);
+      await db.ref('projects/'+selectedProjectCode+'/events/'+ev.id).remove();
+      await addLog('حذف حدث '+(ev.actionName||eventLabel(ev.type)),currentUser,{entityType:'project-event',entityId:selectedProjectCode+'/'+ev.id,changes:auditChanges(ev,null)});
+      if(editingProjectEventId===ev.id){setEditingProjectEventId('');setProjectEvent(blankProjectEvent());}
+      alert(rtl?'تم حذف الحدث.':'Event deleted.');
+    }catch(err){alert(firebaseErrorMessage(err,tr));}
+  }
 
   function reportAsMessage(){
     setMessageMode('direct');setSelectedMessageRecipients([]);
