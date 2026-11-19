@@ -623,6 +623,48 @@ function FinanceModule(props){
    await api('', 'POST',{action:'saveMaster',kind:f.kind,item});setNotice('تم حفظ الكود');setMasterForm(o=>Object.assign({},o,{code:'',name:''}));await refresh();
   }catch(e){setError(e.message||String(e));}finally{setBusy(false);}
  };
+ const openJournalModal=doc=>{
+  setJournalModal(Object.assign({},doc));
+  setJournalModalDraft({id:doc.id,date:doc.date||today(),description:doc.description||"",reference:doc.reference||"",currency:doc.currency||"EGP",sourceType:doc.sourceType||"manual",reversalOf:doc.reversalOf||"",status:doc.status||"posted",lines:(doc.lines||[]).map(line=>Object.assign({},line))});
+ };
+ const updateJournalModalLine=(index,key,value)=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).map((line,i)=>i===index?Object.assign({},line,{[key]:value}):line)}));
+ const saveJournalModal=async()=>{
+  if(!journalModalDraft)return;
+  const draft=journalModalDraft,manual=!draft.sourceType||draft.sourceType==="manual",reviewEditable=["projectEvent","cashCustody"].includes(draft.sourceType)&&["pending_review","needs_correction"].includes(draft.status);
+  if(!manual&&!reviewEditable){setError("هذا القيد مرتبط بمستند مصدر. صحح المستند الأصلي أو عدّل القيد من قائمة المراجعة.");return;}
+  if(!canFinance(manual?"journal":"review","edit")){setError("ليس لديك صلاحية تعديل هذا القيد.");return;}
+  setBusy(true);setError("");
+  try{
+   const result=manual
+    ?await api("","POST",{action:"submitJournal",id:draft.id,date:draft.date,description:draft.description,reference:draft.reference,currency:"EGP",lines:draft.lines})
+    :await api("","POST",{action:"updateReviewJournal",id:draft.id,journal:{date:draft.date,description:draft.description,reference:draft.reference},lines:draft.lines});
+   setNotice(result.status==="posted"?"تم تعديل القيد المرحّل وتحديث الأستاذ ومراكز التكلفة.":(result.errors||[]).length?"تم حفظ التعديلات وما زالت هناك أخطاء يجب تصحيحها.":"تم حفظ تعديلات القيد وإبقاؤه في مسار المراجعة.");
+   setJournalModal(null);setJournalModalDraft(null);await refresh();await loadPeriod();
+  }catch(error){setError(error.message||String(error));}
+  finally{setBusy(false);}
+ };
+ const reverseJournal=async doc=>{
+  if(!doc||!canFinance("journal","add")){setError("ليس لديك صلاحية إنشاء قيد عكسي.");return;}
+  if(!window.confirm("إنشاء قيد عكسي للقيد "+(doc.id||"")+"؟ سيُرسل القيد العكسي للمراجعة، ولن يتغير القيد الأصلي قبل الاعتماد."))return;
+  setBusy(true);setError("");
+  try{
+   const result=await api("","POST",{action:"reverseJournal",id:doc.id});
+   setNotice("تم إنشاء القيد العكسي "+result.id+" وإرساله للمراجعة.");
+   setJournalModal(null);setJournalModalDraft(null);await refresh();setTab(canFinance("review","view")?"review":"journal");
+  }catch(error){setError(error.message||String(error));}
+  finally{setBusy(false);}
+ };
+ const cancelJournal=async doc=>{
+  if(!doc||!canFinance("journal","edit")){setError("ليس لديك صلاحية إلغاء القيد.");return;}
+  if(!window.confirm("إلغاء القيد "+(doc.id||"")+"؟ سيُزال من قائمة المراجعة مع الاحتفاظ بسجل الإلغاء."))return;
+  setBusy(true);setError("");
+  try{
+   await api("","POST",{action:"cancelJournal",id:doc.id,reason:"إلغاء من شاشة القيود اليومية"});
+   setNotice("تم إلغاء القيد وإزالته من قائمة المراجعة.");
+   setJournalModal(null);setJournalModalDraft(null);await refresh();
+  }catch(error){setError(error.message||String(error));}
+  finally{setBusy(false);}
+ };
 const deleteJournalDocument=async(doc)=>{
    if(!canFinance("journal","delete")){setError("ليس لديك صلاحية حذف القيود اليومية.");return;}
    if(!window.confirm("تأكيد حذف القيد "+(doc.id||"")+"؟ سيتم حذف أثره من الأستاذ والفترة إذا كان قيدًا مرحلًا يدويًا."))return;
@@ -995,21 +1037,62 @@ const deleteJournalDocument=async(doc)=>{
    h('b',{className:Math.abs(jDebit-jCredit)<0.01?'text-emerald-700':'text-rose-700'},'الفرق: '+fmt(jDebit-jCredit)),
    button('حفظ وإرسال للمراجعة',submitJournal,'primary',busy||!canFinance("journal",journal.id?"edit":"add"))
   );
-   const draftRows = documents.filter(function(x){return x.type==='journal';}).sort((a,b)=>n(b.createdAt)-n(a.createdAt)).map(function(x){
-    const manual=!(x.sourceType&&x.sourceType!=='manual');
-     return h('tr',{key:x.id,className:'border-t'},
-      h('td',{className:'p-2'},x.id),
-      h('td',{className:'p-2'},x.date),
-      h('td',{className:'p-2'},x.description),
-      h('td',{className:'p-2'},status(x.status)),
-      h('td',{className:'p-2'},h('div',{className:'flex flex-wrap gap-1'},
-       button('تعديل',function(){editDoc(x);},'muted',!manual||!canFinance("journal","edit")),
-       button('حذف',function(){void deleteJournalDocument(x);},'danger',!manual||!canFinance("journal","delete"))
-      ))
-     );
+   const journalMap=new Map();
+   documents.filter(function(x){return x.type==='journal';}).forEach(x=>journalMap.set(String(x.id),x));
+   journalRecords.forEach(x=>journalMap.set(String(x.id),x));
+   const allJournalRows=Array.from(journalMap.values()).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||n(b.postedAt||b.createdAt)-n(a.postedAt||a.createdAt));
+   const journalSourceLabel=x=>({invoice:'فاتورة',cash:'الخزينة',bankLine:'البنك',projectEvent:'حدث مشروع',cashCustody:'عهدة شخصية',manual:'يدوي'}[x.sourceType||'manual']||x.sourceType||'يدوي');
+   const draftRows=allJournalRows.map(function(x){
+    const manual=!(x.sourceType&&x.sourceType!=='manual'),posted=x.status==='posted'||journalRecords.some(j=>j.id===x.id&&j.status==='posted');
+    const debit=(x.lines||[]).reduce((sum,line)=>sum+n(line.debit),0),credit=(x.lines||[]).reduce((sum,line)=>sum+n(line.credit),0);
+    return h('tr',{key:x.id,className:'border-t hover:bg-slate-50 cursor-pointer',onClick:()=>openJournalModal(x)},
+     h('td',{className:'p-2'},x.id),
+     h('td',{className:'p-2'},x.date||'—'),
+     h('td',{className:'p-2'},x.description||'—'),
+     h('td',{className:'p-2'},journalSourceLabel(x)),
+     h('td',{className:'p-2'},status(posted?'posted':x.status)),
+     h('td',{className:'p-2 text-end'},fmt(debit)),
+     h('td',{className:'p-2 text-end'},fmt(credit)),
+     h('td',{className:'p-2'},button('فتح القيد',()=>openJournalModal(x),'muted'))
+    );
    });
-   const draftsPanel = panel('سجل القيود اليومية','يمكن تعديل أو حذف القيود اليدوية وفق الصلاحيات. القيود المرتبطة بفواتير أو سندات مصدرية لا تُحذف أو تُعدل من هنا حفاظًا على ترابط المخزون والأستاذ.',table(['رقم','التاريخ','الوصف','الحالة','إجراء'],draftRows));
-  return h('div',{className:'space-y-4'},headerPanel,linesPanel,totalsPanel,draftsPanel);
+   const draftsPanel=panel('سجل القيود اليومية الموحد','يعرض القيود اليدوية والقيود المرحّلة الناتجة عن فواتير العملاء والموردين والخزينة والبنوك، إضافة إلى قيود أحداث المشروعات والعهد. اضغط أي صف لفتح تفاصيله. التعديل المباشر متاح للقيود اليدوية ومسودات أحداث المشروع والعهد داخل المراجعة، والقيود المرحّلة من المصادر الأخرى تُعالج من المستند الأصلي أو بقيد عكسي.',table(['رقم القيد','التاريخ','البيان','المصدر','الحالة','مدين','دائن','إجراء'],draftRows));
+   const modal=journalModal&&journalModalDraft?(()=>{
+    const draft=journalModalDraft,manual=!draft.sourceType||draft.sourceType==='manual',posted=draft.status==='posted'||journalRecords.some(x=>x.id===draft.id&&x.status==='posted'),reviewEditable=['projectEvent','cashCustody'].includes(draft.sourceType)&&['pending_review','needs_correction'].includes(draft.status);
+    const editable=manual||reviewEditable,modalDebit=(draft.lines||[]).reduce((sum,line)=>sum+n(line.debit),0),modalCredit=(draft.lines||[]).reduce((sum,line)=>sum+n(line.credit),0);
+    const modalLines=(draft.lines||[]).map((line,index)=>{
+     const account=accounts.find(x=>x.code===line.accountCode)||{},analyticType=line.partyType||account.subledgerType||'customer',analyticList=analyticType==='vendor'?activeVendors:activeClients;
+     return h('div',{key:index,className:'grid grid-cols-1 md:grid-cols-12 gap-2 rounded-lg border bg-slate-50 p-2'},
+      h('div',{className:'md:col-span-3'},selectWithAdd('الحساب',line.accountCode||'',v=>updateJournalModalLine(index,'accountCode',v),posting.map(x=>({value:x.code,label:x.code+' — '+x.name})),'chartOfAccounts')),
+      h('div',{className:'md:col-span-2'},field('البيان',line.description||'',v=>updateJournalModalLine(index,'description',v))),
+      h('div',{className:'md:col-span-1'},field('مدين',line.debit??'',v=>updateJournalModalLine(index,'debit',v),'number')),
+      h('div',{className:'md:col-span-1'},field('دائن',line.credit??'',v=>updateJournalModalLine(index,'credit',v),'number')),
+      h('div',{className:'md:col-span-2'},selectWithAdd('مركز التكلفة',line.costCenterId||'',v=>updateJournalModalLine(index,'costCenterId',v),[{value:'',label:'بدون مركز تكلفة'}].concat(activeCenters.map(x=>({value:x.code,label:x.code+' — '+x.name}))),'costCenters')),
+      h('div',{className:'md:col-span-2'},selectWithAdd('الطرف',line.partyId||'',v=>{setJournalModalDraft(old=>Object.assign({},old,{lines:old.lines.map((x,i)=>i===index?Object.assign({},x,{partyType:analyticType,partyId:v}):x)}));},[{value:'',label:'بدون طرف'}].concat(analyticList.map(x=>({value:x.code||x.id,label:partyName(x)+' ('+(x.code||x.id)+')'}))),'parties',{partyType:analyticType})),
+      h('div',{className:'md:col-span-1 flex items-end'},button('حذف',()=>setJournalModalDraft(old=>Object.assign({},old,{lines:old.lines.filter((x,i)=>i!==index)})),'danger',!editable))
+     );
+    });
+    return h('div',{className:'fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-3',onClick:()=>{setJournalModal(null);setJournalModalDraft(null);}},
+     h('div',{className:'w-full max-w-6xl max-h-[92vh] overflow-auto rounded-2xl bg-white p-4 shadow-2xl space-y-3',onClick:e=>e.stopPropagation()},
+      h('div',{className:'flex flex-wrap items-center justify-between gap-2'},h('h3',{className:'font-bold text-lg'},'تفاصيل القيد: '+draft.id),button('إغلاق',()=>{setJournalModal(null);setJournalModalDraft(null);},'muted')),
+      h('div',{className:'grid md:grid-cols-3 gap-2'},
+       field('التاريخ',draft.date||'',v=>setJournalModalDraft(old=>Object.assign({},old,{date:v})),'date'),
+       field('المرجع',draft.reference||'',v=>setJournalModalDraft(old=>Object.assign({},old,{reference:v}))),
+       field('البيان',draft.description||'',v=>setJournalModalDraft(old=>Object.assign({},old,{description:v})))
+      ),
+      h('div',{className:'flex flex-wrap gap-3 text-sm'},h('b',null,'المصدر: '+journalSourceLabel(draft)),h('b',null,'الحالة: '+status(draft.status)),draft.reversalOf?h('b',null,'قيد عكسي للقيد: '+draft.reversalOf):null),
+      h('div',{className:'space-y-2'},...modalLines,editable?button('إضافة سطر',()=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).concat([{accountCode:'6100',description:'',debit:0,credit:0,costCenterId:'',partyType:'',partyId:''}])})),'muted'):null),
+      h('div',{className:'flex flex-wrap gap-4 rounded-lg border p-3'},h('b',null,'المدين: '+fmt(modalDebit)),h('b',null,'الدائن: '+fmt(modalCredit)),h('b',{className:Math.abs(modalDebit-modalCredit)<0.01?'text-emerald-700':'text-rose-700'},'الفرق: '+fmt(modalDebit-modalCredit))),
+      h('div',{className:'flex flex-wrap gap-2'},
+       editable?button('حفظ التعديلات',saveJournalModal,'primary',busy):null,
+       posted&&canFinance('journal','add')?button('إنشاء قيد عكسي',()=>void reverseJournal(draft),'success',busy||!!draft.reversalJournalId):null,
+       !posted?button('إلغاء القيد',()=>void cancelJournal(draft),'muted',busy||!canFinance('journal','edit')):null,
+       manual?button('حذف القيد',()=>void deleteJournalDocument(draft),'danger',busy||!canFinance('journal','delete')):null
+      )
+     )
+    );
+   })():null;
+  return h('div',{className:'space-y-4'},headerPanel,linesPanel,totalsPanel,draftsPanel,modal);
  };
  const renderInvoices = function() {
   const headFields = h('div',{className:'grid md:grid-cols-3 gap-3'},
