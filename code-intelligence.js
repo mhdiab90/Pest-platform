@@ -10,6 +10,12 @@
       .replace(/[۰-۹]/g, digit => String(PERSIAN_DIGITS.indexOf(digit)));
   }
 
+  function formatDigits(value, style) {
+    if (style === "arabic") return String(value).replace(/[0-9]/g, digit => ARABIC_DIGITS[Number(digit)]);
+    if (style === "persian") return String(value).replace(/[0-9]/g, digit => PERSIAN_DIGITS[Number(digit)]);
+    return String(value);
+  }
+
   function codeOf(record, codeField) {
     if (typeof record === "string" || typeof record === "number") return String(record);
     if (!record || typeof record !== "object") return "";
@@ -28,7 +34,7 @@
 
   function filterScope(records, options) {
     const groupBy = options && options.groupBy;
-    if (!groupBy || !options || options.groupValue === undefined || options.groupValue === null || options.groupValue === "") return records;
+    if (!groupBy || !options || options.groupValue === undefined || options.groupValue === null) return records;
     const wanted = String(options.groupValue).trim().toLowerCase();
     return records.filter(record => String(record && record[groupBy] != null ? record[groupBy] : "").trim().toLowerCase() === wanted);
   }
@@ -44,6 +50,7 @@
     const index = match.index;
     return {
       code,
+      digitStyle,
       prefix: code.slice(0, index),
       suffix: code.slice(index + match[0].length),
       width: match[0].length,
@@ -117,7 +124,7 @@
     let attempts = 0;
     const width = Math.max(chosen.width, Number(options.minDigits) || 0);
     do {
-      code = chosen.prefix + String(nextValue).padStart(width, "0") + chosen.suffix;
+      code = chosen.prefix + formatDigits(String(nextValue).padStart(width, "0"), chosen.digitStyle) + chosen.suffix;
       nextValue += 1;
       attempts += 1;
       if (attempts > 10000) throw new Error("تعذر إيجاد كود متاح داخل نمط التكويد.");
