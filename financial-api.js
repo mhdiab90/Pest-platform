@@ -734,6 +734,143 @@ export async function handleFinancialRequest(ctx){
   }
   return {success:true,kind,count,created,updated,unchanged};
  }
+ if(action==="submitProjectEvent"){
+  const projectCode=id(body.projectCode),submitted=body.event&&typeof body.event==="object"&&!Array.isArray(body.event)?body.event:{};
+  const eventId=id(submitted.id||uid("PRJ-EVT")),project=adminReadRoot?await adminReadRoot("projects/"+projectCode):null;
+  if(!project||typeof project!=="object")throw new Error("المشروع غير موجود أو لا يمكن الوصول إلى ملفه.");
+  const projectEvents=project.events&&typeof project.events==="object"?project.events:{},previous=projectEvents[eventId]||null;
+  requirePermission(profile,"projects",previous?"edit":"add");
+  const actionCode=txt(submitted.actionCode||"general_note",80),partyType=txt(submitted.partyType||"",16),partyCode=txt(submitted.partyCode||"",120);
+  const partyTypeValid=["vendor","client",""].includes(partyType);
+  if(!partyTypeValid)throw new Error("نوع الطرف المرتبط بالحدث غير صحيح.");
+  const amount=num(submitted.amount||0),settledAmount=num(submitted.settledAmount||0),dateValue=date(submitted.date||"");
+  const configuredEffects={
+   purchase_order:"payable",supplier_commitment:"payable",supplier_invoice:"payable",
+   customer_receivable:"receivable",customer_invoice:"receivable",payment_request:"receivable",retention_due:"receivable",
+   supplier_payment:"cash_out",cash_payment:"cash_out",bank_transfer_out:"cash_out",cheque_issued:"cash_out",cheque_cleared_out:"cash_out",advance_paid:"cash_out",
+   customer_collection:"cash_in",cash_received:"cash_in",bank_transfer_in:"cash_in",cheque_received:"cash_in",cheque_cleared_in:"cash_in",advance_received:"cash_in"
+  };
+  let effect=configuredEffects[actionCode]||"none";
+  if(effect==="none"&&amount>0&&["vendor","client"].includes(partyType))effect=partyType==="vendor"?"payable":"receivable";
+  if(amount<=0)effect="none";
+  const currency=txt(submitted.currency||project.currency||"EGP",3).toUpperCase();
+  const event={
+   ...(previous||{}),...submitted,id:eventId,projectCode,type:effect==="cash_in"?"customer_collection":effect==="cash_out"?"supplier_payment":effect==="receivable"?"customer_receivable":effect==="payable"?"supplier_commitment":actionCode,
+   actionCode,actionName:txt(submitted.actionName||actionCode,180),financialEffect:effect,date:dateValue,dueDate:txt(submitted.dueDate||"",10),
+   partyType,partyCode,referenceNo:txt(submitted.referenceNo||"",120),quantity:num(submitted.quantity||0),unit:txt(submitted.unit||"",40),
+   amount,settledAmount,currency,status:txt(submitted.status||"open",40),paymentMethod:txt(submitted.paymentMethod||"",40),
+   responsible:txt(submitted.responsible||"",120),priority:txt(submitted.priority||"normal",20),note:txt(submitted.note||"",2000),
+   createdBy:previous&&previous.createdBy||claims.sub,createdByName:previous&&previous.createdByName||txt(profile.fullName||profile.username||profile.email,120),
+   createdAt:previous&&previous.createdAt||now,updatedAt:previous?now:undefined,updatedBy:previous?claims.sub:undefined
+  };
+  let existingJournal=null;
+  if(previous&&previous.accountingDocumentId){
+   existingJournal=await adminRead("documents/"+id(previous.accountingDocumentId));
+   if(!existingJournal||existingJournal.type!=="journal")throw new Error("القيد المرتبط بالحدث غير موجود؛ أوقف التعديل وراجع سجل النظام.");
+   if(existingJournal.status==="posted"||await adminRead("sourceLocks/projectEvent_"+projectCode+"--"+eventId))throw new Error("تم ترحيل أثر هذا الحدث. لا يمكن تعديل الحدث بعد الترحيل؛ أنشئ حدث تصحيح أو قيدًا عكسيًا.");
+   if(!["pending_review","needs_correction","cancelled"].includes(existingJournal.status))throw new Error("القيد المرتبط بالحدث ليس في حالة تسمح بالتعديل.");
+  }
+  const linkedCodes=partyType==="vendor"?(project.vendorCodes||[]):partyType==="client"?(project.clientCodes|| (project.clientCode?[project.clientCode]:[])):[];
+  if(partyCode&&linkedCodes.length&&!linkedCodes.map(String).includes(String(partyCode)))throw new Error("الطرف المحدد غير مرتبط بهذا المشروع. أضف المورد أو العميل إلى بيانات المشروع أولًا.");
+  if(partyCode&&partyType){
+   const party=adminReadRoot?await adminReadRoot((partyType==="vendor"?"vendors/":"clients/")+id(partyCode)):null;
+   if(!party)throw new Error("العميل أو المورد المحدد غير موجود في البيانات الموحدة.");
+   event.partyName=txt(party.name||party.companyName||party.legalName||event.partyName||partyCode,180);
+  }
+  event.accountingStatus=effect==="none"?"not_applicable":"pending_review";
+  event.accountingImpact=effect!=="none";
+  const rootUpdates={};
+  rootUpdates["projects/"+projectCode+"/lastActivityAt"]=now;
+  rootUpdates["projects/"+projectCode+"/lastActivityType"]=actionCode;
+  let journalId=previous&&previous.accountingDocumentId||"";
+  let journalErrors=[];
+  if(effect!=="none"){
+   if(currency!=="EGP")throw new Error("لا يمكن إنشاء قيد للمشروع بعملة أجنبية قبل تفعيل أسعار الصرف وإعادة التقييم. احفظ الحدث كغير مالي مؤقتًا أو أدخل قيمته بالجنيه المصري.");
+   if(!partyCode&&["vendor","client"].includes(partyType))journalErrors.push("اختر كود العميل أو المورد المرتبط حتى يظهر الأثر في كشف حساب الطرف.");
+   const cashAccount=event.paymentMethod==="bank_transfer"||event.paymentMethod==="cheque"?"1120":"1110";
+   const financialAmount=["cash_in","cash_out"].includes(effect)&&settledAmount>0?settledAmount:amount;
+   if(financialAmount<=0)journalErrors.push("أدخل قيمة مالية أكبر من صفر للحدث المؤثر.");
+   const centerUpdates={};
+   let center=await adminRead("costCenters/"+projectCode);
+   if(!center){
+    center={code:projectCode,name:txt(project.name||project.projectName||projectCode,180),projectCode,isProjectCenter:true,active:true,createdAt:now,createdBy:claims.sub};
+    centerUpdates["costCenters/"+projectCode]=center;
+   }
+   const partyLedgerType=partyType==="vendor"?"vendor":"customer",lines=[];
+   if(effect==="payable"){
+    lines.push({accountCode:"6100",debit:amount,credit:0,description:event.actionName,costCenterId:projectCode,projectCode,partyType:"",partyId:""});
+    lines.push({accountCode:"281",debit:0,credit:amount,description:event.actionName,costCenterId:projectCode,projectCode,partyType:"vendor",partyId:partyCode});
+   }else if(effect==="receivable"){
+    lines.push({accountCode:"1210",debit:amount,credit:0,description:event.actionName,costCenterId:projectCode,projectCode,partyType:"customer",partyId:partyCode});
+    lines.push({accountCode:"4200",debit:0,credit:amount,description:event.actionName,costCenterId:projectCode,projectCode});
+   }else if(effect==="cash_in"){
+    lines.push({accountCode:cashAccount,debit:financialAmount,credit:0,description:event.actionName,costCenterId:projectCode,projectCode});
+    const isAdvance=actionCode==="advance_received";
+    lines.push({accountCode:isAdvance?"2130":"1210",debit:0,credit:financialAmount,description:event.actionName,costCenterId:projectCode,projectCode,partyType:"customer",partyId:partyCode});
+   }else if(effect==="cash_out"){
+    const isAdvance=actionCode==="advance_paid",isVendorPayment=partyType==="vendor"||isAdvance;
+    lines.push({accountCode:isAdvance?"1240":isVendorPayment?"281":"6100",debit:financialAmount,credit:0,description:event.actionName,costCenterId:projectCode,projectCode,...(isVendorPayment?{partyType:"vendor",partyId:partyCode}:{})});
+    lines.push({accountCode:cashAccount,debit:0,credit:financialAmount,description:event.actionName,costCenterId:projectCode,projectCode});
+   }
+   if(lines.length<2)journalErrors.push("تعذر تكوين سطور القيد المقترح لهذا الحدث.");
+   const chart=(await adminRead("chartOfAccounts"))||{},centers=Object.assign({},(await adminRead("costCenters"))||{});
+   if(center)centers[projectCode]=center;
+   const journalIdNext=journalId||uid("PRJ-JRN"),journal={
+    ...(existingJournal||{}),id:journalIdNext,type:"journal",sourceType:"projectEvent",sourceId:projectCode+"--"+eventId,
+    projectCode,date:dateValue,description:"أثر محاسبي لمشروع "+projectCode+" — "+event.actionName,
+    reference:event.referenceNo||eventId,currency:"EGP",lines,status:"pending_review",
+    createdAt:existingJournal&&existingJournal.createdAt||now,createdBy:existingJournal&&existingJournal.createdBy||claims.sub,
+    createdByName:existingJournal&&existingJournal.createdByName||txt(profile.fullName||profile.username||profile.email,120)
+   };
+   const validation=validateJournal(journal,chart,centers);journalErrors=[...new Set([...journalErrors,...validation.errors])];
+   journal.balance=validation.balance;journal.errors=journalErrors;journal.status="pending_review";journal.title="حدث مشروع مؤثر — "+event.actionName;
+   journalId=journal.id;event.accountingDocumentId=journalId;event.accountingJournalId=journalId;event.accountingErrors=journalErrors;
+   rootUpdates["financial/costCenters/"+projectCode]=centerUpdates["costCenters/"+projectCode]||null;
+   if(centerUpdates["costCenters/"+projectCode]===undefined)delete rootUpdates["financial/costCenters/"+projectCode];
+   rootUpdates["financial/documents/"+journalId]=journal;
+   rootUpdates["financial/reviewQueue/"+journalId]=reviewRecord(journal);
+   rootUpdates["financial/audit/"+uid("AUD")]={action:existingJournal?"update_project_event_journal":"submit_project_event_journal",documentId:journalId,sourceId:journal.sourceId,uid:claims.sub,createdAt:now};
+  }else if(existingJournal){
+   rootUpdates["financial/documents/"+existingJournal.id+"/status"]="cancelled";
+   rootUpdates["financial/documents/"+existingJournal.id+"/cancelledAt"]=now;
+   rootUpdates["financial/reviewQueue/"+existingJournal.id]=null;
+   rootUpdates["financial/audit/"+uid("AUD")]={action:"cancel_project_event_journal_after_nonfinancial_edit",documentId:existingJournal.id,sourceId:existingJournal.sourceId,uid:claims.sub,createdAt:now};
+   event.accountingDocumentId=null;event.accountingJournalId=null;event.accountingErrors=[];
+  }
+  rootUpdates["projects/"+projectCode+"/events/"+eventId]=event;
+  const lifecycleStatus={purchase_request:"طلب شراء",supplier_confirmation:"تأكيد المورد",goods_received:"استلام بضاعة",customer_delivery:"توريد للعميل",project_completed:"مكتمل",project_closed:"مغلق"};
+  if(lifecycleStatus[actionCode])rootUpdates["projects/"+projectCode+"/status"]=lifecycleStatus[actionCode];
+  if(!adminPatchRoot)throw new Error("خدمة الحفظ الموحد لأحداث المشروع والقيود المالية غير متاحة.");
+  await adminPatchRoot(rootUpdates);
+  return {success:true,id:eventId,event,accountingStatus:event.accountingStatus,accountingImpact:event.accountingImpact,journalId,errors:journalErrors};
+ }
+ if(action==="updateReviewJournal"){
+  requireFinanceArea("review","edit");
+  const docId=id(body.id),previous=await adminRead("documents/"+docId);
+  if(!previous||previous.type!=="journal"||!["pending_review","needs_correction"].includes(previous.status))throw new Error("القيد غير متاح للتعديل داخل قائمة المراجعة.");
+  if(!["projectEvent","cashCustody"].includes(previous.sourceType||"")&&previous.sourceType!=="manual")throw new Error("نوع القيد المصدر لا يسمح بتعديله من شاشة المراجعة.");
+  const editable=body.journal&&typeof body.journal==="object"&&!Array.isArray(body.journal)?body.journal:{};
+  const next={...previous};
+  if(Object.prototype.hasOwnProperty.call(editable,"date"))next.date=date(editable.date);
+  if(Object.prototype.hasOwnProperty.call(editable,"description"))next.description=txt(editable.description,500);
+  if(Object.prototype.hasOwnProperty.call(editable,"reference"))next.reference=txt(editable.reference,120);
+  next.currency="EGP";
+  if(Array.isArray(body.lines))next.lines=body.lines.slice(0,100).map((line,index)=>{
+   if(!line||typeof line!=="object"||Array.isArray(line))throw new Error("بيانات السطر "+(index+1)+" غير صحيحة.");
+   const row={...(previous.lines&&previous.lines[index]||{}),...line};
+   row.accountCode=txt(row.accountCode||"",32);row.description=txt(row.description||"",250);
+   for(const key of ["debit","credit"])row[key]=row[key]===""||row[key]===undefined?0:num(row[key]||0);
+   for(const key of ["costCenterId","projectCode","partyType","partyId","itemCode","warehouseCode"])if(row[key]!==undefined)row[key]=txt(row[key]||"",120);
+   return row;
+  });
+  if(previous.projectCode)next.lines=next.lines.map(line=>({...line,projectCode:line.projectCode||previous.projectCode,costCenterId:line.costCenterId||previous.projectCode}));
+  const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{},validation=validateJournal(next,chart,centers);
+  next.balance=validation.balance;next.errors=validation.errors;next.status="pending_review";next.updatedAt=now;next.updatedBy=claims.sub;
+  const updates={};updates["documents/"+docId]=next;updates["reviewQueue/"+docId]=reviewRecord(next);
+  updates["audit/"+uid("AUD")]={action:"update_review_journal",documentId:docId,sourceType:next.sourceType||"manual",errors:next.errors,uid:claims.sub,createdAt:now};
+  await adminPatch(updates);
+  return {success:true,id:docId,status:next.status,errors:next.errors,balance:next.balance};
+ }
  if(action==="submitJournal"){
    const journalId=id(body.id||uid("DOC"));let previous=null,postedRecord=null;
    if(body.id){
