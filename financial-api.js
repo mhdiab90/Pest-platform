@@ -838,6 +838,8 @@ export async function handleFinancialRequest(ctx){
    const savedInvoice={...invoice};
    for(const key of ["invoiceType","date","number","partyId","partyName","partyTaxNumber","currency","taxCode","taxType","projectCode"])if(Object.prototype.hasOwnProperty.call(editable,key))savedInvoice[key]=txt(editable[key]||"",key==="partyName"?180:key==="partyTaxNumber"?32:key==="number"?120:key==="date"?10:key==="currency"?3:120);
    for(const key of ["taxRate","taxAmount","discount"])if(Object.prototype.hasOwnProperty.call(editable,key))savedInvoice[key]=editable[key]===""?"":num(editable[key]||0);
+   savedInvoice.taxCode=savedInvoice.invoiceType==="sales"?"VAT-OUT-14":"VAT-IN-14";savedInvoice.taxType=savedInvoice.invoiceType==="sales"?"vat_output":"vat_input";savedInvoice.taxRate=14;
+   if(Object.prototype.hasOwnProperty.call(editable,"otherTaxes"))savedInvoice.otherTaxes=normalizeInvoiceOtherTaxes(editable.otherTaxes);
    const sourceLines=Array.isArray(body.lines)?body.lines.slice(0,100):(invoice.lines||[]);
    const nextLines=sourceLines.map((source,index)=>{
     if(!source||typeof source!=="object"||Array.isArray(source))throw new Error("بيانات البند "+(index+1)+" غير صحيحة.");
@@ -927,6 +929,8 @@ if(action==="forwardInvoiceAssignment"){
    const saved={...invoice};
    for(const key of ["invoiceType","date","number","partyId","partyName","partyTaxNumber","currency","taxCode","taxType","projectCode"])if(Object.prototype.hasOwnProperty.call(header,key))saved[key]=txt(header[key]||"",key==="partyName"?180:key==="partyTaxNumber"?32:key==="number"?120:key==="date"?10:key==="currency"?3:120);
    for(const key of ["taxRate","taxAmount","discount"])if(Object.prototype.hasOwnProperty.call(header,key))saved[key]=header[key]===""?"":num(header[key]||0);
+   saved.taxCode=saved.invoiceType==="sales"?"VAT-OUT-14":"VAT-IN-14";saved.taxType=saved.invoiceType==="sales"?"vat_output":"vat_input";saved.taxRate=14;
+   if(Object.prototype.hasOwnProperty.call(header,"otherTaxes"))saved.otherTaxes=normalizeInvoiceOtherTaxes(header.otherTaxes);
    const sourceLines=Array.isArray(body.lines)?body.lines.slice(0,100):(invoice.lines||[]);
    saved.lines=sourceLines.map((line,index)=>{if(!line||typeof line!=="object"||Array.isArray(line))throw new Error("بيانات البند "+(index+1)+" غير صحيحة.");return {...(invoice.lines&&invoice.lines[index]||{}),...line};});
    const item={id:nextId,invoiceId:invoice.id,assigneeUid:nextUid,assigneeName:nextName,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120),instruction,status:"open",taskId:nextTaskId,createdAt:nowForward,invoiceNumber:saved.number||"",invoiceType:saved.invoiceType||"purchase",partyName:saved.partyName||"",date:saved.date||"",rootAssignmentId:assignment.rootAssignmentId||assignment.id,parentAssignmentId:assignment.id,rootSenderUid:assignment.rootSenderUid||invoice.createdBy};
