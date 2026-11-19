@@ -274,6 +274,8 @@ function FinanceModule(props){
   "تم حفظ التعديلات على السجل بنجاح.":"Record changes saved successfully.","تم حفظ الكود":"Code saved",
   "تعديل":"Edit","حذف":"Delete","حفظ":"Save","حفظ التعديلات":"Save Changes",
   "مبلغ":"Amount","التفاصيل":"Details","تفاصيل":"Details","البيان والتفاصيل":"Description & Details",
+  "الفاتورة":"Invoice","الرصيد":"Balance","النشاط":"Activity","القيد":"Journal Entry",
+
   "إجراء":"Action","المبلغ":"Amount","المرجع":"Reference","النوع":"Type","الحجم":"Size","اسم الملف":"File Name",
   "الملف":"File","المرفق":"Attachment","المرفقات":"Attachments","تحميل":"Download","تحميل المرفق":"Download Attachment",
   "إضافة مرفق للفاتورة":"Add Invoice Attachment","إضافة أو إعادة رفع مرفق":"Add or Re-upload Attachment",
