@@ -2705,9 +2705,11 @@ export default {
           const adminPatch = updates => adminDatabaseRequest("financial", accessToken, "PATCH", updates);
           const adminReadRoot = path => adminDatabaseRequest(path, accessToken, "GET");
           const adminPutRoot = (path, value) => adminDatabaseRequest(path, accessToken, "PUT", value);
-          // Apply multi-location party changes at /clients or /vendors, never at the database root.
+          // Use collection-scoped patches for customer/vendor CRUD instead of PATCH /.
           const adminPatchRootAt = (path, updates) => adminDatabaseRequest(path, accessToken, "PATCH", updates);
-          const output = await handleFinancialRequest({request,url,body,claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch,adminReadRoot,adminPutRoot,adminPatchRootAt,accessToken});
+          // Retain root multi-location updates for existing cross-module transactions.
+          const adminPatchRoot = updates => adminDatabaseRequest("", accessToken, "PATCH", updates);
+          const output = await handleFinancialRequest({request,url,body,claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch,adminReadRoot,adminPutRoot,adminPatchRoot,adminPatchRootAt,accessToken});
           if(output&&output.pushNotification){
             const push=output.pushNotification;
             delete output.pushNotification;
