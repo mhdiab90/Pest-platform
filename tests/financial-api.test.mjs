@@ -719,11 +719,11 @@ test("master permission cannot be used to edit or delete financial master record
   });
   await assert.rejects(
     invokeAsUser("POST","",{action:"saveMaster",kind:"items",permissionModule:"master",item:{code:"SECURE-ITEM-002",name:"Unauthorized item",itemType:"stock"}}),
-    /Permission denied: financial.add/
+    /Permission denied: financial_inventory.add/
   );
   await assert.rejects(
     invokeAsUser("POST","",{action:"deleteMaster",kind:"items",permissionModule:"master",code:"SECURE-ITEM-001"}),
-    /Permission denied: financial.delete/
+    /Permission denied: financial_inventory.delete/
   );
   assert.ok(read("items/SECURE-ITEM-001"),"the protected financial master record must remain untouched");
 
@@ -740,10 +740,10 @@ test("invoice delegation and return use scoped RTDB writes and return-to-review 
   const assigneeUid = "finance-assignee-01";
   const ownerUid = claims.sub;
   const rootPatchCount = adminPatchRootCalls.length;
-  write("financial/chartOfAccounts/6100", {code:"6100",name:"مصروفات تشغيل",type:"expense",nature:"debit",active:true});
-  write("financial/parties/VENDOR-DELEGATION-01", {code:"VENDOR-DELEGATION-01",name:"Supplier Delegation",partyType:"vendor",active:true});
+  write("chartOfAccounts/6100", {code:"6100",name:"مصروفات تشغيل",type:"expense",nature:"debit",active:true});
+  write("parties/VENDOR-DELEGATION-01", {code:"VENDOR-DELEGATION-01",name:"Supplier Delegation",partyType:"vendor",active:true});
   write("users/" + assigneeUid, {uid:assigneeUid,status:"active",fullName:"Finance Assignee"});
-  write("financial/documents/" + invoiceId, {
+  write("documents/" + invoiceId, {
     id:invoiceId,type:"invoice",invoiceType:"purchase",status:"draft",createdBy:ownerUid,
     createdByName:"Finance Test",number:"PUR-DELEGATION-01",date:"2026-11-19",
     partyId:"VENDOR-DELEGATION-01",partyName:"Supplier Delegation",currency:"EGP",
@@ -755,9 +755,9 @@ test("invoice delegation and return use scoped RTDB writes and return-to-review 
   });
   assert.equal(assigned.success,true);
   assert.equal(assigned.status,"assigned");
-  assert.equal(read("financial/documents/" + invoiceId).status,"assigned");
-  assert.equal(read("financial/documents/" + invoiceId).assignedTo,assigneeUid);
-  assert.equal(read("financial/assignments/" + assigneeUid + "/" + assigned.assignmentId).status,"open");
+  assert.equal(read("documents/" + invoiceId).status,"assigned");
+  assert.equal(read("documents/" + invoiceId).assignedTo,assigneeUid);
+  assert.equal(read("assignments/" + assigneeUid + "/" + assigned.assignmentId).status,"open");
   assert.equal(read("tasks/" + assigneeUid + "/" + assigned.taskId).kind,"financialAssignment");
   assert.equal(read("cashCustodyNotifications/" + assigneeUid + "/" + assigned.assignmentId).type,"financialAssignment");
   assert.ok(adminPatchRootAtCalls.some(call=>call.path==="tasks"));
@@ -771,11 +771,11 @@ test("invoice delegation and return use scoped RTDB writes and return-to-review 
   },{profile:assigneeProfile,claims:{sub:assigneeUid}});
   assert.equal(completed.success,true);
   assert.equal(completed.status,"returned_to_creator");
-  assert.equal(read("financial/documents/" + invoiceId).status,"returned_to_creator");
-  assert.equal(read("financial/documents/" + invoiceId).assignedTo,null);
-  assert.equal(read("financial/documents/" + invoiceId).lines[0].accountCode,"6100");
-  assert.equal(read("financial/assignments/" + assigneeUid + "/" + assigned.assignmentId).status,"completed");
-  const returnedTaskId=read("financial/documents/" + invoiceId).returnedTaskId;
+  assert.equal(read("documents/" + invoiceId).status,"returned_to_creator");
+  assert.equal(read("documents/" + invoiceId).assignedTo,null);
+  assert.equal(read("documents/" + invoiceId).lines[0].accountCode,"6100");
+  assert.equal(read("assignments/" + assigneeUid + "/" + assigned.assignmentId).status,"completed");
+  const returnedTaskId=read("documents/" + invoiceId).returnedTaskId;
   assert.equal(read("tasks/" + ownerUid + "/" + returnedTaskId).kind,"financialAssignmentReturned");
   assert.equal(read("cashCustodyNotifications/" + ownerUid + "/" + returnedTaskId).type,"financialAssignmentReturned");
   assert.equal(adminPatchRootCalls.length,rootPatchCount,"returning the invoice must not PATCH the RTDB root");
@@ -787,8 +787,8 @@ test("invoice delegation and return use scoped RTDB writes and return-to-review 
     lines:[{description:"Maintenance service",kind:"service",accountCode:"6100",quantity:1,unitPrice:100}]
   });
   assert.equal(resubmitted.status,"pending_review");
-  assert.equal(read("financial/documents/" + invoiceId).status,"pending_review");
-  assert.ok(read("financial/reviewQueue/" + invoiceId),"resubmitted invoice must reappear in the review queue");
+  assert.equal(read("documents/" + invoiceId).status,"pending_review");
+  assert.ok(read("reviewQueue/" + invoiceId),"resubmitted invoice must reappear in the review queue");
   assert.equal(read("tasks/" + ownerUid + "/" + returnedTaskId + "/status"),"completed");
   assert.equal(adminPatchRootCalls.length,rootPatchCount,"invoice resubmission must not PATCH the RTDB root");
 });
@@ -800,7 +800,7 @@ test("finance endpoints request screen-specific permission scopes", async () => 
     if(moduleId!=="financial_assignments"||action!=="add")throw new Error("wrong permission scope: "+moduleId+"."+action);
     return true;
   };
-  write("financial/documents/INV-PERMISSION-SCOPE",{id:"INV-PERMISSION-SCOPE",type:"invoice",status:"draft",createdBy:claims.sub});
+  write("documents/INV-PERMISSION-SCOPE",{id:"INV-PERMISSION-SCOPE",type:"invoice",status:"draft",createdBy:claims.sub});
   write("users/finance-assignee-permission",{uid:"finance-assignee-permission",status:"active"});
   const result=await invoke("POST","",{
     action:"assignInvoice",invoiceId:"INV-PERMISSION-SCOPE",assigneeUid:"finance-assignee-permission"
