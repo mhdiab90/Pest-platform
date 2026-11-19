@@ -772,7 +772,7 @@ test("invoice delegation and return use scoped RTDB writes and return-to-review 
   assert.equal(completed.success,true);
   assert.equal(completed.status,"returned_to_creator");
   assert.equal(read("documents/" + invoiceId).status,"returned_to_creator");
-  assert.equal(read("documents/" + invoiceId).assignedTo,null);
+  assert.equal(read("documents/" + invoiceId).assignedTo,undefined);
   assert.equal(read("documents/" + invoiceId).lines[0].accountCode,"6100");
   assert.equal(read("assignments/" + assigneeUid + "/" + assigned.assignmentId).status,"completed");
   const returnedTaskId=read("documents/" + invoiceId).returnedTaskId;
