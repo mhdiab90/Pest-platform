@@ -430,6 +430,7 @@ function FinanceModule(props){
  const field=(label,value,onChange,type,extra)=>h('label',{className:'block text-sm font-bold text-slate-700'},label,h('input',Object.assign({type:type||'text',value:value==null?'':value,onChange:e=>onChange(e.target.value),className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal bg-white',step:'any'},extra||{})));
  const select=(label,value,onChange,options)=>h('label',{className:'block text-sm font-bold text-slate-700'},label,h('select',{value:value||'',onChange:e=>onChange(e.target.value),className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal bg-white'},options.map(x=>h('option',{key:x.value,value:x.value},x.label))));
  const openQuickAdd=(kind,onCreated,defaults,originalCode)=>{
+  if(!canFinance(financeAreaForMaster(kind),originalCode?"edit":"add")){setError("ليس لديك صلاحية إضافة أو تعديل هذا النوع من البيانات.");return;}
   if(quickAddType)setQuickAddParent({type:quickAddType,form:quickAddForm,target:quickAddTarget,originalCode:quickAddOriginalCode});else setQuickAddParent(null);
   setQuickAddType(kind);setQuickAddTarget(()=>onCreated||null);setQuickAddOriginalCode(String(originalCode||''));
   const next=Object.assign({
@@ -451,6 +452,7 @@ function FinanceModule(props){
   setQuickAddForm(next);
 };
  const openPartyMaster=(onCreated,defaults)=>{
+  if(!canFinance("masters","add")){setError("ليس لديك صلاحية إضافة عميل أو مورد من البيانات الأساسية.");return;}
   if(typeof props.onOpenPartyMaster==='function'){
    const source=Object.assign({},defaults||{});
    props.onOpenPartyMaster({partyType:source.partyType,defaults:source,onSaved:async record=>{
@@ -760,6 +762,7 @@ function FinanceModule(props){
   } catch (error) { setError(error.message || String(error)); }
  };
  const sendBank=async()=>{
+  if(!canFinance("bank","add")){setError("ليس لديك صلاحية استيراد كشوف البنوك.");return;}
   setBusy(true);setError('');
   try{const r=await api('', 'POST',{action:'submitBankImport',bankAccountCode:bankAccount,fileName:bankFile&&bankFile.name,rows:bankRows});setNotice('تم إدخال '+r.rows+' حركة بنكية للمراجعة، منها '+r.duplicates+' تكرارات محتملة.');setBankRows([]);setBankFile(null);await refresh();}
   catch(e){setError(e.message||String(e));}finally{setBusy(false);}
@@ -914,7 +917,7 @@ function FinanceModule(props){
    button('حفظ وإرسال للمراجعة',submitJournal,'primary',busy||!canFinance("journal",journal.id?"edit":"add"))
   );
   const draftRows = documents.filter(function(x){return x.type==='journal'&&['needs_correction','draft'].includes(x.status);}).map(function(x){
-   return h('tr',{key:x.id,className:'border-t'},h('td',{className:'p-2'},x.id),h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},x.description),h('td',{className:'p-2'},status(x.status)),h('td',{className:'p-2'},button('تعديل',function(){editDoc(x);},'muted')));
+   return h('tr',{key:x.id,className:'border-t'},h('td',{className:'p-2'},x.id),h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},x.description),h('td',{className:'p-2'},status(x.status)),h('td',{className:'p-2'},button('تعديل',function(){editDoc(x);},'muted',!canFinance("journal","edit"))));
   });
   const draftsPanel = panel('المسودات والتصحيحات','يمكن فتح المستندات التي أعيدت للتصحيح وتعديلها ثم إعادة إرسالها.',table(['رقم','التاريخ','الوصف','الحالة','إجراء'],draftRows));
   return h('div',{className:'space-y-4'},headerPanel,linesPanel,totalsPanel,draftsPanel);
@@ -984,13 +987,13 @@ function FinanceModule(props){
   const delegationPanel=panel('تحويل المسودة لمستخدم آخر','عند نقص تصنيف مخزني أو بيانات، احفظ الفاتورة كمسودة وحوّلها لموظف مختص. ستعود إليك بعد استكمال المطلوب لتراجعها وترسلها للمراجعة.',h('div',{className:'grid md:grid-cols-3 gap-3'},
    select('المستخدم المسؤول عن الاستكمال',assignmentUserUid,v=>setAssignmentUserUid(v),[{value:'',label:'اختر المستخدم'},...activeEmployees.map(u=>({value:u.uid,label:(u.fullName||u.username||u.email)+' — '+(u.jobTitle||'')}))]),
    h('div',{className:'md:col-span-2'},field('المطلوب منه',assignmentInstruction,setAssignmentInstruction)),
-   button('حفظ كمسودة فقط',saveInvoiceDraft,'muted',busy),
-   button('حفظ المسودة وتحويلها',assignInvoiceToUser,'primary',busy||!assignmentUserUid)
+   button('حفظ كمسودة فقط',saveInvoiceDraft,'muted',busy||!canFinance("invoices",invoice.id?"edit":"add")),
+   button('حفظ المسودة وتحويلها',assignInvoiceToUser,'primary',busy||!assignmentUserUid||!canFinance("assignments","add")||!canFinance("invoices",invoice.id?"edit":"add"))
   ));
-  const totalsBox = h('div',{className:'flex flex-wrap items-center gap-4 p-3 bg-white border rounded-xl'},h('b',null,'الصافي: '+fmt(net)),h('b',null,'الضريبة: '+fmt(tax)),h('b',null,'الإجمالي: '+fmt(total)),button('إرسال للمراجعة',submitInvoice,'primary',busy));
+  const totalsBox = h('div',{className:'flex flex-wrap items-center gap-4 p-3 bg-white border rounded-xl'},h('b',null,'الصافي: '+fmt(net)),h('b',null,'الضريبة: '+fmt(tax)),h('b',null,'الإجمالي: '+fmt(total)),button('إرسال للمراجعة',submitInvoice,'primary',busy||!canFinance("invoices",invoice.id?"edit":"add")));
   const correctionRows=documents.filter(function(x){return x.type==='invoice'&&['needs_correction','draft','returned_to_creator'].includes(x.status);}).map(function(x){
    const reason=[...(x.errors||[]),x.reviewReason||''].filter(Boolean).join(' · ');
-   return h('tr',{key:x.id,className:'border-t'},h('td',{className:'p-2'},x.number||x.id),h('td',{className:'p-2'},x.partyName),h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},status(x.status)),h('td',{className:'p-2 text-xs text-rose-700 min-w-[180px]'},reason||(x.status==='draft'?'مسودة لم تُرسل للمراجعة بعد':'لا يوجد سبب محفوظ؛ افتح الفاتورة وراجع بياناتها')),h('td',{className:'p-2'},button('تعديل واستكمال',function(){editDoc(x);},'muted')));
+   return h('tr',{key:x.id,className:'border-t'},h('td',{className:'p-2'},x.number||x.id),h('td',{className:'p-2'},x.partyName),h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},status(x.status)),h('td',{className:'p-2 text-xs text-rose-700 min-w-[180px]'},reason||(x.status==='draft'?'مسودة لم تُرسل للمراجعة بعد':'لا يوجد سبب محفوظ؛ افتح الفاتورة وراجع بياناتها')),h('td',{className:'p-2'},button('تعديل واستكمال',function(){editDoc(x);},'muted',!canFinance("invoices","edit"))));
   });
   const correctionPanel = panel('فواتير تحتاج تصحيح','هذه الفواتير لم تدخل قائمة الاعتماد بعد، أو أعادها المراجع للتصحيح. راجع السبب واستكملها ثم أرسلها للمراجعة.',table(['الفاتورة','الطرف','التاريخ','الحالة','سبب عدم ظهورها في المراجعة','إجراء'],correctionRows));
   return h('div',{className:'space-y-4'},invoiceHead,suggestionsPanel,invoiceLines,journalPreview,totalsBox,delegationPanel,correctionPanel);
@@ -1016,7 +1019,7 @@ function FinanceModule(props){
     masterForm.kind==='taxCodes'?field('النسبة %',masterForm.rate,v=>setMasterForm(o=>Object.assign({},o,{rate:v})),'number'):null,
     masterForm.kind==='taxCodes'?field('بداية السريان',masterForm.effectiveFrom,v=>setMasterForm(o=>Object.assign({},o,{effectiveFrom:v})),'date'):null,
     masterForm.kind==='chartOfAccounts'?h('label',{className:'inline-flex items-center gap-2'},h('input',{type:'checkbox',checked:masterForm.isGroup,onChange:e=>setMasterForm(o=>Object.assign({},o,{isGroup:e.target.checked}))}),'حساب تجميعي'):null,
-    button('حفظ الكود',saveMaster,'primary',busy)
+    button('حفظ الكود',saveMaster,'primary',busy||!canFinance(masterForm.kind==="chartOfAccounts"?"accounts":financeAreaForMaster(masterForm.kind),"add"))
    )),
    panel(kind==='accounts'?'قائمة الحسابات':kind==='centers'?'قائمة مراكز التكلفة':'قائمة الأصناف', '',table(['الكود','الاسم','تفاصيل'],data.filter(x=>!search||[x.code,x.name,x.version,x.groupCode].join(' ').toLowerCase().includes(search.toLowerCase())).map(x=>h('tr',{key:x.code,className:'border-t'},h('td',{className:'p-2'},x.code),h('td',{className:'p-2'},x.name),h('td',{className:'p-2'},kind==='accounts'?(x.isGroup?'تجميعي':x.type+' / '+x.nature):kind==='centers'?(x.projectCode||'—'):[x.groupCode,x.version].filter(Boolean).join(' / '))))))
   );
@@ -1043,7 +1046,7 @@ function FinanceModule(props){
     h('div',{className:'md:col-span-2'},h('span',{className:'text-xs text-slate-500 block'},'الكمية × السعر'),h('b',{className:'text-sm'},fmt(n(line.quantity)*n(line.unitPrice))))
    );
   });
-  const detail=panel('استكمال فاتورة '+(inv.number||selectedAssignment.invoiceId||''),(purchase?'فاتورة مشتريات من مورد: ':'فاتورة مبيعات لعميل: ')+(inv.partyName||'')+' · '+(selectedAssignment.instruction||''),h('div',{className:'space-y-3'},h('div',{className:'grid md:grid-cols-3 gap-3'},metric('التاريخ',inv.date||'—'),metric('الإجمالي',fmt(inv.total||0)+' ج.م'),metric('عدد البنود',String(assignmentLines.length))),...lineCards,h('div',{className:'flex flex-wrap items-center gap-2'},button('إرجاع المسودة لصاحبها بعد الاستكمال',completeAssignment,'success',assignmentBusy||assignmentLines.length===0),button('إغلاق التفاصيل',()=>setSelectedAssignmentId(''),'muted'))));
+  const detail=panel('استكمال فاتورة '+(inv.number||selectedAssignment.invoiceId||''),(purchase?'فاتورة مشتريات من مورد: ':'فاتورة مبيعات لعميل: ')+(inv.partyName||'')+' · '+(selectedAssignment.instruction||''),h('div',{className:'space-y-3'},h('div',{className:'grid md:grid-cols-3 gap-3'},metric('التاريخ',inv.date||'—'),metric('الإجمالي',fmt(inv.total||0)+' ج.م'),metric('عدد البنود',String(assignmentLines.length))),...lineCards,h('div',{className:'flex flex-wrap items-center gap-2'},button('إرجاع المسودة لصاحبها بعد الاستكمال',completeAssignment,'success',assignmentBusy||assignmentLines.length===0||!canFinance("assignments","edit")),button('إغلاق التفاصيل',()=>setSelectedAssignmentId(''),'muted'))));
   return h('div',{className:'space-y-4'},inbox,detail);
  };
   const renderPartyStatements = function() {
@@ -1101,7 +1104,7 @@ function FinanceModule(props){
    selected.type==='invoice'?panel(selected.attachmentUploadStatus==='pending'?'المرفق لم يتم رفعه بعد':'إضافة مرفق للفاتورة',selected.attachmentUploadError||'يمكنك رفع صورة أو ملف الفاتورة وربطه بالمستند من هنا.',h('label',{className:'inline-flex flex-col gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-sm font-bold cursor-pointer'},'اختيار صورة أو ملف وإرفاقه',h('input',{type:'file',accept:'image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt',disabled:busy,className:'text-xs font-normal',onChange:e=>{const file=e.target.files&&e.target.files[0];if(file)void retryInvoiceAttachment(file,selected.id);e.target.value='';}}))):null,
    Object.keys(selected.attachments||{}).length?panel('مرفقات المستند','الملفات محفوظة في مساحة المرفقات المالية المرتبطة بالفاتورة.',table(['اسم الملف','النوع','الحجم','الإجراء'],Object.values(selected.attachments||{}).map(function(attachment){return h('tr',{key:attachment.id,className:'border-t'},h('td',{className:'p-2'},attachment.fileName||'—'),h('td',{className:'p-2'},attachment.mimeType||'—'),h('td',{className:'p-2'},fmt((Number(attachment.size)||0)/1024)+' KB'),h('td',{className:'p-2'},button('تحميل المرفق',function(){downloadFinancialAttachment(selected.id,attachment);},'muted')));}))) : null,
    selected.type==='bankLine'?select('الحساب المقابل',offset,v=>setOffset(v),posting.map(a=>({value:a.code,label:a.code+' — '+a.name}))):null,
-   selected.type==='bankLine'?button('حفظ الحساب المقابل',async()=>{try{await api('', 'POST',{action:'setBankOffset',id:selected.id,offsetAccountCode:offset});setNotice('تم حفظ الحساب المقابل');await refreshReviewQueue(true);}catch(e){setError(e.message);}}):null,
+   selected.type==='bankLine'?canFinance("bank","edit")?button('حفظ الحساب المقابل',async()=>{try{await api('', 'POST',{action:'setBankOffset',id:selected.id,offsetAccountCode:offset});setNotice('تم حفظ الحساب المقابل');await refreshReviewQueue(true);}catch(e){setError(e.message);}}):null:null,
    h('div',{className:'flex flex-wrap gap-2'},canFinance("review","approve")?button('اعتماد وترحيل',()=>reviewAction(selected.status==='duplicate_review'?'approveDuplicate':'approve'),'success',busy):null,canFinance("review","edit")?button('إعادة للتصحيح',()=>reviewAction('return'),'muted',busy):null,canFinance("review","approve")?button('رفض',()=>reviewAction('reject'),'danger',busy):null)
   ):table(['المستند','النوع','التاريخ','الطرف','المبلغ','الحالة','المرفق','مراجعة'],review.map(x=>h('tr',{key:x.id,className:'border-t'},
    h('td',{className:'p-2'},x.title||x.id),
@@ -1142,7 +1145,7 @@ function FinanceModule(props){
     h("div",{className:"md:col-span-3"},area("البيان والتفاصيل",cash.description,v=>setCash(o=>Object.assign({},o,{description:v})))),
     isCustody?h("p",{className:"md:col-span-3 text-xs text-blue-700 bg-blue-50 p-2 rounded"},"التسليم ينشئ حركة مقابلة في عهدة الموظف الشخصية، والاسترداد يخفض رصيد العهدة تلقائيًا بعد الاعتماد."):null,
     isAdvance?h("p",{className:"md:col-span-3 text-xs text-blue-700 bg-blue-50 p-2 rounded"},"السلفة تسجل على حساب السلف للموظف بصورة مستقلة عن العهدة، والتحصيل يخفض رصيد السلفة بعد الاعتماد."):null,
-    button(busy?"جارٍ الحفظ...":"حفظ وإرسال إلى المراجعة",submitCash,"primary",busy||!cash.amount||!cash.description.trim()||(isParty&&!cash.partyId)||(isEmployee&&!cash.employeeUid)||(isOther&&!cash.offsetAccountCode)||(isTransfer&&!cash.bankAccountCode))
+    button(busy?"جارٍ الحفظ...":"حفظ وإرسال إلى المراجعة",submitCash,"primary",busy||!canFinance("cash","add")||!cash.amount||!cash.description.trim()||(isParty&&!cash.partyId)||(isEmployee&&!cash.employeeUid)||(isOther&&!cash.offsetAccountCode)||(isTransfer&&!cash.bankAccountCode))
    )),
    panel("كشف حركات الخزينة","كل التسجيلات ظاهرة هنا ويمكن البحث فيها، سواء كانت معلقة أو معتمدة أو مرفوضة.",h("div",{className:"space-y-3"},field("بحث برقم المستند أو الطرف أو الموظف أو البيان",cashHistorySearch,setCashHistorySearch),table(["التاريخ","نوع الحركة","الطرف / البيان","المرجع","المبلغ","الحالة","الإجراء"],historyRows)))
   );
@@ -1151,7 +1154,7 @@ function FinanceModule(props){
   selectWithAdd('حساب البنك',bankAccount,v=>setBankAccount(v),[{value:'1120',label:'1120 — البنوك'},...rows(master.bankAccounts).map(x=>({value:x.accountCode||x.code,label:x.code+' — '+x.name}))],'bankAccounts',{code:bankAccount,accountCode:bankAccount}),
   h('label',{className:'block text-sm font-bold'},'ملف كشف الحساب',h('input',{type:'file',accept:'.xlsx,.xls,.csv',className:'block mt-1',onChange:e=>e.target.files&&e.target.files[0]&&parseBank(e.target.files[0])})),
   bankRows.length?table(['التاريخ','الوصف','المرجع','المبلغ','النوع'],bankRows.map((x,i)=>h('tr',{key:i},h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},x.description),h('td',{className:'p-2'},x.reference),h('td',{className:'p-2'},fmt(x.amount)),h('td',{className:'p-2'},x.direction==='in'?'وارد':'صادر')))):null,
-  button('إرسال الحركات إلى المراجعة',sendBank,'primary',busy||!bankRows.length)
+  button('إرسال الحركات إلى المراجعة',sendBank,'primary',busy||!canFinance("bank","add")||!bankRows.length)
  ));
  const renderInventory = function() {
   const groupTotals={};
@@ -1321,7 +1324,7 @@ function FinanceModule(props){
    const prefixes={chartOfAccounts:"ACC",costCenters:"CC",warehouses:"WH",bankAccounts:"BANK",taxCodes:"TAX"};
    quickDefaults={code:nextCode(prefixes[masterViewKind]||"NEW",data)};
   }
-  const addButton=button("＋ إضافة "+title.replace("دليل ",""),()=>openQuickAdd(quickKind,null,quickDefaults),"primary");
+  const addButton=button("＋ إضافة "+title.replace("دليل ",""),()=>openQuickAdd(quickKind,null,quickDefaults),"primary",!canMasterAction(quickKind,"add"));
   const selectedVisible=visibleItems.map(item=>String(item.code||item.id||"")).filter(code=>selectedMasterCodes.includes(code));
   const allVisibleSelected=visibleItems.length>0&&selectedVisible.length===visibleItems.length;
   const selectedRecords=currentMasterItems.filter(item=>selectedMasterCodes.includes(String(item.code||item.id||"")));
