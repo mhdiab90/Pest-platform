@@ -26,7 +26,7 @@ function extractInternalInvoiceNumber(value) {
   const adjacent = source.slice(marker.index + marker[0].length);
   // Return only the contiguous value immediately beside the label, never the rest of the row or lines below.
   const valueMatch = /^([0-9\u0660-\u0669\u06F0-\u06F9]+)/.exec(adjacent);
-  return valueMatch ? valueMatch[1].replace(/[.,;:]+$/, "").slice(0,120) : "";
+  return valueMatch ? normalizeTaxRegistrationNumber(valueMatch[1]).slice(0,120) : "";
 }
 
 const DEFAULT_VAT_CODES = [
