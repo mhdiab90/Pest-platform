@@ -314,7 +314,37 @@ function FinanceModule(props){
   return eligible.find(x=>x.code===defaultVatCodeForInvoice(type))||null;
  };
  const partyName=p=>p.name||p.companyName||p.legalName||p.supplierName||p.vendorName||p.customerName||p.clientName||p.title||p.code||p.id;
- const nextCode=(prefix,list)=>{const used=new Set((list||[]).map(x=>String(x.code||x.id||'')));let i=1,code='';do{code=prefix+'-'+String(i++).padStart(3,'0');}while(used.has(code));return code;};
+ const nextCode=(prefix,list,options)=>{
+  const engine=window.PEST_CODE_INTELLIGENCE;
+  if(engine&&typeof engine.suggestNext==='function')return engine.suggestNext(Object.assign({records:list||[],fallbackPrefix:prefix,minDigits:3},options||{})).code;
+  const used=new Set((list||[]).map(x=>String(x.code||x.id||'')));let i=1,code='';do{code=prefix+'-'+String(i++).padStart(3,'0');}while(used.has(code));return code;
+ };
+ const getCodeSuggestion=(kind,form)=>{
+  const value=form||{};
+  let records=[],fallbackPrefix='NEW',options={minDigits:3};
+  if(kind==='parties'){
+   const vendor=value.partyType==='vendor';
+   records=vendor?allVendors:allClients;fallbackPrefix=vendor?'VND':'CUS';
+  }else if(kind==='items'){
+   records=items;fallbackPrefix=value.groupCode||'ITM';
+   if(value.groupCode)Object.assign(options,{groupBy:'groupCode',groupValue:value.groupCode});
+  }else if(kind==='itemGroups'){records=rows(master.itemGroups);fallbackPrefix='GRP';}
+  else if(kind==='chartOfAccounts'){
+   records=accounts;fallbackPrefix=value.parentCode||'ACC';
+   Object.assign(options,{groupBy:'parentCode',groupValue:value.parentCode||'',separator:!value.parentCode,minDigits:value.parentCode?2:3});
+  }else if(kind==='costCenters'){
+   records=centers;fallbackPrefix=value.projectCode?String(value.projectCode)+'-CC':'CC';
+   Object.assign(options,{groupBy:'projectCode',groupValue:value.projectCode||''});
+  }else if(kind==='warehouses'){records=rows(master.warehouses);fallbackPrefix='WH';}
+  else if(kind==='bankAccounts'){records=rows(master.bankAccounts);fallbackPrefix='BANK';}
+  else if(kind==='taxCodes'){records=rows(master.taxCodes);fallbackPrefix='TAX';}
+  const engine=window.PEST_CODE_INTELLIGENCE;
+  return engine&&typeof engine.suggestNext==='function'
+   ?engine.suggestNext(Object.assign({records,fallbackPrefix},options))
+   :{code:nextCode(fallbackPrefix,records),pattern:fallbackPrefix+'-###',source:'fallback',matchedCount:0};
+ };
+ const codeHint=result=>window.PEST_CODE_INTELLIGENCE&&result?window.PEST_CODE_INTELLIGENCE.hint(result,true):'يمكنك تعديل الكود يدويًا أو طلب اقتراح جديد.';
+
  const normalizeMatch=v=>String(v||'').toLowerCase().replace(/[\s\-_.،,]+/g,'').trim();
 
  const updateJ=(i,k,v)=>setJournal(o=>Object.assign({},o,{lines:o.lines.map((x,j)=>j===i?Object.assign({},x,{[k]:v}):x)}));
@@ -393,6 +423,7 @@ function FinanceModule(props){
    alternateEmail:'',whatsapp:'',website:'',city:'',country:'',postalCode:'',paymentTerms:'',
    creditLimit:'',currency:'EGP',bankName:'',bankAccount:'',iban:'',address:'',notes:''
   },defaults||{});
+  if(!next.code)next.code=getCodeSuggestion(kind,next).code;
   if(kind==='parties'){
    const supplied=String(next.partyType||'').toLowerCase();
    next.partyType=['vendor','supplier'].includes(supplied)?'vendor':
@@ -935,12 +966,13 @@ function FinanceModule(props){
   return h('div',{className:'space-y-4'},invoiceHead,suggestionsPanel,invoiceLines,journalPreview,totalsBox,delegationPanel,correctionPanel);
  };
  const renderMaster=kind=>{
+  const currentFormCodeSuggestion=getCodeSuggestion(masterForm.kind,masterForm);
   const opts=[['chartOfAccounts','حساب عام'],['costCenters','مركز تكلفة'],['itemGroups','مجموعة أصناف'],['items','صنف مخزني / إصدار'],['warehouses','مخزن'],['bankAccounts','حساب بنك'],['taxCodes','كود ضريبي']];
   let data=kind==='accounts'?accounts:kind==='centers'?centers:items;
   return h('div',{className:'space-y-4'},
    panel(kind==='accounts'?'دليل الحسابات':kind==='centers'?'مراكز التكلفة':'الأصناف والمجموعات','أنشئ كودًا من نفس الشاشة. الحسابات التجميعية لا تقبل الترحيل.',h('div',{className:'grid md:grid-cols-3 gap-3'},
     select('نوع التكويد',masterForm.kind,v=>setMasterForm(o=>Object.assign({},o,{kind:v})),opts.map(x=>({value:x[0],label:x[1]}))),
-    field('الكود',masterForm.code,v=>setMasterForm(o=>Object.assign({},o,{code:v}))),
+    h('div',{className:'space-y-1'},field('الكود',masterForm.code,v=>setMasterForm(o=>Object.assign({},o,{code:v}))),h('div',{className:'flex flex-wrap items-center gap-2'},button('اقتراح الكود التالي',()=>setMasterForm(old=>Object.assign({},old,{code:getCodeSuggestion(old.kind,old).code})),'muted',busy)),h('small',{className:'block text-[11px] text-slate-500'},codeHint(currentFormCodeSuggestion))),
     field('الاسم',masterForm.name,v=>setMasterForm(o=>Object.assign({},o,{name:v}))),
     masterForm.kind==='chartOfAccounts'?select('نوع الحساب',masterForm.type,v=>setMasterForm(o=>Object.assign({},o,{type:v})),[{value:'asset',label:'أصول'},{value:'liability',label:'التزامات'},{value:'equity',label:'حقوق ملكية'},{value:'revenue',label:'إيرادات'},{value:'expense',label:'مصروفات'}]):null,
     masterForm.kind==='chartOfAccounts'?select('الطبيعة',masterForm.nature,v=>setMasterForm(o=>Object.assign({},o,{nature:v})),[{value:'debit',label:'مدين'},{value:'credit',label:'دائن'}]):null,
@@ -975,7 +1007,7 @@ function FinanceModule(props){
     h('div',{className:'md:col-span-2'},select('تصنيف البند',line.kind||'',value=>change('kind',value),[{value:'',label:'حدد تصنيف البند'},{value:'stock',label:'بضاعة / مخزون'},{value:'service',label:'مصروف / خدمة'}])),
     line.kind==='service'
      ?h('div',{className:'md:col-span-4'},selectWithAdd('حساب '+(purchase?'المصروف':'الإيراد'),purchase?(line.accountCode||''):(line.incomeAccountCode||''),value=>change(purchase?'accountCode':'incomeAccountCode',value),accountOptions,'chartOfAccounts',{type:expenseType,nature:purchase?'debit':'credit',parentCode:purchase?'6':'4'}))
-     :h('div',{className:'md:col-span-3'},selectWithAdd('كود الصنف',line.itemCode||'',value=>change('itemCode',value),itemOptions,'items',{code:nextCode('ITM',items),name:line.description||'',itemType:'stock',unit:line.unit||'قطعة',warehouseCode:'default'})),
+     :h('div',{className:'md:col-span-3'},selectWithAdd('كود الصنف',line.itemCode||'',value=>change('itemCode',value),itemOptions,'items',{code:nextCode('ITM',items,{groupBy:'groupCode',groupValue:line.groupCode||''}),name:line.description||'',groupCode:line.groupCode||'',itemType:'stock',unit:line.unit||'قطعة',warehouseCode:'default'})),
     line.kind==='stock'?h('div',{className:'md:col-span-3'},selectWithAdd('مجموعة الصنف',line.groupCode||'',value=>change('groupCode',value),groupOptions,'itemGroups',{code:nextCode('GRP',rows(master.itemGroups)),name:line.description||'',groupType:'other'})):null,
     line.kind==='stock'?h('div',{className:'md:col-span-2'},select('نوع الصنف',line.itemType||'stock',value=>change('itemType',value),[{value:'stock',label:'مخزون عام'},{value:'raw_material',label:'خامة'},{value:'finished_good',label:'منتج تام'},{value:'spare_part',label:'قطعة غيار'},{value:'consumable',label:'مستهلك'},{value:'office_supply',label:'مكتبي'}])):null,
     h('div',{className:'md:col-span-2'},h('span',{className:'text-xs text-slate-500 block'},'الكمية × السعر'),h('b',{className:'text-sm'},fmt(n(line.quantity)*n(line.unitPrice))))
@@ -1433,6 +1465,12 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
    fields.push(h('label',{className:'block text-xs font-bold text-slate-700 sm:col-span-2 lg:col-span-3'},'العنوان',h('textarea',{rows:2,value:quickAddForm.address||'',onChange:function(e){change('address',e.target.value);},className:'mt-1 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs font-normal bg-white'})));
    fields.push(h('label',{className:'block text-xs font-bold text-slate-700 sm:col-span-2 lg:col-span-3'},'ملاحظات',h('textarea',{rows:2,value:quickAddForm.notes||'',onChange:function(e){change('notes',e.target.value);},className:'mt-1 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs font-normal bg-white'})));
   }
+  const currentQuickCodeSuggestion=getCodeSuggestion(quickAddType,quickAddForm);
+  fields[0]=h('div',{className:'space-y-1 min-w-0'},
+   fields[0],
+   h('div',{className:'flex flex-wrap items-center gap-2'},button('اقتراح الكود التالي حسب النمط',()=>change('code',getCodeSuggestion(quickAddType,quickAddForm).code),'muted',busy)),
+   h('small',{className:'block text-[11px] text-slate-500 font-normal'},codeHint(currentQuickCodeSuggestion))
+  );
   const isParty=quickAddType==='parties';
   const closeQuickAdd=()=>{if(busy)return;setQuickAddType('');setQuickAddTarget(null);setQuickAddParent(null);setQuickAddOriginalCode('');};
   return h('div',{className:'fixed inset-0 z-[100] bg-slate-950/50 flex items-center justify-center p-2 sm:p-3',onClick:closeQuickAdd},
