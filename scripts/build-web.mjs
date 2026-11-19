@@ -68,4 +68,4 @@ for (const file of requiredAssets) {
 }
 await cp("assets", outputDirectory + "/assets", { recursive: true });
 
-console.log("Web build ready: JSX precompiled to " + bundleName + "; Babel runtime removed; non-critical icon/font stylesheets load without blocking first paint.");
+console.log("Web build ready: JSX precompiled to " + bundleName + "; code intelligence and screen-level finance permissions included; Babel runtime removed; non-critical icon/font stylesheets load without blocking first paint.");
