@@ -387,7 +387,7 @@ export async function handleFinancialRequest(ctx){
   if(body.originalCode&&!previous)throw new Error("السجل المراد تعديله لم يعد موجودًا. حدّث القائمة ثم حاول مرة أخرى.");
   const sameKey=Boolean(body.originalCode)&&originalCode===code;
   const target=sameKey?previous:await adminRead(kind+"/"+code);
-  if(target&&!sameKey&&kind!=="parties")throw new Error("الكود الجديد مستخدم بالفعل. اختر كودًا غير مستخدم.");
+  if(target&&!sameKey&&kind!=="parties")throw new Error("هذا الكود مسجل بالفعل. اختر كودًا غير مستخدم.");
   if(kind==="parties"&&target&&target.partyType&&target.partyType!==item.partyType)throw new Error("هذا الكود مسجل بالفعل لنوع طرف مختلف.");
   if(!txt(item.name,180))throw new Error("الاسم مطلوب");
   requirePermission(profile,permissionModule,previous?"edit":"add");
@@ -421,7 +421,8 @@ export async function handleFinancialRequest(ctx){
    if(!adminReadRoot||!adminPatchRoot)throw new Error("خدمة سجل العملاء والموردين غير متاحة.");
    const [currentCustomer,currentVendor,targetCustomer,targetVendor]=await Promise.all([
     adminReadRoot("clients/"+originalCode),adminReadRoot("vendors/"+originalCode),
-    sameKey?Promise.resolve(null):adminReadRoot("clients/"+code),sameKey?Promise.resolve(null):adminReadRoot("vendors/"+code)
+    body.originalCode&&!sameKey?adminReadRoot("clients/"+code):Promise.resolve(null),
+    body.originalCode&&!sameKey?adminReadRoot("vendors/"+code):Promise.resolve(null)
    ]);
    const correctParty=item.partyType==="customer"?currentCustomer:currentVendor;
    const oppositeParty=item.partyType==="customer"?currentVendor:currentCustomer;
