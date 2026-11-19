@@ -1256,6 +1256,7 @@ test("cash custody recovery sync creates a missing review journal once and repor
   assert.ok(read("reviewQueue/"+journalId),"recovered journal appears in the financial review queue");
   assert.equal(read("documents/"+journalId+"/status"),"pending_review");
   assert.equal(read("cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/financialReviewStatus"),"pending_review");
+  assert.equal(read("cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/financialReviewError"),null,"a successful retry clears the previous sync error");
 
   const retry=await invoke("POST","",{action:"syncCashCustodyJournals",ownerUid,transactions:[{id:transactionId}]});
   assert.equal(retry.failed,0);
