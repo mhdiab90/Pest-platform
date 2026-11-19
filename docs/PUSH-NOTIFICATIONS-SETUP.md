@@ -28,7 +28,7 @@ The v13 file includes online-presence and push-token permissions. It is a propos
 
 ## Device enrollment and delivery
 
-After the Preview Worker secrets are configured and the v11 rules are published:
+After the Preview Worker secrets are configured and the v13 rules are published:
 - Install the new Android build, sign into Pest Platform, open the bell → Enable device / browser push notifications, and allow Android notifications.
 - On desktop, open Pest Platform over HTTPS, sign in, open the bell → Enable device / browser push notifications, and allow browser notifications.
 - Each device/browser stores its own FCM token under the signed-in UID. Logging out removes that device's token from that UID.
@@ -37,7 +37,7 @@ After the Preview Worker secrets are configured and the v11 rules are published:
 
 ## Important deployment note
 
-The GitHub changes do not automatically set Cloudflare secrets or publish Firebase database rules. Push delivery is not live until the two Worker settings above, the v11 Database Rules, and the Worker deployment are completed. The Android APK build is independent of the Cloudflare secret setup.
+The GitHub changes do not automatically set Cloudflare secrets or publish Firebase database rules. Push delivery is not live until the two Worker settings above, the v13 Database Rules, and the Worker deployment are completed. The Android APK build is independent of the Cloudflare secret setup.
 
 ## Stable Android update signing (recommended)
 
