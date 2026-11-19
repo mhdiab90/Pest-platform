@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const rulesPath = new URL("../firebase-rules/Pest-Platform-Firebase-Rules-Custody-v12-Online-Presence-Push.json", import.meta.url);
+const rulesPath = new URL("../firebase-rules/Pest-Platform-Firebase-Rules-Custody-v13-Online-Presence-Push.json", import.meta.url);
 const { rules } = JSON.parse(await readFile(rulesPath, "utf8"));
 
 test("presence can be read only by authenticated active accounts", () => {
