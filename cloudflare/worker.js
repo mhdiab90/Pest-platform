@@ -397,6 +397,7 @@ async function getFirebaseDatabaseAccessToken(env) {
 }
 
 async function adminDatabaseRequest(path, accessToken, method, body) {
+  // An empty RTDB path is the root endpoint and must be requested as "/.json".
   const cleanPath = String(path || "").split("/").filter(Boolean).map(encodeURIComponent).join("/");
   const url = DATABASE_URL.replace(/\/+$/, "") + (cleanPath ? "/" + cleanPath : "/") + ".json";
   const response = await fetch(url, {
