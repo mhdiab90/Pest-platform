@@ -4520,9 +4520,7 @@ function App(){
       if(!saved||saved.success!==true||!saved.event)throw new Error(rtl?'لم يؤكد النظام حفظ الحدث والقيد المقترح.':'The system did not confirm the project event and accounting draft.');
       const savedEvent=saved.event;
       try{if(eventPendingAttachments.length)await uploadInlineAttachments(eventPendingAttachments,'projectEvent',code+'--'+id,setEventPendingAttachments);}
-      catch(attachmentError){setEditingProjectEventId(id);alert((rtl?'تم حفظ الحدث'+(saved.accountingImpact?' وإرسال القيد للمراجعة':'')+'، لكن تعذر رفع بعض المرفقات. أصلح الاتصال ثم اضغط حفظ التعديلات لإكمال الرفع.
-':'The event'+(saved.accountingImpact?' and review journal ':' ')+'was saved, but some attachments could not be uploaded. Fix the connection and save the event again to finish uploading.
-')+String(attachmentError.message||attachmentError));return;}
+      catch(attachmentError){setEditingProjectEventId(id);alert((rtl?'تم حفظ الحدث'+(saved.accountingImpact?' وإرسال القيد للمراجعة':'')+'، لكن تعذر رفع بعض المرفقات. أصلح الاتصال ثم اضغط حفظ التعديلات لإكمال الرفع.\n':'The event'+(saved.accountingImpact?' and review journal ':' ')+'was saved, but some attachments could not be uploaded. Fix the connection and save the event again to finish uploading.\n')+String(attachmentError.message||attachmentError));return;}
       await addLog((editingProjectEventId?'تعديل ':'إضافة ')+ 'حدث '+savedEvent.actionName+' للمشروع '+code,currentUser,{entityType:'project-event',entityId:code+'/'+id,changes:auditChanges(previousEvent,savedEvent),metadata:{accountingImpact:saved.accountingImpact,accountingStatus:saved.accountingStatus,journalId:saved.journalId||''}});
       setProjectEvent(blankProjectEvent());setEventPendingAttachments([]);setEditingProjectEventId('');
       alert(tr('eventSaved')+(saved.accountingImpact?(rtl?' — مؤثر: أُرسل القيد للمراجعة ولا يؤثر على الأرصدة قبل الاعتماد.':' — Financial: journal sent for review and will not affect balances before approval.'):(rtl?' — غير مؤثر محاسبيًا.':' — No accounting impact.')));
