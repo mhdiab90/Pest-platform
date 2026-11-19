@@ -399,7 +399,7 @@ export async function handleFinancialRequest(ctx){
   rootUpdates["cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/financialDocumentId"]=journalId;
   rootUpdates["cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/financialReviewStatus"]="pending_review";
   rootUpdates["cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/status"]="pending";
-  const mirrorOwner=id(transaction.linkedOwnerUid||""),mirrorId=id(transaction.linkedTransactionId||"");
+  const mirrorOwner=transaction.linkedOwnerUid?id(transaction.linkedOwnerUid):"",mirrorId=transaction.linkedTransactionId?id(transaction.linkedTransactionId):"";
   if(mirrorOwner&&mirrorId){
    rootUpdates["cashCustodies/"+mirrorOwner+"/transactions/"+mirrorId+"/financialDocumentId"]=journalId;
    rootUpdates["cashCustodies/"+mirrorOwner+"/transactions/"+mirrorId+"/financialReviewStatus"]="pending_review";
