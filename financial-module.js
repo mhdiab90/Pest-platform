@@ -747,6 +747,18 @@ function FinanceModule(props){
   }catch(e){setError('تعذرت قراءة الفاتورة آليًا: '+(e.message||String(e))+' ويمكنك استكمال البيانات يدويًا.');}
   finally{setBusy(false);}
  };
+ const saveReviewInvoice=async()=>{
+  if(!selected||selected.type!=="invoice"||!canFinance("review","edit")){setError("ليس لديك صلاحية تعديل بيانات الفاتورة أثناء المراجعة.");return;}
+  setBusy(true);setError('');
+  try{
+   const payload={invoiceType:selected.invoiceType,date:selected.date,number:selected.number,partyId:selected.partyId,partyName:selected.partyName,partyTaxNumber:selected.partyTaxNumber,currency:selected.currency,taxCode:selected.taxCode,taxType:selected.taxType,taxRate:selected.taxRate,taxAmount:selected.taxAmount,discount:selected.discount,projectCode:selected.projectCode};
+   const result=await api('', 'POST',{action:'updateReviewInvoice',id:selected.id,invoice:payload,lines:selected.lines||[]});
+   setNotice((result.errors||[]).length?'تم حفظ تصحيحات الفاتورة. ما زالت هناك نواقص ظاهرة للمراجعة قبل الاعتماد.':'تم حفظ التصحيحات وأصبحت الفاتورة جاهزة للاعتماد.');
+   await refreshReviewQueue(true);
+   await openReviewItem({id:selected.id});
+  }catch(e){setError(e.message||String(e));}
+  finally{setBusy(false);}
+ };
  const reviewAction=async(decision)=>{
   if(!selected)return;
   if(decision==="approve"||decision==="approveDuplicate"||decision==="reject"){
