@@ -255,6 +255,15 @@ async function sha(v){const a=await crypto.subtle.digest("SHA-256",new TextEncod
 
 export async function handleFinancialRequest(ctx){
  const {request,url,body,claims,profile,env,hasPermission,requirePermission,adminRead,adminPatch,adminReadRoot,adminPutRoot,adminPatchRoot,adminPatchRootAt}=ctx;
+ const patchExternalBranch=async(path,updates)=>{
+  if(!adminPatchRootAt)throw new Error("خدمة حفظ المهام والإشعارات بمساراتها المستقلة غير متاحة.");
+  if(updates&&Object.keys(updates).length)await adminPatchRootAt(path,updates);
+ };
+ const removeExternalBranch=async(path,keys)=>{
+  if(!adminPatchRootAt)throw new Error("خدمة التراجع عن تحديث المهمة غير متاحة.");
+  const updates={};(keys||[]).forEach(key=>{updates[key]=null;});
+  if(Object.keys(updates).length)await adminPatchRootAt(path,updates);
+ };
  if(!profile||!["active","نشط","مفعل","enabled"].includes(String(profile.status||"").toLowerCase()))throw new Error("This user account is not active.");
  if(request.method==="GET"){
   requirePermission(profile,"financial","view");const res=txt(url.searchParams.get("resource")||"bootstrap",40);
@@ -659,19 +668,27 @@ export async function handleFinancialRequest(ctx){
   const taskId=uid("FIN-TASK"),assignmentId=uid("ASN"),createdByName=txt(profile.fullName||profile.username||profile.email,120),assigneeName=txt(assignee.fullName||assignee.username||assignee.email||assigneeUid,120);
   const assignment={id:assignmentId,invoiceId,assigneeUid,assigneeName,createdBy:claims.sub,createdByName,instruction,status:"open",taskId,createdAt:now,invoiceNumber:invoice.number||"",invoiceType:invoice.invoiceType||"purchase",partyName:invoice.partyName||"",date:invoice.date||""};
   const task={id:taskId,title:"استكمال تصنيف فاتورة "+(invoice.number||invoiceId),description:instruction,status:"open",createdAt:now,createdBy:claims.sub,createdByName,kind:"financialAssignment",financialAssignmentId:assignmentId,sourceInvoiceId:invoiceId,assigneeUid};
-  const updates={};
-  updates["documents/"+invoiceId+"/status"]="assigned";
-  updates["documents/"+invoiceId+"/assignedTo"]=assigneeUid;
-  updates["documents/"+invoiceId+"/assignmentId"]=assignmentId;
-  updates["documents/"+invoiceId+"/assignedAt"]=now;
-  updates["reviewQueue/"+invoiceId]=null;
-  updates["assignments/"+assigneeUid+"/"+assignmentId]=assignment;
-  updates["audit/"+uid("AUD")]={action:"assign_invoice",documentId:invoiceId,assignmentId,assigneeUid,uid:claims.sub,createdAt:now};
-  if(!adminPatchRoot)throw new Error("خدمة تحويل المهام غير متاحة.");
-  updates["tasks/"+assigneeUid+"/"+taskId]=task;
-  updates["cashCustodyNotifications/"+assigneeUid+"/"+assignmentId]={id:assignmentId,type:"financialAssignment",recipientUid:assigneeUid,assignmentId,invoiceId,senderUid:claims.sub,senderName:createdByName,title:"فاتورة محولة إليك",description:instruction,createdAt:now,read:false};
-  const globalUpdates={};Object.entries(updates).forEach(([key,value])=>globalUpdates[key.startsWith("documents/")||key.startsWith("reviewQueue/")||key.startsWith("assignments/")||key.startsWith("audit/")?"financial/"+key:key]=value);
-  await adminPatchRoot(globalUpdates);
+  const financialUpdates={};
+  financialUpdates["documents/"+invoiceId+"/status"]="assigned";
+  financialUpdates["documents/"+invoiceId+"/assignedTo"]=assigneeUid;
+  financialUpdates["documents/"+invoiceId+"/assignmentId"]=assignmentId;
+  financialUpdates["documents/"+invoiceId+"/assignedAt"]=now;
+  financialUpdates["reviewQueue/"+invoiceId]=null;
+  financialUpdates["assignments/"+assigneeUid+"/"+assignmentId]=assignment;
+  financialUpdates["audit/"+uid("AUD")]={action:"assign_invoice",documentId:invoiceId,assignmentId,assigneeUid,uid:claims.sub,createdAt:now};
+  const notification={id:assignmentId,type:"financialAssignment",recipientUid:assigneeUid,assignmentId,invoiceId,senderUid:claims.sub,senderName:createdByName,title:"فاتورة محولة إليك",description:instruction,createdAt:now,read:false};
+  let taskSaved=false,notificationSaved=false;
+  try{
+   await patchExternalBranch("tasks",{[assigneeUid+"/"+taskId]:task});taskSaved=true;
+   await patchExternalBranch("cashCustodyNotifications",{[assigneeUid+"/"+assignmentId]:notification});notificationSaved=true;
+   await adminPatch(financialUpdates);
+  }catch(error){
+   const rollbackErrors=[];
+   if(notificationSaved)try{await removeExternalBranch("cashCustodyNotifications",[assigneeUid+"/"+assignmentId]);}catch(rollbackError){rollbackErrors.push(String(rollbackError.message||rollbackError));}
+   if(taskSaved)try{await removeExternalBranch("tasks",[assigneeUid+"/"+taskId]);}catch(rollbackError){rollbackErrors.push(String(rollbackError.message||rollbackError));}
+   if(rollbackErrors.length)throw new Error("تعذر إكمال تحويل الفاتورة، وفشل التراجع عن بعض سجلات المهمة/الإشعار: "+rollbackErrors.join("؛ ")+". السبب الأصلي: "+String(error.message||error));
+   throw error;
+  }
   return {success:true,id:invoiceId,assignmentId,taskId,status:"assigned",pushNotification:{recipientUid:assigneeUid,eventType:"financialAssignment",eventId:assignmentId,content:{title:"فاتورة محولة إليك",body:"مطلوب: "+instruction}}};
  }
  if(action==="completeInvoiceAssignment"){
@@ -705,22 +722,40 @@ export async function handleFinancialRequest(ctx){
   }
   const nowCompleted=Date.now(),ownerUid=assignment.createdBy,ownerTaskId=uid("FIN-TASK");
   const returnedTask={id:ownerTaskId,title:"اكتمل استكمال الفاتورة "+(invoice.number||invoice.id),description:"قام "+txt(profile.fullName||profile.username||profile.email,120)+" باستكمال التصنيف والأكواد. راجع المسودة ثم أرسلها للمراجعة.",status:"open",createdAt:nowCompleted,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120),kind:"financialAssignmentReturned",financialAssignmentId:assignmentId,sourceInvoiceId:invoice.id,assigneeUid:ownerUid};
-  const rootUpdates={};
-  rootUpdates["financial/documents/"+invoice.id+"/lines"]=nextLines;
-  rootUpdates["financial/documents/"+invoice.id+"/status"]="returned_to_creator";
-  rootUpdates["financial/reviewQueue/"+invoice.id]=null;
-  rootUpdates["financial/documents/"+invoice.id+"/assignedTo"]=null;
-  rootUpdates["financial/documents/"+invoice.id+"/assignmentReturnedAt"]=nowCompleted;
-  rootUpdates["financial/documents/"+invoice.id+"/lastAssignedTo"]=claims.sub;
-  rootUpdates["financial/assignments/"+claims.sub+"/"+assignmentId+"/status"]="completed";
-  rootUpdates["financial/assignments/"+claims.sub+"/"+assignmentId+"/completedAt"]=nowCompleted;
-  rootUpdates["financial/assignments/"+claims.sub+"/"+assignmentId+"/completedBy"]=claims.sub;
-  rootUpdates["financial/audit/"+uid("AUD")]={action:"complete_invoice_assignment",documentId:invoice.id,assignmentId,uid:claims.sub,createdAt:nowCompleted};
-  if(assignment.taskId)rootUpdates["tasks/"+claims.sub+"/"+assignment.taskId+"/status"]="completed";
-  rootUpdates["tasks/"+ownerUid+"/"+ownerTaskId]=returnedTask;
-  rootUpdates["cashCustodyNotifications/"+ownerUid+"/"+ownerTaskId]={id:ownerTaskId,type:"financialAssignmentReturned",recipientUid:ownerUid,assignmentId,invoiceId:invoice.id,senderUid:claims.sub,senderName:txt(profile.fullName||profile.username||profile.email,120),title:"اكتمل استكمال الفاتورة",description:"عاد المستند إلى مسوداتك للمراجعة والإرسال.",createdAt:nowCompleted,read:false};
-  rootUpdates["financial/documents/"+invoice.id+"/returnedTaskId"]=ownerTaskId;
-  await adminPatchRoot(rootUpdates);
+  const financialUpdates={};
+  financialUpdates["documents/"+invoice.id+"/lines"]=nextLines;
+  financialUpdates["documents/"+invoice.id+"/status"]="returned_to_creator";
+  financialUpdates["reviewQueue/"+invoice.id]=null;
+  financialUpdates["documents/"+invoice.id+"/assignedTo"]=null;
+  financialUpdates["documents/"+invoice.id+"/assignmentReturnedAt"]=nowCompleted;
+  financialUpdates["documents/"+invoice.id+"/lastAssignedTo"]=claims.sub;
+  financialUpdates["assignments/"+claims.sub+"/"+assignmentId+"/status"]="completed";
+  financialUpdates["assignments/"+claims.sub+"/"+assignmentId+"/completedAt"]=nowCompleted;
+  financialUpdates["assignments/"+claims.sub+"/"+assignmentId+"/completedBy"]=claims.sub;
+  financialUpdates["audit/"+uid("AUD")]={action:"complete_invoice_assignment",documentId:invoice.id,assignmentId,uid:claims.sub,createdAt:nowCompleted};
+  financialUpdates["documents/"+invoice.id+"/returnedTaskId"]=ownerTaskId;
+  const taskUpdates={};
+  if(assignment.taskId)taskUpdates[claims.sub+"/"+assignment.taskId+"/status"]="completed";
+  taskUpdates[ownerUid+"/"+ownerTaskId]=returnedTask;
+  const notificationKey=ownerUid+"/"+ownerTaskId;
+  const notification={id:ownerTaskId,type:"financialAssignmentReturned",recipientUid:ownerUid,assignmentId,invoiceId:invoice.id,senderUid:claims.sub,senderName:txt(profile.fullName||profile.username||profile.email,120),title:"اكتمل استكمال الفاتورة",description:"عاد المستند إلى مسوداتك للمراجعة والإرسال.",createdAt:nowCompleted,read:false};
+  let tasksSaved=false,notificationSaved=false;
+  try{
+   await patchExternalBranch("tasks",taskUpdates);tasksSaved=true;
+   await patchExternalBranch("cashCustodyNotifications",{[notificationKey]:notification});notificationSaved=true;
+   await adminPatch(financialUpdates);
+  }catch(error){
+   const rollbackErrors=[];
+   if(notificationSaved)try{await removeExternalBranch("cashCustodyNotifications",[notificationKey]);}catch(rollbackError){rollbackErrors.push(String(rollbackError.message||rollbackError));}
+   if(tasksSaved){
+    const rollbackTasks={};
+    rollbackTasks[ownerUid+"/"+ownerTaskId]=null;
+    if(assignment.taskId)rollbackTasks[claims.sub+"/"+assignment.taskId+"/status"]="open";
+    try{await patchExternalBranch("tasks",rollbackTasks);}catch(rollbackError){rollbackErrors.push(String(rollbackError.message||rollbackError));}
+   }
+   if(rollbackErrors.length)throw new Error("تعذر إكمال إرجاع الفاتورة، وفشل التراجع عن بعض المهام/الإشعارات: "+rollbackErrors.join("؛ ")+". السبب الأصلي: "+String(error.message||error));
+   throw error;
+  }
   return {success:true,id:invoice.id,assignmentId,status:"returned_to_creator",pushNotification:{recipientUid:ownerUid,eventType:"financialAssignmentReturned",eventId:invoice.id,content:{title:"اكتمل استكمال الفاتورة",body:"عاد المستند إلى مسوداتك للمراجعة والإرسال."}}};
  }
  if(action==="submitInvoice"){
