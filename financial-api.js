@@ -379,7 +379,7 @@ export async function handleFinancialRequest(ctx){
   const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties"];
   if(!allowed.includes(kind))throw new Error("Unsupported master data type.");
   const item=body.item||{},code=id(item.code),originalCode=body.originalCode?id(body.originalCode):code;
-  const permissionModule=body.permissionModule==="master"?"master":"financial";
+  const permissionModule=kind==="parties"&&body.permissionModule==="master"?"master":"financial";
   let previous=body.originalCode?await adminRead(kind+"/"+originalCode):null;
   if(body.originalCode&&!previous&&kind==="parties"&&adminReadRoot){
    previous=await adminReadRoot("clients/"+originalCode)||await adminReadRoot("vendors/"+originalCode);
@@ -460,7 +460,7 @@ export async function handleFinancialRequest(ctx){
  if(action==="deleteMaster"){
   const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties"];
   if(!allowed.includes(kind))throw new Error("Unsupported master data type.");
-  const code=id(body.code),permissionModule=body.permissionModule==="master"?"master":"financial";
+  const code=id(body.code),permissionModule=kind==="parties"&&body.permissionModule==="master"?"master":"financial";
   let existing=await adminRead(kind+"/"+code);
   let crmCustomer=null,crmVendor=null;
   if(kind==="parties"&&adminReadRoot){
