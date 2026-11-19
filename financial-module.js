@@ -27,7 +27,7 @@ const parseInternalInvoiceNumber=value=>{
  let candidate=source.slice(marker.index+marker[0].length).split(/\r?\n/,1)[0];
  const nextField=/\s+(?=(?:Document\s+Type(?:\s+Version)?|Date\s+Time\s+Issued|Issue\s+Date(?:\s+Time)?|Invoice\s+Date|Issuer\s*\(\s*From\s*\)|Recipients?\s*\(\s*To\s*\)|Seller\b|Buyer\b|Internal\s*id\s*[:：]|Total\s+(?:Sales\s+)?Amount|Taxable\s+Items|Items\s+Count|Payment\s+Method|Signature\b|QR\s+Code)(?:\s|[:：]|$))/i.exec(candidate);
  if(nextField)candidate=candidate.slice(0,nextField.index);
-  const valueMatch=/^\\s*[:：#-]*\\s*([0-9٠-٩۰-۹]+)/.exec(candidate);
+  const valueMatch=/^\s*[:：#-]*\s*([0-9٠-٩۰-۹]+)/.exec(candidate);
   return valueMatch?valueMatch[1].replace(/[٠-٩]/g,d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/[۰-۹]/g,d=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))):'';
 };
 const today=()=>new Date().toISOString().slice(0,10);
@@ -972,7 +972,16 @@ const deleteJournalDocument=async(doc)=>{
   );
    const draftRows = documents.filter(function(x){return x.type==='journal';}).sort((a,b)=>n(b.createdAt)-n(a.createdAt)).map(function(x){
     const manual=!(x.sourceType&&x.sourceType!=='manual');
-    return h('tr',{key:x.id,className:'border-t'},h('td',{className:'p-2'},x.id),h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},x.description),h('td',{className:'p-2'},status(x.status)),h('td',{className:'p-2'},h('div',{className:'flex flex-wrap gap-1'},button('تعديل',function(){editDoc(x);},'muted',!manual||!canFinance("journal","edit")),button('حذف',function(){void deleteJournalDocument(x);},'danger',!manual||!canFinance("journal","delete"))))));
+     return h('tr',{key:x.id,className:'border-t'},
+      h('td',{className:'p-2'},x.id),
+      h('td',{className:'p-2'},x.date),
+      h('td',{className:'p-2'},x.description),
+      h('td',{className:'p-2'},status(x.status)),
+      h('td',{className:'p-2'},h('div',{className:'flex flex-wrap gap-1'},
+       button('تعديل',function(){editDoc(x);},'muted',!manual||!canFinance("journal","edit")),
+       button('حذف',function(){void deleteJournalDocument(x);},'danger',!manual||!canFinance("journal","delete"))
+      ))
+     );
    });
    const draftsPanel = panel('سجل القيود اليومية','يمكن تعديل أو حذف القيود اليدوية وفق الصلاحيات. القيود المرتبطة بفواتير أو سندات مصدرية لا تُحذف أو تُعدل من هنا حفاظًا على ترابط المخزون والأستاذ.',table(['رقم','التاريخ','الوصف','الحالة','إجراء'],draftRows));
   return h('div',{className:'space-y-4'},headerPanel,linesPanel,totalsPanel,draftsPanel);
