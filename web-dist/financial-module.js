@@ -294,7 +294,7 @@ function FinanceModule(props){
   "حفظ تصحيحات المراجع":"Save Reviewer Corrections",
   "تحليل المصروفات الفعلية حسب مركز التكلفة":"Actual Expense Analysis by Cost Center",
   "مرفقات المستند":"Document Attachments","تفاصيل الأصناف والإصدارات":"Item & Version Details",
-  "قائمة التدفقات النقدية المبسطة":"Simplified Cash Flow Statement"
+  "قائمة التدفقات النقدية المبسطة":"Simplified Cash Flow Statement",
 
   "الطرف المختار":"Selected Party","نوع كشف الحساب":"Statement Type","عرض كشف الحساب":"View Statement",
   "كشوف الأطراف والعاملين":"Party & Employee Statements","العهد الشخصية للموظفين":"Employee Custody Accounts",
