@@ -13,6 +13,7 @@ on:
       - "scripts/build-web.mjs"
       - "package.json"
       - "firebase-messaging-sw.js"
+      - "firebase-rules/**"
       - "index.html"
       - "wrangler.jsonc"
       - ".github/scripts/check-app-babel.mjs"
@@ -23,6 +24,7 @@ on:
       - "cloudflare/worker.js"
       - "financial-api.js"
       - "financial-module.js"
+      - "firebase-rules/**"
       - "scripts/build-mobile.mjs"
       - "index.html"
       - "wrangler.jsonc"
@@ -51,7 +53,7 @@ jobs:
           node --check scripts/build-mobile.mjs
           node --check scripts/build-web.mjs
       - name: Run financial accounting tests
-        run: node --test tests/financial-api.test.mjs
+        run: node --test tests/*.test.mjs
       - name: Build optimized web assets
         run: npm run build:web
       - name: Bundle Worker with Wrangler (dry run only)
