@@ -36,8 +36,19 @@ const n=v=>Number(v)||0;
 const fmt=v=>new Intl.NumberFormat('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n(v));
 const dl=(name,txt)=>{const b=new Blob([txt],{type:'text/csv;charset=utf-8'}),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1200);};
 function FinanceModule(props){
- const {db,currentUser,rtl=true,workerBase,userDirectory=[]}=props;
+ const {db,currentUser,rtl=true,workerBase,userDirectory=[],can:permissionCheck}=props;
  const t=(ar,en)=>rtl?ar:en,base=workerBase||window.location.origin;
+ const financeTabAreas={overview:"overview",journal:"journal",review:"review",invoices:"invoices",assignments:"assignments",partyStatements:"partyStatements",masters:"masters",accounts:"accounts",centers:"centers",inventory:"inventory",cash:"cash",bank:"bank",tax:"tax",reports:"reports"};
+ const financeMasterAreas={parties:"masters",chartOfAccounts:"accounts",costCenters:"centers",items:"inventory",itemGroups:"inventory",warehouses:"inventory",bankAccounts:"bank",taxCodes:"tax"};
+ const canFinance=(area,action="view")=>{
+  if(currentUser&&currentUser.role==="admin")return true;
+  if(typeof permissionCheck==="function")return permissionCheck("financial_"+area,action);
+  const permissions=currentUser&&currentUser.permissions||{},specific=permissions["financial_"+area];
+  if(specific&&typeof specific==="object")return specific[action]===true;
+  const hasScoped=Object.keys(financeTabAreas).some(key=>permissions["financial_"+key]&&typeof permissions["financial_"+key]==="object");
+  return !hasScoped&&Boolean(permissions.financial&&permissions.financial[action]===true);
+ };
+ const financeAreaForMaster=kind=>financeMasterAreas[kind]||"masters";
  const [tab,setTab]=React.useState('overview'),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[notice,setNotice]=React.useState('');
  const [master,setMaster]=React.useState({chartOfAccounts:{},costCenters:{},items:{},itemGroups:{},warehouses:{},bankAccounts:{},taxCodes:{},parties:{},settings:{},inventory:{balances:{}}});
  const [documents,setDocuments]=React.useState([]),[review,setReview]=React.useState([]),[periodJournals,setPeriodJournals]=React.useState([]),[balanceJournals,setBalanceJournals]=React.useState([]),[accountingStartMonth,setAccountingStartMonth]=React.useState('');
@@ -111,7 +122,10 @@ function FinanceModule(props){
   setBusy(true);setError('');
   try{
    const b=await api('?resource=bootstrap');
-   const [r,d]=await Promise.all([api('?resource=review'),api('?resource=documents')]);
+   const [r,d]=await Promise.all([
+    canFinance('review','view')?api('?resource=review'):Promise.resolve({items:{}}),
+    ['invoices','journal','cash','bank'].some(area=>canFinance(area,'view'))?api('?resource=documents'):Promise.resolve({items:{}})
+   ]);
    setMaster(Object.assign({chartOfAccounts:{},costCenters:{},items:{},itemGroups:{},warehouses:{},bankAccounts:{},taxCodes:{},parties:{},settings:{},inventory:{balances:{}}},b));
    const partyRows=rows(b.parties||{});
    setClients(partyRows.filter(item=>item.partyType==='customer'));
@@ -499,7 +513,7 @@ function FinanceModule(props){
    if(kind==='parties'&&(!item.code||!item.name))throw new Error('أدخل كود واسم المورد/العميل أولاً.');
    if(kind==='parties'&&!['customer','vendor'].includes(item.partyType))throw new Error('حدد نوع الطرف عميل أو مورد.');
    const originalCode=quickAddOriginalCode;
-   const result=await api('', 'POST',{action:'saveMaster',kind,permissionModule:kind==='parties'?'master':'financial',item,...(originalCode?{originalCode}:{})});
+   const result=await api('', 'POST',{action:'saveMaster',kind,item,...(originalCode?{originalCode}:{})});
    if(!result||result.success!==true||!result.item)throw new Error('لم يؤكد الخادم حفظ البيانات. لم يتم إغلاق شاشة الإضافة.');
    let savedItem=result.item;
    if(kind==='parties'){
@@ -851,6 +865,14 @@ function FinanceModule(props){
  const nav=[
  ['overview','ملخص مالي'],['journal','القيود اليومية'],['review','المراجعة والاعتماد'],['invoices','فواتير العملاء والموردين'],['assignments','الإجراءات المحولة إليّ'],['partyStatements','كشوف الأطراف والعاملين'],['masters','البيانات الأساسية والاستيراد'],['accounts','دليل الحسابات'],['centers','مراكز التكلفة'],['inventory','المخزون والأكواد'],['cash','الخزينة والتحصيل والسداد'],['bank','كشوف البنوك'],['tax','الضرائب'],['reports','القوائم المالية']
  ];
+ const visibleNav=nav.filter(item=>canFinance(financeTabAreas[item[0]],"view"));
+ React.useEffect(()=>{
+  const area=financeTabAreas[tab];
+  if(area&&!canFinance(area,"view")){
+   const first=nav.find(item=>canFinance(financeTabAreas[item[0]],"view"));
+   if(first&&first[0]!==tab)setTab(first[0]);
+  }
+ },[tab,currentUser&&currentUser.uid]);
  const renderOverview=()=>h('div',{className:'space-y-4'},
   h('div',{className:'grid grid-cols-2 xl:grid-cols-4 gap-3'},metric('إجمالي المدين',fmt(trial.reduce((s,x)=>s+x.amount.debit,0))+' ج.م'),metric('إجمالي الدائن',fmt(trial.reduce((s,x)=>s+x.amount.credit,0))+' ج.م'),metric('صافي الربح / الخسارة',fmt(profit)+' ج.م'),metric('بانتظار المراجعة',String(review.length))),
   h('div',{className:'flex flex-wrap gap-2 items-end'},field('من شهر',period.from,v=>setPeriod(o=>Object.assign({},o,{from:v})),'month'),field('إلى شهر',period.to,v=>setPeriod(o=>Object.assign({},o,{to:v})),'month'),button('تحديث التقارير',loadPeriod,'primary')),
@@ -1161,8 +1183,8 @@ function FinanceModule(props){
   const detailsPanel=panel('تفاصيل الأصناف والإصدارات','الرصيد والتكلفة محفوظان على مستوى كود الصنف والإصدار والمخزن.',table(['الكود','الصنف','المجموعة','الإصدار','الوحدة','المخزن','الكمية','متوسط التكلفة','القيمة'],stockRows));
   return h('div',{className:'space-y-4'},groupPanel,detailsPanel);
  };
- const masterPermissionModule=kind=>kind==="parties"?"master":"financial";
- const canMasterAction=(kind,action)=>currentUser?.role==="admin"||currentUser?.permissions?.[masterPermissionModule(kind)]?.[action]===true;
+ const masterPermissionModule=kind=>"financial_"+financeAreaForMaster(kind);
+ const canMasterAction=(kind,action)=>canFinance(financeAreaForMaster(kind),action);
  const editMasterRecord=(kind,item)=>{
   if(!canMasterAction(kind,"edit"))return setError("ليس لديك صلاحية تعديل هذا النوع من البيانات.");
   openQuickAdd(kind,null,Object.assign({},item,{partyType:item.partyType||(kind==="parties"?(masterViewKind==="suppliers"?"vendor":"customer"):undefined)}),item.code||item.id||"");
@@ -1174,7 +1196,7 @@ function FinanceModule(props){
   if(!window.confirm("هل تريد حذف "+(labels[kind]||"السجل")+" "+(item.code||item.name||"")+"؟ إذا كان مرتبطًا بحركات أو أرصدة، سيوقف النظام استخدامه بدلًا من حذف تاريخه المحاسبي."))return;
   setBusy(true);setError("");setNotice("");
   try{
-   const result=await api("", "POST",{action:"deleteMaster",kind,permissionModule:kind==="parties"?"master":"financial",code:item.code||item.id});
+   const result=await api("", "POST",{action:"deleteMaster",kind,code:item.code||item.id});
    if(result.deactivated)setNotice("السجل مرتبط ببيانات سابقة؛ تم إيقاف استخدامه مع الاحتفاظ بالحركات والتقارير: "+(result.references||[]).join("، "));
    else setNotice("تم حذف السجل غير المستخدم بنجاح.");
    await refresh();
@@ -1192,7 +1214,7 @@ function FinanceModule(props){
   if(!window.confirm("تأكيد حذف "+codes.length+" سجل؟ السجلات المرتبطة بحركات أو مستندات لن تُحذف نهائيًا، وسيتم إيقافها مع الاحتفاظ بالتاريخ."))return;
   setBusy(true);setError("");setNotice("");
   try{
-   const result=await api("","POST",{action:"deleteMasters",kind,codes,partyType,permissionModule:kind==="parties"?"master":"financial"});
+   const result=await api("","POST",{action:"deleteMasters",kind,codes,partyType});
    setSelectedMasterCodes([]);
    const messages=["اكتمل الحذف المتعدد: "+result.deleted+" حُذف نهائيًا، "+result.deactivated+" تم إيقافه لوجود ارتباطات."];
    if(result.notFound)messages.push(result.notFound+" سجل لم يعد موجودًا.");
@@ -1499,7 +1521,7 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
  if(tab==='reports')content=renderReports();
  return h('div',{className:'p-2 md:p-3 space-y-2',dir:rtl?'rtl':'ltr'},
   h('header',{className:'flex flex-wrap items-center justify-between gap-3'},h('div',null,h('h2',{className:'text-2xl font-extrabold'},'النظام المالي والمحاسبي'),h('p',{className:'text-xs text-slate-500'},'دفتر أستاذ مستقل — لا ترحيل قبل المراجعة والاعتماد')),button(busy?'جارٍ التحديث':'تحديث البيانات',refresh,'muted',busy)),
-  h('nav',{className:'flex flex-wrap gap-2'},nav.map(x=>button(x[1],()=>{setTab(x[0]);setNotice('');setError('');},tab===x[0]?'primary':'muted'))),
+  h('nav',{className:'flex flex-wrap gap-2'},visibleNav.map(x=>button(x[1],()=>{setTab(x[0]);setNotice('');setError('');},tab===x[0]?'primary':'muted'))),
   noticeElement,content,renderQuickAdd(),busy?h('p',{className:'text-xs text-slate-500'},'جارٍ تحميل البيانات...'):null,
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
