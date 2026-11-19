@@ -59,7 +59,40 @@ test("supports Arabic and Persian digits when reading legacy codes", () => {
     records: [{code:"عميل-٠٠٧"},{code:"عميل-٠٠٨"}],
     fallbackPrefix:"CUS"
   });
-  assert.equal(result.code,"عميل-009");
+  assert.equal(result.code,"عميل-٠٠٩");
+});
+
+test("separates top-level and child account sequences by parent account", () => {
+  const result = engine.suggestNext({
+    records: [
+      {code:"1"},
+      {code:"2"},
+      {code:"101",parentCode:"1"},
+      {code:"102",parentCode:"1"},
+      {code:"201",parentCode:"2"},
+      {code:"202",parentCode:"2"}
+    ],
+    fallbackPrefix:"ACC",
+    groupBy:"parentCode",
+    groupValue:"1",
+    separator:false
+  });
+  assert.equal(result.code,"103");
+});
+
+test("filters parentless records when the selected group is empty", () => {
+  const result = engine.suggestNext({
+    records: [
+      {code:"CUS-001",parentCode:""},
+      {code:"CUS-002",parentCode:""},
+      {code:"SUB-010",parentCode:"ROOT"},
+      {code:"SUB-011",parentCode:"ROOT"}
+    ],
+    fallbackPrefix:"CUS",
+    groupBy:"parentCode",
+    groupValue:""
+  });
+  assert.equal(result.code,"CUS-003");
 });
 
 test("uses a safe default when no stable sequence can be inferred", () => {
