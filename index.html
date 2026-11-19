@@ -1256,7 +1256,15 @@ function App(){
   const [seenRequestIds,setSeenRequestIds] = useState([]);
   const [showRequests,setShowRequests] = useState(false);
   const [account,setAccount] = useState({type:'client',code:''});
-  const blankMaster = (type='client') => ({type,code:'',name:'',active:true,englishName:'',taxNumber:'',commercialRegister:'',contactPerson:'',contactTitle:'',phone:'',mobile:'',alternatePhone:'',email:'',alternateEmail:'',whatsapp:'',website:'',address:'',city:'',country:'',postalCode:'',paymentTerms:'',creditLimit:'',currency:'EGP',bankName:'',bankAccount:'',iban:'',notes:''});
+  const suggestApplicationCode=(fallbackPrefix,records,options={})=>{
+    const engine=window.PEST_CODE_INTELLIGENCE;
+    if(engine&&typeof engine.suggestNext==='function')return engine.suggestNext(Object.assign({records:records||[],fallbackPrefix,minDigits:3},options||{}));
+    const used=new Set((records||[]).map(item=>String(item.code||item.id||'').toUpperCase()));
+    let i=1,code='';do{code=fallbackPrefix+'-'+String(i++).padStart(3,'0');}while(used.has(code.toUpperCase()));
+    return {code,pattern:fallbackPrefix+'-###',source:'fallback',matchedCount:0};
+  };
+  const applicationCodeHint=result=>window.PEST_CODE_INTELLIGENCE&&result?window.PEST_CODE_INTELLIGENCE.hint(result,rtl):'يمكنك تعديل الكود يدويًا.';
+  const blankMaster = (type='client') => ({type,code:suggestApplicationCode(type==='vendor'?'VND':'CUS',type==='vendor'?vendors:clients).code,name:'',active:true,englishName:'',taxNumber:'',commercialRegister:'',contactPerson:'',contactTitle:'',phone:'',mobile:'',alternatePhone:'',email:'',alternateEmail:'',whatsapp:'',website:'',address:'',city:'',country:'',postalCode:'',paymentTerms:'',creditLimit:'',currency:'EGP',bankName:'',bankAccount:'',iban:'',notes:''});
   const [master,setMaster] = useState(blankMaster());
   const [editingMasterCode,setEditingMasterCode] = useState('');
   const [masterFormOpen,setMasterFormOpen] = useState(false);
@@ -1264,7 +1272,7 @@ function App(){
   const [financialPartyReturn,setFinancialPartyReturn] = useState(null);
   const [masterFilter,setMasterFilter] = useState('');
   useEffect(()=>{if(tab==='financial')setFinancialModuleMounted(true);},[tab]);
-  const blankProject = () => ({code:'',name:'',contractNo:'',purchaseOrderNo:'',projectType:'supply',status:'جاري',clientCode:'',clientCodes:[],vendorCodes:[],projectManager:'',startDate:'',expectedEndDate:'',actualEndDate:'',location:'',deliveryAddress:'',currency:'EGP',amount:'',costBudget:'',paymentTerms:'',scope:'',notes:''});
+  const blankProject = () => ({code:suggestApplicationCode('PRJ',projects).code,name:'',contractNo:'',purchaseOrderNo:'',projectType:'supply',status:'جاري',clientCode:'',clientCodes:[],vendorCodes:[],projectManager:'',startDate:'',expectedEndDate:'',actualEndDate:'',location:'',deliveryAddress:'',currency:'EGP',amount:'',costBudget:'',paymentTerms:'',scope:'',notes:''});
   const [project,setProject] = useState(blankProject());
   const [editingProjectCode,setEditingProjectCode] = useState('');
   const [projectFormOpen,setProjectFormOpen] = useState(false);
@@ -4272,7 +4280,7 @@ function App(){
     const defaults=Object.assign({},payload&&payload.defaults||{});
     delete defaults.partyType;
     setFinancialPartyReturn(payload||null);
-    setMaster({...blankMaster(type),...defaults,type,code:defaults.code||'',name:defaults.name||''});
+    setMaster({...blankMaster(type),...defaults,type,code:defaults.code||blankMaster(type).code,name:defaults.name||''});
     setMasterPendingAttachments([]);
     setEditingMasterCode('');
     setMasterFormOpen(true);
@@ -6513,7 +6521,7 @@ function App(){
           <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="font-bold text-xl">{tr('master')}</h2><input className="border rounded-lg p-2 min-w-64" placeholder={tr('searchAll')} value={masterFilter} onChange={e=>setMasterFilter(e.target.value)}/></div>
           <section className="bg-white p-5 rounded-xl border shadow-sm"><div className="flex flex-wrap justify-between items-center gap-3 mb-3"><h3 className="font-bold">{editingMasterCode?(rtl?'تعديل بيانات':'Edit record'):(rtl?'إضافة بيانات عميل أو مورد':'Add client or vendor')}</h3><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={()=>{setMasterPendingAttachments([]);setEditingMasterCode('');setMaster(blankMaster('client'));setMasterFormOpen(true);}} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold">{rtl?'إضافة عميل':'Add client'}</button><button type="button" onClick={()=>{setMasterPendingAttachments([]);setEditingMasterCode('');setMaster(blankMaster('vendor'));setMasterFormOpen(true);}} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold">{rtl?'إضافة مورد':'Add vendor'}</button><button type="button" aria-expanded={masterFormOpen} onClick={()=>setMasterFormOpen(old=>!old)} className="w-10 h-10 rounded-lg bg-gray-100 text-gray-700" title={rtl?'فتح أو إغلاق النموذج':'Expand or collapse form'}><i className={masterFormOpen?'fas fa-chevron-up':'fas fa-chevron-down'}></i></button>{financialPartyReturn&&<button type="button" className="px-3 py-2 rounded-lg bg-amber-100 text-amber-900 text-xs font-bold" onClick={()=>{setFinancialPartyReturn(null);setMaster(blankMaster());setMasterPendingAttachments([]);setEditingMasterCode('');setMasterFormOpen(false);setTab('financial');}}>{rtl?'العودة إلى الفاتورة دون حفظ':'Return to invoice without saving'}</button>}{editingMasterCode&&<button type="button" className="text-red-600 text-sm" onClick={()=>{setMasterPendingAttachments([]);setMaster(blankMaster());setEditingMasterCode('');setMasterFormOpen(false);}}>{tr('clear')}</button>}</div></div>
             {masterFormOpen&&<form onSubmit={addMaster} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-              <input required className="border rounded-lg p-3" placeholder={tr('code')} value={master.code} onChange={e=>setMaster({...master,code:e.target.value})}/>
+              <div className="space-y-1 min-w-0"><div className="flex gap-2"><input required className="border rounded-lg p-3 flex-1 min-w-0" placeholder={tr('code')} value={master.code} onChange={e=>setMaster({...master,code:e.target.value})}/><button type="button" className="rounded-lg border bg-slate-50 px-3 text-xs font-bold" onClick={()=>setMaster({...master,code:suggestApplicationCode(master.type==='vendor'?'VND':'CUS',master.type==='vendor'?vendors:clients).code})}>{rtl?'اقتراح الكود':'Suggest code'}</button></div><small className="block text-[11px] text-slate-500">{applicationCodeHint(suggestApplicationCode(master.type==='vendor'?'VND':'CUS',master.type==='vendor'?vendors:clients))}</small></div>
               <input required className="border rounded-lg p-3" placeholder={tr('name')} value={master.name} onChange={e=>setMaster({...master,name:e.target.value})}/>
               <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold"><input type="checkbox" checked={master.active!==false} onChange={e=>setMaster({...master,active:e.target.checked})}/>{rtl?'السجل نشط ومتاح للاستخدام':'Record active and available for use'}</label>
               <input className="border rounded-lg p-3" placeholder={tr('taxRegistration')} value={master.taxNumber} onChange={e=>setMaster({...master,taxNumber:e.target.value})}/>
@@ -6655,7 +6663,7 @@ function App(){
         {tab==='projects'&&<div className="space-y-5">
           <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="font-bold text-xl">{tr('projects')}</h2><input className="border rounded-lg p-2 min-w-64" placeholder={tr('searchAll')} value={projectFilter} onChange={e=>setProjectFilter(e.target.value)}/></div>
           <section className="bg-white p-5 rounded-xl border"><div className="flex flex-wrap justify-between items-center gap-3 mb-3"><h3 className="font-bold">{editingProjectCode?(rtl?'تعديل المشروع':'Edit project'):(rtl?'إضافة مشروع جديد':'Add new project')}</h3><button type="button" aria-expanded={projectFormOpen} onClick={()=>setProjectFormOpen(old=>!old)} className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-bold"><i className={projectFormOpen?'fas fa-chevron-up me-2':'fas fa-chevron-down me-2'}></i>{projectFormOpen?(rtl?'طي النموذج':'Collapse form'):(rtl?'فتح النموذج':'Expand form')}</button></div>{projectFormOpen&&<form onSubmit={addProject} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            <input required className="border rounded-lg p-3" placeholder={tr('projectCode')} value={project.code} onChange={e=>setProject({...project,code:e.target.value})}/>
+            <div className="space-y-1 min-w-0"><div className="flex gap-2"><input required className="border rounded-lg p-3 flex-1 min-w-0" placeholder={tr('projectCode')} value={project.code} onChange={e=>setProject({...project,code:e.target.value})}/><button type="button" className="rounded-lg border bg-slate-50 px-3 text-xs font-bold" onClick={()=>setProject({...project,code:suggestApplicationCode('PRJ',projects).code})}>{rtl?'اقتراح الكود':'Suggest code'}</button></div><small className="block text-[11px] text-slate-500">{applicationCodeHint(suggestApplicationCode('PRJ',projects))}</small></div>
             <input required className="border rounded-lg p-3" placeholder={tr('projectName')} value={project.name} onChange={e=>setProject({...project,name:e.target.value})}/>
             <input className="border rounded-lg p-3" placeholder={tr('contractNo')} value={project.contractNo} onChange={e=>setProject({...project,contractNo:e.target.value})}/>
             <input className="border rounded-lg p-3" placeholder={tr('purchaseOrderNo')} value={project.purchaseOrderNo} onChange={e=>setProject({...project,purchaseOrderNo:e.target.value})}/>
