@@ -983,25 +983,42 @@ if(action==="forwardInvoiceAssignment"){
    return {success:true,id:invoice.id,assignmentId,nextAssignmentId:nextId,status:"assigned",pushNotification:{recipientUid:nextUid,eventType:"financialAssignment",eventId:nextId,content:{title:"فاتورة محولة إليك",body:instruction}}};
   }
   if(action==="deleteInvoice"){
-   requireFinanceArea("invoices","delete");
    const docId=id(body.id),previous=await adminRead("documents/"+docId);
    if(!previous||previous.type!=="invoice")throw new Error("الفاتورة المطلوب حذفها غير موجودة.");
-   if(previous.status==="posted"||previous.journalId||previous.status==="assigned")throw new Error("لا يمكن حذف فاتورة مرحّلة أو محوّلة لمستخدم. أعدها أولًا لمسارها الصحيح أو استخدم مستندًا عكسيًا بعد الترحيل.");
-   const allowed=["draft","needs_correction","returned_to_creator","pending_review","duplicate_review","rejected"];
+   if(previous.status==="posted"||previous.journalId)throw new Error("لا يمكن حذف فاتورة مُرحّلة محاسبيًا. استخدم قيدًا عكسيًا بعد المراجعة.");
+   let activeAssignment=null,assignedRecipient=false;
+   if(previous.status==="assigned"){
+    if(previous.assignedTo!==claims.sub)throw new Error("لا يمكن حذف فاتورة محوّلة إلا من المستخدم الموجود في عهدته حاليًا.");
+    requireFinanceArea("assignments","edit");
+    activeAssignment=previous.assignmentId?await adminRead("assignments/"+claims.sub+"/"+id(previous.assignmentId)):null;
+    if(!activeAssignment||activeAssignment.status!=="open")throw new Error("مهمة التحويل لم تعد مفتوحة؛ لا يمكن إلغاء هذه الفاتورة.");
+    assignedRecipient=true;
+   }else requireFinanceArea("invoices","delete");
+   const allowed=["draft","needs_correction","returned_to_creator","pending_review","duplicate_review","rejected","assigned"];
    if(!allowed.includes(previous.status))throw new Error("لا يمكن حذف الفاتورة في حالتها الحالية.");
-   const nextStatus=["pending_review","duplicate_review"].includes(previous.status)?"cancelled":"deleted",updates={};
+   const nextStatus=["pending_review","duplicate_review","assigned"].includes(previous.status)?"cancelled":"deleted",updates={};
    updates["documents/"+docId+"/status"]=nextStatus;
    updates["documents/"+docId+"/deletedAt"]=now;
    updates["documents/"+docId+"/deletedBy"]=claims.sub;
-   updates["documents/"+docId+"/deleteReason"]=txt(body.reason||"حذف/إلغاء بطلب المستخدم",300);
+   updates["documents/"+docId+"/deleteReason"]=txt(body.reason||(assignedRecipient?"إلغاء من المستخدم المحال إليه":"حذف/إلغاء بطلب المستخدم"),300);
    updates["reviewQueue/"+docId]=null;
+   if(assignedRecipient){
+    const assignmentId=id(previous.assignmentId);
+    updates["assignments/"+claims.sub+"/"+assignmentId+"/status"]="cancelled";
+    updates["assignments/"+claims.sub+"/"+assignmentId+"/completedAt"]=now;
+    updates["assignments/"+claims.sub+"/"+assignmentId+"/decision"]="cancelled_by_assignee";
+    const senderUid=id(activeAssignment.createdBy||previous.assignmentSenderUid||previous.createdBy);
+    updates["sentAssignments/"+senderUid+"/"+assignmentId+"/status"]="cancelled";
+    updates["sentAssignments/"+senderUid+"/"+assignmentId+"/decision"]="cancelled_by_assignee";
+    if(activeAssignment.taskId)await patchExternalBranch("tasks",{[claims.sub+"/"+id(activeAssignment.taskId)+"/status"]:"completed",[claims.sub+"/"+id(activeAssignment.taskId)+"/completedAt"]:now});
+   }
    if(previous.fingerprint){
     const fingerprint=await adminRead("documentFingerprints/"+previous.fingerprint);
     if(fingerprint&&fingerprint.documentId===docId)updates["documentFingerprints/"+previous.fingerprint]=null;
    }
    updates["audit/"+uid("AUD")]={action:nextStatus==="cancelled"?"cancel_invoice":"delete_invoice",documentId:docId,previousStatus:previous.status,uid:claims.sub,createdAt:now};
    await adminPatch(updates);
-   return {success:true,id:docId,deleted:nextStatus==="deleted",status:nextStatus};
+   return {success:true,id:docId,deleted:nextStatus==="deleted",status:nextStatus,assignmentCancelled:assignedRecipient};
   }
   if(action==="submitInvoice"){
    if(!["purchase","sales"].includes(body.type))throw new Error("حدد هل الفاتورة مشتريات من مورد أم مبيعات لعميل.");
