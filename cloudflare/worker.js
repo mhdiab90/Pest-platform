@@ -2446,9 +2446,20 @@ async function validateAttachmentEntity(type,id,claims,profile,token,action,owne
       // to another user's rows still requires the explicit viewOthers grant.
       if(ownerUid!==claims.sub&&!hasPermission(profile,"cashCustody","viewOthers"))throw new Error("Permission denied: viewing another user's cash custody.");
     }else if(entityType==="financial"){
-      if(!hasPermission(profile,"financial","view"))throw new Error("Permission denied: financial attachment access.");
-      if(action==="upload"&&!hasPermission(profile,"financial","add")&&!hasPermission(profile,"financial","edit"))throw new Error("Permission denied: financial attachment upload.");
-      if(action==="edit"&&!hasPermission(profile,"financial","edit"))throw new Error("Permission denied: financial attachment edit.");
+      const invoice=await databaseRequest("financial/documents/"+entityId,token,"GET");
+      const assignment=invoice&&invoice.status==="assigned"&&invoice.assignedTo===claims.sub&&invoice.assignmentId
+        ?await databaseRequest("financial/assignments/"+claims.sub+"/"+invoice.assignmentId,token,"GET"):null;
+      const currentAssignee=!!(assignment&&assignment.status==="open"&&assignment.assigneeUid===claims.sub);
+      const reviewEditor=!!(invoice&&["pending_review","duplicate_review"].includes(invoice.status)&&hasPermission(profile,"financial_review",action==="view"?"view":"edit"));
+      if(currentAssignee){
+        requirePermission(profile,"financial_assignments",action==="view"?"view":"edit");
+      }else if(reviewEditor){
+        requirePermission(profile,"financial_review",action==="view"?"view":"edit");
+      }else{
+        if(!hasPermission(profile,"financial","view"))throw new Error("Permission denied: financial attachment access.");
+        if(action==="upload"&&!hasPermission(profile,"financial_invoices","add")&&!hasPermission(profile,"financial_invoices","edit")&&!hasPermission(profile,"financial","add")&&!hasPermission(profile,"financial","edit"))throw new Error("Permission denied: financial attachment upload.");
+        if(action==="edit"&&!hasPermission(profile,"financial","edit"))throw new Error("Permission denied: financial attachment edit.");
+      }
     }
   }
   if(action==="delete"&&ownerUid&&ownerUid!==claims.sub&&profile.role!=="admin")requirePermission(profile,"attachments","delete");
