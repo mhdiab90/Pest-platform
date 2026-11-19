@@ -99,7 +99,7 @@ test("PDF page text is sent through invoice extraction and preserves suggested e
 });
 
 test("invoice number uses only the numeric token beside Internal ID, not the ETA document ID", async () => {
-  const pdfText = "Invoice\\nID: HPQ0GXW34P4KXH0S2FJFJ77M10 Proforma Invoice Number:\\nPO Reference:\\nInternal ID: 13672\\nSigned By: Egypt Laptop";
+  const pdfText = ["Invoice","ID: HPQ0GXW34P4KXH0S2FJFJ77M10 Proforma Invoice Number:","PO Reference:","Internal ID: 13672","Signed By: Egypt Laptop"].join(String.fromCharCode(10));
   env.AI = {run:async(_model,request)=>{
     const prompt=request.messages[0].content.map(part=>part.text||"").join(" ");
     assert.match(prompt,/Internal id/i);
@@ -271,10 +271,14 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
   assert.equal(purchase.totals.tax,12.6);
   assert.equal(read("documents/"+purchase.id).taxCode,"VAT-IN-14","input VAT code is retained on the purchase invoice");
   const earlySpecialRate=await invoke("POST","",{action:"submitInvoice",type:"purchase",date:"2026-07-01",number:"PUR-5-EARLY",partyId:"VENDOR-001",partyName:"Supplier Test",currency:"EGP",taxCode:"VAT-IN-05",lines:[{description:"Production machine",kind:"stock",itemCode:"ITEM-001",quantity:1,unitPrice:100}]});
-  assert.equal(earlySpecialRate.status,"needs_correction","the 5% special rate cannot be used before its effective date");
+  assert.equal(earlySpecialRate.status,"pending_review","an invalid effective date must be sent to review for correction");
+  assert.ok(earlySpecialRate.errors.some(x=>x.includes("غير سارٍ بتاريخ الفاتورة")));
+  assert.ok(read("reviewQueue/"+earlySpecialRate.id));
   assert.ok(earlySpecialRate.errors.some(x=>x.includes("غير سارٍ بتاريخ الفاتورة")));
   const unclassifiedVat=await invoke("POST","",{action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-VAT-NO-CODE",partyId:"VENDOR-001",partyName:"Supplier Test",currency:"EGP",taxRate:5,lines:[{description:"Equipment",kind:"stock",itemCode:"ITEM-001",quantity:1,unitPrice:100}]});
-  assert.equal(unclassifiedVat.status,"needs_correction","positive VAT rate requires a direction-specific tax code");
+  assert.equal(unclassifiedVat.status,"pending_review","a missing VAT code must be queued for reviewer completion");
+  assert.ok(unclassifiedVat.errors.some(x=>x.includes("كود ضريبي")));
+  assert.ok(read("reviewQueue/"+unclassifiedVat.id));
   await invoke("POST","",{
     action:"saveMaster",kind:"bankAccounts",
     item:{code:"1120",name:"Main Test Bank",accountCode:"1120"}
@@ -286,18 +290,20 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
     partyId:"SUP-IMPORT-01",partyName:"Imported Supplier One",
     lines:[{description:"Missing stock code",kind:"stock",itemCode:"",quantity:1,unitPrice:20}]
   });
-  assert.equal(correction.status,"needs_correction");
+  assert.equal(correction.status,"pending_review","a missing stock code is queued for reviewer completion");
+  assert.ok(read("reviewQueue/"+correction.id));
   await invoke("POST","",{
     action:"addAttachment",documentId:correction.id,
     attachment:{id:"ATTACH-ORIGINAL",fileName:"invoice-original.jpg",mimeType:"image/jpeg",size:100}
   });
   const corrected = await invoke("POST","",{
-    action:"submitInvoice",id:correction.id,type:"purchase",date:"2026-11-18",number:"PUR-CORR-01",
-    partyId:"SUP-IMPORT-01",partyName:"Imported Supplier One",
+    action:"updateReviewInvoice",id:correction.id,
+    invoice:{invoiceType:"purchase",date:"2026-11-18",number:"PUR-CORR-01",partyId:"SUP-IMPORT-01",partyName:"Imported Supplier One",currency:"EGP",taxRate:0,taxAmount:"",discount:0},
     lines:[{description:"Corrected stock code",kind:"stock",itemCode:"ITEM-001",quantity:1,unitPrice:20}]
   });
   assert.equal(corrected.status,"pending_review");
-  assert.equal(read("documents/"+correction.id+"/attachments/ATTACH-ORIGINAL").fileName,"invoice-original.jpg","editing a correction keeps its original scanned invoice attachment");
+  assert.deepEqual(corrected.errors,[],"the reviewer can correct the missing stock code before approval");
+  assert.equal(read("documents/"+correction.id+"/attachments/ATTACH-ORIGINAL").fileName,"invoice-original.jpg","review edits preserve the original scanned invoice attachment");
 
   const purchasePosted = await invoke("POST","",{
     action:"review",id:purchase.id,decision:"approve",reason:"purchase approval"
@@ -344,7 +350,8 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
     partyId:"VENDOR-001",partyName:"Supplier Test",
     lines:[{description:"Training",kind:"service",accountCode:"4100",quantity:1,unitPrice:100}]
   });
-  assert.equal(wrongExpenseAccount.status,"needs_correction","purchase expenses cannot be posted to revenue accounts");
+  assert.equal(wrongExpenseAccount.status,"pending_review","an invalid expense account is sent to the reviewer for correction");
+  assert.ok(wrongExpenseAccount.errors.some(x=>x.includes("مصروف صحيح")));
 
   const duplicate = await invoke("POST","",{
     action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-001",
@@ -388,7 +395,7 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
 
 });
 
-test("review inbox exposes newly submitted invoice details and removes invalid resubmissions without losing attachments", async () => {
+test("review inbox retains incomplete invoices and lets reviewers correct them without losing attachments", async () => {
   await invoke("GET","?resource=bootstrap");
   write("vendors/VENDOR-REVIEW-01",{code:"VENDOR-REVIEW-01",name:"Review Supplier",partyType:"vendor"});
   write("parties/VENDOR-REVIEW-01",{code:"VENDOR-REVIEW-01",name:"Review Supplier",partyType:"vendor"});
@@ -401,7 +408,7 @@ test("review inbox exposes newly submitted invoice details and removes invalid r
   assert.equal(submitted.status,"pending_review");
   const inbox=await invoke("GET","?resource=review");
   const queued=inbox.items[submitted.id];
-  assert.ok(queued,"a valid submitted invoice must be visible in the review queue");
+  assert.ok(queued,"a submitted invoice must be visible in the review queue");
   assert.equal(queued.invoiceType,"purchase");
   assert.equal(queued.createdByName,"Finance Test");
   assert.equal(queued.total,114);
@@ -409,33 +416,31 @@ test("review inbox exposes newly submitted invoice details and removes invalid r
   assert.equal(detail.item.id,submitted.id);
   assert.equal(detail.item.lines[0].description,"Maintenance service");
 
-  const before=read("documents/"+submitted.id);
   const attachment={id:"ATT-REVIEW-01",fileName:"invoice-original.pdf",mimeType:"application/pdf",size:4096};
   write("documents/"+submitted.id+"/attachments/"+attachment.id,attachment);
   write("documents/"+submitted.id+"/attachmentUploadStatus","pending");
   write("documents/"+submitted.id+"/attachmentFileName","invoice-original.pdf");
-  write("documents/"+submitted.id+"/status","needs_correction");
-  write("documents/"+submitted.id+"/errors",["حدد الصنف المخزني"]);
-  write("reviewQueue/"+submitted.id,queued);
 
-  const invalid=await invoke("POST","",{...payload,id:submitted.id,lines:[]});
-  assert.equal(invalid.status,"needs_correction");
-  assert.equal(read("reviewQueue/"+submitted.id),null,"an invalid resubmission must be removed from the approval queue");
-  assert.equal(read("documents/"+submitted.id+"/status"),"needs_correction");
-  assert.equal(read("documents/"+submitted.id+"/createdBy"),before.createdBy);
-  assert.equal(read("documents/"+submitted.id+"/createdAt"),before.createdAt);
-  assert.equal(read("documents/"+submitted.id+"/attachments/"+attachment.id).fileName,"invoice-original.pdf","resubmission must preserve the original scanned invoice");
-  assert.equal(read("documents/"+submitted.id+"/attachmentUploadStatus"),"pending","resubmission must preserve a pending attachment retry");
-  const afterInvalid=await invoke("GET","?resource=review");
-  assert.equal(afterInvalid.items[submitted.id],undefined,"documents that need correction must not masquerade as awaiting approval");
+  const incomplete=await invoke("POST","",{...payload,id:submitted.id,lines:[]});
+  assert.equal(incomplete.status,"pending_review","incomplete resubmission stays in the review queue");
+  assert.equal(read("reviewQueue/"+submitted.id).status,"pending_review");
+  assert.equal(read("documents/"+submitted.id+"/status"),"pending_review");
+  assert.ok(read("documents/"+submitted.id+"/errors").length>0,"missing invoice lines are visible to the reviewer as validation errors");
+  assert.equal(read("documents/"+submitted.id+"/attachments/"+attachment.id).fileName,"invoice-original.pdf","review submission preserves the original scanned invoice");
+  assert.equal(read("documents/"+submitted.id+"/attachmentUploadStatus"),"pending","a pending upload remains pending after resubmission");
+  const afterIncomplete=await invoke("GET","?resource=review");
+  assert.ok(afterIncomplete.items[submitted.id],"incomplete documents must remain visible in the reviewer inbox");
 
-  const repaired=await invoke("POST","",{...payload,id:submitted.id});
+  const repaired=await invoke("POST","",{
+    action:"updateReviewInvoice",id:submitted.id,
+    invoice:{invoiceType:"purchase",date:"2026-11-18",number:"PUR-REVIEW-FLOW-01",partyId:"VENDOR-REVIEW-01",partyName:"Review Supplier",currency:"EGP",taxCode:"VAT-IN-14",taxType:"vat_input",taxRate:14,taxAmount:"",discount:0},
+    lines:[{description:"Maintenance service",kind:"service",accountCode:"6100",quantity:1,unitPrice:100,discount:0}]
+  });
   assert.equal(repaired.status,"pending_review");
-  assert.ok(read("reviewQueue/"+submitted.id),"a corrected invoice returns to review");
+  assert.deepEqual(repaired.errors,[],"reviewer fixes the missing line details");
   assert.equal(read("documents/"+submitted.id+"/attachments/"+attachment.id).fileName,"invoice-original.pdf");
   assert.equal(read("documents/"+submitted.id+"/attachmentUploadStatus"),"pending");
 });
-
 test("invoice remains in review when its Drive attachment upload is pending", async () => {
   await invoke("GET","?resource=bootstrap");
   write("vendors/VENDOR-ATTACH-01",{code:"VENDOR-ATTACH-01",name:"Attachment Supplier",partyType:"vendor"});
@@ -627,7 +632,9 @@ test("foreign-currency posting is blocked until exchange rates and revaluation e
     /عملات/
   );
   const foreignInvoice=await invoke("POST","",{action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-USD-TEST",partyId:"VENDOR-001",partyName:"Supplier Test",currency:"USD",taxRate:0,lines:[{description:"Foreign currency item",kind:"stock",itemCode:"ITEM-001",quantity:1,unitPrice:10}]});
-  assert.equal(foreignInvoice.status,"needs_correction","foreign invoice is retained as a draft requiring correction, not posted");
+  assert.equal(foreignInvoice.status,"pending_review","foreign-currency invoices are queued but blocked from posting until corrected");
+  assert.ok(read("documents/"+foreignInvoice.id).errors.some(x=>x.includes("عملة أجنبية")));
+  assert.ok(read("reviewQueue/"+foreignInvoice.id));
   assert.equal(read("documents/"+foreignInvoice.id).currency,"USD","original invoice currency is preserved until the user deliberately converts it");
 });
 
