@@ -1096,3 +1096,107 @@ test("invoice drafts can be deleted and review invoices can be safely cancelled"
   assert.equal(read("reviewQueue/"+pending.id),null);
   await assert.rejects(invoke("POST","",{action:"deleteInvoice",id:pending.id}),/حالتها الحالية/);
 });
+
+
+test("project accounting events create review journals and only affect ledgers after approval", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const projectCode="PRJ-EVENT-ACCOUNTING-01",vendorCode="VENDOR-PROJECT-01";
+  write("projects/"+projectCode,{code:projectCode,name:"Project Event Accounting",vendorCodes:[vendorCode],clientCodes:[]});
+  write("vendors/"+vendorCode,{code:vendorCode,name:"Project Supplier",taxNumber:"123",status:"active"});
+  await invoke("GET","?resource=bootstrap");
+  assert.ok(read("costCenters/"+projectCode),"the project code is mirrored to the financial cost center master");
+
+  const submitted=await invoke("POST","",{action:"submitProjectEvent",projectCode,event:{
+    id:"EVT-SUPPLIER-PAYMENT-01",actionCode:"supplier_payment",actionName:"تسليم شيك للمورد",
+    date:"2026-11-19",partyType:"vendor",partyCode:vendorCode,amount:250,settledAmount:250,
+    currency:"EGP",paymentMethod:"cheque",referenceNo:"CHQ-001",status:"full",note:"Cheque handover"
+  }});
+  assert.equal(submitted.success,true);
+  assert.equal(submitted.accountingImpact,true);
+  assert.equal(submitted.accountingStatus,"pending_review");
+  assert.ok(read("reviewQueue/"+submitted.journalId),"the project journal is sent to review automatically");
+  assert.equal(read("documents/"+submitted.journalId).status,"pending_review");
+  assert.equal(read("documents/"+submitted.journalId).sourceType,"projectEvent");
+  assert.equal(read("documents/"+submitted.journalId).lines[0].costCenterId,projectCode);
+  assert.equal(read("ledger/281/2026-11/"+submitted.journalId+"_1"),null,"a proposed journal does not change the ledger before approval");
+
+  const approved=await invoke("POST","",{action:"review",id:submitted.journalId,decision:"approve",reason:"Project cheque approved"});
+  assert.equal(approved.status,"posted");
+  assert.ok(read("ledger/281/2026-11/"+submitted.journalId+"_1"),"approval posts the payable line");
+  assert.ok(read("costLedger/"+projectCode+"/2026-11/"+submitted.journalId+"_1"),"approval posts the cost-center line");
+  assert.equal(read("projects/"+projectCode+"/events/EVT-SUPPLIER-PAYMENT-01/accountingStatus"),"posted");
+  assert.equal(read("projects/"+projectCode+"/events/EVT-SUPPLIER-PAYMENT-01/accountingJournalId"),submitted.journalId);
+
+  const note=await invoke("POST","",{action:"submitProjectEvent",projectCode,event:{
+    id:"EVT-GENERAL-NOTE-01",actionCode:"general_note",actionName:"زيارة موقع",
+    date:"2026-11-19",partyType:"",partyCode:"",amount:0,currency:"EGP",status:"completed",note:"Non-financial activity"
+  }});
+  assert.equal(note.accountingImpact,false);
+  assert.equal(note.accountingStatus,"not_applicable");
+  assert.equal(note.journalId,"");
+  assert.equal(read("reviewQueue/EVT-GENERAL-NOTE-01"),null,"a non-financial project event does not create a review journal");
+});
+
+test("reviewers can edit project-event journals before posting", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const projectCode="PRJ-REVIEW-JOURNAL-01";
+  write("projects/"+projectCode,{code:projectCode,name:"Journal Edit Project"});
+  await invoke("GET","?resource=bootstrap");
+  const journalId="PRJ-JRN-REVIEW-EDIT-01";
+  const journal={id:journalId,type:"journal",sourceType:"projectEvent",sourceId:projectCode+"--EVT-01",projectCode,
+    date:"2026-11-19",description:"Project event draft",reference:"EVT-01",currency:"EGP",status:"pending_review",
+    lines:[{accountCode:"6100",debit:100,credit:0,description:"Initial",costCenterId:projectCode,projectCode},{accountCode:"1110",debit:0,credit:100,description:"Cash",costCenterId:projectCode,projectCode}]};
+  write("documents/"+journalId,journal);
+  write("reviewQueue/"+journalId,{id:journalId,documentId:journalId,type:"journal",status:"pending_review"});
+  const result=await invoke("POST","",{action:"updateReviewJournal",id:journalId,
+    journal:{date:"2026-11-19",description:"Corrected project event",reference:"EVT-EDIT"},
+    lines:[{accountCode:"6200",debit:125,credit:0,description:"Corrected expense",costCenterId:projectCode,projectCode},{accountCode:"1110",debit:0,credit:125,description:"Cash",costCenterId:projectCode,projectCode}]});
+  assert.equal(result.status,"pending_review");
+  assert.deepEqual(result.errors,[]);
+  assert.equal(read("documents/"+journalId+"/description"),"Corrected project event");
+  assert.equal(read("documents/"+journalId+"/lines/0/accountCode"),"6200");
+  assert.ok(read("reviewQueue/"+journalId),"the edited source journal remains in review");
+  assert.equal(read("ledger/6200/2026-11/"+journalId+"_1"),null,"editing a review journal does not post it");
+});
+
+test("daily journals can be reversed through review and unposted entries can be cancelled", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const postedDraft=await invoke("POST","",{action:"submitJournal",date:"2026-11-19",description:"Original journal to reverse",reference:"REV-ORIGINAL-01",
+    lines:[{accountCode:"6100",debit:300,credit:0,description:"Expense"},{accountCode:"1110",debit:0,credit:300,description:"Cash"}]});
+  const posted=await invoke("POST","",{action:"review",id:postedDraft.id,decision:"approve",reason:"Approve original"});
+  assert.equal(posted.status,"posted");
+  const reversal=await invoke("POST","",{action:"reverseJournal",id:postedDraft.id});
+  assert.equal(reversal.status,"pending_review");
+  assert.equal(read("documents/"+reversal.id+"/lines/0/debit"),0);
+  assert.equal(read("documents/"+reversal.id+"/lines/0/credit"),300);
+  assert.equal(read("ledger/6100/2026-11/"+reversal.id+"_1"),null,"the reversal has no ledger effect before review");
+  const reversed=await invoke("POST","",{action:"review",id:reversal.id,decision:"approve",reason:"Approve reversal"});
+  assert.equal(reversed.status,"posted");
+  assert.equal(read("journals/"+postedDraft.id+"/reversedByJournalId"),reversal.id);
+  assert.equal(read("ledger/6100/2026-11/"+postedDraft.id+"_1").debit,300);
+  assert.equal(read("ledger/6100/2026-11/"+reversal.id+"_1").credit,300);
+
+  const draft=await invoke("POST","",{action:"submitJournal",date:"2026-11-19",description:"Journal to cancel",reference:"REV-CANCEL-01",
+    lines:[{accountCode:"6100",debit:50,credit:0,description:"Expense"},{accountCode:"1110",debit:0,credit:50,description:"Cash"}]});
+  assert.equal(draft.status,"pending_review");
+  const cancelled=await invoke("POST","",{action:"cancelJournal",id:draft.id,reason:"Entered in error"});
+  assert.equal(cancelled.status,"cancelled");
+  assert.equal(read("reviewQueue/"+draft.id),null);
+  assert.equal(read("documents/"+draft.id+"/status"),"cancelled");
+});
+
+test("a transferred invoice recipient can cancel the assigned invoice and close its task", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const invoiceId="INV-ASSIGNED-CANCEL-01",recipientUid="FIN-CANCEL-RECIPIENT";
+  write("users/"+recipientUid,{uid:recipientUid,status:"active",role:"user",fullName:"Invoice Recipient"});
+  write("documents/"+invoiceId,{id:invoiceId,type:"invoice",invoiceType:"purchase",status:"draft",createdBy:claims.sub,createdByName:"Finance Test",number:"CANCEL-01",date:"2026-11-19",partyId:"VENDOR-X",partyName:"Supplier",currency:"EGP",lines:[]});
+  const assigned=await invoke("POST","",{action:"assignInvoice",invoiceId,assigneeUid:recipientUid,instruction:"Review invoice"});
+  const result=await invoke("POST","",{action:"deleteInvoice",id:invoiceId,reason:"Wrong invoice uploaded"},{
+    profile:{uid:recipientUid,role:"user",status:"active",fullName:"Invoice Recipient"},
+    claims:{sub:recipientUid}
+  });
+  assert.equal(result.status,"cancelled");
+  assert.equal(read("documents/"+invoiceId+"/status"),"cancelled");
+  assert.equal(read("assignments/"+recipientUid+"/"+assigned.assignmentId+"/status"),"cancelled");
+  assert.equal(read("tasks/"+recipientUid+"/"+assigned.taskId+"/status"),"completed");
+});
