@@ -1253,6 +1253,14 @@ test("cash custody recovery sync creates a missing review journal once and repor
   assert.equal(first.created,1);
   const journalId=read("cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/financialDocumentId");
   assert.ok(journalId,"recovery sync links the previously saved custody transaction");
+  write("projects/PRJ-CUSTODY-REVIEW",{code:"PRJ-CUSTODY-REVIEW",name:"Custody Review Project"});
+  write("cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/projectCode","PRJ-CUSTODY-REVIEW");
+  const detailed=await invoke("GET","?resource=document&id="+encodeURIComponent(journalId));
+  assert.equal(detailed.item.lines.length,2,"review detail returns the complete accounting journal");
+  assert.equal(detailed.sourceDetails.kind,"cashCustody","journal detail includes the original custody movement");
+  assert.equal(detailed.sourceDetails.employeeName,"Recovery Employee");
+  assert.equal(detailed.sourceDetails.amount,87.5);
+  assert.equal(detailed.sourceDetails.projectName,"Custody Review Project");
   assert.ok(read("reviewQueue/"+journalId),"recovered journal appears in the financial review queue");
   assert.equal(read("documents/"+journalId+"/status"),"pending_review");
   assert.equal(read("cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/financialReviewStatus"),"pending_review");
