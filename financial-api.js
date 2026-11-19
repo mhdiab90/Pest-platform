@@ -1073,7 +1073,27 @@ if(action==="submitCash"){
   updates["audit/"+uid("AUD")]={action:"set_bank_offset",documentId:docId,accountCode:offset,uid:claims.sub,createdAt:now};
   await adminPatch(updates);return {success:true};
  }
- if(action==="review"){
+ if(action==="updateReviewInvoice"){
+   requireFinanceArea("review","edit");
+   const docId=id(body.id),previous=await adminRead("documents/"+docId);
+   if(!previous||previous.type!=="invoice"||!["pending_review","duplicate_review"].includes(previous.status))throw new Error("الفاتورة لم تعد متاحة للتعديل داخل المراجعة.");
+   const editable=body.invoice&&typeof body.invoice==="object"&&!Array.isArray(body.invoice)?body.invoice:{},next={...previous};
+   const allowed=["invoiceType","date","number","partyId","partyName","partyTaxNumber","currency","taxCode","taxType","taxRate","taxAmount","discount","projectCode"];
+   for(const key of allowed)if(Object.prototype.hasOwnProperty.call(editable,key)){if(["taxRate","taxAmount","discount"].includes(key))next[key]=editable[key]===""?"":num(editable[key]||0);else next[key]=txt(editable[key]||"",key==="partyName"?180:key==="partyTaxNumber"?32:key==="number"?120:key==="date"?10:key==="currency"?3:120);}
+   if(!["purchase","sales"].includes(next.invoiceType))throw new Error("نوع الفاتورة غير صحيح.");
+   if(Array.isArray(body.lines))next.lines=body.lines.slice(0,100).map((line,index)=>{if(!line||typeof line!=="object"||Array.isArray(line))throw new Error("بيانات البند "+(index+1)+" غير صحيحة.");const row={...(previous.lines&&previous.lines[index]||{}),...line};row.description=txt(row.description||"",250);row.kind=txt(row.kind||"",16);for(const key of ["quantity","unitPrice","discount"])if(row[key]!==undefined&&row[key]!==""&&row[key]!==null)row[key]=num(row[key]);for(const key of ["itemCode","groupCode","warehouseCode","accountCode","incomeAccountCode","costCenterId","unit","itemType"])if(row[key]!==undefined)row[key]=txt(row[key]||"",120);return row;});
+   const taxCodes=(await adminRead("taxCodes"))||{},chart=(await adminRead("chartOfAccounts"))||{},items=(await adminRead("items"))||{};
+   if(next.taxCode){const tax=taxCodes[id(next.taxCode)],expected=next.invoiceType==="purchase"?"vat_input":"vat_output";if(tax&&tax.active!==false&&tax.taxType===expected){next.taxCode=tax.code||next.taxCode;next.taxType=tax.taxType;next.taxRate=num(tax.rate||0);}}
+   let totals={net:0,tax:0,total:0};try{totals=invoiceTotals(next);next.totals=totals;next.netTotal=totals.net;next.total=totals.total;}catch(error){next.errors=[String(error.message||error)];}
+   next.errors=invoiceReviewErrors(next,taxCodes,chart,items);
+   const fingerprint=next.partyId&&next.number&&next.date?await sha([next.invoiceType,next.partyId,next.number,next.date,Number(totals.total||0).toFixed(2)].join("|").toLowerCase()):"";
+   const duplicate=fingerprint?await adminRead("documentFingerprints/"+fingerprint):null;
+   next.fingerprint=fingerprint;next.duplicateOf=duplicate&&duplicate.documentId!==docId?duplicate.documentId:"";next.warnings=next.duplicateOf?["مستند مشابه مسجل سابقًا: "+next.duplicateOf]:[];
+   next.updatedAt=now;next.status=next.duplicateOf?"duplicate_review":"pending_review";
+   const updates={};updates["documents/"+docId]=next;updates["reviewQueue/"+docId]=reviewRecord(next);updates["audit/"+uid("AUD")]={action:"update_review_invoice",documentId:docId,uid:claims.sub,errors:next.errors,createdAt:now};
+   await adminPatch(updates);return {success:true,id:docId,status:next.status,errors:next.errors,totals};
+  }
+  if(action==="review"){
   requireFinanceArea("review","approve");
   const docId=id(body.id),decision=txt(body.decision,20),doc=await adminRead("documents/"+docId);if(!doc)throw new Error("مستند المراجعة غير موجود");
   const lockType=doc.type==="invoice"?"invoice":doc.type==="cash"?"cash":doc.type==="bankLine"?"bankLine":"";
@@ -1193,7 +1213,10 @@ if(action==="submitCash"){
   }
   else if(doc.type==="bankLine"){if(!doc.offsetAccountCode)throw new Error("حدد الحساب المقابل قبل الاعتماد");const amount=num(doc.amount),bank=txt(doc.bankAccountCode||"1120",32),offset=txt(doc.offsetAccountCode,32),incoming=doc.direction==="in",lines=incoming?[{accountCode:bank,debit:amount,credit:0,description:doc.description},{accountCode:offset,debit:0,credit:amount,description:doc.description,partyType:doc.partyType||"",partyId:doc.partyId||"",costCenterId:doc.costCenterId||""}]:[{accountCode:offset,debit:amount,credit:0,description:doc.description,partyType:doc.partyType||"",partyId:doc.partyId||"",costCenterId:doc.costCenterId||""},{accountCode:bank,debit:0,credit:amount,description:doc.description}];j={id:uid("JRN"),date:doc.date,description:"حركة بنك: "+doc.description,reference:doc.reference||"",sourceType:"bankLine",sourceId:doc.id,currency:"EGP",lines,status:"posted",createdAt:doc.createdAt,createdBy:doc.createdBy,approvedAt:now,approvedBy:claims.sub,postedAt:now};Object.assign(updates,journalUpdates(j));updates["bankFingerprints/"+doc.fingerprint+"/journalId"]=j.id;}
   else if(doc.type==="invoice"){
-   const inv=doc,tot=invoiceTotals(inv),purchase=inv.invoiceType==="purchase",partyId=id(inv.partyId),lines=[],items=(await adminRead("items"))||{},centers=(await adminRead("costCenters"))||{},chart=(await adminRead("chartOfAccounts"))||{};
+    const inv=doc,items=(await adminRead("items"))||{},centers=(await adminRead("costCenters"))||{},chart=(await adminRead("chartOfAccounts"))||{},taxCodes=(await adminRead("taxCodes"))||{},purchase=inv.invoiceType==="purchase";
+    const validationErrors=invoiceReviewErrors(inv,taxCodes,chart,items);
+    if(validationErrors.length)throw new Error("لا يمكن اعتماد الفاتورة قبل استكمالها: "+validationErrors.join("؛ "));
+    const tot=invoiceTotals(inv),partyId=id(inv.partyId),lines=[];
    const projectCenter=inv.projectCode?Object.values(centers).find(function(center){return center&&(center.projectCode===inv.projectCode||center.code===inv.projectCode);}):null;
 
    const lock=await adminRead("documentFingerprints/"+inv.fingerprint);
