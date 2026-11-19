@@ -284,6 +284,16 @@ function FinanceModule(props){
   "جلسة الدخول انتهت. أعد تسجيل الدخول.":"Your session has expired. Please sign in again.",
   "لا توجد بيانات":"No data available","الملف لا يحتوي على بيانات.":"The file contains no data.",
   "ملاحظات":"Notes","ملاحظة":"Note","الحساب المحاسبي المرتبط":"Linked GL Account",
+
+  "Version / الإصدار":"Version","كود العميل / المورد":"Customer / Supplier Code",
+  "اسم العميل / المورد":"Customer / Supplier Name","نسبة الضريبة %":"Tax Rate %",
+  "قيمة الضريبة الثابتة":"Fixed Tax Amount","كود ضريبة القيمة المضافة":"VAT Code",
+  "نوع البند":"Line Type","إضافة بند للفاتورة":"Add Invoice Line",
+  "حفظ تصحيحات المراجع":"Save Reviewer Corrections",
+  "تحليل المصروفات الفعلية حسب مركز التكلفة":"Actual Expense Analysis by Cost Center",
+  "مرفقات المستند":"Document Attachments","تفاصيل الأصناف والإصدارات":"Item & Version Details",
+  "قائمة التدفقات النقدية المبسطة":"Simplified Cash Flow Statement"
+
   "الطرف المختار":"Selected Party","نوع كشف الحساب":"Statement Type","عرض كشف الحساب":"View Statement",
   "كشوف الأطراف والعاملين":"Party & Employee Statements","العهد الشخصية للموظفين":"Employee Custody Accounts",
   "السلف الشخصية للموظفين":"Employee Advance Accounts","الرصيد الختامي":"Closing Balance",
