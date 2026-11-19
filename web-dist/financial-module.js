@@ -55,6 +55,7 @@ function FinanceModule(props){
  const [bankFile,setBankFile]=React.useState(null),[bankRows,setBankRows]=React.useState([]),[bankAccount,setBankAccount]=React.useState('1120');
  const [search,setSearch]=React.useState(''),[masterPartySearch,setMasterPartySearch]=React.useState('');
  const [masterImportKind,setMasterImportKind]=React.useState('customers'),[masterImportRows,setMasterImportRows]=React.useState([]),[masterImportName,setMasterImportName]=React.useState('');
+ const [selectedMasterCodes,setSelectedMasterCodes]=React.useState([]);
  const [partyStatement,setPartyStatement]=React.useState({type:'customer',id:''}),[partyRows,setPartyRows]=React.useState([]);
  const api=async(path,method,body)=>{
   const auth=window.PEST_FIREBASE_AUTH&&window.PEST_FIREBASE_AUTH.currentUser;
@@ -806,7 +807,7 @@ function FinanceModule(props){
   setBusy(true);setError('');
   try{
    const result=await api('', 'POST',{action:'importMasters',kind:config.kind,partyType:config.partyType,rows:masterImportRows});
-   setNotice('تم استيراد '+result.count+' سجل إلى '+config.label+'. وتم ربط العملاء والموردين بسجلات البرنامج الرئيسية.');
+   setNotice('اكتمل الدمج في '+config.label+': '+(result.created||0)+' سجل جديد، '+(result.updated||0)+' سجل محدث، '+(result.unchanged||0)+' دون تغيير. لم يتم حذف أي سجل من خارج الملف.');
    setMasterImportRows([]);setMasterImportName('');await refresh();
   }catch(error){setError(error.message||String(error));}
   finally{setBusy(false);}
@@ -1148,6 +1149,29 @@ function FinanceModule(props){
   }catch(error){setError(error.message||String(error));}
   finally{setBusy(false);}
  };
+ const toggleMasterSelection=(code,checked)=>{
+  const key=String(code||"");
+  setSelectedMasterCodes(old=>checked?(old.includes(key)?old:old.concat([key])):old.filter(value=>value!==key));
+ };
+ const bulkDeleteMasterRecords=async(kind,records,partyType)=>{
+  const codes=(records||[]).map(item=>String(item.code||item.id||"")).filter(Boolean);
+  if(!codes.length)return;
+  if(codes.length>50){setError("يمكن حذف 50 سجلًا كحد أقصى في العملية الواحدة. قسّم الاختيار إلى مجموعات أصغر.");return;}
+  if(!window.confirm("تأكيد حذف "+codes.length+" سجل؟ السجلات المرتبطة بحركات أو مستندات لن تُحذف نهائيًا، وسيتم إيقافها مع الاحتفاظ بالتاريخ."))return;
+  setBusy(true);setError("");setNotice("");
+  try{
+   const result=await api("","POST",{action:"deleteMasters",kind,codes,partyType,permissionModule:kind==="parties"?"master":"financial"});
+   setSelectedMasterCodes([]);
+   const messages=["اكتمل الحذف المتعدد: "+result.deleted+" حُذف نهائيًا، "+result.deactivated+" تم إيقافه لوجود ارتباطات."];
+   if(result.notFound)messages.push(result.notFound+" سجل لم يعد موجودًا.");
+   if(result.failed)messages.push(result.failed+" سجل تعذر حذفه.");
+   const failedRows=(result.results||[]).filter(item=>item.status==="failed");
+   if(failedRows.length)messages.push(failedRows.slice(0,3).map(item=>item.code+": "+item.error).join(" | "));
+   setNotice(messages.join(" "));
+   await refresh();
+  }catch(error){setError(error.message||String(error));}
+  finally{setBusy(false);}
+ };
  const masterActions=(kind,item)=>h("div",{className:"flex items-center gap-2 whitespace-nowrap"},
   canMasterAction(kind,"edit")?button("تعديل",()=>editMasterRecord(kind,item),"muted",busy):null,
   canMasterAction(kind,"delete")?button("حذف",()=>deleteMasterRecord(kind,item),"danger",busy):null
@@ -1173,6 +1197,9 @@ function FinanceModule(props){
   const searchTerm=normalizeMatch(masterPartySearch);
   const matches=row=>!searchTerm||normalizeMatch([row.code,row.name,row.companyName,row.legalName,row.phone,row.mobile,taxNo(row),row.type,row.parentCode,row.projectCode,row.taxType,row.itemType,row.groupCode,row.version].join(" ")).includes(searchTerm);
   const scroll=child=>h("div",{className:"max-h-[58vh] overflow-y-auto rounded-xl border bg-white"},child);
+  let currentMasterItems=[];
+  let visibleItems=[];
+  const selectionCell=item=>h("td",{className:"p-2 text-center"},h("input",{type:"checkbox",checked:selectedMasterCodes.includes(String(item.code||item.id||"")),disabled:!canMasterAction(quickKind,"delete")||busy,onChange:event=>toggleMasterSelection(item.code||item.id,event.target.checked),"aria-label":"تحديد "+(item.code||item.id||"")}));
   let title="البيانات الأساسية";
   let headers=["الكود","الاسم","التفاصيل"];
   let visibleRows=[];
@@ -1180,8 +1207,11 @@ function FinanceModule(props){
   let quickDefaults={};
   if(masterViewKind==="customers"||masterViewKind==="suppliers"){
    title=masterViewKind==="suppliers"?"دليل الموردين":"دليل العملاء";
-   headers=["الكود","الاسم","الهاتف","رقم التسجيل الضريبي","البريد الإلكتروني","العنوان","الإجراءات"];
-   visibleRows=partyList.filter(matches).map(p=>h("tr",{key:p.code||p.id,className:"border-t"},
+   headers=["تحديد","الكود","الاسم","الهاتف","رقم التسجيل الضريبي","البريد الإلكتروني","العنوان","الإجراءات"];
+   currentMasterItems=partyList;
+   visibleItems=currentMasterItems.filter(matches);
+   visibleRows=visibleItems.map(p=>h("tr",{key:p.code||p.id,className:"border-t"},
+    selectionCell(p),
     h("td",{className:"p-2 font-bold"},p.code||p.id),
     h("td",{className:"p-2"},partyName(p)),
     h("td",{className:"p-2"},p.phone||p.mobile||"—"),
@@ -1194,25 +1224,34 @@ function FinanceModule(props){
    quickDefaults={code:nextCode(partyType==="vendor"?"VND":"CUS",partyList),partyType};
   }else if(masterViewKind==="items"){
    title="الأصناف المخزنية";
-   headers=["الكود","الاسم","التصنيف","المجموعة","الإصدار","الوحدة","المخزن","الإجراءات"];
-   visibleRows=items.filter(matches).map(x=>h("tr",{key:x.code,className:"border-t"},
+   headers=["تحديد","الكود","الاسم","التصنيف","المجموعة","الإصدار","الوحدة","المخزن","الإجراءات"];
+   currentMasterItems=items;
+   visibleItems=currentMasterItems.filter(matches);
+   visibleRows=visibleItems.map(x=>h("tr",{key:x.code,className:"border-t"},
+    selectionCell(x),
     h("td",{className:"p-2 font-bold"},x.code),h("td",{className:"p-2"},x.name),
     h("td",{className:"p-2"},({stock:"بضاعة",raw_material:"خامة",finished_good:"منتج تام",spare_part:"قطع غيار",consumable:"مستهلكات",office_supply:"مستلزمات مكتبية"}[x.itemType]||x.itemType||"—")),
     h("td",{className:"p-2"},x.groupCode||"—"),h("td",{className:"p-2"},x.version||"—"),h("td",{className:"p-2"},x.unit||"—"),h("td",{className:"p-2"},x.warehouseCode||"default"),h("td",{className:"p-2"},masterActions("items",x))
    ));
    quickKind="items";quickDefaults={code:nextCode("ITM",items),itemType:"stock"};
   }else if(masterViewKind==="itemGroups"){
-   title="مجموعات الأصناف";headers=["الكود","اسم المجموعة","نوع المجموعة","الإجراءات"];
-   visibleRows=rows(master.itemGroups).filter(matches).map(x=>h("tr",{key:x.code,className:"border-t"},
+   title="مجموعات الأصناف";headers=["تحديد","الكود","اسم المجموعة","نوع المجموعة","الإجراءات"];
+   currentMasterItems=rows(master.itemGroups);
+   visibleItems=currentMasterItems.filter(matches);
+   visibleRows=visibleItems.map(x=>h("tr",{key:x.code,className:"border-t"},
+    selectionCell(x),
     h("td",{className:"p-2 font-bold"},x.code),h("td",{className:"p-2"},x.name),
     h("td",{className:"p-2"},({raw_material:"خامات",finished_good:"منتجات تامة",spare_part:"قطع غيار",consumable:"مستهلكات",office_supply:"مستلزمات مكتبية",packaging:"تعبئة وتغليف",other:"أخرى"}[x.groupType]||x.groupType||"—")),h("td",{className:"p-2"},masterActions("itemGroups",x))
    ));
    quickKind="itemGroups";quickDefaults={code:nextCode("GRP",rows(master.itemGroups)),groupType:"other"};
   }else{
    const data=masterViewKind==="chartOfAccounts"?accounts:masterViewKind==="costCenters"?centers:rows(master[masterViewKind]);
+   currentMasterItems=data;
+   visibleItems=currentMasterItems.filter(matches);
    title=({chartOfAccounts:"دليل الحسابات",costCenters:"مراكز التكلفة",warehouses:"المخازن",bankAccounts:"حسابات البنوك",taxCodes:"الأكواد الضريبية"})[masterViewKind]||"البيانات الأساسية";
-   headers=["الكود","الاسم","التفاصيل","الحالة","الإجراءات"];
-   visibleRows=data.filter(matches).map(x=>h("tr",{key:x.code,className:"border-t"},
+   headers=["تحديد","الكود","الاسم","التفاصيل","الحالة","الإجراءات"];
+   visibleRows=visibleItems.map(x=>h("tr",{key:x.code,className:"border-t"},
+    selectionCell(x),
     h("td",{className:"p-2 font-bold"},x.code),h("td",{className:"p-2"},x.name),
     h("td",{className:"p-2"},masterViewKind==="chartOfAccounts"?(x.isGroup?"حساب تجميعي":x.type+" / "+x.nature):masterViewKind==="costCenters"?(x.projectCode||"—"):masterViewKind==="taxCodes"?(x.taxType||"")+" / "+(x.rate||0)+"%":masterViewKind==="bankAccounts"?(x.accountCode||x.code):"—"),
     h("td",{className:"p-2"},x.active===false?"موقوف":"نشط"),h("td",{className:"p-2"},masterActions(masterViewKind,x))
@@ -1221,13 +1260,25 @@ function FinanceModule(props){
    quickDefaults={code:nextCode(prefixes[masterViewKind]||"NEW",data)};
   }
   const addButton=button("＋ إضافة "+title.replace("دليل ",""),()=>openQuickAdd(quickKind,null,quickDefaults),"primary");
-  const listPanel=panel(title,"استخدم البحث لعرض السجلات المطلوبة. القائمة داخل مساحة تمرير ثابتة.",h("div",{className:"space-y-3"},
-   h("div",{className:"flex flex-wrap items-center gap-2"},addButton,field("بحث بالكود أو الاسم أو البيانات",masterPartySearch,setMasterPartySearch)),
+  const selectedVisible=visibleItems.map(item=>String(item.code||item.id||"")).filter(code=>selectedMasterCodes.includes(code));
+  const allVisibleSelected=visibleItems.length>0&&selectedVisible.length===visibleItems.length;
+  const selectedRecords=currentMasterItems.filter(item=>selectedMasterCodes.includes(String(item.code||item.id||"")));
+  const listToolbar=h("div",{className:"flex flex-wrap items-center gap-2"},
+   addButton,
+   field("بحث بالكود أو الاسم أو البيانات",masterPartySearch,setMasterPartySearch),
+   h("label",{className:"inline-flex items-center gap-2 text-xs font-semibold rounded-lg border px-3 py-2 bg-white"},h("input",{type:"checkbox",checked:allVisibleSelected,disabled:!visibleItems.length||!canMasterAction(quickKind,"delete")||busy,onChange:event=>{
+    const visibleCodes=visibleItems.map(item=>String(item.code||item.id||"")).filter(Boolean);
+    setSelectedMasterCodes(old=>event.target.checked?Array.from(new Set(old.concat(visibleCodes))):old.filter(code=>!visibleCodes.includes(code)));
+   }}),"تحديد كل الظاهر"),
+   canMasterAction(quickKind,"delete")?button("حذف المحدد ("+selectedRecords.length+")",()=>bulkDeleteMasterRecords(quickKind,selectedRecords,partyType),"danger",busy||!selectedRecords.length):null
+  );
+  const listPanel=panel(title,"استخدم البحث لتحديد السجلات المطلوبة. الحذف المتعدد يحافظ على السجلات المرتبطة بالمستندات والحركات.",h("div",{className:"space-y-3"},
+   listToolbar,
    scroll(table(headers,visibleRows))
   ));
   return h("div",{className:"space-y-4"},
    importPanel,
-   panel("أنواع البيانات الأساسية","اختر نوع التكويد لعرض السجلات الخاصة به فقط.",h("div",{className:"flex flex-wrap gap-2"},tabs.map(([key,label])=>button(label,()=>{setMasterViewKind(key);setMasterPartySearch("");},masterViewKind===key?"primary":"muted")))),
+   panel("أنواع البيانات الأساسية","اختر نوع التكويد لعرض السجلات الخاصة به فقط.",h("div",{className:"flex flex-wrap gap-2"},tabs.map(([key,label])=>button(label,()=>{setMasterViewKind(key);setMasterPartySearch("");setSelectedMasterCodes([]);},masterViewKind===key?"primary":"muted")))),
    listPanel
   );
  };
