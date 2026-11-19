@@ -649,7 +649,7 @@ export async function handleFinancialRequest(ctx){
   return {success:true,kind,count,created,updated,unchanged};
  }
  if(action==="submitJournal"){
-  requireFinanceArea("journal","add");let previous=null;const journalId=id(body.id||uid("DOC"));if(body.id){requireFinanceArea("journal","edit");previous=await adminRead("documents/"+journalId);if(!previous||previous.type!=="journal"||!["needs_correction","draft","returned_to_creator"].includes(previous.status)||previous.createdBy!==claims.sub)throw new Error("لا يمكن تعديل هذا القيد: قد يكون غير موجود أو أُرسل للمراجعة أو تم اعتماده.");}else requireFinanceArea("journal","add");const j={id:journalId,type:"journal",date:date(body.date),description:txt(body.description,500),reference:txt(body.reference,120),currency:txt(body.currency||"EGP",3),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:previous&&previous.createdAt||now,createdBy:previous&&previous.createdBy||claims.sub,createdByName:previous&&previous.createdByName||txt(profile.fullName||profile.username||profile.email,120)};
+  let previous=null;const journalId=id(body.id||uid("DOC"));if(body.id){requireFinanceArea("journal","edit");previous=await adminRead("documents/"+journalId);if(!previous||previous.type!=="journal"||!["needs_correction","draft","returned_to_creator"].includes(previous.status)||previous.createdBy!==claims.sub)throw new Error("لا يمكن تعديل هذا القيد: قد يكون غير موجود أو أُرسل للمراجعة أو تم اعتماده.");}else requireFinanceArea("journal","add");const j={id:journalId,type:"journal",date:date(body.date),description:txt(body.description,500),reference:txt(body.reference,120),currency:txt(body.currency||"EGP",3),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:previous&&previous.createdAt||now,createdBy:previous&&previous.createdBy||claims.sub,createdByName:previous&&previous.createdByName||txt(profile.fullName||profile.username||profile.email,120)};
   if(j.currency!=="EGP")throw new Error("القيود متعددة العملات وأسعار الصرف غير مفعّلة بعد. استخدم الجنيه المصري حتى لا تختلط أرصدة العملات في القوائم.");
   if(body.id){
    const previous=await adminRead("documents/"+j.id);
@@ -836,7 +836,18 @@ export async function handleFinancialRequest(ctx){
   }
   if(!body.id)requireFinanceArea("invoices","add");
    const totals=invoiceTotals(inv);inv.totals=totals;inv.total=totals.total;inv.errors=errors;inv.fingerprint=await sha([inv.invoiceType,inv.partyId,inv.number,inv.date,totals.total.toFixed(2)].join("|").toLowerCase());const duplicate=await adminRead("documentFingerprints/"+inv.fingerprint);inv.duplicateOf=duplicate&&duplicate.documentId||"";inv.warnings=duplicate?["مستند مشابه مسجل سابقًا: "+duplicate.documentId]:[];inv.status=errors.length?"needs_correction":duplicate?"duplicate_review":"pending_review";
-  const u={};u["documents/"+inv.id]=inv;u["reviewQueue/"+inv.id]=errors.length?null:reviewRecord(inv);u["audit/"+uid("AUD")]={action:"submit_invoice",documentId:inv.id,status:inv.status,uid:claims.sub,createdAt:now};await adminPatch(u);if(!errors.length&&previous&&previous.returnedTaskId&&adminPatchRoot){const taskUpdates={};taskUpdates["tasks/"+claims.sub+"/"+id(previous.returnedTaskId)+"/status"]="completed";taskUpdates["tasks/"+claims.sub+"/"+id(previous.returnedTaskId)+"/completedAt"]=now;taskUpdates["tasks/"+claims.sub+"/"+id(previous.returnedTaskId)+"/completedBy"]=claims.sub;await adminPatchRoot(taskUpdates);}return {success:true,id:inv.id,status:inv.status,errors,warnings:inv.warnings,totals};
+  const u={};u["documents/"+inv.id]=inv;u["reviewQueue/"+inv.id]=errors.length?null:reviewRecord(inv);u["audit/"+uid("AUD")]={action:"submit_invoice",documentId:inv.id,status:inv.status,uid:claims.sub,createdAt:now};await adminPatch(u);if(!errors.length&&previous&&previous.returnedTaskId){
+   try{
+    const taskId=id(previous.returnedTaskId),taskUpdates={};
+    taskUpdates[claims.sub+"/"+taskId+"/status"]="completed";
+    taskUpdates[claims.sub+"/"+taskId+"/completedAt"]=now;
+    taskUpdates[claims.sub+"/"+taskId+"/completedBy"]=claims.sub;
+    await patchExternalBranch("tasks",taskUpdates);
+   }catch(taskError){
+    console.error("Invoice was successfully submitted to review, but its return-task could not be closed:",String(taskError&&taskError.message||taskError));
+    inv.warnings=(inv.warnings||[]).concat(["تم إرسال الفاتورة للمراجعة، لكن تعذر إغلاق مهمة الإرجاع القديمة تلقائيًا."]);
+   }
+  }return {success:true,id:inv.id,status:inv.status,errors,warnings:inv.warnings,totals};
  }
  if(action==="submitCash"){
   requireFinanceArea("cash","add");
@@ -895,18 +906,18 @@ export async function handleFinancialRequest(ctx){
   u["bankImports/"+importId]={id:importId,bankAccountCode:body.bankAccountCode||"1120",fileName:txt(body.fileName,180),rowCount:count,duplicateCount:duplicates.length,createdAt:now,createdBy:claims.sub};u["audit/"+uid("AUD")]={action:"bank_import",importId,rowCount:count,duplicates:duplicates.length,uid:claims.sub,createdAt:now};await adminPatch(u);return {success:true,importId,rows:count,duplicates:duplicates.length};
  }
  if(action==="addAttachment"){
-  requireFinanceArea("invoices","edit");
   const documentId=id(body.documentId),document=await adminRead("documents/"+documentId),attachment=body.attachment||{},attachmentId=id(attachment.id);
   if(!document)throw new Error("الفاتورة أو المستند غير موجود.");
+  requireFinanceArea("invoices",document.createdBy===claims.sub?"add":"edit");
   if(document.createdBy!==claims.sub&&profile.role!=="admin"&&!hasFinanceArea("invoices","edit"))throw new Error("ليس لديك صلاحية ربط المرفقات بهذا المستند.");
   const metadata={id:attachmentId,fileName:txt(attachment.fileName||attachment.name,240),mimeType:txt(attachment.mimeType||attachment.contentType,120),size:num(attachment.size||attachment.fileSize||0),createdAt:now,uploadedBy:claims.sub};
   const updates={};updates["documents/"+documentId+"/attachments/"+attachmentId]=metadata;updates["audit/"+uid("AUD")]={action:"attach_financial_document",documentId,attachmentId,uid:claims.sub,createdAt:now};
   await adminPatch(updates);return {success:true,attachment:metadata};
  }
  if(action==="setAttachmentUploadStatus"){
-  requireFinanceArea("invoices","edit");
   const documentId=id(body.documentId),document=await adminRead("documents/"+documentId);
   if(!document||document.type!=="invoice")throw new Error("الفاتورة غير موجودة لتحديث حالة المرفق.");
+  requireFinanceArea("invoices",document.createdBy===claims.sub?"add":"edit");
   if(document.createdBy!==claims.sub&&profile.role!=="admin"&&!hasFinanceArea("invoices","edit"))throw new Error("ليس لديك صلاحية تحديث مرفقات هذه الفاتورة.");
   if(!["pending","uploaded"].includes(body.status))throw new Error("حالة المرفق غير صحيحة.");
   const updates={};
