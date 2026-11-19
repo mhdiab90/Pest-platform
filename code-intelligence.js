@@ -147,7 +147,8 @@
       : "لم يظهر تسلسل واضح داخل المجموعة؛ الاقتراح يستخدم النمط الافتراضي " + result.pattern + ".";
   }
 
-  window.PEST_CODE_INTELLIGENCE = Object.freeze({
+  const root = typeof window !== "undefined" ? window : globalThis;
+  root.PEST_CODE_INTELLIGENCE = Object.freeze({
     suggestNext,
     hint,
     extractNumericPattern
