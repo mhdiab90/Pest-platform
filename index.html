@@ -2206,6 +2206,7 @@ function App(){
     }
     if(moduleId.startsWith('financial_')){
       const specific=permissions[moduleId];
+      if(moduleId==='financial_review'&&action==='view'&&specific?.approve===true)return true;
       if(specific&&typeof specific==='object')return specific[action]===true;
       const scoped=financialPermissionAreaIds.some(key=>permissions[key]&&typeof permissions[key]==='object');
       return !scoped&&permissions.financial?.[action]===true;
