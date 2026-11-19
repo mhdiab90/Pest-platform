@@ -161,7 +161,12 @@ function hasPermission(profile, moduleId, action) {
     const hasScopedFinancialPermissions = FINANCIAL_PERMISSION_AREAS.some(key =>
       permissions[key] && typeof permissions[key] === "object"
     );
-    if (hasScopedFinancialPermissions) return FINANCIAL_PERMISSION_AREAS.some(key => permissions[key][action] === true);
+    if (hasScopedFinancialPermissions) {
+      if (action === "view") return FINANCIAL_PERMISSION_AREAS.some(key =>
+        permissions[key].view === true || (key === "financial_review" && permissions[key].approve === true)
+      );
+      return FINANCIAL_PERMISSION_AREAS.some(key => permissions[key][action] === true);
+    }
     return Boolean(permissions.financial && permissions.financial[action] === true);
   }
   if (moduleId.startsWith("financial_")) {
