@@ -1018,8 +1018,11 @@ if(action==="submitCash"){
  if(action==="addAttachment"){
   const documentId=id(body.documentId),document=await adminRead("documents/"+documentId),attachment=body.attachment||{},attachmentId=id(attachment.id);
   if(!document)throw new Error("الفاتورة أو المستند غير موجود.");
-  requireFinanceArea("invoices",document.createdBy===claims.sub?"add":"edit");
-  if(document.createdBy!==claims.sub&&profile.role!=="admin"&&!hasFinanceArea("invoices","edit"))throw new Error("ليس لديك صلاحية ربط المرفقات بهذا المستند.");
+  const activeAssignment=document.status==="assigned"&&document.assignedTo===claims.sub&&document.assignmentId&&await adminRead("assignments/"+claims.sub+"/"+id(document.assignmentId));
+  const reviewEditor=["pending_review","duplicate_review"].includes(document.status)&&hasFinanceArea("review","edit");
+  if(activeAssignment)requireFinanceArea("assignments","edit");
+  else if(reviewEditor)requireFinanceArea("review","edit");
+  else{requireFinanceArea("invoices",document.createdBy===claims.sub?"add":"edit");if(document.createdBy!==claims.sub&&profile.role!=="admin"&&!hasFinanceArea("invoices","edit"))throw new Error("ليس لديك صلاحية ربط المرفقات بهذا المستند.");}
   const metadata={id:attachmentId,fileName:txt(attachment.fileName||attachment.name,240),mimeType:txt(attachment.mimeType||attachment.contentType,120),size:num(attachment.size||attachment.fileSize||0),createdAt:now,uploadedBy:claims.sub};
   const updates={};updates["documents/"+documentId+"/attachments/"+attachmentId]=metadata;updates["audit/"+uid("AUD")]={action:"attach_financial_document",documentId,attachmentId,uid:claims.sub,createdAt:now};
   await adminPatch(updates);return {success:true,attachment:metadata};
@@ -1027,8 +1030,11 @@ if(action==="submitCash"){
  if(action==="setAttachmentUploadStatus"){
   const documentId=id(body.documentId),document=await adminRead("documents/"+documentId);
   if(!document||document.type!=="invoice")throw new Error("الفاتورة غير موجودة لتحديث حالة المرفق.");
-  requireFinanceArea("invoices",document.createdBy===claims.sub?"add":"edit");
-  if(document.createdBy!==claims.sub&&profile.role!=="admin"&&!hasFinanceArea("invoices","edit"))throw new Error("ليس لديك صلاحية تحديث مرفقات هذه الفاتورة.");
+  const activeAssignment=document.status==="assigned"&&document.assignedTo===claims.sub&&document.assignmentId&&await adminRead("assignments/"+claims.sub+"/"+id(document.assignmentId));
+  const reviewEditor=["pending_review","duplicate_review"].includes(document.status)&&hasFinanceArea("review","edit");
+  if(activeAssignment)requireFinanceArea("assignments","edit");
+  else if(reviewEditor)requireFinanceArea("review","edit");
+  else{requireFinanceArea("invoices",document.createdBy===claims.sub?"add":"edit");if(document.createdBy!==claims.sub&&profile.role!=="admin"&&!hasFinanceArea("invoices","edit"))throw new Error("ليس لديك صلاحية تحديث مرفقات هذه الفاتورة.");}
   if(!["pending","uploaded"].includes(body.status))throw new Error("حالة المرفق غير صحيحة.");
   const updates={};
   if(body.status==="pending"){
