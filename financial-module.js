@@ -45,7 +45,7 @@ function FinanceModule(props){
  const [period,setPeriod]=React.useState({from:today().slice(0,7),to:today().slice(0,7)}),[report,setReport]=React.useState('trial');
  const [assignmentItems,setAssignmentItems]=React.useState([]),[selectedAssignmentId,setSelectedAssignmentId]=React.useState(''),[assignmentLines,setAssignmentLines]=React.useState([]),[assignmentBusy,setAssignmentBusy]=React.useState(false),[assignmentInstruction,setAssignmentInstruction]=React.useState('مراجعة تصنيف البنود وتحديد الأكواد المخزنية أو حسابات المصروفات'),[assignmentUserUid,setAssignmentUserUid]=React.useState('');
  const [selected,setSelected]=React.useState(null),[offset,setOffset]=React.useState('6100');
- const [quickAddType,setQuickAddType]=React.useState(''),[quickAddTarget,setQuickAddTarget]=React.useState(null),[quickAddParent,setQuickAddParent]=React.useState(null),[quickAddOriginalCode,setQuickAddOriginalCode]=React.useState(''),[quickAddForm,setQuickAddForm]=React.useState({code:'',name:'',type:'expense',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',unit:'قطعة',groupCode:'',groupType:'other',itemType:'stock',version:'',warehouseCode:'default',projectCode:'',taxType:'vat_output',rate:'0',effectiveFrom:today(),partyType:'customer',phone:'',taxNumber:'',email:'',address:''});
+ const [quickAddType,setQuickAddType]=React.useState(''),[quickAddTarget,setQuickAddTarget]=React.useState(null),[quickAddParent,setQuickAddParent]=React.useState(null),[quickAddOriginalCode,setQuickAddOriginalCode]=React.useState(''),[quickAddForm,setQuickAddForm]=React.useState({code:'',name:'',active:true,type:'expense',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',unit:'قطعة',groupCode:'',groupType:'other',itemType:'stock',version:'',warehouseCode:'default',projectCode:'',taxType:'vat_output',rate:'0',effectiveFrom:today(),partyType:'customer',phone:'',taxNumber:'',email:'',address:''});
  const [masterForm,setMasterForm]=React.useState({kind:'chartOfAccounts',code:'',name:'',type:'asset',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',unit:'قطعة',groupCode:'',groupType:'other',itemType:'stock',version:'',projectCode:'',warehouseCode:'default',taxType:'vat',rate:'0',effectiveFrom:today()});
  const [journal,setJournal]=React.useState({id:'',date:today(),description:'',reference:'',currency:'EGP',lines:[{accountCode:'6100',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''},{accountCode:'1110',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''}]});
  const [invoice,setInvoice]=React.useState({id:'',type:'purchase',date:today(),number:'',partyId:'',partyName:'',partyTaxNumber:'',currency:'EGP',taxCode:'VAT-IN-14',taxRate:'14',taxAmount:'',discount:'',projectCode:'',lines:[{description:'',kind:'stock',itemCode:'',quantity:'1',unit:'قطعة',unitPrice:'',discount:'',accountCode:'6100',incomeAccountCode:'4100',costCenterId:'',warehouseCode:'default'}]});
@@ -383,7 +383,7 @@ function FinanceModule(props){
   if(quickAddType)setQuickAddParent({type:quickAddType,form:quickAddForm,target:quickAddTarget,originalCode:quickAddOriginalCode});else setQuickAddParent(null);
   setQuickAddType(kind);setQuickAddTarget(()=>onCreated||null);setQuickAddOriginalCode(String(originalCode||''));
   const next=Object.assign({
-   code:'',name:'',companyName:'',englishName:'',type:'expense',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',
+   code:'',name:'',active:true,companyName:'',englishName:'',type:'expense',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',
    unit:'قطعة',groupCode:'',groupType:'other',itemType:'stock',version:'',warehouseCode:'default',projectCode:'',
    taxType:'vat_output',rate:'0',effectiveFrom:today(),partyType:'',phone:'',mobile:'',alternatePhone:'',
    taxNumber:'',taxRegistrationNumber:'',commercialRegister:'',contactPerson:'',contactTitle:'',email:'',
@@ -450,7 +450,7 @@ function FinanceModule(props){
   try{
    const f=quickAddForm,kind=quickAddType;
    const item=kind==='parties'?{
-    code:String(f.code||'').trim(),name:String(f.name||'').trim(),companyName:String(f.name||'').trim(),
+    code:String(f.code||'').trim(),name:String(f.name||'').trim(),companyName:String(f.name||'').trim(),active:f.active!==false,
     partyType:f.partyType,phone:f.phone,mobile:f.mobile,alternatePhone:f.alternatePhone,
     taxNumber:f.taxNumber||f.taxRegistrationNumber,taxRegistrationNumber:f.taxNumber||f.taxRegistrationNumber,
     commercialRegister:f.commercialRegister,contactPerson:f.contactPerson,contactTitle:f.contactTitle,
@@ -459,7 +459,7 @@ function FinanceModule(props){
     creditLimit:f.creditLimit===''?undefined:n(f.creditLimit),currency:f.currency||'EGP',
     bankName:f.bankName,bankAccount:f.bankAccount,iban:f.iban,address:f.address,notes:f.notes
    }:{
-    code:f.code,name:f.name,type:f.type,nature:f.nature,parentCode:f.parentCode,isGroup:f.isGroup,
+    code:f.code,name:f.name,active:f.active!==false,type:f.type,nature:f.nature,parentCode:f.parentCode,isGroup:f.isGroup,
     subledgerType:f.subledgerType,unit:f.unit,groupCode:f.groupCode,groupType:f.groupType,itemType:f.itemType,
     version:f.version,warehouseCode:f.warehouseCode,projectCode:f.projectCode,taxType:f.taxType,
     rate:n(f.rate),effectiveFrom:f.effectiveFrom,
@@ -1316,7 +1316,8 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   const typeLabels={chartOfAccounts:'حساب جديد',costCenters:'مركز تكلفة جديد',items:'صنف مخزني جديد',itemGroups:'مجموعة أصناف جديدة',warehouses:'مخزن جديد',bankAccounts:'حساب بنك جديد',taxCodes:'كود ضريبي جديد',parties:'عميل / مورد جديد'};
   const fields=[
    field('الكود',quickAddForm.code,function(v){change('code',v);}),
-   field('الاسم',quickAddForm.name,function(v){change('name',v);})
+   field('الاسم',quickAddForm.name,function(v){change('name',v);}),
+   h('label',{className:'inline-flex items-center gap-2 text-sm rounded-lg border border-slate-200 px-3 py-2'},h('input',{type:'checkbox',checked:quickAddForm.active!==false,onChange:function(e){change('active',e.target.checked);}}),'السجل نشط / متاح للاستخدام')
   ];
   if(quickAddType==='chartOfAccounts'){
    fields.push(select('نوع الحساب',quickAddForm.type,function(v){change('type',v);},[{value:'asset',label:'أصول'},{value:'liability',label:'التزامات'},{value:'equity',label:'حقوق ملكية'},{value:'revenue',label:'إيرادات'},{value:'expense',label:'مصروفات'}]));
