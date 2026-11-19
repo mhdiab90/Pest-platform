@@ -461,8 +461,12 @@ export async function handleFinancialRequest(ctx){
    for(const [projectCode,projectRecord] of Object.entries(projectDirectory)){
     if(!projectRecord||typeof projectRecord!=="object")continue;
     const code=id(projectRecord.code||projectCode);
-    if(!out.costCenters[code]){
-     const center={code,name:txt(projectRecord.name||projectRecord.projectName||code,180),projectCode:code,isProjectCenter:true,active:true,createdAt:Date.now(),createdBy:claims.sub};
+    const projectName=txt(projectRecord.name||projectRecord.projectName||code,180),existingCenter=out.costCenters[code];
+    if(!existingCenter){
+     const center={code,name:projectName,projectCode:code,isProjectCenter:true,active:true,createdAt:Date.now(),createdBy:claims.sub};
+     projectCostCenterUpdates["costCenters/"+code]=center;out.costCenters[code]=center;
+    }else if(existingCenter.isProjectCenter===true&&(existingCenter.name!==projectName||existingCenter.projectCode!==code)){
+     const center={...existingCenter,code,name:projectName,projectCode:code,updatedAt:Date.now(),updatedBy:claims.sub};
      projectCostCenterUpdates["costCenters/"+code]=center;out.costCenters[code]=center;
     }
    }
@@ -822,7 +826,7 @@ export async function handleFinancialRequest(ctx){
   if(!project||typeof project!=="object")throw new Error("المشروع غير موجود أو لا يمكن الوصول إلى ملفه.");
   const projectEvents=project.events&&typeof project.events==="object"?project.events:{},previous=projectEvents[eventId]||null;
   requirePermission(profile,"projects",previous?"edit":"add");
-  const actionCode=txt(submitted.actionCode||"general_note",80),partyType=txt(submitted.partyType||"",16),partyCode=txt(submitted.partyCode||"",120);
+  const actionCode=txt(submitted.actionCode||"general_note",80),partyType=txt(submitted.partyType||"",16);let partyCode=txt(submitted.partyCode||"",120);
   const partyTypeValid=["vendor","client",""].includes(partyType);
   if(!partyTypeValid)throw new Error("نوع الطرف المرتبط بالحدث غير صحيح.");
   const amount=num(submitted.amount||0),settledAmount=num(submitted.settledAmount||0),dateValue=date(submitted.date||"");
@@ -854,8 +858,10 @@ export async function handleFinancialRequest(ctx){
    if(existingJournal.status==="posted"||await adminRead("sourceLocks/projectEvent_"+projectCode+"--"+eventId))throw new Error("تم ترحيل أثر هذا الحدث. لا يمكن تعديل الحدث بعد الترحيل؛ أنشئ حدث تصحيح أو قيدًا عكسيًا.");
    if(!["pending_review","needs_correction","cancelled"].includes(existingJournal.status))throw new Error("القيد المرتبط بالحدث ليس في حالة تسمح بالتعديل.");
   }
-  const linkedCodes=partyType==="vendor"?(project.vendorCodes||[]):partyType==="client"?(project.clientCodes|| (project.clientCode?[project.clientCode]:[])):[];
+  const linkedCodes=partyType==="vendor"?(Array.isArray(project.vendorCodes)?project.vendorCodes:[]):partyType==="client"?(Array.isArray(project.clientCodes)?project.clientCodes:(project.clientCode?[project.clientCode]:[])):[];
+  if(!partyCode&&linkedCodes.length===1)partyCode=id(linkedCodes[0]);
   if(partyCode&&linkedCodes.length&&!linkedCodes.map(String).includes(String(partyCode)))throw new Error("الطرف المحدد غير مرتبط بهذا المشروع. أضف المورد أو العميل إلى بيانات المشروع أولًا.");
+  event.partyCode=partyCode;
   if(partyCode&&partyType){
    const party=adminReadRoot?await adminReadRoot((partyType==="vendor"?"vendors/":"clients/")+id(partyCode)):null;
    if(!party)throw new Error("العميل أو المورد المحدد غير موجود في البيانات الموحدة.");
