@@ -157,6 +157,18 @@ function journalUpdates(j){
  (j.lines||[]).forEach((l,i)=>{const row={journalId:j.id,lineNo:i+1,date:j.date,description:l.description||j.description||"",accountCode:l.accountCode,debit:Number(l.debit||0),credit:Number(l.credit||0),currency:l.currency||j.currency||"EGP",costCenterId:l.costCenterId||"",projectCode:l.projectCode||"",partyType:l.partyType||"",partyId:l.partyId||"",sourceType:j.sourceType||"manual",sourceId:j.sourceId||"",reference:j.reference||"",taxCode:l.taxCode||"",taxType:l.taxType||""};u["ledger/"+l.accountCode+"/"+m+"/"+j.id+"_"+(i+1)]=row;if(l.partyType&&l.partyId)u["partyLedger/"+l.partyType+"/"+l.partyId+"/"+m+"/"+j.id+"_"+(i+1)]=row;if(l.costCenterId)u["costLedger/"+l.costCenterId+"/"+m+"/"+j.id+"_"+(i+1)]=row;});
  if(j.sourceType&&j.sourceId)u["sourceLocks/"+j.sourceType+"_"+j.sourceId]={journalId:j.id,postedAt:Date.now()};return u;
 }
+function journalMaintenanceUpdates(previous,next){
+ const updates=journalUpdates(next),newPaths=new Set(Object.keys(updates)),oldMonth=month(previous.date),newMonth=month(next.date);
+ if(oldMonth!==newMonth)updates["periods/"+oldMonth+"/entries/"+previous.id]=null;
+ (previous.lines||[]).forEach((line,index)=>{
+  const suffix=previous.id+"_"+(index+1),paths=[];
+  if(line.accountCode)paths.push("ledger/"+line.accountCode+"/"+oldMonth+"/"+suffix);
+  if(line.partyType&&line.partyId)paths.push("partyLedger/"+line.partyType+"/"+line.partyId+"/"+oldMonth+"/"+suffix);
+  if(line.costCenterId)paths.push("costLedger/"+line.costCenterId+"/"+oldMonth+"/"+suffix);
+  for(const path of paths)if(!newPaths.has(path))updates[path]=null;
+ });
+ return updates;
+}
 function containsMasterReference(value,fields,code,parentKey="") {
  const target=String(code);
  if(Array.isArray(value)){
@@ -684,15 +696,44 @@ export async function handleFinancialRequest(ctx){
   return {success:true,kind,count,created,updated,unchanged};
  }
  if(action==="submitJournal"){
-  let previous=null;const journalId=id(body.id||uid("DOC"));if(body.id){requireFinanceArea("journal","edit");previous=await adminRead("documents/"+journalId);if(!previous||previous.type!=="journal"||!["needs_correction","draft","returned_to_creator"].includes(previous.status)||previous.createdBy!==claims.sub)throw new Error("لا يمكن تعديل هذا القيد: قد يكون غير موجود أو أُرسل للمراجعة أو تم اعتماده.");}else requireFinanceArea("journal","add");const j={id:journalId,type:"journal",date:date(body.date),description:txt(body.description,500),reference:txt(body.reference,120),currency:txt(body.currency||"EGP",3),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:previous&&previous.createdAt||now,createdBy:previous&&previous.createdBy||claims.sub,createdByName:previous&&previous.createdByName||txt(profile.fullName||profile.username||profile.email,120)};
-  if(j.currency!=="EGP")throw new Error("القيود متعددة العملات وأسعار الصرف غير مفعّلة بعد. استخدم الجنيه المصري حتى لا تختلط أرصدة العملات في القوائم.");
-  if(body.id){
-   const previous=await adminRead("documents/"+j.id);
-   if(previous&&(!["needs_correction","draft","returned_to_creator"].includes(previous.status)||previous.createdBy!==claims.sub))throw new Error("لا يمكن تعديل هذا القيد بعد إرساله أو اعتماده.");
+   const journalId=id(body.id||uid("DOC"));let previous=null,postedRecord=null;
+   if(body.id){
+    requireFinanceArea("journal","edit");
+    previous=await adminRead("documents/"+journalId);
+    postedRecord=await adminRead("journals/"+journalId);
+    previous=previous||postedRecord;
+    if(!previous||previous.type!=="journal")throw new Error("القيد المطلوب تعديله غير موجود.");
+    if(previous.sourceType&&previous.sourceType!=="manual")throw new Error("هذا القيد مرتبط بمستند أصلي؛ يجب تعديل المستند المصدر حتى لا تختل أرصدته.");
+   }else requireFinanceArea("journal","add");
+   const j={id:journalId,type:"journal",date:date(body.date),description:txt(body.description,500),reference:txt(body.reference,120),currency:txt(body.currency||"EGP",3),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:previous&&previous.createdAt||now,createdBy:previous&&previous.createdBy||claims.sub,createdByName:previous&&previous.createdByName||txt(profile.fullName||profile.username||profile.email,120)};
+   if(j.currency!=="EGP")throw new Error("القيود متعددة العملات وأسعار الصرف غير مفعّلة بعد. استخدم الجنيه المصري حتى لا تختلط أرصدة العملات في القوائم.");
+   const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{},v=validateJournal(j,chart,centers);
+   if(previous&&previous.status==="posted"){
+    if(v.errors.length)throw new Error(v.errors.join("؛ "));
+    j.status="posted";j.approvedAt=previous.approvedAt||now;j.approvedBy=previous.approvedBy||claims.sub;j.postedAt=now;j.updatedAt=now;j.updatedBy=claims.sub;
+    const updates=journalMaintenanceUpdates(previous,j);updates["documents/"+journalId]=j;updates["reviewQueue/"+journalId]=null;
+    updates["audit/"+uid("AUD")]={action:"edit_posted_manual_journal",documentId:journalId,uid:claims.sub,createdAt:now};
+    await adminPatch(updates);return {success:true,id:journalId,status:"posted",errors:[],balance:v.balance};
+   }
+   j.errors=v.errors;j.balance=v.balance;j.status=v.errors.length?"needs_correction":"pending_review";
+   const updates={};updates["documents/"+journalId]=j;updates["reviewQueue/"+journalId]=v.errors.length?null:reviewRecord(j);
+   updates["audit/"+uid("AUD")]={action:previous?"edit_journal":"submit_journal",documentId:journalId,status:j.status,uid:claims.sub,createdAt:now};
+   await adminPatch(updates);return {success:true,id:journalId,status:j.status,errors:v.errors,balance:v.balance};
   }
-  const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{},v=validateJournal(j,chart,centers);j.errors=v.errors;j.balance=v.balance;j.status=v.errors.length?"needs_correction":"pending_review";const u={};u["documents/"+j.id]=j;u["reviewQueue/"+j.id]=v.errors.length?null:reviewRecord(j);u["audit/"+uid("AUD")]={action:"submit_journal",documentId:j.id,status:j.status,uid:claims.sub,createdAt:now};await adminPatch(u);return {success:true,id:j.id,status:j.status,errors:v.errors,balance:v.balance};
- }
- if(action==="saveInvoiceDraft"){
+  if(action==="deleteJournal"){
+   requireFinanceArea("journal","delete");
+   const journalId=id(body.id),document=await adminRead("documents/"+journalId),posted=await adminRead("journals/"+journalId),target=posted||document;
+   if(!target||target.type!=="journal")throw new Error("قيد اليومية المطلوب حذفه غير موجود.");
+   if(target.sourceType&&target.sourceType!=="manual")throw new Error("لا يمكن حذف قيد ناتج عن فاتورة أو سند؛ صحح المستند المصدر حتى لا تختل حركة المخزون والأرصدة.");
+   const updates={};updates["documents/"+journalId]=null;updates["reviewQueue/"+journalId]=null;updates["journals/"+journalId]=null;
+   if(target.status==="posted"||posted){
+    const period=month(target.date);updates["periods/"+period+"/entries/"+journalId]=null;
+    (target.lines||[]).forEach((line,index)=>{const suffix=journalId+"_"+(index+1),account=String(line.accountCode||"");if(account)updates["ledger/"+id(account)+"/"+period+"/"+suffix]=null;if(line.partyType&&line.partyId)updates["partyLedger/"+id(line.partyType)+"/"+id(line.partyId)+"/"+period+"/"+suffix]=null;if(line.costCenterId)updates["costLedger/"+id(line.costCenterId)+"/"+period+"/"+suffix]=null;});
+   }
+   updates["audit/"+uid("AUD")]={action:"delete_manual_journal",documentId:journalId,previousStatus:target.status||"",uid:claims.sub,createdAt:now};
+   await adminPatch(updates);return {success:true,id:journalId,deleted:true};
+  }
+  if(action==="saveInvoiceDraft"){
   const direction=body.type;
   if(!["purchase","sales"].includes(direction))throw new Error("حدد نوع الفاتورة أولاً: مشتريات أو مبيعات.");
   const draftId=id(body.id||uid("INV")),previous=body.id?await adminRead("documents/"+draftId):null;
