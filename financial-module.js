@@ -1263,9 +1263,8 @@ const deleteJournalDocument=async(doc)=>{
    field("اسم الطرف",inv.partyName||"",v=>setHeader("partyName",v)),
    field("الرقم الضريبي للطرف",inv.partyTaxNumber||"",v=>setHeader("partyTaxNumber",v)),
    select("العملة",inv.currency||"EGP",v=>setHeader("currency",v),currencyOptions),
-   select("كود ضريبة القيمة المضافة",inv.taxCode||"",v=>{const tax=rows(master.taxCodes).find(t=>t.code===v);setAssignmentHeader(old=>Object.assign({},old,{taxCode:v,taxType:tax?tax.taxType:taxType,taxRate:tax?String(tax.rate):old.taxRate||"",taxAmount:""}));},taxOptions),
-   field("نسبة الضريبة %",inv.taxRate==null?"":String(inv.taxRate),v=>setHeader("taxRate",v),"number"),
-   field("قيمة الضريبة الثابتة",inv.taxAmount==null?"":String(inv.taxAmount),v=>setHeader("taxAmount",v),"number"),
+   h("div",{className:"rounded-lg border bg-slate-50 p-2 flex flex-col justify-center"},h("span",{className:"text-xs text-slate-500"},"كود ضريبة القيمة المضافة الثابت"),h("strong",null,(purchase?"مدخلات":"مخرجات")+" — السعر العام 14%")),
+   field("قيمة ضريبة القيمة المضافة (اختياري)",inv.taxAmount==null?"":String(inv.taxAmount),v=>setHeader("taxAmount",v),"number"),
    field("خصم الفاتورة",inv.discount==null?"":String(inv.discount),v=>setHeader("discount",v),"number"),
    select("المشروع المرتبط",inv.projectCode||"",v=>setHeader("projectCode",v),projectOptions)
   ));
@@ -1312,7 +1311,7 @@ const deleteJournalDocument=async(doc)=>{
     button("إغلاق التفاصيل",()=>setSelectedAssignmentId(""),"muted")
    )
   ));
-  
+  return h("div",{className:"space-y-4"},inbox,sentOutbox,detail);
  };
   const renderPartyStatements = function() {
   const staff=(userDirectory||[]).filter(u=>u.uid).map(u=>Object.assign({},u,{id:u.uid,code:u.uid,name:u.fullName||u.username||u.email||u.uid}));
