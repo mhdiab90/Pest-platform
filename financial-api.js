@@ -487,7 +487,31 @@ export async function handleFinancialRequest(ctx){
    if(!item)throw new Error("المستند المطلوب غير موجود أو تم نقله من قائمة المراجعة.");
    const activeAssignment=item.status==="assigned"&&item.assignedTo===claims.sub&&item.assignmentId&&await adminRead("assignments/"+claims.sub+"/"+id(item.assignmentId));
    if(!hasFinanceArea("review","view")&&!hasFinanceArea(documentPermissionArea(item),"view")&&!activeAssignment)throw new Error("ليس لديك صلاحية عرض هذا المستند.");
-   return {item};
+   let sourceDetails=null;
+   if(item.type==="journal"&&item.sourceType==="cashCustody"&&item.sourceId&&adminReadRoot){
+    const separator=String(item.sourceId).indexOf("--");
+    if(separator>0){
+     const ownerUid=id(item.sourceId.slice(0,separator)),transactionId=id(item.sourceId.slice(separator+2));
+     const transaction=await adminReadRoot("cashCustodies/"+ownerUid+"/transactions/"+transactionId);
+     const owner=await adminReadRoot("users/"+ownerUid);
+     const projectCode=String(transaction&&transaction.projectCode||item.projectCode||"");
+     const project=projectCode?await adminReadRoot("projects/"+id(projectCode)):null;
+     if(transaction)sourceDetails={
+      kind:"cashCustody",employeeUid:ownerUid,
+      employeeName:txt(owner&&(owner.fullName||owner.username||owner.email)||transaction.createdByName||ownerUid,120),
+      bookScope:transaction.bookScope==="company"?"company":"personal",
+      movementType:txt(transaction.type||"",40),date:txt(transaction.date||item.date||"",20),
+      amount:Number(transaction.amount||0),currency:txt(transaction.currency||"EGP",12),
+      description:txt(transaction.description||"",1000),reference:txt(transaction.reference||"",160),
+      projectCode,projectName:txt(project&&(project.name||project.projectName)||projectCode,180),
+      status:txt(transaction.status||"",40),createdByName:txt(transaction.createdByName||"",120),
+      counterpartyType:txt(transaction.counterpartyType||"",40),
+      counterpartyCode:txt(transaction.counterpartyCode||"",120),
+      counterpartyName:txt(transaction.counterpartyName||transaction.counterparty||"",180)
+     };
+    }
+   }
+   return {item,sourceDetails};
   }
   if(res==="review"){requireFinanceArea("review","view");return {items:(await adminRead("reviewQueue"))||{}};}
   if(res==="journals"){requireFinanceArea("journal","view");return {items:(await adminRead("journals"))||{}};}
