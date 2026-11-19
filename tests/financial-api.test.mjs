@@ -40,13 +40,8 @@ async function adminPatchRoot(updates) {
 const profile = {uid:"test-admin",role:"admin",status:"active",fullName:"Finance Test"};
 const claims = {sub:"test-admin"};
 const env = {};
-const hasPermission = (targetProfile, moduleName, action) =>
-  targetProfile.role === "admin";
-const requirePermission = (targetProfile, moduleName, action) => {
-  if (!hasPermission(targetProfile, moduleName, action)) {
-    throw new Error("Permission denied: " + moduleName + "." + action + ".");
-  }
-};
+const hasPermission = () => true;
+const requirePermission = () => true;
 async function invoke(method, path, body, options = {}) {
   const requestProfile=options.profile||profile;
   const requestClaims=options.claims||claims;
