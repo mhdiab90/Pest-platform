@@ -1202,7 +1202,37 @@ function FinanceModule(props){
    (selected.reviewReason||'')?h('p',{className:'rounded-lg border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900'},'ملاحظة المراجعة السابقة: '+selected.reviewReason):null,
    (selected.errors||[]).length?h('ul',{className:'list-disc pr-5 text-rose-700'},selected.errors.map((x,i)=>h('li',{key:i},x))):null,
    (selected.warnings||[]).length?h('ul',{className:'list-disc pr-5 text-amber-700'},selected.warnings.map((x,i)=>h('li',{key:i},x))):null,
-   selected.type==='invoice'&&(canFinance("invoices","edit")||(selected.createdBy===currentUser.uid&&canFinance("invoices","add")))?panel(selected.attachmentUploadStatus==='pending'?'المرفق لم يتم رفعه بعد':'إضافة مرفق للفاتورة',selected.attachmentUploadError||'يمكنك رفع صورة أو ملف الفاتورة وربطه بالمستند من هنا.',h('label',{className:'inline-flex flex-col gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-sm font-bold cursor-pointer'},'اختيار صورة أو ملف وإرفاقه',h('input',{type:'file',accept:'image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt',disabled:busy,className:'text-xs font-normal',onChange:e=>{const file=e.target.files&&e.target.files[0];if(file)void retryInvoiceAttachment(file,selected.id);e.target.value='';}}))):null,
+    selected.type==='invoice'&&canFinance("review","edit")?panel('استكمال وتصحيح بيانات الفاتورة','يمكن للمراجع تعديل بيانات الرأس وكود الضريبة والبنود ثم حفظ التصحيحات قبل الاعتماد.',h('div',{className:'space-y-3'},
+     h('div',{className:'grid md:grid-cols-3 gap-2'},
+      field('رقم الفاتورة',selected.number||'',v=>setSelected(old=>Object.assign({},old,{number:v}))),
+      field('تاريخ الفاتورة',selected.date||'',v=>setSelected(old=>Object.assign({},old,{date:v})),'date'),
+      select('نوع الفاتورة',selected.invoiceType||'purchase',v=>setSelected(old=>Object.assign({},old,{invoiceType:v,taxCode:'',taxType:v==='purchase'?'vat_input':'vat_output'})),[{value:'purchase',label:'مشتريات'},{value:'sales',label:'مبيعات'}]),
+      field('كود العميل / المورد',selected.partyId||'',v=>setSelected(old=>Object.assign({},old,{partyId:v}))),
+      field('اسم العميل / المورد',selected.partyName||'',v=>setSelected(old=>Object.assign({},old,{partyName:v}))),
+      field('الرقم الضريبي للطرف',selected.partyTaxNumber||'',v=>setSelected(old=>Object.assign({},old,{partyTaxNumber:v}))),
+      select('العملة',selected.currency||'EGP',v=>setSelected(old=>Object.assign({},old,{currency:v})),[{value:'EGP',label:'EGP — الجنيه المصري'}]),
+      select('كود ضريبة القيمة المضافة',selected.taxCode||'',v=>{const tax=rows(master.taxCodes).find(x=>x.code===v);setSelected(old=>Object.assign({},old,{taxCode:v,taxType:tax?tax.taxType:(old.invoiceType==='purchase'?'vat_input':'vat_output'),taxRate:tax?String(tax.rate):old.taxRate||''}));},[{value:'',label:'بدون كود ضريبي'}].concat(rows(master.taxCodes).filter(x=>x.taxType===(selected.invoiceType==='purchase'?'vat_input':'vat_output')&&x.active!==false).map(x=>({value:x.code,label:x.code+' — '+x.name+' ('+x.rate+'%)'})))),
+      field('نسبة الضريبة %',selected.taxRate==null?'':String(selected.taxRate),v=>setSelected(old=>Object.assign({},old,{taxRate:v})),'number'),
+      field('قيمة الضريبة الثابتة',selected.taxAmount==null?'':String(selected.taxAmount),v=>setSelected(old=>Object.assign({},old,{taxAmount:v})),'number'),
+      field('خصم الفاتورة',selected.discount==null?'':String(selected.discount),v=>setSelected(old=>Object.assign({},old,{discount:v})),'number'),
+      field('كود المشروع',selected.projectCode||'',v=>setSelected(old=>Object.assign({},old,{projectCode:v})))
+     ),
+     h('div',{className:'space-y-2'},(selected.lines||[]).map((line,index)=>{
+      const setLine=(key,value)=>setSelected(old=>Object.assign({},old,{lines:(old.lines||[]).map((x,i)=>i===index?Object.assign({},x,{[key]:value}):x)}));
+      return h('div',{key:index,className:'grid md:grid-cols-12 gap-2 rounded-lg border p-2 bg-slate-50'},
+       h('div',{className:'md:col-span-3'},field('وصف البند',line.description||'',v=>setLine('description',v))),
+       h('div',{className:'md:col-span-2'},select('نوع البند',line.kind||'',v=>setLine('kind',v),[{value:'',label:'غير محدد'},{value:'stock',label:'مخزني'},{value:'service',label:'مصروف / خدمة'}])),
+       h('div',{className:'md:col-span-2'},line.kind==='stock'?field('كود الصنف',line.itemCode||'',v=>setLine('itemCode',v)):field(selected.invoiceType==='purchase'?'حساب المصروف':'حساب الإيراد',selected.invoiceType==='purchase'?(line.accountCode||''):(line.incomeAccountCode||''),v=>setLine(selected.invoiceType==='purchase'?'accountCode':'incomeAccountCode',v))),
+       h('div',{className:'md:col-span-1'},field('الكمية',line.quantity==null?'':String(line.quantity),v=>setLine('quantity',v),'number')),
+       h('div',{className:'md:col-span-1'},field('السعر',line.unitPrice==null?'':String(line.unitPrice),v=>setLine('unitPrice',v),'number')),
+       h('div',{className:'md:col-span-1'},field('الخصم',line.discount==null?'':String(line.discount),v=>setLine('discount',v),'number')),
+       h('div',{className:'md:col-span-2'},field('مركز التكلفة',line.costCenterId||'',v=>setLine('costCenterId',v)))
+      );
+     })),
+     button('إضافة بند للفاتورة',()=>setSelected(old=>Object.assign({},old,{lines:(old.lines||[]).concat([{description:'',kind:'',quantity:'',unitPrice:'',discount:'',itemCode:'',accountCode:'',incomeAccountCode:'',costCenterId:'',warehouseCode:'default'}])})),'muted'),
+     button('حفظ تصحيحات المراجع',saveReviewInvoice,'primary',busy)
+    )):null,
+   selected.type==='invoice'&&(canFinance("review","edit")||canFinance("invoices","edit")||(selected.createdBy===currentUser.uid&&canFinance("invoices","add")))?panel(selected.attachmentUploadStatus==='pending'?'المرفق لم يتم رفعه بعد':'إضافة مرفق للفاتورة',selected.attachmentUploadError||'يمكنك رفع صورة أو ملف الفاتورة وربطه بالمستند من هنا.',h('label',{className:'inline-flex flex-col gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-sm font-bold cursor-pointer'},'اختيار صورة أو ملف وإرفاقه',h('input',{type:'file',accept:'image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt',disabled:busy,className:'text-xs font-normal',onChange:e=>{const file=e.target.files&&e.target.files[0];if(file)void retryInvoiceAttachment(file,selected.id);e.target.value='';}}))):null,
    Object.keys(selected.attachments||{}).length?panel('مرفقات المستند','الملفات محفوظة في مساحة المرفقات المالية المرتبطة بالفاتورة.',table(['اسم الملف','النوع','الحجم','الإجراء'],Object.values(selected.attachments||{}).map(function(attachment){return h('tr',{key:attachment.id,className:'border-t'},h('td',{className:'p-2'},attachment.fileName||'—'),h('td',{className:'p-2'},attachment.mimeType||'—'),h('td',{className:'p-2'},fmt((Number(attachment.size)||0)/1024)+' KB'),h('td',{className:'p-2'},button('تحميل المرفق',function(){downloadFinancialAttachment(selected.id,attachment);},'muted')));}))) : null,
    selected.type==='bankLine'?select('الحساب المقابل',offset,v=>setOffset(v),posting.map(a=>({value:a.code,label:a.code+' — '+a.name}))):null,
    selected.type==='bankLine'?canFinance("bank","edit")?button('حفظ الحساب المقابل',async()=>{try{await api('', 'POST',{action:'setBankOffset',id:selected.id,offsetAccountCode:offset});setNotice('تم حفظ الحساب المقابل');await refreshReviewQueue(true);}catch(e){setError(e.message);}}):null:null,
