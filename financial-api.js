@@ -915,7 +915,40 @@ export async function handleFinancialRequest(ctx){
    u["sentAssignments/"+claims.sub+"/"+id(previous.assignmentId)+"/resubmittedAt"]=now;
    u["sentAssignments/"+claims.sub+"/"+id(previous.assignmentId)+"/decision"]="creator_resubmitted";
   }
-  await adminPatch(u);if(!errors.length&&previous&&previous.returnedTaskId){
+  await adminPatch(u);
+  let reviewPushNotifications=[],reviewersNotified=0;
+  if(["pending_review","duplicate_review"].includes(inv.status)){
+   try{
+    const allUsers=adminReadRoot?(await adminReadRoot("users"))||{}:{},notificationUpdates={};
+    const reviewers=Object.entries(allUsers).filter(([reviewerUid,user])=>{
+     if(!user||reviewerUid===claims.sub||!["active","نشط","مفعل","enabled"].includes(String(user.status||"").toLowerCase()))return false;
+     return hasPermission(user,"financial_review","view")&&hasPermission(user,"financial_review","approve");
+    });
+    for(const [reviewerUid,user] of reviewers){
+     const notificationId=uid("FIN-REV"),reviewerName=txt(user.fullName||user.username||user.email||reviewerUid,120);
+     const notification={
+      id:notificationId,type:"financialReviewRequired",recipientUid:reviewerUid,
+      assignmentId:previous&&previous.assignmentId||"",invoiceId:inv.id,
+      senderUid:claims.sub,senderName:txt(profile.fullName||profile.username||profile.email,120),
+      title:"فاتورة جديدة بانتظار المراجعة",description:"الفاتورة "+(inv.number||inv.id)+" — "+(inv.partyName||"")+" — مطلوب المراجعة والاعتماد.",
+      createdAt:now,read:false
+     };
+     notificationUpdates[reviewerUid+"/"+notificationId]=notification;
+     reviewPushNotifications.push({
+      recipientUid:reviewerUid,eventType:"financialReviewRequired",eventId:inv.id,
+      dispatchPrefix:"finance:review:"+inv.id,
+      content:{title:notification.title,body:notification.description}
+     });
+    }
+    if(Object.keys(notificationUpdates).length)await patchExternalBranch("cashCustodyNotifications",notificationUpdates);
+    reviewersNotified=reviewers.length;
+   }catch(notificationError){
+    console.error("Invoice entered review queue, but reviewer notifications could not be saved:",String(notificationError&&notificationError.message||notificationError));
+    inv.warnings=(inv.warnings||[]).concat(["تم إدخال الفاتورة في قائمة المراجعة، لكن تعذر حفظ بعض إشعارات المراجعين."]);
+    reviewPushNotifications=[];
+   }
+  }
+  if(!errors.length&&previous&&previous.returnedTaskId){
    try{
     const taskId=id(previous.returnedTaskId),taskUpdates={};
     taskUpdates[claims.sub+"/"+taskId+"/status"]="completed";
@@ -926,7 +959,8 @@ export async function handleFinancialRequest(ctx){
     console.error("Invoice was successfully submitted to review, but its return-task could not be closed:",String(taskError&&taskError.message||taskError));
     inv.warnings=(inv.warnings||[]).concat(["تم إرسال الفاتورة للمراجعة، لكن تعذر إغلاق مهمة الإرجاع القديمة تلقائيًا."]);
    }
-  }return {success:true,id:inv.id,status:inv.status,errors,warnings:inv.warnings,totals};
+  }
+  return {success:true,id:inv.id,status:inv.status,errors,warnings:inv.warnings,totals,reviewersNotified,pushNotifications:reviewPushNotifications};
  }
  if(action==="submitCash"){
   requireFinanceArea("cash","add");
