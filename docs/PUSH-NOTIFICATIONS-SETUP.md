@@ -20,11 +20,11 @@ For testing, set FCM_SERVICE_ACCOUNT_JSON as a Secret and FCM_WEB_VAPID_KEY as a
 
 ## Firebase Realtime Database rules
 
-Publish the complete file `firebase-rules/Pest-Platform-Firebase-Rules-Custody-v12-Online-Presence-Push.json`. It keeps the v8 rules and adds:
+Publish the complete file `firebase-rules/Pest-Platform-Firebase-Rules-Custody-v13-Online-Presence-Push.json`. It keeps the v8 rules and adds:
 - pushTokens/{uid}/{tokenId}: only the active signed-in owner can write their own Android/web token; client reads are denied.
 - pushDispatches: client reads and writes are denied; the Worker uses its service account for idempotency tracking.
 
-The v12 file includes online-presence and push-token permissions. It is a proposed rules file only and must be published manually in Firebase Realtime Database → Rules. Replace the complete Rules document with this full JSON file; do not paste only the presence section. It replaces the earlier v11 draft. The /presence read permission is limited to signed-in active accounts, each account can write only its own connection records, and deleting its own connection record is allowed on disconnect so stale online markers can be cleaned up.
+The v13 file includes online-presence and push-token permissions. It is a proposed rules file only and must be published manually in Firebase Realtime Database → Rules. Replace the complete Rules document with this full JSON file; do not paste only the presence section. It replaces the earlier v12 draft. The /presence read permission is limited to signed-in active accounts, each account can write only its own connection records, and deleting its own connection record is allowed on disconnect. The connection-record validation explicitly allows the required `state` and `lastChanged` children while rejecting other fields; omitting those child validators causes writes to be rejected.
 
 ## Device enrollment and delivery
 
