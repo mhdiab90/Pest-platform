@@ -1151,6 +1151,7 @@ function App(){
   const [cashCustodySearch,setCashCustodySearch] = useState('');
   const [cashCustodyForm,setCashCustodyForm] = useState({type:'receipt',date:new Date().toISOString().slice(0,10),amount:'',currency:'EGP',counterparty:'',counterpartyType:'',counterpartyUid:'',counterpartyCode:'',counterpartyName:'',projectCode:'',reference:'',description:''});
   const [cashCustodyBusy,setCashCustodyBusy] = useState(false);
+  const cashCustodyJournalSyncRef=useRef(false);
   const [cashCustodyEditingId,setCashCustodyEditingId] = useState('');
   const [cashCustodyNotice,setCashCustodyNotice] = useState('');
   const [custodyStatementTargetUid,setCustodyStatementTargetUid] = useState('');
@@ -3136,6 +3137,20 @@ function App(){
   const cashCustodyInTotal=cashCustodyApproved.filter(t=>cashCustodySign(t.type)>0).reduce((sum,t)=>sum+Number(t.amount||0),0);
   const cashCustodyOutTotal=cashCustodyApproved.filter(t=>cashCustodySign(t.type)<0).reduce((sum,t)=>sum+Number(t.amount||0),0);
   const cashCustodyBalance=cashCustodyInTotal-cashCustodyOutTotal;
+  useEffect(()=>{
+    if(tab!=='cashCustody'||!cashCustodyTargetUid||!cashCustodyRows.length||cashCustodyJournalSyncRef.current||!requirePermission('cashCustody','view'))return;
+    const missing=cashCustodyRows.filter(transaction=>transaction&&transaction.id&&transaction.pairRole!=='counterparty'&&!transaction.financialDocumentId&&!['cancelled','rejected'].includes(String(transaction.status||''))).slice(0,80);
+    if(!missing.length)return;
+    cashCustodyJournalSyncRef.current=true;
+    sendPushWorkerRequest('/finance',{action:'syncCashCustodyJournals',ownerUid:cashCustodyTargetUid,transactions:missing})
+      .then(result=>{
+        if(result&&result.created)setCashCustodyNotice(rtl?'تم تحويل '+result.created+' حركة عهدة قديمة إلى قيود بانتظار المراجعة المحاسبية.':'Converted '+result.created+' existing custody transactions into journals awaiting review.');
+        if(result&&result.failed)setCashCustodyNotice(rtl?'تعذر إنشاء '+result.failed+' قيد عهدة. راجع الملاحظات أو العملة.':'Could not create '+result.failed+' custody journals. Check the errors or currency.');
+      })
+      .catch(error=>setCashCustodyNotice((rtl?'تعذرت مزامنة قيود العهد القديمة: ':'Could not sync existing custody journals: ')+String(error.message||error)))
+      .finally(()=>{cashCustodyJournalSyncRef.current=false;});
+  },[tab,cashCustodyTargetUid,cashCustodyRows.length,currentUser&&currentUser.uid]);
+
   const cashCustodyRunningBalanceById={};
   let cashCustodyRunningTotal=0;
   cashCustodyRows.filter(t=>t.status==='approved'&&String(t.currency||'EGP').toUpperCase()===String(cashCustodyCurrencyFilter||'EGP').toUpperCase()).slice().sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))||Number(a.createdAt||0)-Number(b.createdAt||0)).forEach(t=>{cashCustodyRunningTotal+=cashCustodySign(t.type)*Number(t.amount||0);cashCustodyRunningBalanceById[t.id]=cashCustodyRunningTotal;});
@@ -3657,6 +3672,22 @@ function App(){
         if(existing?.linkedTransactionId&&!canPair)updates['cashCustodies/'+existing.linkedOwnerUid+'/transactions/'+existing.linkedTransactionId]=null;
       }
       await db.ref().update(updates);
+      let accountingResult=null,accountingError='';
+      if(sourceRecord.pairRole!=='counterparty'){
+        try{
+          accountingResult=await sendPushWorkerRequest('/finance',{action:'submitCashCustodyJournal',ownerUid:sourceOwnerUid,transactionId});
+          if(accountingResult&&accountingResult.success&&!accountingResult.skipped){
+            transactionStatus=accountingResult.status==='pending_review'?'pending':transactionStatus;
+            sourceRecord.status=transactionStatus;
+            sourceRecord.financialDocumentId=accountingResult.id||sourceRecord.financialDocumentId||'';
+            sourceRecord.financialReviewStatus=accountingResult.status||'pending_review';
+          }
+        }catch(financialError){
+          accountingError=String(financialError.message||financialError);
+          transactionStatus='pending';sourceRecord.status='pending';
+          await db.ref(sourcePath+transactionId).update({status:'pending',financialReviewStatus:'blocked',financialReviewError:accountingError}).catch(()=>null);
+        }
+      }
       let notificationSent=false,notificationError='';
       if(notificationToCreate){
         try{
@@ -3678,7 +3709,7 @@ function App(){
       await addLog((cashCustodyEditingId?'تعديل':'تسجيل')+' حركة عهدة: '+(cashCustodyTypeLabels[cashCustodyForm.type]||cashCustodyForm.type),currentUser,{entityType:'cash-custody',entityId:sourceOwnerUid+'/'+transactionId,changes:cashCustodyEditingId?auditChanges(previousCashCustodyRecord,sourceRecord):{},metadata:{amount,currency:base.currency,status:transactionStatus,counterpartyType,counterpartyUid,counterpartyCode,paired:Boolean(sourceRecord.linkedTransactionId),attachmentsLinked:Boolean(linkResult.ok)}});
       setCashCustodyEditingId('');setCashCustodyForm({type:'expense',date:new Date().toISOString().slice(0,10),amount:'',currency:'EGP',counterparty:'',counterpartyType:'',counterpartyUid:'',counterpartyCode:'',counterpartyName:'',projectCode:'',reference:'',description:''});
       const savedMessage=rtl?(transactionStatus==='approved'?'تم حفظ الحركة واعتمادها.':'تم حفظ الحركة وهي في انتظار الاعتماد.'):(transactionStatus==='approved'?'Movement saved and approved.':'Movement saved and awaiting approval.');
-      setCashCustodyNotice(savedMessage+(sourceRecord.linkedTransactionId?(rtl?(notificationSent?' وتم تسجيل الحركة المقابلة وإرسال الإشعار.':' تم تسجيل الحركة المقابلة، لكن تعذر إرسال الإشعار: '+notificationError):(notificationSent?' The linked entry and notification were saved.':' The linked entry was saved, but its notification failed: '+notificationError)):'')+(linkResult.ok?'':(rtl?' تعذر ربط بعض الملفات: '+linkResult.message+' استخدم زر إكمال ربط المرفقات.':' Some files could not be linked: '+linkResult.message+' Use Finish linking attachments.')));
+      setCashCustodyNotice(savedMessage+(accountingResult&&accountingResult.id?(rtl?' وتم إنشاء القيد '+accountingResult.id+' وإرساله للمراجعة المحاسبية.':' Journal '+accountingResult.id+' was sent to financial review.'):'')+(accountingError?(rtl?' تعذر إنشاء قيد المراجعة المحاسبية: '+accountingError:' Could not create the accounting review journal: '+accountingError):'')+(sourceRecord.linkedTransactionId?(rtl?(notificationSent?' وتم تسجيل الحركة المقابلة وإرسال الإشعار.':' تم تسجيل الحركة المقابلة، لكن تعذر إرسال الإشعار: '+notificationError):(notificationSent?' The linked entry and notification were saved.':' The linked entry was saved, but its notification failed: '+notificationError)):'')+(linkResult.ok?'':(rtl?' تعذر ربط بعض الملفات: '+linkResult.message+' استخدم زر إكمال ربط المرفقات.':' Some files could not be linked: '+linkResult.message+' Use Finish linking attachments.')));
     }catch(err){setCashCustodyNotice(firebaseErrorMessage(err,tr));}
     finally{setCashCustodyBusy(false);}
   }
@@ -3688,6 +3719,7 @@ function App(){
     if(ownerUid!==currentUser.uid&&!hasPermission('cashCustody','viewOthers'))return alert(rtl?'لا تملك صلاحية عرض عهدة هذا المستخدم.':'You do not have permission to view this user\'s custody.');
     if(ownerUid===currentUser.uid&&!isAdmin)return alert(rtl?'لا يمكنك اعتماد حركتك الشخصية.':'You cannot approve your own transaction.');
     if(!transaction||transaction.status!=='pending'||!['approved','rejected'].includes(status))return;
+    if(transaction.financialDocumentId&&transaction.financialReviewStatus!=='posted')return alert(rtl?'هذه الحركة مرتبطة بقيد في المراجعة المحاسبية. يجب اعتماد القيد أو إعادته من شاشة المراجعة المالية أولاً.':'This movement has a journal in financial review. Approve or return the journal from Financial Review first.');
     try{
       const updates={},review={status,reviewedBy:currentUser.uid,reviewedByName:currentUser.fullName||currentUser.username||'',reviewedAt:firebase.database.ServerValue.TIMESTAMP};
       Object.entries(review).forEach(([key,value])=>{updates['cashCustodies/'+ownerUid+'/transactions/'+transaction.id+'/'+key]=value;});
