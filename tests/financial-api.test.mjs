@@ -1388,7 +1388,9 @@ test("partner current accounts create separate analytical ledgers and transfer a
   await invoke("GET","?resource=bootstrap");
   const haithamUid="PARTNER-HAITHAM-TEST",thabetUid="PARTNER-THABET-TEST",transactionId="PARTNER-CUSTODY-TRANSFER-01";
   write("users/"+haithamUid,{uid:haithamUid,status:"active",role:"user",username:"haitham Ibrahim mahmoud",fullName:"Haitham Ibrahim Mahmoud"});
-  write("users/"+thabetUid,{uid:thabetUid,status:"active",role:"user",username:"Thabetrabea",fullName:"Thabet Rabea"});
+  write("users/"+thabetUid,{uid:thabetUid,status:"active",role:"user",username:"Thabetrabea",fullName:"Thabet Rabea",email:"thabetrabea@gmail.com"});
+  const inactiveThabetUid="PARTNER-THABET-INACTIVE-TEST";
+  write("users/"+inactiveThabetUid,{uid:inactiveThabetUid,status:"disabled",role:"user",username:"Thabetrabea",fullName:"Thabet Old Account",email:"thabet.old@example.com"});
   const attachmentsManifest={fileIds:["ATTACHMENT-KEEP-01"],notes:"must remain linked to original custody record"};
   write("cashCustodies/"+haithamUid+"/transactions/"+transactionId,{
     id:transactionId,ownerUid:haithamUid,bookScope:"personal",type:"expense",amount:350,currency:"EGP",
@@ -1402,7 +1404,9 @@ test("partner current accounts create separate analytical ledgers and transfer a
   const configured=await invoke("GET","?resource=partnerCurrentAccounts");
   assert.deepEqual(configured.items.map(item=>item.accountCode).sort(),["3201","3202"]);
   assert.equal(configured.items.find(item=>item.uid===haithamUid).partnerName,"م/ هيثم إبراهيم");
+  assert.equal(configured.items.find(item=>item.accountCode==="3202").uid,thabetUid,"Thabet's current account must resolve only by his exact active email, not the inactive duplicate username");
   assert.equal(configured.items.find(item=>item.uid===thabetUid).partnerName,"أ/ ثابت ربيع");
+  assert.equal(configured.items.find(item=>item.uid===thabetUid).active,true);
 
   const draft=await invoke("POST","",{action:"submitCashCustodyJournal",ownerUid:haithamUid,transactionId});
   assert.equal(draft.status,"pending_review");
@@ -1447,4 +1451,22 @@ test("partner current accounts create separate analytical ledgers and transfer a
   assert.equal(finalListing.items.find(item=>item.uid===haithamUid).transactions.length,0);
   assert.equal(read("journals/"+transferred.journalId).status,"posted");
   assert.equal(read("journals/"+returned.journalId).status,"posted");
+
+  const thabetTransactionId="PARTNER-THABET-CUSTODY-01";
+  write("cashCustodies/"+thabetUid+"/transactions/"+thabetTransactionId,{
+    id:thabetTransactionId,ownerUid:thabetUid,bookScope:"personal",type:"expense",amount:125,currency:"EGP",
+    date:"2026-11-20",description:"Thabet partner expense",reference:"PC-TH-001",status:"approved",
+    createdBy:thabetUid,createdByName:"Thabet Rabea"
+  });
+  const thabetDraft=await invoke("POST","",{action:"submitCashCustodyJournal",ownerUid:thabetUid,transactionId:thabetTransactionId});
+  assert.equal(thabetDraft.status,"pending_review");
+  const thabetJournalApproval=await invoke("POST","",{action:"review",id:thabetDraft.id,decision:"approve"});
+  assert.equal(thabetJournalApproval.status,"posted");
+  const thabetTransfer=await invoke("POST","",{action:"transferPartnerCurrentAccount",ownerUid:thabetUid,transactionId:thabetTransactionId,direction:"toCurrent"});
+  assert.equal(thabetTransfer.accountCode,"3202","the exact active email must use Thabet account 3202");
+  const thabetTransferApproval=await invoke("POST","",{action:"review",id:thabetTransfer.journalId,decision:"approve"});
+  assert.equal(thabetTransferApproval.status,"posted");
+  assert.equal(read("cashCustodies/"+thabetUid+"/transactions/"+thabetTransactionId+"/partnerCurrentAccountTransfer/active"),true);
+  assert.ok(read("partyLedger/partnerCurrentAccount/"+thabetUid+"/2026-11"));
+  assert.equal(read("partyLedger/partnerCurrentAccount/"+inactiveThabetUid+"/2026-11"),null,"the inactive duplicate account must never receive Thabet's partner balance");
 });

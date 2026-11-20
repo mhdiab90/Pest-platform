@@ -3411,6 +3411,8 @@ function App(){
   async function saveAdminUser(e){
     e.preventDefault();
     if(!isAdmin||!adminUserSelectedUid)return;
+    const selectedRecord=activeUsers.find(user=>user.uid===adminUserSelectedUid);
+    if(selectedRecord&&String(selectedRecord.status||'').toLowerCase()==='deleted')return setAdminUserNotice(rtl?'تم حذف حساب الدخول لهذا المستخدم ولا يمكن تعديل ملفه أو إعادة تفعيله.':'This user has been deleted from Authentication and cannot be edited or reactivated.');
     const fullName=String(adminUserForm.fullName||'').trim();
     const username=String(adminUserForm.username||'').trim();
     const jobTitle=String(adminUserForm.jobTitle||'').trim();
@@ -3479,11 +3481,39 @@ function App(){
     finally{setAdminUserBusy(false);}
   }
 
+  async function deleteAdminUser(){
+    if(!isAdmin||!adminUserSelectedUid||adminUserBusy)return;
+    const selected=activeUsers.find(user=>user.uid===adminUserSelectedUid)||userDirectory.find(user=>user.uid===adminUserSelectedUid)||{};
+    if(adminUserSelectedUid===currentUser.uid)return setAdminUserNotice(rtl?'لا يمكن حذف حساب المدير الذي تستخدمه حاليًا.':'You cannot delete the administrator account currently in use.');
+    if(selected.role==='admin')return setAdminUserNotice(rtl?'حذف حساب مدير النظام غير مسموح من هذه الشاشة.':'Administrator accounts cannot be deleted from this screen.');
+    if(String(selected.status||'').toLowerCase()==='deleted')return setAdminUserNotice(rtl?'حساب هذا المستخدم محذوف بالفعل.':'This user account has already been deleted.');
+    const email=String(selected.email||adminUserForm.email||'').trim().toLowerCase();
+    if(!email||!email.includes('@'))return setAdminUserNotice(rtl?'لا يوجد بريد إلكتروني موثق لهذا المستخدم.':'This user has no verified email address in the user profile.');
+    if(!window.confirm((rtl?'سيتم حذف حساب الدخول نهائيًا من Firebase Authentication للمستخدم:\n':'This will permanently delete the Firebase Authentication account for:\n')+(selected.fullName||selected.username||email)+'\n'+email+(rtl?'\n\nستظل سجلاته المالية والعهد والمرفقات وسجل النشاط محفوظة للرجوع إليها. لا يمكن التراجع عن حذف حساب الدخول. هل تريد المتابعة؟':'\n\nFinancial records, custody, attachments and audit history will be retained. Deleting the sign-in account cannot be undone. Continue?')))return;
+    const typedEmail=window.prompt(rtl?'للتأكيد، اكتب البريد الإلكتروني للمستخدم كما هو:':'To confirm, type the user email address exactly:', '');
+    if(String(typedEmail||'').trim().toLowerCase()!==email)return setAdminUserNotice(rtl?'لم يتطابق البريد الإلكتروني؛ لم يتم حذف أي شيء.':'The email did not match. Nothing was deleted.');
+    setAdminUserBusy(true);setAdminUserNotice('');
+    try{
+      const result=await sendPushWorkerRequest('/admin/users/delete',{uid:adminUserSelectedUid,confirmEmail:email});
+      const deletedAt=Date.now();
+      setActiveUsers(old=>old.map(user=>user.uid===adminUserSelectedUid?({...user,status:'deleted',authDeletionStatus:'deleted',deletedAt}):user));
+      setUserDirectory(old=>old.map(user=>user.uid===adminUserSelectedUid?({...user,status:'deleted',authDeletionStatus:'deleted',deletedAt}):user));
+      setAdminUserForm(old=>({...old,status:'disabled'}));
+      await addLog('حذف حساب دخول المستخدم: '+(selected.fullName||selected.username||email),currentUser,{entityType:'user-account',entityId:adminUserSelectedUid,metadata:{email,status:result.status,financialRecordsRetained:true}}).catch(()=>null);
+      setAdminUserNotice(rtl?'تم حذف حساب الدخول نهائيًا من Firebase Authentication. تم الاحتفاظ بملف المستخدم وسجلاته المالية والعهد والمرفقات وسجل النشاط.':'The Firebase Authentication account was permanently deleted. The user profile, financial records, custody, attachments and audit history were retained.');
+    }catch(err){setAdminUserNotice(firebaseErrorMessage(err,tr));}
+    finally{setAdminUserBusy(false);}
+  }
+
   function isConfiguredPartnerCurrentOwner(ownerUid){
-    const user=userDirectory.find(item=>item.uid===ownerUid)||{};
+    const profileUser=activeUsers.find(item=>item.uid===ownerUid)||{};
+    const directoryUser=userDirectory.find(item=>item.uid===ownerUid)||{};
+    const user={...profileUser,...directoryUser};
     const normalize=value=>String(value||'').trim().toLowerCase().replace(/\s+/g,' ');
-    const candidates=[user.username,user.fullName,String(user.email||'').split('@')[0]].map(normalize);
-    return candidates.includes('haitham ibrahim mahmoud')||candidates.includes('thabetrabea');
+    const email=normalize(profileUser.email||directoryUser.email||user.email);
+    if(email==='thabetrabea@gmail.com')return true;
+    const candidates=[user.username,user.fullName,email.split('@')[0]].map(normalize);
+    return candidates.includes('haitham ibrahim mahmoud');
   }
   async function transferCashCustodyToPartnerCurrent(ownerUid,transaction){
     if(!isAdmin||!hasPermission('cashCustody','edit'))return alert(rtl?'تحويل السجل إلى جاري الشريك متاح لمدير النظام فقط.':'Only a system administrator can transfer this movement to a partner current account.');
@@ -7052,8 +7082,9 @@ function App(){
                   <button disabled={adminUserBusy} className="bg-blue-600 text-white rounded-lg px-6 py-3 font-bold disabled:opacity-50">{adminUserBusy?(rtl?'جارٍ الحفظ...':'Saving...'):(rtl?'حفظ بيانات المستخدم':'Save user details')}</button>
                   <button type="button" disabled={adminPasswordResetBusy||adminUserBusy||!adminUserForm.email} onClick={sendAdminUserPasswordReset} className="rounded-lg bg-amber-500 hover:bg-amber-600 text-white px-5 py-3 font-bold disabled:opacity-50"><i className="fas fa-key me-2"></i>{adminPasswordResetBusy?(rtl?'جارٍ إرسال الرابط...':'Sending link...'):(rtl?'إرسال رابط إعادة تعيين كلمة المرور':'Send password reset link')}</button>
                   <button type="button" disabled={adminUserBusy||adminUserSelectedUid===currentUser.uid||adminUserForm.status!=='active'} onClick={deactivateAdminUser} className="rounded-lg bg-rose-600 hover:bg-rose-700 text-white px-5 py-3 font-bold disabled:opacity-50"><i className="fas fa-user-slash me-2"></i>{rtl?'تعطيل الحساب':'Disable account'}</button>
+                  <button type="button" disabled={adminUserBusy||adminUserSelectedUid===currentUser.uid||activeUsers.find(user=>user.uid===adminUserSelectedUid)?.role==='admin'||String(activeUsers.find(user=>user.uid===adminUserSelectedUid)?.status||'').toLowerCase()==='deleted'} onClick={deleteAdminUser} className="rounded-lg bg-gray-900 hover:bg-black text-white px-5 py-3 font-bold disabled:opacity-50"><i className="fas fa-user-xmark me-2"></i>{adminUserBusy?(rtl?'جارٍ الحذف...':'Deleting...'):(rtl?'مسح المستخدم نهائيًا':'Delete user permanently')}</button>
                 </div>
-                <p className="md:col-span-2 text-xs leading-6 text-gray-500">{rtl?'إعادة التعيين ترسل رابطاً آمناً إلى بريد المستخدم ولا تكشف كلمة مروره. تعطيل الحساب يوقف الدخول ويحافظ على العهدة وسجل النشاط؛ الحذف النهائي من Firebase Authentication يحتاج خدمة خادمية بصلاحيات Admin SDK.':'Password reset sends a secure link to the user and never reveals their password. Disabling blocks sign-in while retaining custody and audit records. Permanent Firebase Authentication deletion requires a backend using the Admin SDK.'}</p>
+                <p className="md:col-span-2 text-xs leading-6 text-gray-500">{rtl?'إعادة التعيين ترسل رابطاً آمناً إلى بريد المستخدم. التعطيل يحافظ على سجلاته. زر مسح المستخدم يحذف حساب الدخول من Firebase Authentication بعد تأكيد البريد، مع الاحتفاظ بالسجلات المالية والعهد والمرفقات وسجل النشاط.':'Password reset sends a secure link. Disabling preserves records. Delete user removes the Firebase Authentication account after email confirmation while retaining financial records, custody, attachments and audit history.'}</p>
                 {adminUserNotice&&<div className="md:col-span-2 rounded-lg border bg-slate-50 p-3 text-sm text-slate-700">{adminUserNotice}</div>}
               </form>}
             </section>
