@@ -515,7 +515,23 @@ export async function handleFinancialRequest(ctx){
    }
    return {item,sourceDetails};
   }
-  if(res==="review"){requireFinanceArea("review","view");return {items:(await adminRead("reviewQueue"))||{}};}
+  if(res==="review"){
+   requireFinanceArea("review","view");
+   const queue=(await adminRead("reviewQueue"))||{},documents=(await adminRead("documents"))||{},items={},updates={};
+   Object.entries(queue).forEach(([key,record])=>{
+    if(!record||typeof record!=="object")return;
+    const document=documents[key]||{},isJournal=document.type==="journal"||record.type==="journal";
+    if(!isJournal){items[key]=record;return;}
+    const number=document.number||record.number||journalNumberFor(document.date||record.date,document.id||record.id||key);
+    const title=(!record.title||record.title===key||record.title===record.id)?"قيد رقم "+number:record.title;
+    items[key]={...record,number,title};
+    if(document.type==="journal"&&!document.number)updates["documents/"+key+"/number"]=number;
+    if(record.number!==number)updates["reviewQueue/"+key+"/number"]=number;
+    if(record.title!==title)updates["reviewQueue/"+key+"/title"]=title;
+   });
+   if(Object.keys(updates).length)await adminPatch(updates);
+   return {items};
+  }
   if(res==="journals"){
     requireFinanceArea("journal","view");
     const source=(await adminRead("journals"))||{},documents=(await adminRead("documents"))||{},items={},updates={};
