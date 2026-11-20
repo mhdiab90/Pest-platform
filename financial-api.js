@@ -1778,10 +1778,10 @@ if(action==="submitCash"){
      "partnerCurrentAccountTransfer/pendingDirection":null,
      "partnerCurrentAccountTransfer/lastReviewStatus":status,
      "partnerCurrentAccountTransfer/lastReviewReason":txt(body.reason,1000),
-     "partnerCurrentAccountTransferHistory/"+transferId+"/status":status,
-     "partnerCurrentAccountTransferHistory/"+transferId+"/reviewedAt":now,
-     "partnerCurrentAccountTransferHistory/"+transferId+"/reviewedBy":claims.sub,
-     "partnerCurrentAccountTransferHistory/"+transferId+"/reviewReason":txt(body.reason,1000)
+     ["partnerCurrentAccountTransferHistory/"+transferId+"/status"]:status,
+     ["partnerCurrentAccountTransferHistory/"+transferId+"/reviewedAt"]:now,
+     ["partnerCurrentAccountTransferHistory/"+transferId+"/reviewedBy"]:claims.sub,
+     ["partnerCurrentAccountTransferHistory/"+transferId+"/reviewReason"]:txt(body.reason,1000)
     }};
    }
    await adminPatch(u);
@@ -1968,9 +1968,9 @@ if(action==="submitCash"){
      "partnerCurrentAccountTransfer/lastReviewReason":null,
      "partnerCurrentAccountTransfer/updatedAt":now,
      "partnerCurrentAccountTransfer/updatedBy":claims.sub,
-     "partnerCurrentAccountTransferHistory/"+transferId+"/status":"posted",
-     "partnerCurrentAccountTransferHistory/"+transferId+"/approvedAt":now,
-     "partnerCurrentAccountTransferHistory/"+transferId+"/approvedBy":claims.sub,
+     ["partnerCurrentAccountTransferHistory/"+transferId+"/status"]:"posted",
+     ["partnerCurrentAccountTransferHistory/"+transferId+"/approvedAt"]:now,
+     ["partnerCurrentAccountTransferHistory/"+transferId+"/approvedBy"]:claims.sub,
      "partnerCurrentAccountTransferActive":active,
      "partnerCurrentAccountLastJournalId":j.id
     }};
