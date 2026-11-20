@@ -692,6 +692,8 @@ test("period report returns selected-period activity and cumulative balances sep
   write("settings/accountingStartMonth","2026-10");
   write("periods/2026-10/entries/opening",{id:"OPENING",date:"2026-10-01",status:"posted",lines:[{accountCode:"1110",debit:1000,credit:0}]});
   write("periods/2026-11/entries/november",{id:"NOV",date:"2026-11-10",status:"posted",lines:[{accountCode:"6100",debit:100,credit:0}]});
+  write("journals/NOV",{id:"NOV",date:"2026-11-10",status:"posted",lines:[{accountCode:"6100",debit:100,credit:0}]});
+  write("ledger/6100/2026-11/NOV_1",{journalId:"NOV",accountCode:"6100",debit:100,credit:0});
   write("periods/2026-12/entries/december",{id:"DEC",date:"2026-12-10",status:"posted",lines:[{accountCode:"1110",debit:200,credit:0}]});
   const report=await invoke("GET","?resource=periods&from=2026-11&to=2026-12");
   assert.deepEqual(report.months,["2026-11","2026-12"]);
@@ -700,6 +702,10 @@ test("period report returns selected-period activity and cumulative balances sep
   assert.equal(report.accountingStartMonth,"2026-10");
   assert.equal(report.balanceEntries["2026-10"].opening.lines[0].debit,1000);
   assert.equal(report.entries["2026-11"].november.lines[0].debit,100);
+  assert.match(report.entries["2026-11"].november.number,/^JE-202611-[A-Z0-9]{12}$/);
+  assert.equal(read("periods/2026-11/entries/november/number"),report.entries["2026-11"].november.number);
+  assert.equal(read("journals/NOV/number"),report.entries["2026-11"].november.number);
+  assert.equal(read("ledger/6100/2026-11/NOV_1/journalNumber"),report.entries["2026-11"].november.number);
 });
 
 test("foreign-currency posting is blocked until exchange rates and revaluation exist", async () => {
