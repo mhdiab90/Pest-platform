@@ -1859,7 +1859,7 @@ const renderJournal = function() {
 const renderReview=()=>panel('قائمة المراجعة والاعتماد','تتحدّث القائمة تلقائيًا عند فتح التبويب وكل 15 ثانية أثناء عرضه. أي مستخدم مخوّل يرى المستندات؛ المراجع فقط يعتمدها أو يعيدها أو يرفضها.',h('div',{className:'space-y-3'},
   h('div',{className:'flex flex-wrap items-center justify-between gap-2'},h('strong',null,'مستندات بانتظار القرار: '+review.length),button('تحديث القائمة الآن',()=>refreshReviewQueue(false),'muted')),
   selected?h('div',{className:'space-y-3'},
-   h('div',{className:'flex items-center justify-between'},h('strong',null,selected.title||selected.number||selected.id),button('إغلاق',()=>setSelected(null))),
+   h('div',{className:'flex items-center justify-between'},h('strong',null,selected.type==='journal'&&selected.number?'رقم القيد: '+selected.number+(selected.title&&selected.title!=='قيد رقم '+selected.number?' — '+selected.title:''):selected.title||selected.number||selected.id),button('إغلاق',()=>setSelected(null))),
    h('p',{className:'text-sm'},t('النوع: ','Type: ')+(selected.type==='invoice'?(selected.invoiceType==='purchase'?t('فاتورة مشتريات','Purchase Invoice'):t('فاتورة مبيعات','Sales Invoice')):documentType(selected.type))+' · '+t('التاريخ: ','Date: ')+(selected.date||'—')+' · '+t('الحالة: ','Status: ')+status(selected.status)),
    h('p',{className:'text-sm font-bold'},t('قيمة القيد / المستند: ','Journal / Document Amount: ')+moneyLabel(selected.total||selected.amount||(selected.type==='journal'?(selected.lines||[]).reduce((sum,line)=>sum+n(line.debit),0):0))),
    selected.type==='journal'?renderReviewJournalDetails():null,
@@ -2549,5 +2549,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261120-finance-statements-v5";
+ window.PEST_FINANCE_MODULE_VERSION="20261120-finance-statements-v6";
 })();
