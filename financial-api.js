@@ -677,6 +677,39 @@ export async function handleFinancialRequest(ctx){
   throw new Error("Unknown financial data resource.");
  }
  if(request.method!=="POST")throw new Error("Method not allowed.");const action=txt(body.action,40),now=Date.now();
+ if(action==="transferPartnerCurrentAccountBulk"){
+  if(profile.role!=="admin")throw new Error("تحويلات جاري الشركاء متاحة لمدير النظام فقط.");
+  const ownerUid=id(body.ownerUid),direction=txt(body.direction,24);
+  if(!["toCurrent","toCustody"].includes(direction))throw new Error("اتجاه التحويل غير صحيح.");
+  const transactionIds=Array.isArray(body.transactionIds)?[...new Set(body.transactionIds.map(value=>id(value)).filter(Boolean))]:[];
+  if(!transactionIds.length)throw new Error("لم يتم تحديد حركات لتحويلها.");
+  if(transactionIds.length>100)throw new Error("يُسمح بتحويل 100 حركة في الطلب الواحد كحد أقصى. أرسل الحركات على دفعات.");
+  const user=adminReadRoot?await adminReadRoot("users/"+ownerUid):null;
+  if(!user)throw new Error("المستخدم صاحب الحركات غير موجود.");
+  const normalize=value=>String(value||"").trim().toLowerCase().replace(/\s+/g," ");
+  const config=PARTNER_CURRENT_ACCOUNT_CONFIG.find(item=>item.email
+   ?normalize(user.email)===normalize(item.email)
+   :[normalize(user.username),normalize(user.fullName),normalize(String(user.email||"").split("@")[0])].includes(normalize(item.username)));
+  if(!config)throw new Error("المستخدم المحدد غير مربوط بحساب جاري أحد الشريكين.");
+  if(!["active","نشط","مفعل","enabled"].includes(String(user.status||"").toLowerCase()))throw new Error("حساب الشريك المرتبط غير نشط.");
+  const results=[];
+  for(const transactionId of transactionIds){
+   const transaction=adminReadRoot?await adminReadRoot("cashCustodies/"+ownerUid+"/transactions/"+transactionId):null;
+   if(!transaction){results.push({transactionId,success:false,error:"حركة العهدة غير موجودة."});continue;}
+   const transfer=transaction.partnerCurrentAccountTransfer||{};
+   const stateMatches=direction==="toCurrent"?transfer.active!==true:transfer.active===true;
+   if(!stateMatches){results.push({transactionId,success:false,skipped:true,error:direction==="toCurrent"?"الحركة محولة بالفعل أو ليست ضمن العهدة المتاحة.":"الحركة غير محولة حاليًا إلى الجاري."});continue;}
+   if(transfer.pending===true){results.push({transactionId,success:false,skipped:true,error:"هناك طلب تحويل لهذه الحركة ما زال في انتظار المراجعة."});continue;}
+   try{
+    const result=await handleFinancialRequest({...ctx,body:{...body,action:"transferPartnerCurrentAccount",ownerUid,transactionId,direction}});
+    results.push({transactionId,success:true,amount:num(transaction.amount||0),journalId:result.journalId,journalNumber:result.journalNumber,accountCode:result.accountCode});
+   }catch(error){
+    results.push({transactionId,success:false,amount:num(transaction.amount||0),error:String(error&&error.message||error).slice(0,360)});
+   }
+  }
+  const completed=results.filter(item=>item.success);
+  return {success:completed.length>0,status:"pending_review",ownerUid,direction,accountCode:config.code,partnerName:config.partnerName,requested:transactionIds.length,submitted:completed.length,failed:results.filter(item=>!item.success&&!item.skipped).length,skipped:results.filter(item=>item.skipped).length,totalAmount:rnd(completed.reduce((sum,item)=>sum+Number(item.amount||0),0)),journalIds:completed.map(item=>item.journalId),results};
+ }
  if(action==="transferPartnerCurrentAccount"){
   if(profile.role!=="admin")throw new Error("تحويلات جاري الشركاء متاحة لمدير النظام فقط.");
   const ownerUid=id(body.ownerUid),transactionId=id(body.transactionId),direction=txt(body.direction,24);
