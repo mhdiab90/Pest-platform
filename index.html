@@ -1152,6 +1152,7 @@ function App(){
   const [cashCustodyBusy,setCashCustodyBusy] = useState(false);
   const [cashCustodyPartnerOwnerInfo,setCashCustodyPartnerOwnerInfo] = useState(null);
   const [cashCustodyPartnerOwnerLoading,setCashCustodyPartnerOwnerLoading] = useState(false);
+  const cashCustodyPartnerLoadRef=useRef(0);
   const cashCustodyJournalSyncRef=useRef(false);
   const [cashCustodyEditingId,setCashCustodyEditingId] = useState('');
   const [cashCustodyNotice,setCashCustodyNotice] = useState('');
@@ -3514,6 +3515,7 @@ function App(){
   }
 
   function isConfiguredPartnerCurrentOwner(ownerUid){
+    if(cashCustodyPartnerOwnerInfo&&cashCustodyPartnerOwnerInfo.uid===ownerUid)return true;
     const profileUser=activeUsers.find(item=>item.uid===ownerUid)||{};
     const directoryUser=userDirectory.find(item=>item.uid===ownerUid)||{};
     const user={...profileUser,...directoryUser};
@@ -3541,22 +3543,24 @@ function App(){
   async function loadCashCustodyTarget(uid){
     if(!currentUser||!currentUser.uid)return;
     const target=uid===currentUser.uid||hasPermission('cashCustody','viewOthers')?uid:currentUser.uid;
+    const requestId=++cashCustodyPartnerLoadRef.current;
     setCashCustodyTargetUid(target);
     if(target!==currentUser.uid)setCashCustodyBookScope('personal');
     setCashCustodyNotice('');
     setCashCustodyPartnerOwnerInfo(null);
-    if(target===currentUser.uid)return;
+    if(target===currentUser.uid){setCashCustodyPartnerOwnerLoading(false);return;}
     setCashCustodyPartnerOwnerLoading(true);
     try{
-      const [custodySnap,userSnap]=await Promise.all([
-        db.ref('cashCustodies/'+target+'/transactions').once('value'),
-        db.ref('users/'+target).once('value')
-      ]);
+      const custodySnap=await db.ref('cashCustodies/'+target+'/transactions').once('value');
+      if(requestId!==cashCustodyPartnerLoadRef.current)return;
       const rows=Object.entries(custodySnap.val()||{}).map(([id,value])=>({...value,id:value&&value.id?value.id:id}));
       setCashCustodyByUid(old=>({...old,[target]:rows}));
-      const profileUser=userSnap.val()||{},directoryUser=userDirectory.find(item=>item.uid===target)||{};
+      let profileUser={};
+      try{profileUser=(await db.ref('users/'+target).once('value')).val()||{};}catch(profileError){console.warn('Partner profile lookup fell back to the active user directory.',profileError);}
+      if(requestId!==cashCustodyPartnerLoadRef.current)return;
+      const directoryUser=userDirectory.find(item=>item.uid===target)||{};
       const user={...directoryUser,...profileUser};
-      const normalize=value=>String(value||'').trim().toLowerCase().replace(/\\s+/g,' ');
+      const normalize=value=>String(value||'').trim().toLowerCase().replace(/\s+/g,' ');
       const email=normalize(user.email);
       const username=normalize(user.username),fullName=normalize(user.fullName);
       const active=['active','نشط','مفعل','enabled'].includes(String(user.status||directoryUser.status||'').toLowerCase());
@@ -3566,10 +3570,12 @@ function App(){
           ?{uid:target,accountCode:'3201',partnerName:'م/ هيثم إبراهيم',email:user.email||''}:null;
       if(partner&&active)setCashCustodyPartnerOwnerInfo(partner);
     }catch(err){
-      setCashCustodyTargetUid(currentUser.uid);
-      setCashCustodyBookScope('personal');
-      setCashCustodyNotice(firebaseErrorMessage(err,tr));
-    }finally{setCashCustodyPartnerOwnerLoading(false);}
+      if(requestId===cashCustodyPartnerLoadRef.current){
+        setCashCustodyTargetUid(currentUser.uid);
+        setCashCustodyBookScope('personal');
+        setCashCustodyNotice(firebaseErrorMessage(err,tr));
+      }
+    }finally{if(requestId===cashCustodyPartnerLoadRef.current)setCashCustodyPartnerOwnerLoading(false);}
   }
 
   async function transferPartnerCustodyMovementsBulk(direction){
