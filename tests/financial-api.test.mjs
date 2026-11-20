@@ -637,6 +637,57 @@ test("all cash and bank transfer postings remain balanced and synchronized with 
   assert.equal(Math.round(bankJournal.lines.reduce((sum,line)=>sum+Number(line.debit||0),0)*100),Math.round(bankJournal.lines.reduce((sum,line)=>sum+Number(line.credit||0),0)*100));
 });
 
+test("manual journal receives a unique number and carries it through posting indexes", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const submitted=await invoke("POST","",{
+    action:"submitJournal",
+    date:"2026-11-20",
+    description:"Journal numbering integrity test",
+    reference:"NUMBER-TEST-01",
+    currency:"EGP",
+    lines:[
+      {accountCode:"6100",debit:75,credit:0,description:"Expense test"},
+      {accountCode:"1110",debit:0,credit:75,description:"Cash test"}
+    ]
+  });
+  assert.equal(submitted.status,"pending_review");
+  const draft=read("documents/"+submitted.id);
+  assert.match(draft.number,/^JE-202611-[A-Z0-9]{12}$/);
+  const posted=await invoke("POST","",{action:"review",id:submitted.id,decision:"approve",reason:"journal number test"});
+  assert.equal(posted.status,"posted");
+  const journal=read("journals/"+submitted.id);
+  assert.equal(journal.number,draft.number);
+  assert.equal(read("periods/2026-11/entries/"+submitted.id).number,draft.number);
+  assert.equal(read("documents/"+submitted.id).journalNumber,draft.number);
+  assert.equal(read("ledger/6100/2026-11/"+submitted.id+"_1").journalNumber,draft.number);
+  assert.equal(read("ledger/1110/2026-11/"+submitted.id+"_2").journalNumber,draft.number);
+});
+
+test("journal list repairs legacy posted journals without numbers across report indexes", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const journalId="LEGACY-JOURNAL-NUMBER-TEST";
+  const journal={
+    id:journalId,type:"journal",date:"2026-11-07",description:"Legacy journal",status:"posted",
+    lines:[
+      {accountCode:"6100",debit:42,credit:0,description:"Legacy expense"},
+      {accountCode:"1110",debit:0,credit:42,description:"Legacy cash"}
+    ]
+  };
+  write("journals/"+journalId,journal);
+  write("documents/"+journalId,{id:journalId,type:"journal",status:"posted"});
+  write("periods/2026-11/entries/"+journalId,journal);
+  write("ledger/6100/2026-11/"+journalId+"_1",{journalId,accountCode:"6100",debit:42,credit:0});
+  write("ledger/1110/2026-11/"+journalId+"_2",{journalId,accountCode:"1110",debit:0,credit:42});
+  const result=await invoke("GET","?resource=journals");
+  const number=result.items[journalId].number;
+  assert.match(number,/^JE-202611-[A-Z0-9]{12}$/);
+  assert.equal(read("journals/"+journalId+"/number"),number);
+  assert.equal(read("documents/"+journalId+"/number"),number);
+  assert.equal(read("periods/2026-11/entries/"+journalId+"/number"),number);
+  assert.equal(read("ledger/6100/2026-11/"+journalId+"_1/journalNumber"),number);
+  assert.equal(read("ledger/1110/2026-11/"+journalId+"_2/journalNumber"),number);
+});
+
 test("period report returns selected-period activity and cumulative balances separately", async () => {
   write("settings/accountingStartMonth","2026-10");
   write("periods/2026-10/entries/opening",{id:"OPENING",date:"2026-10-01",status:"posted",lines:[{accountCode:"1110",debit:1000,credit:0}]});
