@@ -1383,3 +1383,56 @@ test("personal custody movements create a single accounting review journal and a
   assert.equal(read("cashCustodies/test-admin/transactions/"+mirrorId+"/status"),"approved");
   assert.equal(read("cashCustodies/test-admin/transactions/"+mirrorId+"/financialReviewStatus"),"posted");
 });
+ 
+test("partner current accounts create separate analytical ledgers and transfer approved custody rows in both directions", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const haithamUid="PARTNER-HAITHAM-TEST",thabetUid="PARTNER-THABET-TEST",transactionId="PARTNER-CUSTODY-TRANSFER-01";
+  write("users/"+haithamUid,{uid:haithamUid,status:"active",role:"user",username:"haitham Ibrahim mahmoud",fullName:"Haitham Ibrahim Mahmoud"});
+  write("users/"+thabetUid,{uid:thabetUid,status:"active",role:"user",username:"Thabetrabea",fullName:"Thabet Rabea"});
+  const attachmentsManifest={fileIds:["ATTACHMENT-KEEP-01"],notes:"must remain linked to original custody record"};
+  write("cashCustodies/"+haithamUid+"/transactions/"+transactionId,{
+    id:transactionId,ownerUid:haithamUid,bookScope:"personal",type:"expense",amount:350,currency:"EGP",
+    date:"2026-11-20",description:"Partner travel expense",reference:"PC-001",status:"approved",
+    createdBy:haithamUid,createdByName:"Haitham Ibrahim Mahmoud",attachmentsManifest
+  });
+  await invoke("GET","?resource=bootstrap");
+  assert.equal(read("chartOfAccounts/32").name,"جاري الشركاء");
+  assert.equal(read("chartOfAccounts/3201").subledgerType,"partnerCurrentAccount");
+  assert.equal(read("chartOfAccounts/3202").subledgerType,"partnerCurrentAccount");
+  const configured=await invoke("GET","?resource=partnerCurrentAccounts");
+  assert.deepEqual(configured.items.map(item=>item.accountCode).sort(),["3201","3202"]);
+  assert.equal(configured.items.find(item=>item.uid===haithamUid).partnerName,"م/ هيثم إبراهيم");
+  assert.equal(configured.items.find(item=>item.uid===thabetUid).partnerName,"أ/ ثابت ربيع");
+
+  const draft=await invoke("POST","",{action:"submitCashCustodyJournal",ownerUid:haithamUid,transactionId});
+  assert.equal(draft.status,"pending_review");
+  const approval=await invoke("POST","",{action:"review",id:draft.id,decision:"approve"});
+  assert.equal(approval.status,"posted");
+  assert.equal(read("cashCustodies/"+haithamUid+"/transactions/"+transactionId+"/financialReviewStatus"),"posted");
+
+  const transferred=await invoke("POST","",{action:"transferPartnerCurrentAccount",ownerUid:haithamUid,transactionId,direction:"toCurrent"});
+  assert.equal(transferred.status,"transferred");
+  assert.equal(transferred.accountCode,"3201");
+  assert.equal(read("cashCustodies/"+haithamUid+"/transactions/"+transactionId+"/partnerCurrentAccountTransfer/active"),true);
+  assert.deepEqual(read("cashCustodies/"+haithamUid+"/transactions/"+transactionId+"/attachmentsManifest"),attachmentsManifest);
+  assert.ok(read("partyLedger/partnerCurrentAccount/"+haithamUid+"/2026-11"),"partner account subledger receives the reclassification entry");
+  const partnerLedgerAfterTransfer=Object.values(read("partyLedger/partnerCurrentAccount/"+haithamUid+"/2026-11")||{});
+  assert.equal(partnerLedgerAfterTransfer.reduce((sum,row)=>sum+row.credit-row.debit,0),350);
+  const custodyLedgerAfterTransfer=Object.values(read("partyLedger/employeeCustody/"+haithamUid+"/2026-11")||{});
+  assert.equal(custodyLedgerAfterTransfer.reduce((sum,row)=>sum+row.debit-row.credit,0),0,"the transferred value is cleared from the personal-custody subledger");
+  const currentListing=await invoke("GET","?resource=partnerCurrentAccounts");
+  assert.equal(currentListing.items.find(item=>item.uid===haithamUid).transactions.length,1);
+
+  const returned=await invoke("POST","",{action:"transferPartnerCurrentAccount",ownerUid:haithamUid,transactionId,direction:"toCustody"});
+  assert.equal(returned.status,"returned");
+  assert.equal(read("cashCustodies/"+haithamUid+"/transactions/"+transactionId+"/partnerCurrentAccountTransfer/active"),false);
+  assert.deepEqual(read("cashCustodies/"+haithamUid+"/transactions/"+transactionId+"/attachmentsManifest"),attachmentsManifest);
+  const partnerLedgerAfterReturn=Object.values(read("partyLedger/partnerCurrentAccount/"+haithamUid+"/2026-11")||{});
+  assert.equal(partnerLedgerAfterReturn.reduce((sum,row)=>sum+row.credit-row.debit,0),0,"returning the row fully reverses the partner current-account balance");
+  const custodyLedgerAfterReturn=Object.values(read("partyLedger/employeeCustody/"+haithamUid+"/2026-11")||{});
+  assert.equal(custodyLedgerAfterReturn.reduce((sum,row)=>sum+row.debit-row.credit,0),-350,"returning the row restores the original personal-custody balance");
+  const finalListing=await invoke("GET","?resource=partnerCurrentAccounts");
+  assert.equal(finalListing.items.find(item=>item.uid===haithamUid).transactions.length,0);
+  assert.equal(read("journals/"+transferred.journalId).status,"posted");
+  assert.equal(read("journals/"+returned.journalId).status,"posted");
+});

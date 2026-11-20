@@ -46,6 +46,15 @@ const DEFAULT_CHEQUE_ACCOUNTS = [
  {code:"1130",name:"شيكات واردة تحت التحصيل",type:"asset",nature:"debit",parentCode:"11"},
  {code:"2140",name:"شيكات صادرة لم تقدم للبنك",type:"liability",nature:"credit",parentCode:"21"}
 ];
+const PARTNER_CURRENT_ACCOUNT_CONFIG = [
+ {username:"haitham Ibrahim mahmoud",partnerName:"م/ هيثم إبراهيم",code:"3201",name:"جاري شريك م/ هيثم إبراهيم"},
+ {username:"Thabetrabea",partnerName:"أ/ ثابت ربيع",code:"3202",name:"جاري شريك أ/ ثابت ربيع"}
+];
+const DEFAULT_PARTNER_CURRENT_ACCOUNTS = [
+ {code:"32",name:"جاري الشركاء",type:"equity",nature:"credit",isGroup:true,parentCode:"3"},
+ {code:"3201",name:"جاري شريك م/ هيثم إبراهيم",type:"equity",nature:"credit",parentCode:"32",isControl:true,subledgerType:"partnerCurrentAccount"},
+ {code:"3202",name:"جاري شريك أ/ ثابت ربيع",type:"equity",nature:"credit",parentCode:"32",isControl:true,subledgerType:"partnerCurrentAccount"}
+];
 
 const DEFAULT_EXPENSE_ACCOUNTS = [
  {code:"65",name:"مصروفات الصيانة والإصلاحات",type:"expense",nature:"debit",isGroup:true,parentCode:"6"},
@@ -436,7 +445,7 @@ export async function handleFinancialRequest(ctx){
    if(profile.role==="admin"){
     const migrated={};
     const updates={};
-    for(const account of [...DEFAULT_EXPENSE_ACCOUNTS,...DEFAULT_STAFF_ACCOUNTS,...DEFAULT_PARTY_ADVANCE_ACCOUNTS,...DEFAULT_CHEQUE_ACCOUNTS]){
+    for(const account of [...DEFAULT_PARTNER_CURRENT_ACCOUNTS,...DEFAULT_EXPENSE_ACCOUNTS,...DEFAULT_STAFF_ACCOUNTS,...DEFAULT_PARTY_ADVANCE_ACCOUNTS,...DEFAULT_CHEQUE_ACCOUNTS]){
      if(chart[account.code])continue;
      const parent=account.parentCode?(chart[account.parentCode]||migrated[account.parentCode]):null;
      if(account.parentCode&&(!parent||!parent.isGroup))continue;
@@ -609,10 +618,35 @@ export async function handleFinancialRequest(ctx){
    if(Object.keys(numberUpdates).length)await adminPatch(numberUpdates);
    return {months,entries,balanceEntries,accountingStartMonth:balanceFrom};
   }
+  if(res==="partnerCurrentAccounts"){
+   requireFinanceArea("partyStatements","view");
+   const userDirectory=adminReadRoot?(await adminReadRoot("users"))||{}:{};
+   const results=[];
+   for(const config of PARTNER_CURRENT_ACCOUNT_CONFIG){
+    const normalize=value=>String(value||"").trim().toLowerCase().replace(/\s+/g," ");
+    const target=normalize(config.username);
+    const matched=Object.entries(userDirectory).find(([uidValue,user])=>{
+     if(!user||typeof user!=="object")return false;
+     const candidates=[user.username,user.fullName,String(user.email||"").split("@")[0]];
+     return candidates.some(value=>normalize(value)===target);
+    });
+    const partnerUid=matched?matched[0]:"";
+    if(profile.role!=="admin"&&partnerUid!==claims.sub)continue;
+    const partnerProfile=matched?matched[1]:null;
+    const ledger=partnerUid?(await adminRead("partyLedger/partnerCurrentAccount/"+id(partnerUid)))||{}:{};
+    const custodyRows=partnerUid&&adminReadRoot?(await adminReadRoot("cashCustodies/"+id(partnerUid)+"/transactions"))||{}:{};
+    const transactions=Object.entries(custodyRows).filter(([,item])=>item&&item.bookScope==="personal"&&item.pairRole!=="counterparty"&&item.partnerCurrentAccountTransfer&&item.partnerCurrentAccountTransfer.active===true).map(([transactionId,item])=>({id:item.id||transactionId,...item})).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||""))||Number(b.createdAt||0)-Number(a.createdAt||0));
+    const entries=[];
+    Object.values(ledger).forEach(periodRows=>Object.values(periodRows||{}).forEach(entry=>{if(entry)entries.push(entry);}));
+    entries.sort((a,b)=>String(a.date||"").localeCompare(String(b.date||""))||String(a.journalId||"").localeCompare(String(b.journalId||"")));
+    results.push({uid:partnerUid,username:partnerProfile&&partnerProfile.username||config.username,partnerName:config.partnerName,accountCode:config.code,accountName:config.name,linked:Boolean(partnerUid),active:partnerProfile&&["active","نشط","مفعل","enabled"].includes(String(partnerProfile.status||"").toLowerCase()),transactions,entries});
+   }
+   return {items:results};
+  }
   if(res==="party"){
    requireFinanceArea("partyStatements","view");
    const requested=txt(url.searchParams.get("type")||"customer",32);
-   const allowed=["customer","vendor","employeeCustody","employeeAdvance"];
+   const allowed=["customer","vendor","employeeCustody","employeeAdvance","partnerCurrentAccount"];
    if(!allowed.includes(requested))throw new Error("Invalid analytic party type.");
    const partyId=id(url.searchParams.get("id"));
    return {entries:(await adminRead("partyLedger/"+requested+"/"+partyId))||{}};
@@ -642,6 +676,65 @@ export async function handleFinancialRequest(ctx){
   throw new Error("Unknown financial data resource.");
  }
  if(request.method!=="POST")throw new Error("Method not allowed.");const action=txt(body.action,40),now=Date.now();
+ if(action==="transferPartnerCurrentAccount"){
+  if(profile.role!=="admin")throw new Error("تحويلات جاري الشركاء متاحة لمدير النظام فقط.");
+  const ownerUid=id(body.ownerUid),transactionId=id(body.transactionId),direction=txt(body.direction,24);
+  if(!["toCurrent","toCustody"].includes(direction))throw new Error("اتجاه التحويل غير صحيح.");
+  const user=adminReadRoot?await adminReadRoot("users/"+ownerUid):null;
+  if(!user)throw new Error("المستخدم صاحب الحركة غير موجود.");
+  const normalize=value=>String(value||"").trim().toLowerCase().replace(/\s+/g," ");
+  const username=normalize(user.username),fullName=normalize(user.fullName),emailName=normalize(String(user.email||"").split("@")[0]);
+  const config=PARTNER_CURRENT_ACCOUNT_CONFIG.find(item=>[username,fullName,emailName].includes(normalize(item.username)));
+  if(!config)throw new Error("هذا المستخدم ليس ضمن الشريكين المحددين لحسابات الجاري.");
+  const path="cashCustodies/"+ownerUid+"/transactions/"+transactionId;
+  const transaction=adminReadRoot?await adminReadRoot(path):null;
+  if(!transaction||transaction.id!==transactionId)throw new Error("سجل العهدة المطلوب غير موجود.");
+  if(transaction.ownerUid!==ownerUid||transaction.bookScope!=="personal"||transaction.pairRole==="counterparty")throw new Error("يمكن تحويل السجل الأصلي من دفتر العهدة الشخصية للشريك فقط.");
+  if(transaction.status!=="approved")throw new Error("لا يمكن التحويل قبل اعتماد حركة العهدة.");
+  if(String(transaction.currency||"EGP").toUpperCase()!=="EGP")throw new Error("تحويل الجاري متاح حاليًا للجنيه المصري فقط.");
+  const currentState=transaction.partnerCurrentAccountTransfer&&transaction.partnerCurrentAccountTransfer.active===true;
+  if(direction==="toCurrent"&&currentState)throw new Error("هذه الحركة محولة بالفعل إلى جاري الشريك.");
+  if(direction==="toCustody"&&!currentState)throw new Error("هذه الحركة غير موجودة حاليًا في جاري الشريك.");
+  const sourceJournalId=transaction.financialJournalId||transaction.financialDocumentId||await adminRead("cashCustodyJournalLinks/"+ownerUid+"/"+transactionId);
+  if(!sourceJournalId)throw new Error("لا يوجد قيد محاسبي مرتبط بحركة العهدة. أرسل الحركة للمراجعة واعتمد قيدها أولاً.");
+  const sourceJournal=await adminRead("journals/"+id(sourceJournalId))||await adminRead("documents/"+id(sourceJournalId));
+  if(!sourceJournal||sourceJournal.status!=="posted")throw new Error("يجب ترحيل قيد حركة العهدة أولاً قبل تحويلها إلى الجاري.");
+  const sourceLines=(sourceJournal.lines||[]).filter(line=>line&&String(line.accountCode)==="1220"&&line.partyType==="employeeCustody"&&String(line.partyId)===ownerUid&&(Number(line.debit||0)>0||Number(line.credit||0)>0));
+  if(sourceLines.length!==1)throw new Error("تعذر تحديد سطر العهدة الأصلي بصورة وحيدة وآمنة. راجع القيد قبل التحويل.");
+  const originalLine=sourceLines[0],chart=(await adminRead("chartOfAccounts"))||{},partnerAccount=chart[config.code],custodyAccount=chart["1220"];
+  if(!partnerAccount||partnerAccount.isGroup||partnerAccount.active===false||partnerAccount.subledgerType!=="partnerCurrentAccount")throw new Error("حساب جاري الشريك "+config.code+" غير مهيأ في دليل الحسابات. حدّث النظام المالي أولاً.");
+  if(!custodyAccount||custodyAccount.isGroup||custodyAccount.active===false)throw new Error("حساب العهدة 1220 غير نشط.");
+  const originalDebit=num(originalLine.debit||0),originalCredit=num(originalLine.credit||0);
+  if(rnd(originalDebit+originalCredit)<=0)throw new Error("قيمة سطر العهدة الأصلي تساوي صفرًا.");
+  const toCurrent=direction==="toCurrent";
+  const partnerDebit=toCurrent?originalDebit:originalCredit,partnerCredit=toCurrent?originalCredit:originalDebit;
+  const description=(toCurrent?"تحويل من العهدة إلى جاري الشريك — ":"إعادة من جاري الشريك إلى العهدة — ")+config.partnerName+" — "+txt(transaction.description||transactionId,240);
+  const projectCode=txt(transaction.projectCode||originalLine.projectCode||"",120),costCenterId=txt(originalLine.costCenterId||"",120),dateValue=date(new Date(now).toISOString().slice(0,10));
+  const transferId=uid("PCA"),journalId=uid("PCA-JRN");
+  const lines=[
+   {accountCode:config.code,debit:partnerDebit,credit:partnerCredit,description,partyType:"partnerCurrentAccount",partyId:ownerUid,projectCode,costCenterId,reference:txt(transaction.reference||transactionId,120)},
+   {accountCode:"1220",debit:partnerCredit,credit:partnerDebit,description,partyType:"employeeCustody",partyId:ownerUid,projectCode,costCenterId,reference:txt(transaction.reference||transactionId,120)}
+  ];
+  const totals=balance(lines);
+  if(Math.abs(totals.difference)>0.01)throw new Error("قيد إعادة التصنيف غير متوازن. تم إيقاف التحويل.");
+  const journal={id:journalId,number:journalNumberFor(dateValue,journalId),type:"journal",sourceType:"partnerCurrentAccountTransfer",sourceId:ownerUid+"--"+transactionId+"--"+transferId,ownerUid,partnerCurrentAccountUid:ownerUid,partnerCurrentAccountCode:config.code,custodyTransactionId:transactionId,transferDirection:direction,date:dateValue,description,reference:txt(transaction.reference||transactionId,120),currency:"EGP",lines,status:"posted",balance:totals,createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120),approvedAt:now,approvedBy:claims.sub,postedAt:now,title:description};
+  const centers=(await adminRead("costCenters"))||{},validation=validateJournal(journal,chart,centers);
+  if(validation.errors.length)throw new Error("قيد إعادة التصنيف غير صالح: "+validation.errors.join("؛ "));
+  journal.balance=validation.balance;journal.errors=[];
+  const rootUpdates={};
+  Object.entries(journalUpdates(journal)).forEach(([key,value])=>{rootUpdates["financial/"+key]=value;});
+  rootUpdates["financial/documents/"+journalId]=journal;
+  rootUpdates["financial/audit/"+uid("AUD")]={action:toCurrent?"transfer_custody_to_partner_current":"transfer_partner_current_to_custody",documentId:journalId,ownerUid,transactionId,partnerAccountCode:config.code,uid:claims.sub,createdAt:now};
+  const previous=transaction.partnerCurrentAccountTransfer||{};
+  const historyPath=path+"/partnerCurrentAccountTransferHistory/"+transferId;
+  rootUpdates[historyPath]={id:transferId,direction,partnerUid:ownerUid,partnerName:config.partnerName,accountCode:config.code,journalId,amount:rnd(originalDebit+originalCredit),date:dateValue,createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120)};
+  rootUpdates[path+"/partnerCurrentAccountTransfer"]={...previous,active:toCurrent,partnerUid:ownerUid,partnerName:config.partnerName,accountCode:config.code,accountName:config.name,...(toCurrent?{transferredAt:now,transferredBy:claims.sub,transferJournalId:journalId}:{returnedAt:now,returnedBy:claims.sub,returnJournalId:journalId}),lastDirection:direction,lastJournalId:journalId,updatedAt:now,updatedBy:claims.sub};
+  rootUpdates[path+"/partnerCurrentAccountTransferActive"]=toCurrent;
+  rootUpdates[path+"/partnerCurrentAccountLastJournalId"]=journalId;
+  if(!adminPatchRoot)throw new Error("خدمة الترحيل الموحد لجاري الشركاء غير متاحة.");
+  await adminPatchRoot(rootUpdates);
+  return {success:true,status:toCurrent?"transferred":"returned",journalId,journalNumber:journal.number,accountCode:config.code,partnerName:config.partnerName,transactionId};
+ }
  if(action==="ocr"||action==="ocrText"){
   requireFinanceArea("invoices","add");
   if(!env.AI)throw new Error("Workers AI is not enabled.");
