@@ -675,6 +675,9 @@ test("journal list repairs legacy posted journals without numbers across report 
   };
   write("journals/"+journalId,journal);
   write("documents/"+journalId,{id:journalId,type:"journal",status:"posted"});
+  const pendingId="LEGACY-PENDING-JOURNAL-TEST";
+  write("documents/"+pendingId,{id:pendingId,type:"journal",date:"2026-11-18",status:"pending_review"});
+  write("reviewQueue/"+pendingId,{id:pendingId,type:"journal",status:"pending_review"});
   write("periods/2026-11/entries/"+journalId,journal);
   write("ledger/6100/2026-11/"+journalId+"_1",{journalId,accountCode:"6100",debit:42,credit:0});
   write("ledger/1110/2026-11/"+journalId+"_2",{journalId,accountCode:"1110",debit:0,credit:42});
@@ -686,6 +689,8 @@ test("journal list repairs legacy posted journals without numbers across report 
   assert.equal(read("periods/2026-11/entries/"+journalId+"/number"),number);
   assert.equal(read("ledger/6100/2026-11/"+journalId+"_1/journalNumber"),number);
   assert.equal(read("ledger/1110/2026-11/"+journalId+"_2/journalNumber"),number);
+  assert.match(read("documents/"+pendingId+"/number"),/^JE-202611-[A-Z0-9]{32}$/);
+  assert.equal(read("reviewQueue/"+pendingId+"/number"),read("documents/"+pendingId+"/number"));
 });
 
 test("period report returns selected-period activity and cumulative balances separately", async () => {
