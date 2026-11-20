@@ -48,7 +48,7 @@ const DEFAULT_CHEQUE_ACCOUNTS = [
 ];
 const PARTNER_CURRENT_ACCOUNT_CONFIG = [
  {username:"haitham Ibrahim mahmoud",partnerName:"م/ هيثم إبراهيم",code:"3201",name:"جاري شريك م/ هيثم إبراهيم"},
- {username:"Thabetrabea",partnerName:"أ/ ثابت ربيع",code:"3202",name:"جاري شريك أ/ ثابت ربيع"}
+ {username:"Thabetrabea",email:"thabetrabea@gmail.com",partnerName:"أ/ ثابت ربيع",code:"3202",name:"جاري شريك أ/ ثابت ربيع"}
 ];
 const DEFAULT_PARTNER_CURRENT_ACCOUNTS = [
  {code:"32",name:"جاري الشركاء",type:"equity",nature:"credit",isGroup:true,parentCode:"3"},
@@ -624,9 +624,10 @@ export async function handleFinancialRequest(ctx){
    const results=[];
    for(const config of PARTNER_CURRENT_ACCOUNT_CONFIG){
     const normalize=value=>String(value||"").trim().toLowerCase().replace(/\s+/g," ");
-    const target=normalize(config.username);
+    const target=normalize(config.username),targetEmail=normalize(config.email);
     const matched=Object.entries(userDirectory).find(([uidValue,user])=>{
      if(!user||typeof user!=="object")return false;
+     if(targetEmail)return normalize(user.email)===targetEmail;
      const candidates=[user.username,user.fullName,String(user.email||"").split("@")[0]];
      return candidates.some(value=>normalize(value)===target);
     });
@@ -684,8 +685,11 @@ export async function handleFinancialRequest(ctx){
   if(!user)throw new Error("المستخدم صاحب الحركة غير موجود.");
   const normalize=value=>String(value||"").trim().toLowerCase().replace(/\s+/g," ");
   const username=normalize(user.username),fullName=normalize(user.fullName),emailName=normalize(String(user.email||"").split("@")[0]);
-  const config=PARTNER_CURRENT_ACCOUNT_CONFIG.find(item=>[username,fullName,emailName].includes(normalize(item.username)));
+  const config=PARTNER_CURRENT_ACCOUNT_CONFIG.find(item=>item.email
+   ?normalize(user.email)===normalize(item.email)
+   :[username,fullName,emailName].includes(normalize(item.username)));
   if(!config)throw new Error("هذا المستخدم ليس ضمن الشريكين المحددين لحسابات الجاري.");
+  if(!["active","نشط","مفعل","enabled"].includes(String(user.status||"").toLowerCase()))throw new Error("حساب الشريك المرتبط غير نشط. لم يتم تحويل الحركة إلى حساب آخر.");
   const path="cashCustodies/"+ownerUid+"/transactions/"+transactionId;
   const transaction=adminReadRoot?await adminReadRoot(path):null;
   if(!transaction||transaction.id!==transactionId)throw new Error("سجل العهدة المطلوب غير موجود.");
