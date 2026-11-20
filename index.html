@@ -3545,7 +3545,7 @@ function App(){
     if(!isConfiguredPartnerCurrentOwner(ownerUid))return alert(rtl?'هذا المستخدم غير مربوط بحساب جاري شريك.':'This user is not linked to a partner current account.');
     if(cashCustodySelectedBookScope!=='personal')return alert(rtl?'اختر دفتر العهدة الشخصية أولاً.':'Select the personal custody book first.');
     const candidates=cashCustodyRows.filter(t=>t&&t.status==='approved'&&t.bookScope==='personal'&&t.pairRole!=='counterparty'&&String(t.currency||'EGP').toUpperCase()==='EGP'&&!(t.partnerCurrentAccountTransfer&&t.partnerCurrentAccountTransfer.active===true)&&!(t.partnerCurrentAccountTransfer&&t.partnerCurrentAccountTransfer.pending===true));
-    const total=candidates.reduce((sum,t)=>sum+Number(t.amount||0),0);
+    const total=candidates.reduce((sum,t)=>sum+(cashCustodySign(t.type)*Number(t.amount||0)),0);
     if(!candidates.length)return alert(rtl?'لا توجد حركات معتمدة بالجنيه المصري قابلة للتحويل. تأكد من ترحيل قيود العهدة أولاً.':'No approved EGP custody movements are eligible. Ensure their custody journals are posted first.');
     const amount=money(total)+' EGP';
     if(!window.confirm(rtl?'سيتم إرسال '+candidates.length+' حركة عهدة بإجمالي '+amount+' إلى جاري الشريك، كل حركة بقيد إعادة تصنيف مستقل ومتوازن. ستظل الحركات الأصلية ومرفقاتها محفوظة، ولن يتغير الرصيد إلا بعد اعتماد القيود. هل تريد المتابعة؟':'Send '+candidates.length+' approved custody movements totaling '+amount+' to the partner current account? Each movement gets its own balanced reclassification journal. Original movements and attachments remain unchanged; balances change only after journal approval. Continue?'))return;
