@@ -572,7 +572,7 @@ export async function handleFinancialRequest(ctx){
       const journalId=String(value.id||key),number=journalNumberFor(value.date,journalId),journal={...value,number};
       monthly[key]=journal;
       numberUpdates["journals/"+journalId+"/number"]=number;
-      numberUpdates["periods/"+m+"/entries/"+journalId]=journal;
+      numberUpdates["periods/"+m+"/entries/"+key]=journal;
       (journal.lines||[]).forEach((line,index)=>{
        const suffix=journalId+"_"+(index+1);
        if(line.accountCode)numberUpdates["ledger/"+line.accountCode+"/"+m+"/"+suffix+"/journalNumber"]=number;
