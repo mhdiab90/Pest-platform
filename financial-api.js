@@ -539,6 +539,12 @@ export async function handleFinancialRequest(ctx){
       if(journal.sourceId&&documents[journal.sourceId])updates["documents/"+journal.sourceId+"/journalNumber"]=number;
      }
     });
+    Object.entries(documents).forEach(([key,value])=>{
+     if(!value||value.type!=="journal"||value.number)return;
+     const linked=source[String(value.journalId||key)],number=linked&&linked.number||journalNumberFor(value.date,value.id||key);
+     updates["documents/"+key+"/number"]=number;
+     updates["reviewQueue/"+key+"/number"]=number;
+    });
     if(Object.keys(updates).length)await adminPatch(updates);
     return {items};
    }
