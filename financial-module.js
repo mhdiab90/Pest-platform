@@ -803,9 +803,19 @@ function FinanceModule(props){
   const openingNet=(n(total.debit)-n(total.credit))-(n(activity.debit)-n(activity.credit)),endingNet=n(total.debit)-n(total.credit);
   return {account:a,amount:total,activity,opening:{debit:Math.max(openingNet,0),credit:Math.max(-openingNet,0)},ending:{debit:Math.max(endingNet,0),credit:Math.max(-endingNet,0)}};
  }).filter(x=>x.amount.debit||x.amount.credit||x.activity.debit||x.activity.credit);
+ const accountIsInBranch=(account,branchCode)=>{
+  if(String(account.code)===String(branchCode))return true;
+  let parent=String(account.parentCode||''),guard=0;
+  while(parent&&guard++<20){
+   if(parent===String(branchCode))return true;
+   const parentAccount=accounts.find(item=>String(item.code)===parent);
+   parent=parentAccount?String(parentAccount.parentCode||''):'';
+  }
+  return false;
+ };
  const sumFrom=(list,type)=>list.filter(x=>x.account.type===type).reduce((sum,x)=>sum+(type==='revenue'?x.amount.credit-x.amount.debit:x.amount.debit-x.amount.credit),0);
  const revenue=sumFrom(trial,'revenue'),expenses=sumFrom(trial,'expense');
- const costOfSales=trial.filter(x=>x.account.type==='expense'&&(x.account.parentCode==='5'||x.account.statementGroup==='cogs')).reduce((sum,x)=>sum+x.amount.debit-x.amount.credit,0);
+ const costOfSales=trial.filter(x=>x.account.type==='expense'&&(accountIsInBranch(x.account,'5')||x.account.statementGroup==='cogs')).reduce((sum,x)=>sum+x.amount.debit-x.amount.credit,0);
  const grossProfit=revenue-costOfSales,operatingExpenses=expenses-costOfSales,profit=grossProfit-operatingExpenses;
  const cumulativeRevenue=sumFrom(balanceTrial,'revenue'),cumulativeExpenses=sumFrom(balanceTrial,'expense'),accumulatedProfit=cumulativeRevenue-cumulativeExpenses;
  const assets=sumFrom(balanceTrial,'asset'),liabilities=balanceTrial.filter(x=>x.account.type==='liability').reduce((sum,x)=>sum+x.amount.credit-x.amount.debit,0);
