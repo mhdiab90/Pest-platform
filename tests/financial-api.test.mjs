@@ -652,7 +652,7 @@ test("manual journal receives a unique number and carries it through posting ind
   });
   assert.equal(submitted.status,"pending_review");
   const draft=read("documents/"+submitted.id);
-  assert.match(draft.number,/^JE-202611-[A-Z0-9]{12}$/);
+  assert.match(draft.number,/^JE-202611-[A-Z0-9]{32}$/);
   const posted=await invoke("POST","",{action:"review",id:submitted.id,decision:"approve",reason:"journal number test"});
   assert.equal(posted.status,"posted");
   const journal=read("journals/"+submitted.id);
@@ -680,7 +680,7 @@ test("journal list repairs legacy posted journals without numbers across report 
   write("ledger/1110/2026-11/"+journalId+"_2",{journalId,accountCode:"1110",debit:0,credit:42});
   const result=await invoke("GET","?resource=journals");
   const number=result.items[journalId].number;
-  assert.match(number,/^JE-202611-[A-Z0-9]{12}$/);
+  assert.match(number,/^JE-202611-[A-Z0-9]{32}$/);
   assert.equal(read("journals/"+journalId+"/number"),number);
   assert.equal(read("documents/"+journalId+"/number"),number);
   assert.equal(read("periods/2026-11/entries/"+journalId+"/number"),number);
@@ -702,7 +702,7 @@ test("period report returns selected-period activity and cumulative balances sep
   assert.equal(report.accountingStartMonth,"2026-10");
   assert.equal(report.balanceEntries["2026-10"].opening.lines[0].debit,1000);
   assert.equal(report.entries["2026-11"].november.lines[0].debit,100);
-  assert.match(report.entries["2026-11"].november.number,/^JE-202611-[A-Z0-9]{12}$/);
+  assert.match(report.entries["2026-11"].november.number,/^JE-202611-[A-Z0-9]{32}$/);
   assert.equal(read("periods/2026-11/entries/november/number"),report.entries["2026-11"].november.number);
   assert.equal(read("journals/NOV/number"),report.entries["2026-11"].november.number);
   assert.equal(read("ledger/6100/2026-11/NOV_1/journalNumber"),report.entries["2026-11"].november.number);
