@@ -150,11 +150,13 @@ const rnd=v=>Math.round((Number(v)||0)*100)/100;
 const month=d=>String(d||"").slice(0,7);
 const date=v=>{const s=String(v||"");if(!/^\d{4}-\d{2}-\d{2}$/.test(s)||!Number.isFinite(Date.parse(s+"T00:00:00Z")))throw new Error("A valid transaction date is required.");return s;};
 const uid=p=>(p||"FIN")+"_"+crypto.randomUUID().replace(/-/g,"");
+const journalNumberFor=(dateValue,journalId)=>{const period=String(dateValue||"").slice(0,7).replace("-","");const token=String(journalId||uid("JRN")).replace(/[^A-Za-z0-9]/g,"").toUpperCase();return "JE-"+(period||"UNDATED")+"-"+token.slice(-12).padStart(12,"0");};
 const balance=lines=>{const debit=rnd((lines||[]).reduce((s,x)=>s+Number(x.debit||0),0)),credit=rnd((lines||[]).reduce((s,x)=>s+Number(x.credit||0),0));return {debit,credit,difference:rnd(debit-credit)};};
 const reviewRecord=doc=>({id:doc.id,documentId:doc.id,type:doc.type,invoiceType:doc.invoiceType||"",movementType:doc.movementType||"",title:doc.title||doc.number||doc.id,number:doc.number||"",date:doc.date||"",partyName:doc.partyName||"",total:Number(doc.total||doc.amount||0),status:doc.status,createdAt:doc.createdAt,createdBy:doc.createdBy,createdByName:doc.createdByName||"",attachmentUploadStatus:doc.attachmentUploadStatus||"",attachmentFileName:doc.attachmentFileName||"",attachmentUploadError:doc.attachmentUploadError||"",errors:doc.errors||[],warnings:doc.warnings||[]});
 function journalUpdates(j){
+ if(!j.number)j.number=journalNumberFor(j.date,j.id);
  const u={},m=month(j.date);u["journals/"+j.id]=j;u["periods/"+m+"/entries/"+j.id]=j;
- (j.lines||[]).forEach((l,i)=>{const row={journalId:j.id,lineNo:i+1,date:j.date,description:l.description||j.description||"",accountCode:l.accountCode,debit:Number(l.debit||0),credit:Number(l.credit||0),currency:l.currency||j.currency||"EGP",costCenterId:l.costCenterId||"",projectCode:l.projectCode||"",partyType:l.partyType||"",partyId:l.partyId||"",sourceType:j.sourceType||"manual",sourceId:j.sourceId||"",reference:j.reference||"",taxCode:l.taxCode||"",taxType:l.taxType||""};u["ledger/"+l.accountCode+"/"+m+"/"+j.id+"_"+(i+1)]=row;if(l.partyType&&l.partyId)u["partyLedger/"+l.partyType+"/"+l.partyId+"/"+m+"/"+j.id+"_"+(i+1)]=row;if(l.costCenterId)u["costLedger/"+l.costCenterId+"/"+m+"/"+j.id+"_"+(i+1)]=row;});
+ (j.lines||[]).forEach((l,i)=>{const row={journalId:j.id,journalNumber:j.number,lineNo:i+1,date:j.date,description:l.description||j.description||"",accountCode:l.accountCode,debit:Number(l.debit||0),credit:Number(l.credit||0),currency:l.currency||j.currency||"EGP",costCenterId:l.costCenterId||"",projectCode:l.projectCode||"",partyType:l.partyType||"",partyId:l.partyId||"",sourceType:j.sourceType||"manual",sourceId:j.sourceId||"",reference:j.reference||"",taxCode:l.taxCode||"",taxType:l.taxType||""};u["ledger/"+l.accountCode+"/"+m+"/"+j.id+"_"+(i+1)]=row;if(l.partyType&&l.partyId)u["partyLedger/"+l.partyType+"/"+l.partyId+"/"+m+"/"+j.id+"_"+(i+1)]=row;if(l.costCenterId)u["costLedger/"+l.costCenterId+"/"+m+"/"+j.id+"_"+(i+1)]=row;});
  if(j.sourceType&&j.sourceId)u["sourceLocks/"+j.sourceType+"_"+j.sourceId]={journalId:j.id,postedAt:Date.now()};return u;
 }
 function journalMaintenanceUpdates(previous,next){
@@ -387,7 +389,7 @@ export async function handleFinancialRequest(ctx){
    }
   }
   const journalId=existingDraft?existingDraft.id:(existingId||uid("CUST-JRN")),journal={
-   ...(existingDraft||{}),id:journalId,type:"journal",sourceType:"cashCustody",sourceId:ownerUid+"--"+transactionId,ownerUid,custodyTransactionId:transactionId,
+   ...(existingDraft||{}),id:journalId,number:existingDraft&&existingDraft.number||journalNumberFor(dateValue,journalId),type:"journal",sourceType:"cashCustody",sourceId:ownerUid+"--"+transactionId,ownerUid,custodyTransactionId:transactionId,
    projectCode,date:dateValue,description:"قيد عهدة شخصية — "+txt(transaction.description||movement,300)+" — "+employeeName,
    reference:txt(transaction.reference||transactionId,120),currency:"EGP",lines,status:"pending_review",
    createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120)
@@ -514,7 +516,32 @@ export async function handleFinancialRequest(ctx){
    return {item,sourceDetails};
   }
   if(res==="review"){requireFinanceArea("review","view");return {items:(await adminRead("reviewQueue"))||{}};}
-  if(res==="journals"){requireFinanceArea("journal","view");return {items:(await adminRead("journals"))||{}};}
+  if(res==="journals"){
+    requireFinanceArea("journal","view");
+    const source=(await adminRead("journals"))||{},documents=(await adminRead("documents"))||{},items={},updates={};
+    Object.entries(source).forEach(([key,value])=>{
+     if(!value||typeof value!=="object")return;
+     const journalId=String(value.id||key),number=value.number||journalNumberFor(value.date,journalId),journal=value.number?value:{...value,number};
+     items[key]=journal;
+     if(!value.number){
+      updates["journals/"+key+"/number"]=number;
+      if(journal.status==="posted"&&/^\\d{4}-\\d{2}-\\d{2}$/.test(String(journal.date||""))){
+       const journalMonth=month(journal.date);
+       updates["periods/"+journalMonth+"/entries/"+journalId]=journal;
+       (journal.lines||[]).forEach((line,index)=>{
+        const suffix=journalId+"_"+(index+1);
+        if(line.accountCode)updates["ledger/"+line.accountCode+"/"+journalMonth+"/"+suffix+"/journalNumber"]=number;
+        if(line.partyType&&line.partyId)updates["partyLedger/"+line.partyType+"/"+line.partyId+"/"+journalMonth+"/"+suffix+"/journalNumber"]=number;
+        if(line.costCenterId)updates["costLedger/"+line.costCenterId+"/"+journalMonth+"/"+suffix+"/journalNumber"]=number;
+       });
+      }
+      if(documents[journalId])updates["documents/"+journalId+"/number"]=number;
+      if(journal.sourceId&&documents[journal.sourceId])updates["documents/"+journal.sourceId+"/journalNumber"]=number;
+     }
+    });
+    if(Object.keys(updates).length)await adminPatch(updates);
+    return {items};
+   }
   if(res==="documents"){
    const allowed=["invoices","journal","cash","bank"].filter(area=>hasFinanceArea(area,"view"));
    if(!allowed.length)throw new Error("ليس لديك صلاحية عرض مستندات الوحدة المالية.");
@@ -1034,7 +1061,7 @@ export async function handleFinancialRequest(ctx){
     if(!previous||previous.type!=="journal")throw new Error("القيد المطلوب تعديله غير موجود.");
     if(previous.sourceType&&previous.sourceType!=="manual")throw new Error("هذا القيد مرتبط بمستند أصلي؛ يجب تعديل المستند المصدر حتى لا تختل أرصدته.");
    }else requireFinanceArea("journal","add");
-   const j={id:journalId,type:"journal",date:date(body.date),description:txt(body.description,500),reference:txt(body.reference,120),currency:txt(body.currency||"EGP",3),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:previous&&previous.createdAt||now,createdBy:previous&&previous.createdBy||claims.sub,createdByName:previous&&previous.createdByName||txt(profile.fullName||profile.username||profile.email,120)};
+   const journalDate=date(body.date),j={id:journalId,number:previous&&previous.number||journalNumberFor(journalDate,journalId),type:"journal",date:journalDate,description:txt(body.description,500),reference:txt(body.reference,120),currency:txt(body.currency||"EGP",3),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:previous&&previous.createdAt||now,createdBy:previous&&previous.createdBy||claims.sub,createdByName:previous&&previous.createdByName||txt(profile.fullName||profile.username||profile.email,120)};
    if(j.currency!=="EGP")throw new Error("القيود متعددة العملات وأسعار الصرف غير مفعّلة بعد. استخدم الجنيه المصري حتى لا تختلط أرصدة العملات في القوائم.");
    const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{},v=validateJournal(j,chart,centers);
    if(previous&&previous.status==="posted"){
@@ -1755,6 +1782,7 @@ if(action==="submitCash"){
    for(const amountRow of invoiceAmounts.filter(function(row){return row.line.kind==="stock";})){const l=amountRow.line,warehouse=id(l.warehouseCode||"default"),code=id(l.itemCode),stock=bal[warehouse]&&bal[warehouse][code]||{quantity:0,value:0,averageCost:0},qty=num(l.quantity),gross=amountRow.amount,inward=purchase,oldQty=Number(stock.quantity||0),oldValue=Number(stock.value||0),cost=inward?gross:rnd(qty*Number(stock.averageCost||0)),nextQty=inward?oldQty+qty:oldQty-qty,nextValue=inward?oldValue+gross:oldValue-cost,mov=uid("MOV");updates["inventory/balances/"+warehouse+"/"+code]={quantity:rnd(nextQty),value:rnd(nextValue),averageCost:nextQty>0?rnd(nextValue/nextQty):0,updatedAt:now};updates["inventory/movements/"+mov]={id:mov,date:inv.date,invoiceId:doc.id,journalId:j.id,itemCode:code,warehouseCode:warehouse,kind:inward?"purchase":"sale",quantity:inward?qty:-qty,unitCost:inward?rnd(gross/qty):Number(stock.averageCost||0),value:inward?gross:-cost,createdAt:now,createdBy:claims.sub};}
    updates["documentFingerprints/"+inv.fingerprint]={documentId:doc.id,createdAt:now};updates["documents/"+doc.id+"/totals"]=tot;
   }else throw new Error("نوع المستند غير مدعوم في الترحيل");
+  if(j){if(!j.number)j.number=journalNumberFor(j.date,j.id);updates["documents/"+docId+"/journalNumber"]=j.number;if(String(j.id)===String(docId))updates["documents/"+docId+"/number"]=j.number;}
   updates["documents/"+docId+"/status"]="posted";updates["documents/"+docId+"/journalId"]=j.id;updates["documents/"+docId+"/approvedAt"]=now;updates["documents/"+docId+"/approvedBy"]=claims.sub;updates["documents/"+docId+"/postedAt"]=now;updates["reviewQueue/"+docId]=null;
   updates["audit/"+uid("AUD")]={action:"approve_and_post",documentId:docId,journalId:j.id,uid:claims.sub,createdAt:now};
   if(doc.type==="journal"&&doc.reversalOf)updates["journals/"+id(doc.reversalOf)+"/reversedByJournalId"]=j.id;
