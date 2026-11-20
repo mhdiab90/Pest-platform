@@ -1150,6 +1150,8 @@ function App(){
   const [cashCustodySearch,setCashCustodySearch] = useState('');
   const [cashCustodyForm,setCashCustodyForm] = useState({type:'receipt',date:new Date().toISOString().slice(0,10),amount:'',currency:'EGP',counterparty:'',counterpartyType:'',counterpartyUid:'',counterpartyCode:'',counterpartyName:'',projectCode:'',reference:'',description:''});
   const [cashCustodyBusy,setCashCustodyBusy] = useState(false);
+  const [cashCustodyPartnerOwnerInfo,setCashCustodyPartnerOwnerInfo] = useState(null);
+  const [cashCustodyPartnerOwnerLoading,setCashCustodyPartnerOwnerLoading] = useState(false);
   const cashCustodyJournalSyncRef=useRef(false);
   const [cashCustodyEditingId,setCashCustodyEditingId] = useState('');
   const [cashCustodyNotice,setCashCustodyNotice] = useState('');
@@ -3126,7 +3128,13 @@ function App(){
   const cashCustodyTarget=cashCustodyTargetUid||(currentUser&&currentUser.uid)||'';
   const companyCustodyOwnerUid=isAdmin?currentUser.uid:(userDirectory.find(u=>u.role==='admin'&&u.status==='active')?.uid||activeUsers.find(u=>u.role==='admin'&&u.status==='active')?.uid||'');
   const cashCustodySelectedBookScope=isAdmin&&cashCustodyTarget===companyCustodyOwnerUid?cashCustodyBookScope:'personal';
+  const cashCustodyAllPersonalRows=(cashCustodyByUid[cashCustodyTarget]||[]).filter(t=>(t.bookScope||'personal')==='personal'&&t.pairRole!=='counterparty');
   const cashCustodyRows=(cashCustodyByUid[cashCustodyTarget]||[]).filter(t=>(t.bookScope||'personal')===cashCustodySelectedBookScope&&!(t.partnerCurrentAccountTransfer&&t.partnerCurrentAccountTransfer.active===true)).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||Number(b.createdAt||0)-Number(a.createdAt||0));
+  const cashCustodyPartnerToCurrentRows=cashCustodyAllPersonalRows.filter(t=>t.status==='approved'&&String(t.currency||'EGP').toUpperCase()==='EGP'&&!(t.partnerCurrentAccountTransfer&&t.partnerCurrentAccountTransfer.active===true)&&!(t.partnerCurrentAccountTransfer&&t.partnerCurrentAccountTransfer.pending===true));
+  const cashCustodyPartnerToCustodyRows=cashCustodyAllPersonalRows.filter(t=>t.status==='approved'&&String(t.currency||'EGP').toUpperCase()==='EGP'&&t.partnerCurrentAccountTransfer&&t.partnerCurrentAccountTransfer.active===true&&t.partnerCurrentAccountTransfer.pending!==true);
+  const cashCustodyPartnerToCurrentBalance=cashCustodyPartnerToCurrentRows.reduce((sum,t)=>sum+cashCustodySign(t.type)*Number(t.amount||0),0);
+  const cashCustodyPartnerToCustodyBalance=cashCustodyPartnerToCustodyRows.reduce((sum,t)=>sum+cashCustodySign(t.type)*Number(t.amount||0),0);
+  const cashCustodyPartnerPendingRows=cashCustodyAllPersonalRows.filter(t=>t.partnerCurrentAccountTransfer&&t.partnerCurrentAccountTransfer.pending===true);
   const cashCustodyFiltered=cashCustodyRows.filter(t=>{
     const text=[t.type,t.description,t.counterparty,t.projectCode,t.reference,t.createdByName,t.status,t.date].join(' ');
     return (!cashCustodySearch.trim()||includesText(text,cashCustodySearch.trim()))&&String(t.currency||'EGP').toUpperCase()===String(cashCustodyCurrencyFilter||'EGP').toUpperCase();
@@ -3536,16 +3544,76 @@ function App(){
     setCashCustodyTargetUid(target);
     if(target!==currentUser.uid)setCashCustodyBookScope('personal');
     setCashCustodyNotice('');
+    setCashCustodyPartnerOwnerInfo(null);
     if(target===currentUser.uid)return;
+    setCashCustodyPartnerOwnerLoading(true);
     try{
-      const snap=await db.ref('cashCustodies/'+target+'/transactions').once('value');
-      const rows=Object.entries(snap.val()||{}).map(([id,value])=>({...value,id:value&&value.id?value.id:id}));
+      const [custodySnap,userSnap]=await Promise.all([
+        db.ref('cashCustodies/'+target+'/transactions').once('value'),
+        db.ref('users/'+target).once('value')
+      ]);
+      const rows=Object.entries(custodySnap.val()||{}).map(([id,value])=>({...value,id:value&&value.id?value.id:id}));
       setCashCustodyByUid(old=>({...old,[target]:rows}));
+      const profileUser=userSnap.val()||{},directoryUser=userDirectory.find(item=>item.uid===target)||{};
+      const user={...directoryUser,...profileUser};
+      const normalize=value=>String(value||'').trim().toLowerCase().replace(/\\s+/g,' ');
+      const email=normalize(user.email);
+      const username=normalize(user.username),fullName=normalize(user.fullName);
+      const active=['active','نشط','مفعل','enabled'].includes(String(user.status||directoryUser.status||'').toLowerCase());
+      const partner=email==='thabetrabea@gmail.com'||(!email&&username==='thabetrabea'&&active)
+        ?{uid:target,accountCode:'3202',partnerName:'أ/ ثابت ربيع',email:'thabetrabea@gmail.com'}
+        :(['haitham ibrahim mahmoud'].includes(username)||fullName==='haitham ibrahim mahmoud')
+          ?{uid:target,accountCode:'3201',partnerName:'م/ هيثم إبراهيم',email:user.email||''}:null;
+      if(partner&&active)setCashCustodyPartnerOwnerInfo(partner);
     }catch(err){
       setCashCustodyTargetUid(currentUser.uid);
       setCashCustodyBookScope('personal');
       setCashCustodyNotice(firebaseErrorMessage(err,tr));
-    }
+    }finally{setCashCustodyPartnerOwnerLoading(false);}
+  }
+
+  async function transferPartnerCustodyMovementsBulk(direction){
+    if(!isAdmin||!hasPermission('cashCustody','edit'))return alert(rtl?'تحويلات جاري الشركاء متاحة لمدير النظام فقط.':'Only an administrator can transfer partner custody movements.');
+    if(!cashCustodyPartnerOwnerInfo||cashCustodyPartnerOwnerInfo.uid!==cashCustodyTarget)return alert(rtl?'تعذر تأكيد ربط المستخدم بحساب جاري الشريك. حدّث اختيار المستخدم ثم حاول مرة أخرى.':'The selected user could not be verified as a partner. Reselect the user and try again.');
+    if(!['toCurrent','toCustody'].includes(direction))return;
+    const rows=direction==='toCurrent'?cashCustodyPartnerToCurrentRows:cashCustodyPartnerToCustodyRows;
+    if(!rows.length)return setCashCustodyNotice(rtl?'لا توجد حركات معتمدة ومتاحة في هذا الاتجاه للتحويل.':'There are no approved movements available for this transfer direction.');
+    const netBalance=rows.reduce((sum,t)=>sum+cashCustodySign(t.type)*Number(t.amount||0),0);
+    const directionLabel=direction==='toCurrent'?(rtl?'من العهدة الشخصية إلى جاري الشريك':'Personal custody to partner current account'):(rtl?'من جاري الشريك إلى العهدة الشخصية':'Partner current account back to personal custody');
+    const prompt=(rtl?'سيتم إنشاء قيد إعادة تصنيف مستقل لكل حركة، وليس قيدًا إجماليًا واحدًا.\n\nالشريك: ':'This will create a separate reclassification journal for each movement, not one lump-sum journal.\n\nPartner: ')+cashCustodyPartnerOwnerInfo.partnerName+' ('+cashCustodyPartnerOwnerInfo.accountCode+')\n'+directionLabel+'\n'+(rtl?'عدد الحركات: ':'Movements: ')+rows.length+'\n'+(rtl?'صافي الرصيد محل التحويل: ':'Net balance being transferred: ')+money(netBalance)+' EGP\n\n'+(rtl?'سيبقى كل بيان ومرفق كما هو، ولن يتغير الرصيد إلا بعد اعتماد القيود. هل تريد المتابعة؟':'Every description and attachment will remain unchanged. Balances change only after the journals are approved. Continue?');
+    if(!window.confirm(prompt))return;
+    setCashCustodyBusy(true);setCashCustodyNotice('');
+    try{
+      const allResults=[];
+      for(let offset=0;offset<rows.length;offset+=50){
+        const batch=rows.slice(offset,offset+50);
+        const result=await sendPushWorkerRequest('/finance',{
+          action:'transferPartnerCurrentAccountBulk',ownerUid:cashCustodyTarget,direction,
+          transactionIds:batch.map(t=>t.id)
+        });
+        allResults.push(...(Array.isArray(result.results)?result.results:[]));
+      }
+      const submitted=allResults.filter(item=>item.success);
+      const failed=allResults.filter(item=>!item.success&&!item.skipped);
+      const skipped=allResults.filter(item=>item.skipped);
+      const submittedGross=submitted.reduce((sum,item)=>sum+Number(item.amount||0),0);
+      if(submitted.length){
+        await addLog(direction==='toCurrent'?'تحويل مجموعة حركات العهدة إلى جاري الشريك':'إعادة مجموعة حركات جاري الشريك إلى العهدة',currentUser,{
+          entityType:'partner-current-account',entityId:cashCustodyTarget,
+          metadata:{partnerAccountCode:cashCustodyPartnerOwnerInfo.accountCode,direction,movementCount:submitted.length,netBalance,totalAmount:submittedGross,journalIds:submitted.map(item=>item.journalId)}
+        });
+      }
+      let notice=rtl
+        ?'تم إرسال '+submitted.length+' قيد تحويل إلى المراجعة من أصل '+rows.length+' حركة. إجمالي قيم الحركات: '+money(submittedGross)+' ج.م. صافي الرصيد المعروض: '+money(netBalance)+' ج.م. لن يتغير أي رصيد قبل الاعتماد.'
+        :'Submitted '+submitted.length+' transfer journals for review from '+rows.length+' movements. Gross movement value: '+money(submittedGross)+' EGP. Net balance: '+money(netBalance)+' EGP. No balance changes before approval.';
+      if(skipped.length)notice+=' '+(rtl?'تم تخطي '+skipped.length+' حركات لها طلبات معلقة أو حالة غير مناسبة.':'Skipped '+skipped.length+' movements with pending or incompatible status.');
+      if(failed.length){
+        const examples=failed.slice(0,3).map(item=>item.transactionId+': '+item.error).join(' | ');
+        notice+=' '+(rtl?'تعذر تحويل '+failed.length+' حركات: ':'Failed '+failed.length+' movements: ')+examples;
+      }
+      setCashCustodyNotice(notice);
+    }catch(error){setCashCustodyNotice((rtl?'تعذر تنفيذ التحويل الجماعي: ':'Bulk transfer failed: ')+String(error.message||error));}
+    finally{setCashCustodyBusy(false);}
   }
 
   async function loadCustodyStatement(uid=custodyStatementTargetUid,scope=custodyStatementBookScope){
