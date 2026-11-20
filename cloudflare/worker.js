@@ -20,6 +20,8 @@ let cachedFcmAccessToken = null;
 let cachedFcmAccessTokenUntil = 0;
 let cachedFirebaseDatabaseAccessToken = null;
 let cachedFirebaseDatabaseAccessTokenUntil = 0;
+let cachedFirebaseAuthAccessToken = null;
+let cachedFirebaseAuthAccessTokenUntil = 0;
 
 function corsHeaders(origin) {
   const headers = {
@@ -335,8 +337,10 @@ async function fcmSha256(value) {
 
 async function getServiceAccountAccessToken(env, scope, cacheKey) {
   const isDatabase = cacheKey === "database";
-  if (isDatabase && cachedFirebaseDatabaseAccessToken && Date.now() < cachedFirebaseDatabaseAccessTokenUntil - 60000) return cachedFirebaseDatabaseAccessToken;
-  if (!isDatabase && cachedFcmAccessToken && Date.now() < cachedFcmAccessTokenUntil - 60000) return cachedFcmAccessToken;
+  const isAuthAdmin = cacheKey === "auth";
+  const cachedToken = isDatabase ? cachedFirebaseDatabaseAccessToken : isAuthAdmin ? cachedFirebaseAuthAccessToken : cachedFcmAccessToken;
+  const cachedUntil = isDatabase ? cachedFirebaseDatabaseAccessTokenUntil : isAuthAdmin ? cachedFirebaseAuthAccessTokenUntil : cachedFcmAccessTokenUntil;
+  if (cachedToken && Date.now() < cachedUntil - 60000) return cachedToken;
   if (!env.FCM_SERVICE_ACCOUNT_JSON) throw new Error("FCM_NOT_CONFIGURED: Add the FCM_SERVICE_ACCOUNT_JSON secret to the Cloudflare Worker.");
   let serviceAccount;
   try { serviceAccount = JSON.parse(env.FCM_SERVICE_ACCOUNT_JSON); }
@@ -381,6 +385,9 @@ async function getServiceAccountAccessToken(env, scope, cacheKey) {
   if (isDatabase) {
     cachedFirebaseDatabaseAccessToken = payload.access_token;
     cachedFirebaseDatabaseAccessTokenUntil = expiresAt;
+  } else if (isAuthAdmin) {
+    cachedFirebaseAuthAccessToken = payload.access_token;
+    cachedFirebaseAuthAccessTokenUntil = expiresAt;
   } else {
     cachedFcmAccessToken = payload.access_token;
     cachedFcmAccessTokenUntil = expiresAt;
@@ -394,6 +401,10 @@ async function getFcmAccessToken(env) {
 
 async function getFirebaseDatabaseAccessToken(env) {
   return getServiceAccountAccessToken(env, "https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/firebase.database", "database");
+}
+
+async function getFirebaseAuthAccessToken(env) {
+  return getServiceAccountAccessToken(env, "https://www.googleapis.com/auth/identitytoolkit", "auth");
 }
 
 async function adminDatabaseRequest(path, accessToken, method, body) {
@@ -2725,7 +2736,7 @@ export default {
       }, 200, origin);
     }
     if (!["GET","POST","DELETE"].includes(request.method)) return jsonResponse({ error: "Method not allowed." }, 405, origin);
-    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/upload", "/attachments/attach", "/attachments/replace", "/attachments/annotate", "/attachments/file", "/attachments/usage", "/push/notify", "/push/request", "/push/badge/sync", "/finance"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
+    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/upload", "/attachments/attach", "/attachments/replace", "/attachments/annotate", "/attachments/file", "/attachments/usage", "/push/notify", "/push/request", "/push/badge/sync", "/admin/users/delete", "/finance"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
 
     try {
       const authorization = request.headers.get("Authorization") || "";
@@ -2745,6 +2756,86 @@ export default {
         return jsonResponse(output, 200, origin);
       }
       const profile = await loadProfile(claims, token);
+      if (url.pathname === "/admin/users/delete") {
+        if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405, origin);
+        try {
+          if (!profile || profile.role !== "admin") throw new Error("ADMIN_ONLY: حذف حسابات المستخدمين متاح لمدير النظام فقط.");
+          const targetUid = safeSegment(body.uid, "user uid");
+          if (targetUid === claims.sub) throw new Error("SELF_DELETE_BLOCKED: لا يمكن حذف حساب المدير المستخدم حاليًا.");
+          const databaseAccessToken = await getFirebaseDatabaseAccessToken(env);
+          const target = await adminDatabaseRequest("users/" + targetUid, databaseAccessToken, "GET");
+          if (!target || typeof target !== "object") throw new Error("USER_NOT_FOUND: ملف المستخدم المطلوب غير موجود.");
+          if (target.role === "admin") throw new Error("ADMIN_DELETE_BLOCKED: لا يمكن حذف حساب مدير النظام من هذه الشاشة.");
+          const email = String(target.email || "").trim().toLowerCase();
+          const confirmedEmail = String(body.confirmEmail || "").trim().toLowerCase();
+          if (!email || email !== confirmedEmail) throw new Error("EMAIL_CONFIRMATION_MISMATCH: البريد الإلكتروني المدخل لا يطابق بريد حساب المستخدم.");
+          if (String(target.status || "").toLowerCase() === "deleted" && target.authDeletionStatus === "deleted") {
+            return jsonResponse({ success: true, uid: targetUid, status: "deleted", alreadyDeleted: true, financialRecordsRetained: true }, 200, origin);
+          }
+
+          const requestedAt = Date.now();
+          const requestUpdates = {};
+          requestUpdates["users/" + targetUid + "/status"] = "deleting";
+          requestUpdates["users/" + targetUid + "/authDeletionStatus"] = "pending";
+          requestUpdates["users/" + targetUid + "/deletionRequestedAt"] = requestedAt;
+          requestUpdates["users/" + targetUid + "/deletionRequestedBy"] = claims.sub;
+          requestUpdates["users/" + targetUid + "/authDeletionError"] = null;
+          requestUpdates["userDirectory/" + targetUid + "/status"] = "deleting";
+          requestUpdates["userDirectory/" + targetUid + "/authDeletionStatus"] = "pending";
+          await adminDatabaseRequest("", databaseAccessToken, "PATCH", requestUpdates);
+
+          try {
+            const authAccessToken = await getFirebaseAuthAccessToken(env);
+            const authResponse = await fetch("https://identitytoolkit.googleapis.com/v1/projects/" + encodeURIComponent(PROJECT_ID) + "/accounts:delete", {
+              method: "POST",
+              headers: { "Authorization": "Bearer " + authAccessToken, "Content-Type": "application/json", "Accept": "application/json" },
+              body: JSON.stringify({ localId: targetUid, targetProjectId: PROJECT_ID })
+            });
+            const authPayload = await authResponse.json().catch(() => ({}));
+            const authError = String(authPayload && authPayload.error && (authPayload.error.message || authPayload.error) || "");
+            if (!authResponse.ok && !/USER_NOT_FOUND/i.test(authError)) {
+              if (authResponse.status === 403) {
+                throw new Error("AUTH_ADMIN_PERMISSION_REQUIRED: حساب الخدمة في Cloudflare يحتاج صلاحية Firebase Authentication Users Delete (firebaseauth.users.delete) على مشروع pest-plat-form.");
+              }
+              throw new Error("AUTH_DELETE_FAILED: تعذر حذف حساب Firebase Authentication (" + authResponse.status + "): " + authError.slice(0, 180));
+            }
+          } catch (authDeleteError) {
+            const failedAt = Date.now();
+            const failureMessage = String(authDeleteError && authDeleteError.message || authDeleteError).slice(0, 300);
+            const failureUpdates = {};
+            failureUpdates["users/" + targetUid + "/status"] = "disabled";
+            failureUpdates["users/" + targetUid + "/authDeletionStatus"] = "failed";
+            failureUpdates["users/" + targetUid + "/authDeletionError"] = failureMessage;
+            failureUpdates["users/" + targetUid + "/deletionFailedAt"] = failedAt;
+            failureUpdates["userDirectory/" + targetUid + "/status"] = "disabled";
+            failureUpdates["userDirectory/" + targetUid + "/authDeletionStatus"] = "failed";
+            await adminDatabaseRequest("", databaseAccessToken, "PATCH", failureUpdates).catch(writeError => {
+              console.error("Could not save failed user-deletion state:", String(writeError && writeError.message || writeError).slice(0, 200));
+            });
+            throw authDeleteError;
+          }
+
+          const deletedAt = Date.now();
+          const finalUpdates = {};
+          finalUpdates["users/" + targetUid + "/status"] = "deleted";
+          finalUpdates["users/" + targetUid + "/authDeletionStatus"] = "deleted";
+          finalUpdates["users/" + targetUid + "/deletedAt"] = deletedAt;
+          finalUpdates["users/" + targetUid + "/deletedBy"] = claims.sub;
+          finalUpdates["users/" + targetUid + "/authDeletionError"] = null;
+          finalUpdates["userDirectory/" + targetUid + "/status"] = "deleted";
+          finalUpdates["userDirectory/" + targetUid + "/authDeletionStatus"] = "deleted";
+          finalUpdates["userDirectory/" + targetUid + "/deletedAt"] = deletedAt;
+          await adminDatabaseRequest("", databaseAccessToken, "PATCH", finalUpdates);
+          return jsonResponse({ success: true, uid: targetUid, status: "deleted", financialRecordsRetained: true }, 200, origin);
+        } catch (deleteError) {
+          const message = String(deleteError && deleteError.message || deleteError);
+          const status = /AUTH_ADMIN_PERMISSION_REQUIRED|FCM_AUTH_FAILED|FIREBASE_ADMIN_DATABASE_ERROR/.test(message) ? 503 :
+            /ADMIN_ONLY|SELF_DELETE_BLOCKED|ADMIN_DELETE_BLOCKED/.test(message) ? 403 :
+            /USER_NOT_FOUND/.test(message) ? 404 : 400;
+          console.error("Administrator user deletion:", message.slice(0, 320));
+          return jsonResponse({ error: message }, status, origin);
+        }
+      }
       if (url.pathname === "/finance") {
         try {
           const accessToken = await getFirebaseDatabaseAccessToken(env);
