@@ -1034,7 +1034,7 @@ function FinanceModule(props){
  };
  const openJournalModal=doc=>{
   setJournalModal(Object.assign({},doc));
-  setJournalModalDraft({id:doc.id,date:doc.date||today(),description:doc.description||"",reference:doc.reference||"",currency:doc.currency||"EGP",sourceType:doc.sourceType||"manual",reversalOf:doc.reversalOf||"",status:doc.status||"posted",lines:(doc.lines||[]).map(line=>Object.assign({},line))});
+  setJournalModalDraft({id:doc.id,number:doc.number||doc.journalNumber||'',date:doc.date||today(),description:doc.description||"",reference:doc.reference||"",currency:doc.currency||"EGP",sourceType:doc.sourceType||"manual",reversalOf:doc.reversalOf||"",status:doc.status||"posted",lines:(doc.lines||[]).map(line=>Object.assign({},line))});
  };
  const updateJournalModalLine=(index,key,value)=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).map((line,i)=>i===index?Object.assign({},line,{[key]:value}):line)}));
  const saveJournalModal=async()=>{
@@ -1478,7 +1478,7 @@ const renderJournal = function() {
     const manual=!(x.sourceType&&x.sourceType!=='manual'),posted=x.status==='posted'||journalRecords.some(j=>j.id===x.id&&j.status==='posted');
     const debit=(x.lines||[]).reduce((sum,line)=>sum+n(line.debit),0),credit=(x.lines||[]).reduce((sum,line)=>sum+n(line.credit),0);
     return h('tr',{key:x.id,className:'border-t hover:bg-slate-50 cursor-pointer',onClick:()=>openJournalModal(x)},
-     h('td',{className:'p-2'},x.id),
+     h('td',{className:'p-2 font-bold'},x.number||x.journalNumber||x.id),
      h('td',{className:'p-2'},x.date||'—'),
      h('td',{className:'p-2'},x.description||'—'),
      h('td',{className:'p-2'},journalSourceLabel(x)),
@@ -1506,7 +1506,7 @@ const renderJournal = function() {
     });
     return h('div',{className:'fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-3',onClick:()=>{setJournalModal(null);setJournalModalDraft(null);}},
      h('div',{className:'w-full max-w-6xl max-h-[92vh] overflow-auto rounded-2xl bg-white p-4 shadow-2xl space-y-3',onClick:e=>e.stopPropagation()},
-      h('div',{className:'flex flex-wrap items-center justify-between gap-2'},h('h3',{className:'font-bold text-lg'},'تفاصيل القيد: '+draft.id),button('إغلاق',()=>{setJournalModal(null);setJournalModalDraft(null);},'muted')),
+      h('div',{className:'flex flex-wrap items-center justify-between gap-2'},h('h3',{className:'font-bold text-lg'},'تفاصيل القيد: '+(draft.number||draft.id)),button('إغلاق',()=>{setJournalModal(null);setJournalModalDraft(null);},'muted')),
       h('div',{className:'grid md:grid-cols-3 gap-2'},
        field('التاريخ',draft.date||'',v=>setJournalModalDraft(old=>Object.assign({},old,{date:v})),'date'),
        field('المرجع',draft.reference||'',v=>setJournalModalDraft(old=>Object.assign({},old,{reference:v}))),
@@ -2549,5 +2549,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261120-finance-statements-v4";
+ window.PEST_FINANCE_MODULE_VERSION="20261120-finance-statements-v5";
 })();
