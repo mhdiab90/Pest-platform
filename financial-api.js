@@ -562,13 +562,29 @@ export async function handleFinancialRequest(ctx){
    const diff=(toDate.getUTCFullYear()-startDate.getUTCFullYear())*12+toDate.getUTCMonth()-startDate.getUTCMonth();
    const periodDiff=(toDate.getUTCFullYear()-fromDate.getUTCFullYear())*12+toDate.getUTCMonth()-fromDate.getUTCMonth();
    if(diff<0||periodDiff<0||diff>120||periodDiff>24)throw new Error("مدى التقرير غير صحيح. الحد الأقصى 24 شهرًا لحركة الفترة و120 شهرًا للأرصدة التراكمية.");
-   const months=[],entries={},balanceEntries={};
+   const months=[],entries={},balanceEntries={},numberUpdates={};
    for(let i=0;i<=diff;i++){
     const d=new Date(Date.UTC(startDate.getUTCFullYear(),startDate.getUTCMonth()+i,1)),m=d.toISOString().slice(0,7);
     const monthly=(await adminRead("periods/"+m+"/entries"))||{};
+    if(m>=from&&m<=to){
+     Object.entries(monthly).forEach(([key,value])=>{
+      if(!value||typeof value!=="object"||value.number)return;
+      const journalId=String(value.id||key),number=journalNumberFor(value.date,journalId),journal={...value,number};
+      monthly[key]=journal;
+      numberUpdates["journals/"+journalId+"/number"]=number;
+      numberUpdates["periods/"+m+"/entries/"+journalId]=journal;
+      (journal.lines||[]).forEach((line,index)=>{
+       const suffix=journalId+"_"+(index+1);
+       if(line.accountCode)numberUpdates["ledger/"+line.accountCode+"/"+m+"/"+suffix+"/journalNumber"]=number;
+       if(line.partyType&&line.partyId)numberUpdates["partyLedger/"+line.partyType+"/"+line.partyId+"/"+m+"/"+suffix+"/journalNumber"]=number;
+       if(line.costCenterId)numberUpdates["costLedger/"+line.costCenterId+"/"+m+"/"+suffix+"/journalNumber"]=number;
+      });
+     });
+     months.push(m);entries[m]=monthly;
+    }
     balanceEntries[m]=monthly;
-    if(m>=from&&m<=to){months.push(m);entries[m]=monthly;}
    }
+   if(Object.keys(numberUpdates).length)await adminPatch(numberUpdates);
    return {months,entries,balanceEntries,accountingStartMonth:balanceFrom};
   }
   if(res==="party"){
