@@ -1724,6 +1724,7 @@ if(action==="submitCash"){
     rootUpdates["cashCustodyNotifications/"+custodyMirror.employeeUid+"/"+custodyMirror.notificationId]=custodyMirror.notification;
     rootUpdates["financial/documents/"+docId+"/status"]="posted";
     rootUpdates["financial/documents/"+docId+"/journalId"]=j.id;
+    rootUpdates["financial/documents/"+docId+"/journalNumber"]=j.number;
     rootUpdates["financial/documents/"+docId+"/approvedAt"]=now;
     rootUpdates["financial/documents/"+docId+"/approvedBy"]=claims.sub;
     rootUpdates["financial/documents/"+docId+"/postedAt"]=now;
