@@ -150,7 +150,7 @@ const rnd=v=>Math.round((Number(v)||0)*100)/100;
 const month=d=>String(d||"").slice(0,7);
 const date=v=>{const s=String(v||"");if(!/^\d{4}-\d{2}-\d{2}$/.test(s)||!Number.isFinite(Date.parse(s+"T00:00:00Z")))throw new Error("A valid transaction date is required.");return s;};
 const uid=p=>(p||"FIN")+"_"+crypto.randomUUID().replace(/-/g,"");
-const journalNumberFor=(dateValue,journalId)=>{const period=String(dateValue||"").slice(0,7).replace("-","");const token=String(journalId||uid("JRN")).replace(/[^A-Za-z0-9]/g,"").toUpperCase();return "JE-"+(period||"UNDATED")+"-"+token.slice(-12).padStart(12,"0");};
+const journalNumberFor=(dateValue,journalId)=>{const period=String(dateValue||"").slice(0,7).replace("-","");const token=String(journalId||uid("JRN")).replace(/[^A-Za-z0-9]/g,"").toUpperCase();return "JE-"+(period||"UNDATED")+"-"+token.slice(-32).padStart(32,"0");};
 const balance=lines=>{const debit=rnd((lines||[]).reduce((s,x)=>s+Number(x.debit||0),0)),credit=rnd((lines||[]).reduce((s,x)=>s+Number(x.credit||0),0));return {debit,credit,difference:rnd(debit-credit)};};
 const reviewRecord=doc=>({id:doc.id,documentId:doc.id,type:doc.type,invoiceType:doc.invoiceType||"",movementType:doc.movementType||"",title:doc.title||doc.number||doc.id,number:doc.number||"",date:doc.date||"",partyName:doc.partyName||"",total:Number(doc.total||doc.amount||0),status:doc.status,createdAt:doc.createdAt,createdBy:doc.createdBy,createdByName:doc.createdByName||"",attachmentUploadStatus:doc.attachmentUploadStatus||"",attachmentFileName:doc.attachmentFileName||"",attachmentUploadError:doc.attachmentUploadError||"",errors:doc.errors||[],warnings:doc.warnings||[]});
 function journalUpdates(j){
