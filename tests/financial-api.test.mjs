@@ -1411,11 +1411,18 @@ test("partner current accounts create separate analytical ledgers and transfer a
   assert.equal(read("cashCustodies/"+haithamUid+"/transactions/"+transactionId+"/financialReviewStatus"),"posted");
 
   const transferred=await invoke("POST","",{action:"transferPartnerCurrentAccount",ownerUid:haithamUid,transactionId,direction:"toCurrent"});
-  assert.equal(transferred.status,"transferred");
+  assert.equal(transferred.status,"pending_review");
   assert.equal(transferred.accountCode,"3201");
+  assert.equal(read("documents/"+transferred.journalId+"/status"),"pending_review");
+  assert.ok(read("reviewQueue/"+transferred.journalId),"partner transfer must wait in the accounting review queue");
+  assert.notEqual(read("cashCustodies/"+haithamUid+"/transactions/"+transactionId+"/partnerCurrentAccountTransfer/active"),true);
+  assert.deepEqual(read("cashCustodies/"+haithamUid+"/transactions/"+transactionId+"/attachmentsManifest"),attachmentsManifest);
+  assert.equal(read("partyLedger/partnerCurrentAccount/"+haithamUid+"/2026-11"),null,"the partner ledger must not change before approval");
+  const approvedTransfer=await invoke("POST","",{action:"review",id:transferred.journalId,decision:"approve",reason:"Approve partner custody reclassification"});
+  assert.equal(approvedTransfer.status,"posted");
   assert.equal(read("cashCustodies/"+haithamUid+"/transactions/"+transactionId+"/partnerCurrentAccountTransfer/active"),true);
   assert.deepEqual(read("cashCustodies/"+haithamUid+"/transactions/"+transactionId+"/attachmentsManifest"),attachmentsManifest);
-  assert.ok(read("partyLedger/partnerCurrentAccount/"+haithamUid+"/2026-11"),"partner account subledger receives the reclassification entry");
+  assert.ok(read("partyLedger/partnerCurrentAccount/"+haithamUid+"/2026-11"),"partner account subledger receives the reclassification only after approval");
   const partnerLedgerAfterTransfer=Object.values(read("partyLedger/partnerCurrentAccount/"+haithamUid+"/2026-11")||{});
   assert.equal(partnerLedgerAfterTransfer.reduce((sum,row)=>sum+row.credit-row.debit,0),350);
   const custodyLedgerAfterTransfer=Object.values(read("partyLedger/employeeCustody/"+haithamUid+"/2026-11")||{});
@@ -1424,7 +1431,12 @@ test("partner current accounts create separate analytical ledgers and transfer a
   assert.equal(currentListing.items.find(item=>item.uid===haithamUid).transactions.length,1);
 
   const returned=await invoke("POST","",{action:"transferPartnerCurrentAccount",ownerUid:haithamUid,transactionId,direction:"toCustody"});
-  assert.equal(returned.status,"returned");
+  assert.equal(returned.status,"pending_review");
+  assert.equal(read("documents/"+returned.journalId+"/status"),"pending_review");
+  assert.equal(read("cashCustodies/"+haithamUid+"/transactions/"+transactionId+"/partnerCurrentAccountTransfer/active"),true,"the movement remains in current account until reverse approval");
+  assert.deepEqual(read("cashCustodies/"+haithamUid+"/transactions/"+transactionId+"/attachmentsManifest"),attachmentsManifest);
+  const approvedReturn=await invoke("POST","",{action:"review",id:returned.journalId,decision:"approve",reason:"Approve return to personal custody"});
+  assert.equal(approvedReturn.status,"posted");
   assert.equal(read("cashCustodies/"+haithamUid+"/transactions/"+transactionId+"/partnerCurrentAccountTransfer/active"),false);
   assert.deepEqual(read("cashCustodies/"+haithamUid+"/transactions/"+transactionId+"/attachmentsManifest"),attachmentsManifest);
   const partnerLedgerAfterReturn=Object.values(read("partyLedger/partnerCurrentAccount/"+haithamUid+"/2026-11")||{});
