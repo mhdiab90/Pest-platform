@@ -709,7 +709,7 @@ export async function handleFinancialRequest(ctx){
   const toCurrent=direction==="toCurrent";
   const partnerDebit=toCurrent?originalDebit:originalCredit,partnerCredit=toCurrent?originalCredit:originalDebit;
   const description=(toCurrent?"تحويل من العهدة إلى جاري الشريك — ":"إعادة من جاري الشريك إلى العهدة — ")+config.partnerName+" — "+txt(transaction.description||transactionId,240);
-  const projectCode=txt(transaction.projectCode||originalLine.projectCode||"",120),costCenterId=txt(originalLine.costCenterId||projectCode,120),dateValue=date(new Date(now).toISOString().slice(0,10));
+  const projectCode=txt(transaction.projectCode||originalLine.projectCode||"",120),costCenterId=txt(originalLine.costCenterId||"",120),dateValue=date(new Date(now).toISOString().slice(0,10));
   const transferId=uid("PCA"),journalId=uid("PCA-JRN");
   const lines=[
    {accountCode:config.code,debit:partnerDebit,credit:partnerCredit,description,partyType:"partnerCurrentAccount",partyId:ownerUid,projectCode,costCenterId,reference:txt(transaction.reference||transactionId,120)},
@@ -718,6 +718,9 @@ export async function handleFinancialRequest(ctx){
   const totals=balance(lines);
   if(Math.abs(totals.difference)>0.01)throw new Error("قيد إعادة التصنيف غير متوازن. تم إيقاف التحويل.");
   const journal={id:journalId,number:journalNumberFor(dateValue,journalId),type:"journal",sourceType:"partnerCurrentAccountTransfer",sourceId:ownerUid+"--"+transactionId+"--"+transferId,ownerUid,partnerCurrentAccountUid:ownerUid,partnerCurrentAccountCode:config.code,custodyTransactionId:transactionId,transferDirection:direction,date:dateValue,description,reference:txt(transaction.reference||transactionId,120),currency:"EGP",lines,status:"posted",balance:totals,createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120),approvedAt:now,approvedBy:claims.sub,postedAt:now,title:description};
+  const centers=(await adminRead("costCenters"))||{},validation=validateJournal(journal,chart,centers);
+  if(validation.errors.length)throw new Error("قيد إعادة التصنيف غير صالح: "+validation.errors.join("؛ "));
+  journal.balance=validation.balance;journal.errors=[];
   const rootUpdates={};
   Object.entries(journalUpdates(journal)).forEach(([key,value])=>{rootUpdates["financial/"+key]=value;});
   rootUpdates["financial/documents/"+journalId]=journal;
