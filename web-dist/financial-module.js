@@ -2369,7 +2369,45 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
   panel('حقوق الملكية','تظهر نتيجة الأعمال المتراكمة بشكل مستقل ضمن حقوق الملكية.',h('div',{className:'space-y-2'},table(['الحساب','مدين','دائن','الرصيد الطبيعي'],balanceEquityRows),table(['البيان','القيمة'],[['الأرباح المتراكمة منذ بداية الدفاتر',fmt(accumulatedProfit)],['إجمالي حقوق الملكية',fmt(equity)]]))),
   h('div',{className:'rounded-xl border p-4 '+(Math.abs(assets-liabilities-equity)>0.01?'border-rose-300 bg-rose-50':'border-emerald-300 bg-emerald-50')},h('div',{className:'font-bold'},'مطابقة المركز المالي'),h('div',{className:'mt-1 text-sm'},'الأصول '+fmt(assets)+' = الالتزامات '+fmt(liabilities)+' + حقوق الملكية '+fmt(equity)),h('div',{className:'font-extrabold text-lg mt-1'},'فرق التوازن: '+fmt(assets-liabilities-equity)))
  );
- const renderReports=()=>panel('القوائم والتقارير المالية','تقارير تفصيلية من القيود المرحلة فقط. ميزان المراجعة والمركز المالي تراكميان حتى نهاية الفترة، وقائمة الدخل والتدفقات لحركة الفترة المحددة. اضغط أسماء الحسابات أو أرقام القيود للانتقال إلى التفاصيل.',h('div',{className:'space-y-3'},
+  const cashFlowCategoryRows=[
+  ['الأنشطة التشغيلية',cashFlowSummary.operatingIn,cashFlowSummary.operatingOut,cashFlowSummary.operatingIn-cashFlowSummary.operatingOut],
+  ['الأنشطة الاستثمارية',cashFlowSummary.investingIn,cashFlowSummary.investingOut,cashFlowSummary.investingIn-cashFlowSummary.investingOut],
+  ['الأنشطة التمويلية',cashFlowSummary.financingIn,cashFlowSummary.financingOut,cashFlowSummary.financingIn-cashFlowSummary.financingOut],
+  ['حركات غير مصنفة — تتطلب مراجعة',cashFlowSummary.unclassifiedIn,cashFlowSummary.unclassifiedOut,cashFlowSummary.unclassified],
+  ['الإجمالي',cashFlowSummary.operatingIn+cashFlowSummary.investingIn+cashFlowSummary.financingIn+cashFlowSummary.unclassifiedIn,cashFlowSummary.operatingOut+cashFlowSummary.investingOut+cashFlowSummary.financingOut+cashFlowSummary.unclassifiedOut,cashFlowSummary.netChange]
+ ].map((row,index)=>h('tr',{key:index,className:index===4?'font-extrabold bg-slate-50':'border-t'},
+  h('td',{className:'p-2'},row[0]),
+  h('td',{className:'p-2 text-end'},fmt(row[1])),
+  h('td',{className:'p-2 text-end'},fmt(row[2])),
+  h('td',{className:'p-2 text-end font-bold'},fmt(row[3]))
+ ));
+ const cashFlowReconciliationRows=[
+  ['الرصيد الافتتاحي في بداية الفترة',cashFlowSummary.openingCash],
+  ['صافي التغير خلال الفترة',cashFlowSummary.netChange],
+  ['الرصيد الختامي المتوقع',cashFlowSummary.closingCash],
+  ['الرصيد الختامي بدفتر الأستاذ',cashAccounts.reduce((sum,row)=>sum+row.amount.debit-row.amount.credit,0)],
+  ['حركات غير مصنفة تحتاج مراجعة',cashFlowSummary.unclassified]
+ ].map((row,index)=>h('tr',{key:index,className:'border-t'},
+  h('td',{className:'p-2'},row[0]),
+  h('td',{className:'p-2 text-end font-bold'},fmt(row[1]))
+ ));
+ const cashMovementRows=flat.filter(line=>cashCodeSet.has(String(line.accountCode))).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))).map((line,index)=>{
+  const account=accounts.find(item=>String(item.code)===String(line.accountCode));
+  return h('tr',{key:String(line.journalId)+'-'+index,className:'border-t hover:bg-blue-50'},
+   h('td',{className:'p-2'},line.date),
+   h('td',{className:'p-2'},h('button',{type:'button',className:'text-blue-700 underline font-bold',onClick:()=>openStatementJournal(line.journalId)},line.journalNumber||line.journalId)),
+   h('td',{className:'p-2'},h('button',{type:'button',className:'text-blue-700 underline',onClick:()=>openStatementAccount(line.accountCode)},line.accountCode+' — '+(account&&account.name||''))),
+   h('td',{className:'p-2'},line.description),
+   h('td',{className:'p-2 text-end'},fmt(line.debit)),
+   h('td',{className:'p-2 text-end'},fmt(line.credit))
+  );
+ });
+ const cashflowContent=()=>h('div',{className:'space-y-3'},
+  panel('ملخص التدفقات النقدية','مبني على الحركات النقدية والبنكية للقيود المرحلة بالفترة. التحويلات بين الخزينة والبنوك مستبعدة لمنع ازدواج احتساب النقدية.',table(['النشاط','تدفقات داخلة','تدفقات خارجة','صافي التدفق'],cashFlowCategoryRows)),
+  panel('مطابقة النقدية والبنوك','الرصيد الافتتاحي + صافي الحركة = الرصيد الختامي وفق القيود المرحلة.',table(['البيان','القيمة'],cashFlowReconciliationRows)),
+  panel('تفاصيل الحركات النقدية والبنكية','اضغط رقم القيد لعرض القيد بالكامل، ثم اضغط أي حساب داخله لفتح كشفه.',table(['التاريخ','رقم القيد','الحساب','البيان','مدين','دائن'],cashMovementRows))
+ );
+const renderReports=()=>panel('القوائم والتقارير المالية','تقارير تفصيلية من القيود المرحلة فقط. ميزان المراجعة والمركز المالي تراكميان حتى نهاية الفترة، وقائمة الدخل والتدفقات لحركة الفترة المحددة. اضغط أسماء الحسابات أو أرقام القيود للانتقال إلى التفاصيل.',h('div',{className:'space-y-3'},
   h('div',{className:'rounded-2xl border bg-slate-50 p-3 space-y-2'},
    h('div',{className:'grid md:grid-cols-4 gap-3'},field('من شهر',period.from,v=>setPeriod(o=>Object.assign({},o,{from:v})),'month'),field('إلى شهر',period.to,v=>setPeriod(o=>Object.assign({},o,{to:v})),'month'),select('القائمة المالية',report,v=>setReport(v),[{value:'trial',label:'ميزان المراجعة التفصيلي'},{value:'income',label:'قائمة الدخل التفصيلية'},{value:'balance',label:'قائمة المركز المالي التفصيلية'},{value:'cashflow',label:'قائمة التدفقات النقدية'},{value:'ledger',label:'دفتر الأستاذ العام'}]),button('تحديث البيانات',loadPeriod,'primary')),
    h('p',{className:'text-xs text-slate-500'},'عملة العرض: جنيه مصري · الفترة: '+period.from+' إلى '+period.to+' · بداية الدفاتر: '+(accountingStartMonth||'غير محددة'))
@@ -2377,13 +2415,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
   report==='trial'?h('div',{className:'space-y-3'},trialIntegrityNote,panel('ميزان المراجعة — حسابات تفصيلية وتجميعية','الافتتاحي + حركة الفترة = الختامي. الأرصدة التجميعية تتضمن الأرصدة التابعة ولا تدخل مرتين في الإجماليات.',table(['كود','الحساب (اضغط لفتح الكشف)','افتتاحي مدين','افتتاحي دائن','حركة مدين','حركة دائن','ختامي مدين','ختامي دائن'],trialBalanceRows)),trialBalanceTotals):null,
   report==='income'?incomeStatementContent():null,
   report==='balance'?balanceSheetContent():null,
-  report==='cashflow'?h('div',{className:'space-y-3'},panel('ملخص التدفقات النقدية','مبني على الحركات النقدية والبنكية للقيود المرحلة بالفترة. التحويلات بين الخزينة والبنوك مستبعدة لمنع ازدواج احتساب النقدية.',table(['النشاط','تدفقات داخلة','تدفقات خارجة','صافي التدفق'],[
-   ['الأنشطة التشغيلية',cashFlowSummary.operatingIn,cashFlowSummary.operatingOut,cashFlowSummary.operatingIn-cashFlowSummary.operatingOut],
-   ['الأنشطة الاستثمارية',cashFlowSummary.investingIn,cashFlowSummary.investingOut,cashFlowSummary.investingIn-cashFlowSummary.investingOut],
-   ['الأنشطة التمويلية',cashFlowSummary.financingIn,cashFlowSummary.financingOut,cashFlowSummary.financingIn-cashFlowSummary.financingOut],
-   ['حركات غير مصنفة — تتطلب مراجعة',cashFlowSummary.unclassifiedIn,cashFlowSummary.unclassifiedOut,cashFlowSummary.unclassified],
-   ['الإجمالي',cashFlowSummary.operatingIn+cashFlowSummary.investingIn+cashFlowSummary.financingIn+cashFlowSummary.unclassifiedIn,cashFlowSummary.operatingOut+cashFlowSummary.investingOut+cashFlowSummary.financingOut+cashFlowSummary.unclassifiedOut,cashFlowSummary.netChange]
-  ].map((x,i)=>h('tr',{key:i,className:i===4?'font-extrabold bg-slate-50':'border-t'},h('td',{className:'p-2'},x[0]),h('td',{className:'p-2 text-end'},fmt(x[1])),h('td',{className:'p-2 text-end'},fmt(x[2])),h('td',{className:'p-2 text-end font-bold'},fmt(x[3])))))),panel('مطابقة النقدية والبنوك','الرصيد الافتتاحي + صافي الحركة = الرصيد الختامي وفق القيود المرحلة.',table(['البيان','القيمة'],[['الرصيد الافتتاحي في بداية الفترة',cashFlowSummary.openingCash],['صافي التغير خلال الفترة',cashFlowSummary.netChange],['الرصيد الختامي المتوقع',cashFlowSummary.closingCash],['الرصيد الختامي بدفتر الأستاذ',cashAccounts.reduce((sum,x)=>sum+x.amount.debit-x.amount.credit,0)],['حركات غير مصنفة تحتاج مراجعة',cashFlowSummary.unclassified]].map((x,i)=>h('tr',{key:i,className:'border-t'},h('td',{className:'p-2'},x[0]),h('td',{className:'p-2 text-end font-bold'},fmt(x[1])))))),panel('تفاصيل الحركات النقدية والبنكية','اضغط رقم القيد لعرض القيد بالكامل، ثم اضغط أي حساب داخله لفتح كشفه.',table(['التاريخ','رقم القيد','الحساب','البيان','مدين','دائن'],flat.filter(line=>cashCodeSet.has(String(line.accountCode))).sort((a,b)=>String(a.date).localeCompare(String(b.date))).map((line,index)=>h('tr',{key:String(line.journalId)+'-'+index,className:'border-t hover:bg-blue-50'},h('td',{className:'p-2'},line.date),h('td',{className:'p-2'},h('button',{type:'button',className:'text-blue-700 underline font-bold',onClick:()=>openStatementJournal(line.journalId)},line.journalNumber||line.journalId)),h('td',{className:'p-2'},h('button',{type:'button',className:'text-blue-700 underline',onClick:()=>openStatementAccount(line.accountCode)},line.accountCode+' — '+(accounts.find(a=>String(a.code)===String(line.accountCode))||{}).name)),h('td',{className:'p-2'},line.description),h('td',{className:'p-2 text-end'},fmt(line.debit)),h('td',{className:'p-2 text-end'},fmt(line.credit))))))),null):null,
+  report==='cashflow'?cashflowContent():null,
   report==='ledger'?h('div',{className:'space-y-2'},field('بحث في رقم القيد أو الحساب أو البيان',search,setSearch),table(['التاريخ','رقم القيد','الحساب','البيان','مدين','دائن','مركز التكلفة / المشروع'],flat.filter(line=>!search||[line.accountCode,line.description,line.journalId,line.journalNumber,line.reference].join(' ').toLowerCase().includes(search.toLowerCase())).sort((a,b)=>String(a.date).localeCompare(String(b.date))).map((line,index)=>h('tr',{key:String(line.journalId)+'-'+index,className:'border-t hover:bg-blue-50'},h('td',{className:'p-2'},line.date),h('td',{className:'p-2'},h('button',{type:'button',className:'font-bold text-blue-700 underline',onClick:()=>openStatementJournal(line.journalId)},line.journalNumber||line.journalId)),h('td',{className:'p-2'},h('button',{type:'button',className:'text-blue-700 underline',onClick:()=>openStatementAccount(line.accountCode)},line.accountCode)),h('td',{className:'p-2'},line.description),h('td',{className:'p-2 text-end'},fmt(line.debit)),h('td',{className:'p-2 text-end'},fmt(line.credit)),h('td',{className:'p-2'},line.costCenterId||line.projectCode||'—')))):null,
   button('تصدير ميزان المراجعة CSV',()=>dl('financial-trial-balance.csv',[['Code','Account','Opening Debit','Opening Credit','Period Debit','Period Credit','Closing Debit','Closing Credit'],...balanceTrial.map(x=>[x.account.code,x.account.name,x.opening.debit,x.opening.credit,x.activity.debit,x.activity.credit,x.ending.debit,x.ending.credit])].map(row=>row.map(value=>'"'+String(value==null?'':value).replace(/"/g,'""')+'"').join(',')).join('\n'))),
   accountDetailModal,statementJournalModal
