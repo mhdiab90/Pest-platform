@@ -692,7 +692,8 @@ export async function handleFinancialRequest(ctx){
   if(transaction.ownerUid!==ownerUid||transaction.bookScope!=="personal"||transaction.pairRole==="counterparty")throw new Error("يمكن تحويل السجل الأصلي من دفتر العهدة الشخصية للشريك فقط.");
   if(transaction.status!=="approved")throw new Error("لا يمكن التحويل قبل اعتماد حركة العهدة.");
   if(String(transaction.currency||"EGP").toUpperCase()!=="EGP")throw new Error("تحويل الجاري متاح حاليًا للجنيه المصري فقط.");
-  const currentState=transaction.partnerCurrentAccountTransfer&&transaction.partnerCurrentAccountTransfer.active===true;
+  const previousTransfer=transaction.partnerCurrentAccountTransfer||{},currentState=previousTransfer.active===true;
+  if(previousTransfer.pending===true)throw new Error("هناك تحويل سابق لهذا السجل ما زال في انتظار المراجعة.");
   if(direction==="toCurrent"&&currentState)throw new Error("هذه الحركة محولة بالفعل إلى جاري الشريك.");
   if(direction==="toCustody"&&!currentState)throw new Error("هذه الحركة غير موجودة حاليًا في جاري الشريك.");
   const sourceJournalId=transaction.financialJournalId||transaction.financialDocumentId||await adminRead("cashCustodyJournalLinks/"+ownerUid+"/"+transactionId);
@@ -717,23 +718,22 @@ export async function handleFinancialRequest(ctx){
   ];
   const totals=balance(lines);
   if(Math.abs(totals.difference)>0.01)throw new Error("قيد إعادة التصنيف غير متوازن. تم إيقاف التحويل.");
-  const journal={id:journalId,number:journalNumberFor(dateValue,journalId),type:"journal",sourceType:"partnerCurrentAccountTransfer",sourceId:ownerUid+"--"+transactionId+"--"+transferId,ownerUid,partnerCurrentAccountUid:ownerUid,partnerCurrentAccountCode:config.code,custodyTransactionId:transactionId,transferDirection:direction,date:dateValue,description,reference:txt(transaction.reference||transactionId,120),currency:"EGP",lines,status:"posted",balance:totals,createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120),approvedAt:now,approvedBy:claims.sub,postedAt:now,title:description};
+  const journal={id:journalId,number:journalNumberFor(dateValue,journalId),type:"journal",sourceType:"partnerCurrentAccountTransfer",sourceId:ownerUid+"--"+transactionId+"--"+transferId,ownerUid,partnerCurrentAccountUid:ownerUid,partnerCurrentAccountCode:config.code,custodyTransactionId:transactionId,transferDirection:direction,date:dateValue,description,reference:txt(transaction.reference||transactionId,120),currency:"EGP",amount:rnd(originalDebit+originalCredit),lines,status:"pending_review",balance:totals,createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120),title:description};
   const centers=(await adminRead("costCenters"))||{},validation=validateJournal(journal,chart,centers);
   if(validation.errors.length)throw new Error("قيد إعادة التصنيف غير صالح: "+validation.errors.join("؛ "));
   journal.balance=validation.balance;journal.errors=[];
   const rootUpdates={};
-  Object.entries(journalUpdates(journal)).forEach(([key,value])=>{rootUpdates["financial/"+key]=value;});
   rootUpdates["financial/documents/"+journalId]=journal;
-  rootUpdates["financial/audit/"+uid("AUD")]={action:toCurrent?"transfer_custody_to_partner_current":"transfer_partner_current_to_custody",documentId:journalId,ownerUid,transactionId,partnerAccountCode:config.code,uid:claims.sub,createdAt:now};
-  const previous=transaction.partnerCurrentAccountTransfer||{};
+  rootUpdates["financial/reviewQueue/"+journalId]=reviewRecord(journal);
+  rootUpdates["financial/audit/"+uid("AUD")]={action:"submit_partner_current_transfer_for_review",documentId:journalId,ownerUid,transactionId,partnerAccountCode:config.code,direction,uid:claims.sub,createdAt:now};
   const historyPath=path+"/partnerCurrentAccountTransferHistory/"+transferId;
-  rootUpdates[historyPath]={id:transferId,direction,partnerUid:ownerUid,partnerName:config.partnerName,accountCode:config.code,journalId,amount:rnd(originalDebit+originalCredit),date:dateValue,createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120)};
-  rootUpdates[path+"/partnerCurrentAccountTransfer"]={...previous,active:toCurrent,partnerUid:ownerUid,partnerName:config.partnerName,accountCode:config.code,accountName:config.name,...(toCurrent?{transferredAt:now,transferredBy:claims.sub,transferJournalId:journalId}:{returnedAt:now,returnedBy:claims.sub,returnJournalId:journalId}),lastDirection:direction,lastJournalId:journalId,updatedAt:now,updatedBy:claims.sub};
-  rootUpdates[path+"/partnerCurrentAccountTransferActive"]=toCurrent;
+  rootUpdates[historyPath]={id:transferId,direction,partnerUid:ownerUid,partnerName:config.partnerName,accountCode:config.code,journalId,amount:rnd(originalDebit+originalCredit),date:dateValue,status:"pending_review",createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120)};
+  rootUpdates[path+"/partnerCurrentAccountTransfer"]={...previousTransfer,active:currentState,pending:true,pendingDirection:direction,pendingJournalId:journalId,pendingTransferId:transferId,pendingAt:now,pendingBy:claims.sub,partnerUid:ownerUid,partnerName:config.partnerName,accountCode:config.code,accountName:config.name,lastDirection:direction,lastJournalId:journalId,updatedAt:now,updatedBy:claims.sub};
+  rootUpdates[path+"/partnerCurrentAccountTransferActive"]=currentState;
   rootUpdates[path+"/partnerCurrentAccountLastJournalId"]=journalId;
   if(!adminPatchRoot)throw new Error("خدمة الترحيل الموحد لجاري الشركاء غير متاحة.");
   await adminPatchRoot(rootUpdates);
-  return {success:true,status:toCurrent?"transferred":"returned",journalId,journalNumber:journal.number,accountCode:config.code,partnerName:config.partnerName,transactionId};
+  return {success:true,status:"pending_review",journalId,journalNumber:journal.number,accountCode:config.code,partnerName:config.partnerName,transactionId};
  }
  if(action==="ocr"||action==="ocrText"){
   requireFinanceArea("invoices","add");
@@ -1767,6 +1767,22 @@ if(action==="submitCash"){
    }else if(doc.type==="journal"&&doc.sourceType==="cashCustody"&&doc.sourceId&&adminPatchRootAt){
     const separator=String(doc.sourceId).indexOf("--");
     if(separator>0)sourceRootUpdate={path:"cashCustodies/"+id(doc.sourceId.slice(0,separator))+"/transactions/"+id(doc.sourceId.slice(separator+2)),value:{financialReviewStatus:status,financialReviewReason:txt(body.reason,1000),financialReviewedAt:now,financialReviewedBy:claims.sub}};
+   }else if(doc.type==="journal"&&doc.sourceType==="partnerCurrentAccountTransfer"&&doc.sourceId&&adminPatchRootAt){
+    const sourceId=String(doc.sourceId),first=sourceId.indexOf("--"),last=sourceId.lastIndexOf("--");
+    if(first<=0||last<=first+2)throw new Error("مرجع تحويل جاري الشريك غير صالح.");
+    const ownerUid=id(sourceId.slice(0,first)),transactionId=id(sourceId.slice(first+2,last)),transferId=id(sourceId.slice(last+2));
+    sourceRootUpdate={path:"cashCustodies/"+ownerUid+"/transactions/"+transactionId,value:{
+     "partnerCurrentAccountTransfer/pending":false,
+     "partnerCurrentAccountTransfer/pendingJournalId":null,
+     "partnerCurrentAccountTransfer/pendingTransferId":null,
+     "partnerCurrentAccountTransfer/pendingDirection":null,
+     "partnerCurrentAccountTransfer/lastReviewStatus":status,
+     "partnerCurrentAccountTransfer/lastReviewReason":txt(body.reason,1000),
+     "partnerCurrentAccountTransferHistory/"+transferId+"/status":status,
+     "partnerCurrentAccountTransferHistory/"+transferId+"/reviewedAt":now,
+     "partnerCurrentAccountTransferHistory/"+transferId+"/reviewedBy":claims.sub,
+     "partnerCurrentAccountTransferHistory/"+transferId+"/reviewReason":txt(body.reason,1000)
+    }};
    }
    await adminPatch(u);
    if(sourceRootUpdate)await adminPatchRootAt(sourceRootUpdate.path,sourceRootUpdate.value);
@@ -1932,7 +1948,33 @@ if(action==="submitCash"){
     }
     sourceRootUpdate={path:"cashCustodies/"+ownerUid+"/transactions/"+transactionId,value:custodyUpdates};
    }
-  }
+  }else if(doc.type==="journal"&&doc.sourceType==="partnerCurrentAccountTransfer"&&doc.sourceId&&adminPatchRootAt){
+    const sourceId=String(doc.sourceId),first=sourceId.indexOf("--"),last=sourceId.lastIndexOf("--");
+    if(first<=0||last<=first+2)throw new Error("مرجع تحويل جاري الشريك غير صالح.");
+    const ownerUid=id(sourceId.slice(0,first)),transactionId=id(sourceId.slice(first+2,last)),transferId=id(sourceId.slice(last+2));
+    const custody=adminReadRoot?await adminReadRoot("cashCustodies/"+ownerUid+"/transactions/"+transactionId):null;
+    const transfer=custody&&custody.partnerCurrentAccountTransfer||{};
+    if(!custody||transfer.pending!==true||transfer.pendingJournalId!==j.id||transfer.pendingTransferId!==transferId||transfer.pendingDirection!==doc.transferDirection)throw new Error("حالة حركة العهدة لا تطابق طلب تحويل جاري الشريك. لم يتم تغيير رصيدها.");
+    const active=doc.transferDirection==="toCurrent";
+    sourceRootUpdate={path:"cashCustodies/"+ownerUid+"/transactions/"+transactionId,value:{
+     "partnerCurrentAccountTransfer/active":active,
+     "partnerCurrentAccountTransfer/pending":false,
+     "partnerCurrentAccountTransfer/pendingJournalId":null,
+     "partnerCurrentAccountTransfer/pendingTransferId":null,
+     "partnerCurrentAccountTransfer/pendingDirection":null,
+     "partnerCurrentAccountTransfer/lastJournalId":j.id,
+     "partnerCurrentAccountTransfer/lastDirection":doc.transferDirection,
+     "partnerCurrentAccountTransfer/lastReviewStatus":"posted",
+     "partnerCurrentAccountTransfer/lastReviewReason":null,
+     "partnerCurrentAccountTransfer/updatedAt":now,
+     "partnerCurrentAccountTransfer/updatedBy":claims.sub,
+     "partnerCurrentAccountTransferHistory/"+transferId+"/status":"posted",
+     "partnerCurrentAccountTransferHistory/"+transferId+"/approvedAt":now,
+     "partnerCurrentAccountTransferHistory/"+transferId+"/approvedBy":claims.sub,
+     "partnerCurrentAccountTransferActive":active,
+     "partnerCurrentAccountLastJournalId":j.id
+    }};
+   }
   await adminPatch(updates);
   if(sourceRootUpdate)await adminPatchRootAt(sourceRootUpdate.path,sourceRootUpdate.value);
   return {success:true,status:"posted",journalId:j.id};
