@@ -525,7 +525,7 @@ export async function handleFinancialRequest(ctx){
      items[key]=journal;
      if(!value.number){
       updates["journals/"+key+"/number"]=number;
-      if(journal.status==="posted"&&/^\\d{4}-\\d{2}-\\d{2}$/.test(String(journal.date||""))){
+      if(journal.status==="posted"&&/^\d{4}-\d{2}-\d{2}$/.test(String(journal.date||""))){
        const journalMonth=month(journal.date);
        updates["periods/"+journalMonth+"/entries/"+journalId]=journal;
        (journal.lines||[]).forEach((line,index)=>{
