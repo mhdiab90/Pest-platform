@@ -693,6 +693,19 @@ test("journal list repairs legacy posted journals without numbers across report 
   assert.equal(read("reviewQueue/"+pendingId+"/number"),read("documents/"+pendingId+"/number"));
 });
 
+test("review inbox backfills unique journal numbers for legacy pending journals", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const journalId="REVIEW-ONLY-LEGACY-JOURNAL";
+  write("documents/"+journalId,{id:journalId,type:"journal",date:"2026-11-19",status:"pending_review"});
+  write("reviewQueue/"+journalId,{id:journalId,type:"journal",date:"2026-11-19",status:"pending_review",title:journalId});
+  const result=await invoke("GET","?resource=review");
+  const item=result.items[journalId];
+  assert.match(item.number,/^JE-202611-[A-Z0-9]{32}$/);
+  assert.equal(read("documents/"+journalId+"/number"),item.number);
+  assert.equal(read("reviewQueue/"+journalId+"/number"),item.number);
+  assert.equal(item.title,"قيد رقم "+item.number);
+});
+
 test("period report returns selected-period activity and cumulative balances separately", async () => {
   write("settings/accountingStartMonth","2026-10");
   write("periods/2026-10/entries/opening",{id:"OPENING",date:"2026-10-01",status:"posted",lines:[{accountCode:"1110",debit:1000,credit:0}]});
