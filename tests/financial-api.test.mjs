@@ -1469,4 +1469,51 @@ test("partner current accounts create separate analytical ledgers and transfer a
   assert.equal(read("cashCustodies/"+thabetUid+"/transactions/"+thabetTransactionId+"/partnerCurrentAccountTransfer/active"),true);
   assert.ok(read("partyLedger/partnerCurrentAccount/"+thabetUid+"/2026-11"));
   assert.equal(read("partyLedger/partnerCurrentAccount/"+inactiveThabetUid+"/2026-11"),null,"the inactive duplicate account must never receive Thabet's partner balance");
+
+  const bulkRows=[
+    {id:"PARTNER-THABET-BULK-RECEIPT",type:"receipt",amount:90000,description:"Bulk receipt movement",attachmentsManifest:{fileIds:["BULK-RECEIPT-ATTACHMENT"]}},
+    {id:"PARTNER-THABET-BULK-EXPENSE",type:"expense",amount:45000,description:"Bulk expense movement",attachmentsManifest:{fileIds:["BULK-EXPENSE-ATTACHMENT"]}}
+  ];
+  for(const row of bulkRows){
+    write("cashCustodies/"+thabetUid+"/transactions/"+row.id,{
+      ...row,ownerUid:thabetUid,bookScope:"personal",currency:"EGP",date:"2026-11-20",reference:row.id,
+      status:"approved",createdBy:thabetUid,createdByName:"Thabet Rabea"
+    });
+    const sourceDraft=await invoke("POST","",{action:"submitCashCustodyJournal",ownerUid:thabetUid,transactionId:row.id});
+    assert.equal(sourceDraft.status,"pending_review");
+    const sourceApproval=await invoke("POST","",{action:"review",id:sourceDraft.id,decision:"approve"});
+    assert.equal(sourceApproval.status,"posted");
+  }
+
+  const bulkToCurrent=await invoke("POST","",{action:"transferPartnerCurrentAccountBulk",ownerUid:thabetUid,direction:"toCurrent",transactionIds:bulkRows.map(row=>row.id)});
+  assert.equal(bulkToCurrent.status,"pending_review");
+  assert.equal(bulkToCurrent.accountCode,"3202");
+  assert.equal(bulkToCurrent.submitted,2);
+  assert.equal(bulkToCurrent.failed,0);
+  assert.equal(bulkToCurrent.totalAmount,135000);
+  assert.equal(bulkToCurrent.journalIds.length,2);
+  for(const row of bulkRows){
+    assert.equal(read("cashCustodies/"+thabetUid+"/transactions/"+row.id+"/partnerCurrentAccountTransfer/pending"),true);
+    assert.notEqual(read("cashCustodies/"+thabetUid+"/transactions/"+row.id+"/partnerCurrentAccountTransfer/active"),true);
+    assert.deepEqual(read("cashCustodies/"+thabetUid+"/transactions/"+row.id+"/attachmentsManifest"),row.attachmentsManifest);
+  }
+  for(const journalId of bulkToCurrent.journalIds){
+    const result=await invoke("POST","",{action:"review",id:journalId,decision:"approve"});
+    assert.equal(result.status,"posted");
+  }
+  for(const row of bulkRows)assert.equal(read("cashCustodies/"+thabetUid+"/transactions/"+row.id+"/partnerCurrentAccountTransfer/active"),true);
+
+  const bulkToCustody=await invoke("POST","",{action:"transferPartnerCurrentAccountBulk",ownerUid:thabetUid,direction:"toCustody",transactionIds:bulkRows.map(row=>row.id)});
+  assert.equal(bulkToCustody.submitted,2);
+  assert.equal(bulkToCustody.failed,0);
+  assert.equal(bulkToCustody.totalAmount,135000);
+  for(const row of bulkRows)assert.equal(read("cashCustodies/"+thabetUid+"/transactions/"+row.id+"/partnerCurrentAccountTransfer/active"),true,"reverse transfer must wait for approval");
+  for(const journalId of bulkToCustody.journalIds){
+    const result=await invoke("POST","",{action:"review",id:journalId,decision:"approve"});
+    assert.equal(result.status,"posted");
+  }
+  for(const row of bulkRows){
+    assert.equal(read("cashCustodies/"+thabetUid+"/transactions/"+row.id+"/partnerCurrentAccountTransfer/active"),false);
+    assert.deepEqual(read("cashCustodies/"+thabetUid+"/transactions/"+row.id+"/attachmentsManifest"),row.attachmentsManifest);
+  }
 });

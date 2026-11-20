@@ -1150,6 +1150,9 @@ function App(){
   const [cashCustodySearch,setCashCustodySearch] = useState('');
   const [cashCustodyForm,setCashCustodyForm] = useState({type:'receipt',date:new Date().toISOString().slice(0,10),amount:'',currency:'EGP',counterparty:'',counterpartyType:'',counterpartyUid:'',counterpartyCode:'',counterpartyName:'',projectCode:'',reference:'',description:''});
   const [cashCustodyBusy,setCashCustodyBusy] = useState(false);
+  const [cashCustodyPartnerOwnerInfo,setCashCustodyPartnerOwnerInfo] = useState(null);
+  const [cashCustodyPartnerOwnerLoading,setCashCustodyPartnerOwnerLoading] = useState(false);
+  const cashCustodyPartnerLoadRef=useRef(0);
   const cashCustodyJournalSyncRef=useRef(false);
   const [cashCustodyEditingId,setCashCustodyEditingId] = useState('');
   const [cashCustodyNotice,setCashCustodyNotice] = useState('');
@@ -3126,7 +3129,13 @@ function App(){
   const cashCustodyTarget=cashCustodyTargetUid||(currentUser&&currentUser.uid)||'';
   const companyCustodyOwnerUid=isAdmin?currentUser.uid:(userDirectory.find(u=>u.role==='admin'&&u.status==='active')?.uid||activeUsers.find(u=>u.role==='admin'&&u.status==='active')?.uid||'');
   const cashCustodySelectedBookScope=isAdmin&&cashCustodyTarget===companyCustodyOwnerUid?cashCustodyBookScope:'personal';
+  const cashCustodyAllPersonalRows=(cashCustodyByUid[cashCustodyTarget]||[]).filter(t=>(t.bookScope||'personal')==='personal'&&t.pairRole!=='counterparty');
   const cashCustodyRows=(cashCustodyByUid[cashCustodyTarget]||[]).filter(t=>(t.bookScope||'personal')===cashCustodySelectedBookScope&&!(t.partnerCurrentAccountTransfer&&t.partnerCurrentAccountTransfer.active===true)).slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||Number(b.createdAt||0)-Number(a.createdAt||0));
+  const cashCustodyPartnerToCurrentRows=cashCustodyAllPersonalRows.filter(t=>t.status==='approved'&&String(t.currency||'EGP').toUpperCase()==='EGP'&&!(t.partnerCurrentAccountTransfer&&t.partnerCurrentAccountTransfer.active===true)&&!(t.partnerCurrentAccountTransfer&&t.partnerCurrentAccountTransfer.pending===true));
+  const cashCustodyPartnerToCustodyRows=cashCustodyAllPersonalRows.filter(t=>t.status==='approved'&&String(t.currency||'EGP').toUpperCase()==='EGP'&&t.partnerCurrentAccountTransfer&&t.partnerCurrentAccountTransfer.active===true&&t.partnerCurrentAccountTransfer.pending!==true);
+  const cashCustodyPartnerToCurrentBalance=cashCustodyPartnerToCurrentRows.reduce((sum,t)=>sum+cashCustodySign(t.type)*Number(t.amount||0),0);
+  const cashCustodyPartnerToCustodyBalance=cashCustodyPartnerToCustodyRows.reduce((sum,t)=>sum+cashCustodySign(t.type)*Number(t.amount||0),0);
+  const cashCustodyPartnerPendingRows=cashCustodyAllPersonalRows.filter(t=>t.partnerCurrentAccountTransfer&&t.partnerCurrentAccountTransfer.pending===true);
   const cashCustodyFiltered=cashCustodyRows.filter(t=>{
     const text=[t.type,t.description,t.counterparty,t.projectCode,t.reference,t.createdByName,t.status,t.date].join(' ');
     return (!cashCustodySearch.trim()||includesText(text,cashCustodySearch.trim()))&&String(t.currency||'EGP').toUpperCase()===String(cashCustodyCurrencyFilter||'EGP').toUpperCase();
@@ -3506,6 +3515,7 @@ function App(){
   }
 
   function isConfiguredPartnerCurrentOwner(ownerUid){
+    if(cashCustodyPartnerOwnerInfo&&cashCustodyPartnerOwnerInfo.uid===ownerUid)return true;
     const profileUser=activeUsers.find(item=>item.uid===ownerUid)||{};
     const directoryUser=userDirectory.find(item=>item.uid===ownerUid)||{};
     const user={...profileUser,...directoryUser};
@@ -3533,19 +3543,83 @@ function App(){
   async function loadCashCustodyTarget(uid){
     if(!currentUser||!currentUser.uid)return;
     const target=uid===currentUser.uid||hasPermission('cashCustody','viewOthers')?uid:currentUser.uid;
+    const requestId=++cashCustodyPartnerLoadRef.current;
     setCashCustodyTargetUid(target);
     if(target!==currentUser.uid)setCashCustodyBookScope('personal');
     setCashCustodyNotice('');
-    if(target===currentUser.uid)return;
+    setCashCustodyPartnerOwnerInfo(null);
+    if(target===currentUser.uid){setCashCustodyPartnerOwnerLoading(false);return;}
+    setCashCustodyPartnerOwnerLoading(true);
     try{
-      const snap=await db.ref('cashCustodies/'+target+'/transactions').once('value');
-      const rows=Object.entries(snap.val()||{}).map(([id,value])=>({...value,id:value&&value.id?value.id:id}));
+      const custodySnap=await db.ref('cashCustodies/'+target+'/transactions').once('value');
+      if(requestId!==cashCustodyPartnerLoadRef.current)return;
+      const rows=Object.entries(custodySnap.val()||{}).map(([id,value])=>({...value,id:value&&value.id?value.id:id}));
       setCashCustodyByUid(old=>({...old,[target]:rows}));
+      let profileUser={};
+      try{profileUser=(await db.ref('users/'+target).once('value')).val()||{};}catch(profileError){console.warn('Partner profile lookup fell back to the active user directory.',profileError);}
+      if(requestId!==cashCustodyPartnerLoadRef.current)return;
+      const directoryUser=userDirectory.find(item=>item.uid===target)||{};
+      const user={...directoryUser,...profileUser};
+      const normalize=value=>String(value||'').trim().toLowerCase().replace(/\s+/g,' ');
+      const email=normalize(user.email);
+      const username=normalize(user.username),fullName=normalize(user.fullName);
+      const active=['active','نشط','مفعل','enabled'].includes(String(user.status||directoryUser.status||'').toLowerCase());
+      const partner=email==='thabetrabea@gmail.com'||(!email&&username==='thabetrabea'&&active)
+        ?{uid:target,accountCode:'3202',partnerName:'أ/ ثابت ربيع',email:'thabetrabea@gmail.com'}
+        :(['haitham ibrahim mahmoud'].includes(username)||fullName==='haitham ibrahim mahmoud')
+          ?{uid:target,accountCode:'3201',partnerName:'م/ هيثم إبراهيم',email:user.email||''}:null;
+      if(partner&&active)setCashCustodyPartnerOwnerInfo(partner);
     }catch(err){
-      setCashCustodyTargetUid(currentUser.uid);
-      setCashCustodyBookScope('personal');
-      setCashCustodyNotice(firebaseErrorMessage(err,tr));
-    }
+      if(requestId===cashCustodyPartnerLoadRef.current){
+        setCashCustodyTargetUid(currentUser.uid);
+        setCashCustodyBookScope('personal');
+        setCashCustodyNotice(firebaseErrorMessage(err,tr));
+      }
+    }finally{if(requestId===cashCustodyPartnerLoadRef.current)setCashCustodyPartnerOwnerLoading(false);}
+  }
+
+  async function transferPartnerCustodyMovementsBulk(direction){
+    if(!isAdmin||!hasPermission('cashCustody','edit'))return alert(rtl?'تحويلات جاري الشركاء متاحة لمدير النظام فقط.':'Only an administrator can transfer partner custody movements.');
+    if(!cashCustodyPartnerOwnerInfo||cashCustodyPartnerOwnerInfo.uid!==cashCustodyTarget)return alert(rtl?'تعذر تأكيد ربط المستخدم بحساب جاري الشريك. حدّث اختيار المستخدم ثم حاول مرة أخرى.':'The selected user could not be verified as a partner. Reselect the user and try again.');
+    if(!['toCurrent','toCustody'].includes(direction))return;
+    const rows=direction==='toCurrent'?cashCustodyPartnerToCurrentRows:cashCustodyPartnerToCustodyRows;
+    if(!rows.length)return setCashCustodyNotice(rtl?'لا توجد حركات معتمدة ومتاحة في هذا الاتجاه للتحويل.':'There are no approved movements available for this transfer direction.');
+    const netBalance=rows.reduce((sum,t)=>sum+cashCustodySign(t.type)*Number(t.amount||0),0);
+    const directionLabel=direction==='toCurrent'?(rtl?'من العهدة الشخصية إلى جاري الشريك':'Personal custody to partner current account'):(rtl?'من جاري الشريك إلى العهدة الشخصية':'Partner current account back to personal custody');
+    const prompt=(rtl?'سيتم إنشاء قيد إعادة تصنيف مستقل لكل حركة، وليس قيدًا إجماليًا واحدًا.\n\nالشريك: ':'This will create a separate reclassification journal for each movement, not one lump-sum journal.\n\nPartner: ')+cashCustodyPartnerOwnerInfo.partnerName+' ('+cashCustodyPartnerOwnerInfo.accountCode+')\n'+directionLabel+'\n'+(rtl?'عدد الحركات: ':'Movements: ')+rows.length+'\n'+(rtl?'صافي الرصيد محل التحويل: ':'Net balance being transferred: ')+money(netBalance)+' EGP\n\n'+(rtl?'سيبقى كل بيان ومرفق كما هو، ولن يتغير الرصيد إلا بعد اعتماد القيود. هل تريد المتابعة؟':'Every description and attachment will remain unchanged. Balances change only after the journals are approved. Continue?');
+    if(!window.confirm(prompt))return;
+    setCashCustodyBusy(true);setCashCustodyNotice('');
+    try{
+      const allResults=[];
+      for(let offset=0;offset<rows.length;offset+=50){
+        const batch=rows.slice(offset,offset+50);
+        const result=await sendPushWorkerRequest('/finance',{
+          action:'transferPartnerCurrentAccountBulk',ownerUid:cashCustodyTarget,direction,
+          transactionIds:batch.map(t=>t.id)
+        });
+        allResults.push(...(Array.isArray(result.results)?result.results:[]));
+      }
+      const submitted=allResults.filter(item=>item.success);
+      const failed=allResults.filter(item=>!item.success&&!item.skipped);
+      const skipped=allResults.filter(item=>item.skipped);
+      const submittedGross=submitted.reduce((sum,item)=>sum+Number(item.amount||0),0);
+      if(submitted.length){
+        await addLog(direction==='toCurrent'?'تحويل مجموعة حركات العهدة إلى جاري الشريك':'إعادة مجموعة حركات جاري الشريك إلى العهدة',currentUser,{
+          entityType:'partner-current-account',entityId:cashCustodyTarget,
+          metadata:{partnerAccountCode:cashCustodyPartnerOwnerInfo.accountCode,direction,movementCount:submitted.length,netBalance,totalAmount:submittedGross,journalIds:submitted.map(item=>item.journalId)}
+        });
+      }
+      let notice=rtl
+        ?'تم إرسال '+submitted.length+' قيد تحويل إلى المراجعة من أصل '+rows.length+' حركة. إجمالي قيم الحركات: '+money(submittedGross)+' ج.م. صافي الرصيد المعروض: '+money(netBalance)+' ج.م. لن يتغير أي رصيد قبل الاعتماد.'
+        :'Submitted '+submitted.length+' transfer journals for review from '+rows.length+' movements. Gross movement value: '+money(submittedGross)+' EGP. Net balance: '+money(netBalance)+' EGP. No balance changes before approval.';
+      if(skipped.length)notice+=' '+(rtl?'تم تخطي '+skipped.length+' حركات لها طلبات معلقة أو حالة غير مناسبة.':'Skipped '+skipped.length+' movements with pending or incompatible status.');
+      if(failed.length){
+        const examples=failed.slice(0,3).map(item=>item.transactionId+': '+item.error).join(' | ');
+        notice+=' '+(rtl?'تعذر تحويل '+failed.length+' حركات: ':'Failed '+failed.length+' movements: ')+examples;
+      }
+      setCashCustodyNotice(notice);
+    }catch(error){setCashCustodyNotice((rtl?'تعذر تنفيذ التحويل الجماعي: ':'Bulk transfer failed: ')+String(error.message||error));}
+    finally{setCashCustodyBusy(false);}
   }
 
   async function loadCustodyStatement(uid=custodyStatementTargetUid,scope=custodyStatementBookScope){
@@ -6948,7 +7022,30 @@ function App(){
           <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-xl">{rtl?'إدارة النقدية الشخصية – العهدة':'Personal Cash Custody'}</h2><p className="text-sm text-gray-500">{rtl?'كشف حساب لكل مستخدم، والرصيد يحتسب من الحركات المعتمدة فقط.':'A separate ledger for each user. The cash balance includes approved movements only.'}</p></div><div className="flex flex-wrap gap-2 no-print"><button type="button" onClick={exportCurrentScreenExcel} className="rounded-lg bg-emerald-600 text-white px-4 py-2 font-bold"><i className="fas fa-file-excel me-2"></i>{rtl?'تصدير Excel':'Export Excel'}</button><button type="button" onClick={()=>window.print()} className="rounded-lg bg-slate-700 text-white px-4 py-2 font-bold"><i className="fas fa-print me-2"></i>{rtl?'طباعة':'Print'}</button></div></div>
           {isAdmin&&cashCustodyTarget===currentUser.uid&&<section className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 no-print"><label className="block text-sm font-bold">{rtl?'تسجيل / عرض العهدة باسم':'Record / view custody as'}<select disabled={Boolean(cashCustodyEditingId)} className="block w-full md:max-w-xl border rounded-lg p-3 mt-1 font-normal bg-white" value={cashCustodyBookScope} onChange={e=>{setCashCustodyBookScope(e.target.value==='company'?'company':'personal');setCashCustodyTargetUid(currentUser.uid);}}><option value="personal">{rtl?'باسمي الشخصي':'My personal capacity'}</option><option value="company">{rtl?'باسم الشركة':'On behalf of the company'}</option></select></label><p className="text-xs text-indigo-800 mt-2">{rtl?'هذا الاختيار متاح لحساب مدير النظام فقط، ولكل اختيار كشف مستقل ورصيد مستقل.':'Only the system administrator can switch this view. Personal and company custody are maintained as separate ledgers.'}</p></section>}
            {hasPermission('cashCustody','viewOthers')&&<section className="bg-white border rounded-xl p-4 no-print"><label className="block text-sm font-bold">{rtl?'عرض كشف عهدة المستخدم':'View user custody ledger'}<select disabled={Boolean(cashCustodyEditingId)} className="block w-full md:max-w-xl border rounded-lg p-3 mt-1 font-normal" value={cashCustodyTarget} onChange={e=>loadCashCustodyTarget(e.target.value)}><option value={currentUser.uid}>{rtl?'عهدي الشخصية':'My custody'}</option>{userDirectory.filter(u=>u.uid&&u.uid!==currentUser.uid&&u.status==='active').map(u=><option key={u.uid} value={u.uid}>{u.fullName||u.username||u.email||u.uid}</option>)}</select></label></section>}
-          <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+          
+           {isAdmin&&cashCustodyTarget!==currentUser.uid&&cashCustodySelectedBookScope==='personal'&&<section className="rounded-2xl border-2 border-indigo-200 bg-indigo-50/70 p-4 sm:p-5 space-y-4 no-print">
+             {cashCustodyPartnerOwnerLoading?<div className="py-3 text-center text-indigo-700"><i className="fas fa-spinner fa-spin me-2"></i>{rtl?'جارٍ التحقق من حساب الشريك وتحميل بياناته...':'Verifying partner account and loading its data...'}</div>:cashCustodyPartnerOwnerInfo&&cashCustodyPartnerOwnerInfo.uid===cashCustodyTarget?<>
+               <div className="flex flex-wrap items-start justify-between gap-3">
+                 <div><h3 className="text-lg font-extrabold text-indigo-950"><i className="fas fa-right-left me-2"></i>{rtl?'التحويل بين العهدة الشخصية وجاري الشريك':'Transfer between personal custody and partner current account'}</h3><p className="text-sm text-indigo-800 mt-1">{rtl?'الشريك: ':'Partner: '}{cashCustodyPartnerOwnerInfo.partnerName} · {rtl?'حساب الجاري: ':'Current account: '}{cashCustodyPartnerOwnerInfo.accountCode}</p></div>
+                 <span className="rounded-full bg-white border border-indigo-200 px-3 py-1 text-xs font-bold text-indigo-800">{rtl?'تحويل على مستوى كل حركة':'Movement-by-movement transfer'}</span>
+               </div>
+               <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                 <article className="rounded-xl border border-indigo-200 bg-white p-4 space-y-3">
+                   <div className="flex items-center justify-between gap-3"><b className="text-slate-800">{rtl?'العهدة الشخصية ← جاري الشريك':'Personal custody → Partner current account'}</b><i className="fas fa-arrow-right-arrow-left text-indigo-600"></i></div>
+                   <div><small className="text-slate-500">{rtl?'صافي رصيد الحركات المعتمدة المتاحة':'Net balance of approved available movements'}</small><b className="block text-2xl text-indigo-800 tabular-nums mt-1">{money(cashCustodyPartnerToCurrentBalance)} EGP</b><small className="text-slate-500">{cashCustodyPartnerToCurrentRows.length} {rtl?'حركة قابلة للتحويل':'movements available'}</small></div>
+                   <button type="button" disabled={!cashCustodyPartnerToCurrentRows.length||cashCustodyBusy} onClick={()=>void transferPartnerCustodyMovementsBulk('toCurrent')} className="w-full rounded-xl bg-indigo-700 hover:bg-indigo-800 text-white px-4 py-3 font-extrabold disabled:opacity-40"><i className="fas fa-arrow-right me-2"></i>{rtl?'تحويل كل حركات العهدة إلى الجاري':'Transfer all custody movements to current account'}</button>
+                 </article>
+                 <article className="rounded-xl border border-emerald-200 bg-white p-4 space-y-3">
+                   <div className="flex items-center justify-between gap-3"><b className="text-slate-800">{rtl?'جاري الشريك ← العهدة الشخصية':'Partner current account → Personal custody'}</b><i className="fas fa-rotate-left text-emerald-600"></i></div>
+                   <div><small className="text-slate-500">{rtl?'صافي رصيد الحركات المحولة حاليًا':'Net balance of currently transferred movements'}</small><b className="block text-2xl text-emerald-800 tabular-nums mt-1">{money(cashCustodyPartnerToCustodyBalance)} EGP</b><small className="text-slate-500">{cashCustodyPartnerToCustodyRows.length} {rtl?'حركة يمكن إعادتها':'movements available to return'}</small></div>
+                   <button type="button" disabled={!cashCustodyPartnerToCustodyRows.length||cashCustodyBusy} onClick={()=>void transferPartnerCustodyMovementsBulk('toCustody')} className="w-full rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-3 font-extrabold disabled:opacity-40"><i className="fas fa-rotate-left me-2"></i>{rtl?'إعادة كل الحركات إلى العهدة الشخصية':'Return all movements to personal custody'}</button>
+                 </article>
+               </div>
+               <div className="text-xs leading-6 text-indigo-900">{rtl?'كل حركة ستظل ببيانها وتاريخها ورقمها ومرفقاتها، وسيُنشأ لها قيد إعادة تصنيف مستقل. الحركات التي لم يُرحّل قيدها الأصلي أو ما زالت معلقة لن يتم تحويلها. اعتماد القيود من شاشة المراجعة هو الذي يغيّر رصيد الجاري والعهدة.':'Each movement retains its own description, date, reference and attachments, with a separate reclassification journal. Movements without a posted source journal or still pending are not transferred. Approving the journals in the review screen is what changes the current-account and custody balances.'}</div>
+               {cashCustodyPartnerPendingRows.length>0&&<div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">{rtl?'توجد ':'There are '}{cashCustodyPartnerPendingRows.length}{rtl?' حركات تحويل في انتظار المراجعة.':' transfer movements awaiting review.'}</div>}
+             </>:<div className="py-2 text-sm text-slate-600">{rtl?'اختر حساب ثابت ربيع أو هيثم إبراهيم النشط من القائمة لعرض أدوات التحويل.':'Select the active Thabet Rabea or Haitham Ibrahim user above to show the transfer controls.'}</div>}
+           </section>}
+           <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
             <div className="bg-white border rounded-xl p-4"><p className="text-xs text-gray-500">{rtl?'إجمالي النقدية المستلمة':'Total received'}</p><b className="block text-xl text-emerald-700 mt-1">{money(cashCustodyInTotal)} {cashCustodyCurrencyFilter}</b></div>
             <div className="bg-white border rounded-xl p-4"><p className="text-xs text-gray-500">{rtl?'إجمالي المصروفات والمرتجعات':'Expenses and returns'}</p><b className="block text-xl text-rose-700 mt-1">{money(cashCustodyOutTotal)} {cashCustodyCurrencyFilter}</b></div>
             <div className="bg-white border rounded-xl p-4"><p className="text-xs text-gray-500">{rtl?'الرصيد النقدي الحالي':'Current cash balance'}</p><b className="block text-2xl text-blue-700 mt-1">{money(cashCustodyBalance)} {cashCustodyCurrencyFilter}</b></div>
