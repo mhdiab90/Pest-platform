@@ -676,7 +676,7 @@ export async function handleFinancialRequest(ctx){
   }
   throw new Error("Unknown financial data resource.");
  }
- if(request.method!=="POST")throw new Error("Method not allowed.");const action=txt(body.action,40),now=Date.now();
+ if(request.method!=="POST")throw new Error("Method not allowed.");const action=txt(body.action,80),now=Date.now();
  if(action==="repairPartnerCurrentAccountExpenseTransfers"){
   if(profile.role!=="admin")throw new Error("تصحيح تصنيف حركات جاري الشركاء متاح لمدير النظام فقط.");
   if(!adminReadRoot||!adminPatchRoot)throw new Error("خدمة تصحيح القيود الموحدة غير متاحة.");
@@ -697,7 +697,7 @@ export async function handleFinancialRequest(ctx){
    return true;
   };
   for(const [transactionKey,transaction] of Object.entries(transactions)){
-   if(!transaction||transaction.type!=="expense"||transaction.bookScope!=="personal"||transaction.pairRole==="counterparty"||!transaction.partnerCurrentAccountTransfer||transaction.partnerCurrentAccountTransfer.active!==true)continue;
+   if(!transaction||transaction.type!=="expense"||String(transaction.bookScope||"personal")!=="personal"||transaction.pairRole==="counterparty"||!transaction.partnerCurrentAccountTransfer||transaction.partnerCurrentAccountTransfer.active!==true)continue;
    const transfer=transaction.partnerCurrentAccountTransfer,transactionId=id(transaction.id||transactionKey);
    if(transfer.transferTreatment==="personalWithdrawal"||transfer.expenseCorrectionStatus==="posted"){skipped++;results.push({transactionId,status:"already_corrected"});continue;}
    if(transfer.expenseCorrectionPendingJournalId||transfer.expenseCorrectionStatus==="pending_review"){skipped++;results.push({transactionId,status:"pending_correction"});continue;}
