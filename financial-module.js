@@ -1577,7 +1577,7 @@ const renderJournal = function() {
    });
    const draftsPanel=panel('سجل القيود اليومية الموحد','يعرض القيود اليدوية والقيود المرحّلة الناتجة عن فواتير العملاء والموردين والخزينة والبنوك، إضافة إلى قيود أحداث المشروعات والعهد. اضغط أي صف لفتح تفاصيله. التعديل المباشر متاح للقيود اليدوية ومسودات أحداث المشروع والعهد داخل المراجعة، والقيود المرحّلة من المصادر الأخرى تُعالج من المستند الأصلي أو بقيد عكسي.',table(['رقم القيد','التاريخ','البيان','المصدر','الحالة','مدين','دائن','إجراء'],draftRows));
    const modal=journalModal&&journalModalDraft?(()=>{
-    const draft=journalModalDraft,manual=!draft.sourceType||draft.sourceType==='manual',posted=draft.status==='posted'||journalRecords.some(x=>x.id===draft.id&&x.status==='posted'),reviewEditable=['projectEvent','cashCustody'].includes(draft.sourceType)&&['pending_review','needs_correction'].includes(draft.status);
+    const draft=journalModalDraft,manual=!draft.sourceType||draft.sourceType==='manual',posted=draft.status==='posted'||journalRecords.some(x=>x.id===draft.id&&x.status==='posted'),reviewEditable=draft.type==='journal'&&['pending_review','needs_correction'].includes(draft.status);
     const editable=manual||reviewEditable,modalDebit=(draft.lines||[]).reduce((sum,line)=>sum+n(line.debit),0),modalCredit=(draft.lines||[]).reduce((sum,line)=>sum+n(line.credit),0);
     const modalLines=(draft.lines||[]).map((line,index)=>{
      const account=accounts.find(x=>x.code===line.accountCode)||{},analyticType=line.partyType||account.subledgerType||'customer',analyticList=analyticType==='vendor'?activeVendors:activeClients;
@@ -1931,7 +1931,10 @@ const renderCostCenterAnalysis = function() {
     h('div',{className:'space-y-3'},
      table([t('م','No.'),t('الحساب','Account'),t('البيان','Description'),t('الطرف التحليلي','Analytical Party'),t('مركز التكلفة','Cost Center'),t('المشروع','Project'),t('الصنف','Item'),t('الكمية','Quantity'),t('مدين','Debit'),t('دائن','Credit')],lines.map((line,index)=>{
       const item=items.find(x=>String(x.code)===String(line.itemCode)),projectCode=line.projectCode||selected.projectCode;
-      return h('tr',{key:index,className:'border-t align-top'},
+      return h('tr',{key:index,className:'border-t align-top '+(canFinance('review','edit')&&['pending_review','needs_correction'].includes(selected.status)?'cursor-pointer hover:bg-indigo-50':''),
+        onClick:()=>{if(canFinance('review','edit')&&['pending_review','needs_correction'].includes(selected.status))openJournalModal(selected);},
+        title:canFinance('review','edit')?'اضغط على السطر لتعديل الحساب أو البيان أو القيمة':''
+       },
        h('td',{className:'p-2'},String(index+1)),
        h('td',{className:'p-2 min-w-44'},reviewAccountLabel(line.accountCode)),
        h('td',{className:'p-2 min-w-48 whitespace-pre-wrap'},line.description||selected.description||'—'),
@@ -1964,6 +1967,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
    h('p',{className:'text-sm'},t('النوع: ','Type: ')+(selected.type==='invoice'?(selected.invoiceType==='purchase'?t('فاتورة مشتريات','Purchase Invoice'):t('فاتورة مبيعات','Sales Invoice')):documentType(selected.type))+' · '+t('التاريخ: ','Date: ')+(selected.date||'—')+' · '+t('الحالة: ','Status: ')+status(selected.status)),
    h('p',{className:'text-sm font-bold'},t('قيمة القيد / المستند: ','Journal / Document Amount: ')+moneyLabel(selected.total||selected.amount||(selected.type==='journal'?(selected.lines||[]).reduce((sum,line)=>sum+n(line.debit),0):0))),
    selected.type==='journal'?renderReviewJournalDetails():null,
+    selected.type==='journal'&&canFinance('review','edit')&&['pending_review','needs_correction'].includes(selected.status)?button('تعديل القيد',()=>openJournalModal(selected),'primary',busy):null,
     (selected.reviewReason||'')?h('p',{className:'rounded-lg border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900'},'ملاحظة المراجعة السابقة: '+selected.reviewReason):null,
    (selected.errors||[]).length?h('ul',{className:'list-disc pr-5 text-rose-700'},selected.errors.map((x,i)=>h('li',{key:i},x))):null,
    (selected.warnings||[]).length?h('ul',{className:'list-disc pr-5 text-amber-700'},selected.warnings.map((x,i)=>h('li',{key:i},x))):null,
@@ -2011,8 +2015,9 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
    h('td',{className:'p-2'},status(x.status)),
    h('td',{className:'p-2'},x.attachmentUploadStatus==='pending'?'المرفق يحتاج إعادة رفع':x.attachmentFileName||'—'),
    h('td',{className:'p-2'},button('فتح',()=>{void openReviewItem(x);},'muted'))
-  )))
- ));
+  ))),
+   renderReviewJournalEditor()
+  ));
  const renderCash=()=>{
   const movementLabels={customer_receipt:"تحصيل من عميل",supplier_payment:"سداد إلى مورد",other_receipt:"استلام نقدية / إيراد آخر",other_payment:"مصروف / مدفوعات أخرى",cash_to_bank:"إيداع نقدية بالبنك",bank_to_cash:"سحب نقدية من البنك",employee_custody:"تسليم عهدة لموظف",employee_custody_return:"استرداد عهدة من موظف",employee_advance:"صرف سلفة لموظف",employee_advance_recovery:"تحصيل سلفة من موظف"};
   const movement=cash.movementType;
