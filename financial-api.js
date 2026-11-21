@@ -636,7 +636,7 @@ export async function handleFinancialRequest(ctx){
     const partnerProfile=matched?matched[1]:null;
     const ledger=partnerUid?(await adminRead("partyLedger/partnerCurrentAccount/"+id(partnerUid)))||{}:{};
     const custodyRows=partnerUid&&adminReadRoot?(await adminReadRoot("cashCustodies/"+id(partnerUid)+"/transactions"))||{}:{};
-    const transactions=Object.entries(custodyRows).filter(([,item])=>item&&item.bookScope==="personal"&&item.pairRole!=="counterparty"&&item.partnerCurrentAccountTransfer&&item.partnerCurrentAccountTransfer.active===true).map(([transactionId,item])=>({id:item.id||transactionId,...item})).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||""))||Number(b.createdAt||0)-Number(a.createdAt||0));
+    const transactions=Object.entries(custodyRows).filter(([,item])=>item&&String(item.bookScope||"personal")==="personal"&&item.pairRole!=="counterparty"&&item.partnerCurrentAccountTransfer&&item.partnerCurrentAccountTransfer.active===true).map(([transactionId,item])=>({id:item.id||transactionId,...item})).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||""))||Number(b.createdAt||0)-Number(a.createdAt||0));
     const entries=[];
     Object.values(ledger).forEach(periodRows=>Object.values(periodRows||{}).forEach(entry=>{if(entry)entries.push(entry);}));
     entries.sort((a,b)=>String(a.date||"").localeCompare(String(b.date||""))||String(a.journalId||"").localeCompare(String(b.journalId||"")));
