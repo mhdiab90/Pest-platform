@@ -3521,7 +3521,7 @@ function App(){
     const profileUser=activeUsers.find(item=>item.uid===ownerUid)||{};
     const directoryUser=userDirectory.find(item=>item.uid===ownerUid)||{};
     const user={...profileUser,...directoryUser};
-    const normalize=value=>String(value||'').trim().toLowerCase().replace(/\\s+/g,' ');
+    const normalize=value=>String(value||'').trim().toLowerCase().replace(/\s+/g,' ');
     const email=normalize(profileUser.email||directoryUser.email||user.email);
     if(email==='thabetrabea@gmail.com')return {uid:ownerUid,accountCode:'3202',partnerName:'أ/ ثابت ربيع',email:'thabetrabea@gmail.com'};
     const candidates=[user.username,user.fullName,email.split('@')[0]].map(normalize);
