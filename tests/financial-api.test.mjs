@@ -1566,6 +1566,26 @@ test("partner current accounts create separate analytical ledgers and transfer a
 });
 
 
+test("partner current accounts include legacy personal rows with missing bookScope", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const ownerUid="PARTNER-LEGACY-SCOPE-TEST";
+  const transactionId="PARTNER-LEGACY-SCOPE-ROW";
+  write("users/"+ownerUid,{
+    uid:ownerUid,status:"active",role:"user",
+    username:"haitham Ibrahim mahmoud",fullName:"Haitham Legacy Scope Test"
+  });
+  write("cashCustodies/"+ownerUid+"/transactions/"+transactionId,{
+    id:transactionId,ownerUid,type:"expense",amount:275,currency:"EGP",
+    date:"2026-11-21",description:"Legacy personal custody row without bookScope",
+    status:"approved",
+    partnerCurrentAccountTransfer:{active:true,pending:false,lastDirection:"toCurrent",lastJournalId:"LEGACY-SCOPE-TRANSFER"}
+  });
+  const listing=await invoke("GET","?resource=partnerCurrentAccounts");
+  const partner=listing.items.find(item=>item.uid===ownerUid);
+  assert.ok(partner,"the partner account should resolve");
+  assert.ok(partner.transactions.some(item=>item.id===transactionId),"a legacy personal row without bookScope must be listed consistently with the repair action");
+});
+
 test("legacy partner-current expense transfers can be corrected safely through review without rewriting posted source journals", async () => {
   await invoke("GET","?resource=bootstrap");
   const ownerUid="PARTNER-LEGACY-REPAIR-01",transactionId="PARTNER-LEGACY-EXPENSE-01";
