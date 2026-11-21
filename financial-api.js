@@ -813,7 +813,7 @@ export async function handleFinancialRequest(ctx){
   const centers=(await adminRead("costCenters"))||{},validation=validateJournal(journal,chart,centers);
   if(validation.errors.length)throw new Error("قيد تحويل العهدة غير صالح: "+validation.errors.join("؛ "));
   journal.balance=validation.balance;journal.errors=[];
-  if(body.previewOnly===true)return {success:true,status:"preview",destinationOwnerUid,destinationName,preview:{number:journal.number,date:journal.date,description:journal.description,amount:journal.amount,lines:journal.lines,balance:journal.balance}};
+  if(body.previewOnly===true)return {success:true,status:"preview",destinationOwnerUid,destinationName,preview:{id:journal.id,number:journal.number,date:journal.date,description:journal.description,amount:journal.amount,lines:journal.lines,balance:journal.balance}};
   const mirror={...transaction,id:mirrorId,ownerUid:destinationOwnerUid,bookScope:"personal",status:"transfer_pending",pairRole:"counterparty",pairGroupId:transferId,linkedOwnerUid:ownerUid,linkedTransactionId:transactionId,counterparty:sourceName,counterpartyType:"user",counterpartyUid:ownerUid,counterpartyName:sourceName,description:"حركة عهدة محولة من "+sourceName+": "+txt(transaction.description||transactionId,220),financialReviewStatus:"pending_review",financialJournalId:journalId,cashCustodyTransfer:{active:false,pending:true,pendingJournalId:journalId,transferId,sourceOwnerUid:ownerUid,sourceTransactionId:transactionId}};
   const rootUpdates={};
   rootUpdates["financial/documents/"+journalId]=journal;
