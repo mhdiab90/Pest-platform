@@ -38,3 +38,19 @@ test("all finance screens allow scroll chaining from nested lists to the workspa
   assert.match(shell, /overflow-y-auto[^}]*overscroll-behavior-y:auto!important/);
   assert.doesNotMatch(shell, /\.app-root-shell \.app-workspace\{[^}]*overscroll-behavior:contain/);
 });
+
+
+test("financial statement journal details expose the same safe journal actions as the daily register", () => {
+  assert.match(source, /statementJournalPosted=Boolean\(statementJournal/);
+  assert.match(source, /statementJournalManual=Boolean\(statementJournal/);
+  assert.match(source, /button\('تعديل القيد',\(\)=>void startJournalRevision\(statementJournal,'edit'\)/);
+  assert.match(source, /button\('إرجاع للمراجعة',\(\)=>void startJournalRevision\(statementJournal,'return'\)/);
+  assert.match(source, /button\('إلغاء القيد \(إنشاء قيد عكسي\)',\(\)=>void reverseJournal\(statementJournal\)/);
+  assert.match(source, /button\('إلغاء القيد',\(\)=>void cancelJournal\(statementJournal\)/);
+  assert.match(source, /إجراءات تعديل القيد أو إرجاعه للمراجعة أو إلغاؤه غير متاحة مباشرة من تتبع الحساب/);
+});
+
+test("confirmed statement journal actions close the statement detail before opening a review dialog", () => {
+  assert.match(source, /setStatementJournalId\(''\);\s*setBusy\(true\);/);
+  assert.equal((source.match(/setStatementJournalId\(''\);\s*setBusy\(true\);/g)||[]).length, 3);
+});
