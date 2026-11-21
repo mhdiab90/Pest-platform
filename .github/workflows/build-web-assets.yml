@@ -51,5 +51,19 @@ jobs:
             echo "Optimized web assets are already up to date."
           else
             git commit -m "Build optimized web assets"
-            git push
+            for attempt in 1 2 3; do
+              if git push origin "HEAD:${GITHUB_REF_NAME}"; then
+                exit 0
+              fi
+              if [ "$attempt" -eq 3 ]; then
+                echo "Unable to publish optimized assets after three synchronized attempts."
+                exit 1
+              fi
+              echo "Branch advanced during asset publishing; rebasing and rebuilding before retry."
+              git fetch origin "+refs/heads/${GITHUB_REF_NAME}:refs/remotes/origin/${GITHUB_REF_NAME}"
+              git rebase "origin/${GITHUB_REF_NAME}"
+              npm run build:web
+              git add web-dist
+              git commit --amend --no-edit
+            done
           fi
