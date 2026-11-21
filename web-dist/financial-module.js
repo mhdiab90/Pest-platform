@@ -1280,6 +1280,7 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
   if(doc.pendingRevisionId||doc.revisedByJournalId||doc.reversalJournalId||doc.reversedByJournalId){setError("هذا القيد لديه تعديل معلّق أو تعديل/عكس سابق؛ راجع القيد المرتبط قبل إنشاء طلب جديد.");return;}
   const actionLabel=mode==="return"?"إرجاع القيد للمراجعة":"تعديل القيد";
   if(!window.confirm(actionLabel+" "+(doc.number||doc.id)+"؟ سيتم إنشاء نسخة مراجعة مستقلة مرتبطة بالقيد الأصلي. سيظل القيد الأصلي وأثره في الأستاذ كما هما حتى اعتماد التعديل."))return;
+  setStatementJournalId('');
   setBusy(true);setError("");setNotice("");
   try{
    const result=await api("","POST",{action:"createJournalRevision",id:doc.id,mode});
@@ -1299,6 +1300,7 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
  const reverseJournal=async doc=>{
   if(!doc||!canFinance("journal","add")){setError("ليس لديك صلاحية إنشاء قيد عكسي.");return;}
   if(!window.confirm("إنشاء قيد عكسي للقيد "+(doc.id||"")+"؟ سيُرسل القيد العكسي للمراجعة، ولن يتغير القيد الأصلي قبل الاعتماد."))return;
+  setStatementJournalId('');
   setBusy(true);setError("");
   try{
    const result=await api("","POST",{action:"reverseJournal",id:doc.id});
@@ -1310,6 +1312,7 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
  const cancelJournal=async doc=>{
   if(!doc||!canFinance("journal","edit")){setError("ليس لديك صلاحية إلغاء القيد.");return;}
   if(!window.confirm("إلغاء القيد "+(doc.id||"")+"؟ سيُزال من قائمة المراجعة مع الاحتفاظ بسجل الإلغاء."))return;
+  setStatementJournalId('');
   setBusy(true);setError("");
   try{
    await api("","POST",{action:"cancelJournal",id:doc.id,reason:"إلغاء من شاشة القيود اليومية"});
@@ -2511,6 +2514,9 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
  }):[];
  const statementJournalDebit=statementJournal?(statementJournal.lines||[]).reduce((sum,line)=>sum+n(line.debit),0):0;
  const statementJournalCredit=statementJournal?(statementJournal.lines||[]).reduce((sum,line)=>sum+n(line.credit),0):0;
+ const statementJournalPosted=Boolean(statementJournal&&(statementJournal.status==='posted'||journalRecords.some(item=>String(item.id)===String(statementJournal.id)&&item.status==='posted')));
+ const statementJournalManual=Boolean(statementJournal&&(!statementJournal.sourceType||statementJournal.sourceType==='manual'));
+ const statementJournalHasLinkedAction=Boolean(statementJournal&&(statementJournal.pendingRevisionId||statementJournal.revisedByJournalId||statementJournal.reversalJournalId||statementJournal.reversedByJournalId));
  const accountDetailModal=accountDetailData?h('div',{className:'fixed inset-0 z-[125] bg-slate-950/60 flex items-center justify-center p-2 sm:p-4',onClick:()=>setAccountDetailCode('')},
   h('section',{className:'w-full max-w-7xl max-h-[94vh] overflow-auto rounded-2xl bg-white shadow-2xl',onClick:e=>e.stopPropagation()},
    h('header',{className:'sticky top-0 z-10 bg-slate-900 text-white p-4 rounded-t-2xl flex flex-wrap items-center justify-between gap-2'},
@@ -2563,6 +2569,15 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
       h('thead',{className:'bg-slate-100'},h('tr',null,['م','الحساب (اضغط لفتح كشف الحساب)','البيان','مركز التكلفة','المشروع','الطرف التحليلي','مدين','دائن'].map(name=>h('th',{key:name,className:'p-2 whitespace-nowrap'},name)))),
       h('tbody',null,statementJournalLines.length?statementJournalLines:h('tr',null,h('td',{colSpan:8,className:'p-6 text-center text-slate-400'},'القيد لا يحتوي على بنود.')))
      )
+    ),
+    h('div',{className:'flex flex-wrap gap-2 rounded-xl border border-blue-200 bg-blue-50/60 p-3'},
+     statementJournalPosted&&statementJournalManual&&canFinance('journal','edit')?button('تعديل القيد',()=>void startJournalRevision(statementJournal,'edit'),'primary',busy||statementJournalHasLinkedAction||!canFinance('review','edit')):null,
+     statementJournalPosted&&statementJournalManual&&canFinance('journal','edit')?button('إرجاع للمراجعة',()=>void startJournalRevision(statementJournal,'return'),'muted',busy||statementJournalHasLinkedAction||!canFinance('review','edit')):null,
+     statementJournalPosted&&statementJournalManual&&canFinance('journal','add')?button('إلغاء القيد (إنشاء قيد عكسي)',()=>void reverseJournal(statementJournal),'danger',busy||statementJournalHasLinkedAction):null,
+     !statementJournalPosted&&canFinance('journal','edit')?button('إلغاء القيد',()=>void cancelJournal(statementJournal),'danger',busy):null,
+     statementJournalPosted&&!statementJournalManual?h('p',{className:'w-full text-xs text-amber-800'},'هذا القيد ناتج عن مستند مصدر. يجب تعديل الفاتورة أو السند أو حركة المصدر الأصلية حتى لا تختل أرصدة المخزون والأطراف. إجراءات تعديل القيد أو إرجاعه للمراجعة أو إلغاؤه غير متاحة مباشرة من تتبع الحساب.'):null,
+     statementJournalPosted&&statementJournalManual&&statementJournalHasLinkedAction?h('p',{className:'w-full text-xs text-amber-800'},'هذا القيد مرتبط بطلب تعديل أو إلغاء أو قيد عكسي سابق؛ راجع القيد المرتبط قبل إنشاء إجراء جديد.'):null,
+     !statementJournalPosted&&!canFinance('journal','edit')?h('p',{className:'w-full text-xs text-slate-600'},'لا تتوفر لديك صلاحية إلغاء هذا القيد.'):null
     ),
     h('div',{className:'flex flex-wrap justify-end gap-4 rounded-xl border bg-slate-50 p-3 text-sm font-bold'},
      h('span',null,'المدين: '+fmt(statementJournalDebit)),
