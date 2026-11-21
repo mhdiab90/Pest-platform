@@ -791,8 +791,24 @@ function FinanceModule(props){
  const accounts=rows(master.chartOfAccounts).sort((a,b)=>String(a.code).localeCompare(String(b.code),undefined,{numeric:true}));
  const loadPartnerCurrentAccounts=async(silent=false)=>{
  if(!silent)setBusy(true);setError('');
- try{const result=await api('?resource=partnerCurrentAccounts'),list=Array.isArray(result.items)?result.items:[];setPartnerCurrentAccounts(list);const refs=[];list.forEach(account=>{(account.entries||[]).forEach(entry=>refs.push(...statementAttachmentReferences(entry)));(account.transactions||[]).forEach(transaction=>{if(account.uid&&transaction.id)refs.push({entityType:'cashCustody',entityId:account.uid+'--'+transaction.id});});});void loadStatementAttachmentReferences(refs);if(!list.some(item=>item.uid===partnerCurrentSelectedUid&&item.linked)){}const first=list.find(item=>item.linked);setPartnerCurrentSelectedUid(first&&first.uid||'');}return list;}
- catch(error){setError(error.message||String(error));return [];}finally{if(!silent)setBusy(false);}
+ try{
+  const result=await api('?resource=partnerCurrentAccounts'),list=Array.isArray(result.items)?result.items:[];
+  setPartnerCurrentAccounts(list);
+  const refs=[];
+  list.forEach(account=>{
+   (account.entries||[]).forEach(entry=>refs.push(...statementAttachmentReferences(entry)));
+   (account.transactions||[]).forEach(transaction=>{
+    if(account.uid&&transaction.id)refs.push({entityType:'cashCustody',entityId:account.uid+'--'+transaction.id});
+   });
+  });
+  void loadStatementAttachmentReferences(refs);
+  if(!list.some(item=>item.uid===partnerCurrentSelectedUid&&item.linked)){
+   const first=list.find(item=>item.linked);
+   setPartnerCurrentSelectedUid(first&&first.uid||'');
+  }
+  return list;
+ }catch(error){setError(error.message||String(error));return [];}
+ finally{if(!silent)setBusy(false);}
 };
 const downloadPartnerCustodyAttachment=async(account,transaction,attachment)=>{
  const auth=window.PEST_FIREBASE_AUTH&&window.PEST_FIREBASE_AUTH.currentUser;if(!auth)throw new Error('جلسة الدخول انتهت. أعد تسجيل الدخول.');
