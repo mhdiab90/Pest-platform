@@ -437,6 +437,7 @@ function FinanceModule(props){
  const [partyStatement,setPartyStatement]=React.useState({type:'customer',id:''}),[partyRows,setPartyRows]=React.useState([]);
  const [partnerCurrentAccounts,setPartnerCurrentAccounts]=React.useState([]),[partnerCurrentSelectedUid,setPartnerCurrentSelectedUid]=React.useState(''),[partnerCurrentSearch,setPartnerCurrentSearch]=React.useState(''),[partnerCurrentAttachmentView,setPartnerCurrentAttachmentView]=React.useState(null);
  const [accountDetailCode,setAccountDetailCode]=React.useState(''),[statementJournalId,setStatementJournalId]=React.useState('');
+ const [collapsedPanels,setCollapsedPanels]=React.useState({});
  const [accountAnalysisCode,setAccountAnalysisCode]=React.useState(''),[accountAnalysisGroupKey,setAccountAnalysisGroupKey]=React.useState(''),[accountAnalysisSearch,setAccountAnalysisSearch]=React.useState('');
  const [statementAttachmentIndex,setStatementAttachmentIndex]=React.useState({});
  const [statementAttachmentList,setStatementAttachmentList]=React.useState(null),[statementAttachmentPreview,setStatementAttachmentPreview]=React.useState(null);
@@ -1180,7 +1181,19 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
   finally{setBusy(false);}
  };
  const area=(label,value,onChange)=>h('label',{className:'block text-sm font-bold'},label,h('textarea',{value,onChange:e=>onChange(e.target.value),rows:2,className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal'}));
- const panel=(title,sub,child)=>h('section',{className:'rounded-2xl border bg-white p-4 shadow-sm min-w-0'},h('div',{className:'mb-3'},h('h3',{className:'font-bold text-lg'},title),sub?h('p',{className:'text-xs text-slate-500'},sub):null),child);
+ const panel=(title,sub,child)=>{
+  const panelKey=String(tab)+'::'+String(title),collapsed=Boolean(collapsedPanels[panelKey]);
+  return h('section',{key:panelKey,className:'rounded-2xl border bg-white p-4 shadow-sm min-w-0'},
+   h('div',{className:'mb-2 flex flex-wrap items-start justify-between gap-2'},
+    h('div',{className:'min-w-0 flex-1'},h('h3',{className:'font-bold text-lg'},title),sub?h('p',{className:'text-xs text-slate-500 mt-1'},sub):null),
+    h('button',{type:'button','aria-expanded':!collapsed,'aria-label':(collapsed?'إظهار القسم: ':'إخفاء القسم: ')+String(title),onClick:()=>setCollapsedPanels(previous=>Object.assign({},previous,{[panelKey]:!previous[panelKey]})),className:'shrink-0 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100'},
+     h('span',null,collapsed?t('إظهار القسم','Show section'):t('إخفاء القسم','Hide section')),
+     h('span',{className:'text-base leading-none'},collapsed?'⌄':'⌃')
+    )
+   ),
+   collapsed?null:h('div',{className:'mt-3 min-w-0'},child)
+  );
+ };
  const metric=(label,value)=>h('div',{className:'rounded-xl border bg-white p-3'},h('div',{className:'text-xs text-slate-500'},label),h('strong',{className:'text-xl block mt-1'},value));
  const screenSearchText=node=>{
   if(node===null||node===undefined||typeof node==='boolean')return '';
@@ -1193,7 +1206,12 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
   const query=String(screenTableSearch||'').trim().toLowerCase();
   const source=Array.isArray(data)?data:[];
   const filtered=query?source.filter(row=>screenSearchText(row).toLowerCase().includes(query)):source;
-  return h('div',{className:'overflow-auto border rounded-xl',style:scrollStyle||undefined},h('table',{className:'w-full text-sm text-right'},h('thead',{className:'bg-slate-100'},h('tr',null,headers.map(x=>h('th',{key:x,className:'p-3 whitespace-nowrap'},x)))),h('tbody',null,filtered.length?filtered:h('tr',null,h('td',{colSpan:headers.length,className:'p-4 text-center text-slate-400'},query?'لا توجد نتائج مطابقة للبحث':'لا توجد بيانات')))));
+  return h('div',{className:'overflow-auto border rounded-xl',style:scrollStyle||undefined},
+   h('table',{dir:rtl?'rtl':'ltr',className:'w-full text-sm text-right'},
+    h('thead',{className:'bg-slate-100'},h('tr',null,headers.map(x=>h('th',{key:x,className:'p-3 whitespace-nowrap text-right align-middle'},x)))),
+    h('tbody',null,filtered.length?filtered:h('tr',null,h('td',{colSpan:headers.length,className:'p-4 text-center text-slate-400'},query?'لا توجد نتائج مطابقة للبحث':'لا توجد بيانات')))
+   )
+  );
  };
  const noticeElement=error?h('div',{className:'rounded-xl bg-rose-50 text-rose-800 border border-rose-200 p-3 text-sm'},error):notice?h('div',{className:'rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 p-3 text-sm'},notice):null;
  const saveMaster=async()=>{
@@ -3163,7 +3181,16 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
  if(tab==='tax')content=renderTax();
  if(tab==='reports')content=renderReports();
  if(tab==='accountAnalysis')content=renderAccountAnalysis();
- return h('div',{className:'p-2 md:p-3 space-y-2',dir:rtl?'rtl':'ltr'},
+ return h('div',{className:'pest-finance-workspace p-2 md:p-3 space-y-2',dir:rtl?'rtl':'ltr'},
+  h('style',null,`
+   .pest-finance-workspace[dir="rtl"] table{direction:rtl!important;text-align:right!important;}
+   .pest-finance-workspace[dir="rtl"] table th:not(.text-center):not(.text-left),.pest-finance-workspace[dir="rtl"] table td:not(.text-center):not(.text-left){text-align:right!important;}
+   .pest-finance-workspace[dir="rtl"] table th{vertical-align:middle;white-space:nowrap;}
+   .pest-finance-workspace[dir="rtl"] table td[class~="text-end"]{direction:ltr!important;text-align:right!important;white-space:nowrap;font-variant-numeric:tabular-nums;}
+   .pest-finance-workspace[dir="rtl"] table td[class~="text-center"]{text-align:center!important;}
+   .pest-finance-workspace[dir="ltr"] table td[class~="text-end"]{direction:ltr!important;text-align:right!important;white-space:nowrap;font-variant-numeric:tabular-nums;}
+   .pest-finance-workspace table th,.pest-finance-workspace table td{vertical-align:middle;}
+  `),
   h('header',{className:'flex flex-wrap items-center justify-between gap-3'},h('div',null,h('h2',{className:'text-2xl font-extrabold'},t('النظام المالي والمحاسبي','Financial & Accounting System')),h('p',{className:'text-xs text-slate-500'},t('دفتر أستاذ مستقل — لا ترحيل قبل المراجعة والاعتماد','Separate General Ledger — No Posting Before Review & Approval'))),button(busy?t('جارٍ التحديث','Updating'):t('تحديث البيانات','Refresh Data'),refresh,'muted',busy)),
   h('nav',{className:'flex flex-wrap gap-2'},visibleNav.map(x=>button(rtl?x[1]:x[2],()=>{setTab(x[0]);setNotice('');setError('');setScreenTableSearch('');},tab===x[0]?'primary':'muted'))),
   field(t('بحث في بيانات الشاشة الحالية','Search current screen data'),screenTableSearch,setScreenTableSearch),
