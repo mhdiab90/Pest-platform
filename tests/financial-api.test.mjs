@@ -1571,12 +1571,8 @@ test("partner current accounts create separate analytical ledgers and transfer a
 
 test("partner current accounts include legacy personal rows with missing bookScope", async () => {
   await invoke("GET","?resource=bootstrap");
-  const ownerUid="PARTNER-LEGACY-SCOPE-TEST";
+  const ownerUid="PARTNER-HAITHAM-TEST";
   const transactionId="PARTNER-LEGACY-SCOPE-ROW";
-  write("users/"+ownerUid,{
-    uid:ownerUid,status:"active",role:"user",
-    username:"haitham Ibrahim mahmoud",fullName:"Haitham Legacy Scope Test"
-  });
   write("cashCustodies/"+ownerUid+"/transactions/"+transactionId,{
     id:transactionId,ownerUid,type:"expense",amount:275,currency:"EGP",
     date:"2026-11-21",description:"Legacy personal custody row without bookScope",
