@@ -772,6 +772,57 @@ export async function handleFinancialRequest(ctx){
   await adminPatchRoot(rootUpdates);
   return {success:true,status:"pending_review",journalId,journalNumber:journal.number,accountCode:config.code,partnerName:config.partnerName,transactionId};
  }
+ if(action==="transferCashCustodyMovement"){
+  if(profile.role!=="admin")throw new Error("تحويل حركات العهدة متاح لمدير النظام فقط.");
+  const ownerUid=id(body.ownerUid),transactionId=id(body.transactionId),destinationOwnerUid=id(body.destinationOwnerUid);
+  if(!ownerUid||!transactionId||!destinationOwnerUid||ownerUid===destinationOwnerUid)throw new Error("حدد صاحب العهدة الأصلية وصاحب العهدة المستفيدة بصورة صحيحة.");
+  const sourcePath="cashCustodies/"+ownerUid+"/transactions/"+transactionId;
+  const transaction=adminReadRoot?await adminReadRoot(sourcePath):null;
+  if(!transaction||transaction.id!==transactionId||transaction.ownerUid!==ownerUid||transaction.bookScope!=="personal"||transaction.pairRole==="counterparty")throw new Error("حركة العهدة الأصلية غير موجودة أو غير قابلة للتحويل.");
+  if(transaction.status!=="approved")throw new Error("يجب أن تكون حركة العهدة الأصلية معتمدة.");
+  if(String(transaction.currency||"EGP").toUpperCase()!=="EGP")throw new Error("التحويل متاح حاليًا بالجنيه المصري فقط.");
+  const transfer=transaction.cashCustodyTransfer||{};
+  if(transfer.pending===true||transfer.active===true)throw new Error("الحركة محولة بالفعل أو يوجد طلب تحويل لها قيد المراجعة.");
+  const destinationUser=adminReadRoot?await adminReadRoot("users/"+destinationOwnerUid):null;
+  if(!destinationUser||!["active","نشط","مفعل","enabled"].includes(String(destinationUser.status||"").toLowerCase()))throw new Error("صاحب العهدة المستفيدة غير موجود أو غير نشط.");
+  const sourceJournalId=transaction.financialJournalId||transaction.financialDocumentId||await adminRead("cashCustodyJournalLinks/"+ownerUid+"/"+transactionId);
+  if(!sourceJournalId)throw new Error("لا يوجد قيد محاسبي مرتبط بحركة العهدة. يجب ترحيل قيدها الأصلي أولاً.");
+  const sourceJournal=await adminRead("journals/"+id(sourceJournalId))||await adminRead("documents/"+id(sourceJournalId));
+  if(!sourceJournal||sourceJournal.status!=="posted")throw new Error("يجب ترحيل القيد الأصلي قبل تحويل الحركة.");
+  const sourceLines=(sourceJournal.lines||[]).filter(line=>line&&String(line.accountCode)==="1220"&&line.partyType==="employeeCustody"&&String(line.partyId)===ownerUid&&(Number(line.debit||0)>0||Number(line.credit||0)>0));
+  if(sourceLines.length!==1)throw new Error("تعذر تحديد سطر العهدة الأصلي بصورة آمنة.");
+  const originalLine=sourceLines[0],chart=(await adminRead("chartOfAccounts"))||{},custodyAccount=chart["1220"];
+  if(!custodyAccount||custodyAccount.isGroup||custodyAccount.active===false)throw new Error("حساب العهدة 1220 غير نشط أو غير قابل للترحيل.");
+  const originalDebit=num(originalLine.debit||0),originalCredit=num(originalLine.credit||0),amount=rnd(originalDebit+originalCredit);
+  if(amount<=0)throw new Error("قيمة الحركة الأصلية تساوي صفرًا.");
+  const sourceUser=adminReadRoot?await adminReadRoot("users/"+ownerUid):null;
+  const sourceName=txt(sourceUser&&(sourceUser.fullName||sourceUser.username||sourceUser.email)||ownerUid,160);
+  const destinationName=txt(destinationUser.fullName||destinationUser.username||destinationUser.email||destinationOwnerUid,160);
+  const description="تحويل عهدة من "+sourceName+" إلى "+destinationName+" — "+txt(transaction.description||transactionId,220);
+  const projectCode=txt(transaction.projectCode||originalLine.projectCode||"",120),costCenterId=txt(originalLine.costCenterId||"",120),dateValue=date(new Date(now).toISOString().slice(0,10));
+  const transferId=uid("CCT"),journalId=uid("CCT-JRN"),mirrorId=uid("CCT-MIR");
+  const lines=[
+   {accountCode:"1220",debit:originalDebit,credit:originalCredit,description,partyType:"employeeCustody",partyId:destinationOwnerUid,projectCode,costCenterId,reference:txt(transaction.reference||transactionId,120)},
+   {accountCode:"1220",debit:originalCredit,credit:originalDebit,description,partyType:"employeeCustody",partyId:ownerUid,projectCode,costCenterId,reference:txt(transaction.reference||transactionId,120)}
+  ];
+  const totals=balance(lines);
+  if(Math.abs(totals.difference)>0.01)throw new Error("قيد إعادة تصنيف العهدة غير متوازن.");
+  const journal={id:journalId,number:journalNumberFor(dateValue,journalId),type:"journal",sourceType:"cashCustodyTransfer",sourceId:ownerUid+"--"+transactionId+"--"+transferId,ownerUid,destinationOwnerUid,destinationName,custodyTransactionId:transactionId,custodyTransferId:transferId,custodyMirrorId:mirrorId,date:dateValue,description,reference:txt(transaction.reference||transactionId,120),currency:"EGP",amount,lines,status:"pending_review",balance:totals,createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120),title:description};
+  const centers=(await adminRead("costCenters"))||{},validation=validateJournal(journal,chart,centers);
+  if(validation.errors.length)throw new Error("قيد تحويل العهدة غير صالح: "+validation.errors.join("؛ "));
+  journal.balance=validation.balance;journal.errors=[];
+  const mirror={...transaction,id:mirrorId,ownerUid:destinationOwnerUid,bookScope:"personal",status:"pending",pairRole:"counterparty",pairGroupId:transferId,linkedOwnerUid:ownerUid,linkedTransactionId:transactionId,counterparty:sourceName,counterpartyType:"user",counterpartyUid:ownerUid,counterpartyName:sourceName,description:"حركة عهدة محولة من "+sourceName+": "+txt(transaction.description||transactionId,220),financialReviewStatus:"pending_review",financialJournalId:journalId,cashCustodyTransfer:{active:false,pending:true,pendingJournalId:journalId,transferId,sourceOwnerUid:ownerUid,sourceTransactionId:transactionId}};
+  const rootUpdates={};
+  rootUpdates["financial/documents/"+journalId]=journal;
+  rootUpdates["financial/reviewQueue/"+journalId]=reviewRecord(journal);
+  rootUpdates["financial/audit/"+uid("AUD")]={action:"submit_cash_custody_transfer_for_review",documentId:journalId,ownerUid,destinationOwnerUid,transactionId,transferId,uid:claims.sub,createdAt:now};
+  rootUpdates[sourcePath+"/cashCustodyTransfer"]={active:false,pending:true,pendingJournalId:journalId,transferId,destinationOwnerUid,destinationName,mirrorId,createdAt:now,createdBy:claims.sub};
+  rootUpdates[sourcePath+"/cashCustodyTransferHistory/"+transferId]={id:transferId,journalId,destinationOwnerUid,destinationName,mirrorId,amount,date:dateValue,status:"pending_review",createdAt:now,createdBy:claims.sub};
+  rootUpdates["cashCustodies/"+destinationOwnerUid+"/transactions/"+mirrorId]=mirror;
+  if(!adminPatchRoot)throw new Error("خدمة التحويل الموحد للعهد غير متاحة.");
+  await adminPatchRoot(rootUpdates);
+  return {success:true,status:"pending_review",journalId,journalNumber:journal.number,amount,destinationOwnerUid,destinationName};
+ }
  if(action==="ocr"||action==="ocrText"){
   requireFinanceArea("invoices","add");
   if(!env.AI)throw new Error("Workers AI is not enabled.");
@@ -1804,7 +1855,38 @@ if(action==="submitCash"){
    }else if(doc.type==="journal"&&doc.sourceType==="cashCustody"&&doc.sourceId&&adminPatchRootAt){
     const separator=String(doc.sourceId).indexOf("--");
     if(separator>0)sourceRootUpdate={path:"cashCustodies/"+id(doc.sourceId.slice(0,separator))+"/transactions/"+id(doc.sourceId.slice(separator+2)),value:{financialReviewStatus:status,financialReviewReason:txt(body.reason,1000),financialReviewedAt:now,financialReviewedBy:claims.sub}};
-   }else if(doc.type==="journal"&&doc.sourceType==="partnerCurrentAccountTransfer"&&doc.sourceId&&adminPatchRootAt){
+   }else if(doc.type==="journal"&&doc.sourceType==="cashCustodyTransfer"&&doc.sourceId&&adminPatchRootAt){
+    const parts=String(doc.sourceId).split("--"),ownerUid=id(parts[0]),transactionId=id(parts[1]),transferId=id(parts[2]);
+    if(!ownerUid||!transactionId||!transferId)throw new Error("مرجع تحويل العهدة غير صالح.");
+    const sourcePath="cashCustodies/"+ownerUid+"/transactions/"+transactionId;
+    const source=adminReadRoot?await adminReadRoot(sourcePath):null,transfer=source&&source.cashCustodyTransfer||{};
+    if(!source||transfer.pendingJournalId!==docId||transfer.transferId!==transferId)throw new Error("طلب التحويل لا يطابق الحركة الأصلية.");
+    sourceRootUpdate={path:sourcePath,value:{
+     "cashCustodyTransfer/pending":false,"cashCustodyTransfer/pendingJournalId":null,
+     "cashCustodyTransfer/lastReviewStatus":status,"cashCustodyTransfer/lastReviewReason":txt(body.reason,1000),
+     ["cashCustodyTransferHistory/"+transferId+"/status"]:status,
+     ["cashCustodyTransferHistory/"+transferId+"/reviewedAt"]:now,
+     ["cashCustodyTransferHistory/"+transferId+"/reviewedBy"]:claims.sub,
+     ["cashCustodyTransferHistory/"+transferId+"/reviewReason"]:txt(body.reason,1000)
+    }};
+    const mirrorId=id(doc.custodyMirrorId),destinationOwnerUid=id(doc.destinationOwnerUid);
+    if(mirrorId&&destinationOwnerUid)await adminPatchRootAt("cashCustodies/"+destinationOwnerUid+"/transactions/"+mirrorId,{status:"rejected",financialReviewStatus:status,financialReviewReason:txt(body.reason,1000)});
+   }else if(doc.type==="journal"&&doc.sourceType==="cashCustodyTransfer"&&doc.sourceId&&adminPatchRootAt){
+    const parts=String(doc.sourceId).split("--"),ownerUid=id(parts[0]),transactionId=id(parts[1]),transferId=id(parts[2]);
+    if(!ownerUid||!transactionId||!transferId)throw new Error("مرجع تحويل العهدة غير صالح.");
+    const sourcePath="cashCustodies/"+ownerUid+"/transactions/"+transactionId;
+    const source=adminReadRoot?await adminReadRoot(sourcePath):null,transfer=source&&source.cashCustodyTransfer||{};
+    if(!source||transfer.pending!==true||transfer.pendingJournalId!==j.id||transfer.transferId!==transferId||transfer.destinationOwnerUid!==doc.destinationOwnerUid)throw new Error("حالة حركة العهدة لا تطابق طلب التحويل. لم يتم تغيير الأرصدة.");
+    sourceRootUpdate={path:sourcePath,value:{
+     "cashCustodyTransfer/active":true,"cashCustodyTransfer/pending":false,"cashCustodyTransfer/pendingJournalId":null,
+     "cashCustodyTransfer/lastJournalId":j.id,"cashCustodyTransfer/lastReviewStatus":"posted",
+     ["cashCustodyTransferHistory/"+transferId+"/status"]:"posted",
+     ["cashCustodyTransferHistory/"+transferId+"/approvedAt"]:now,
+     ["cashCustodyTransferHistory/"+transferId+"/approvedBy"]:claims.sub
+    }};
+    const mirrorId=id(doc.custodyMirrorId),destinationOwnerUid=id(doc.destinationOwnerUid);
+    if(mirrorId&&destinationOwnerUid)secondaryRootUpdate={path:"cashCustodies/"+destinationOwnerUid+"/transactions/"+mirrorId,value:{status:"approved",financialReviewStatus:"posted",financialJournalId:j.id,financialReviewedAt:now,financialReviewedBy:claims.sub,cashCustodyTransfer:{active:true,pending:false,sourceOwnerUid:ownerUid,sourceTransactionId:transactionId,transferId,journalId:j.id}}};
+  }else if(doc.type==="journal"&&doc.sourceType==="partnerCurrentAccountTransfer"&&doc.sourceId&&adminPatchRootAt){
     const sourceId=String(doc.sourceId),first=sourceId.indexOf("--"),last=sourceId.lastIndexOf("--");
     if(first<=0||last<=first+2)throw new Error("مرجع تحويل جاري الشريك غير صالح.");
     const ownerUid=id(sourceId.slice(0,first)),transactionId=id(sourceId.slice(first+2,last)),transferId=id(sourceId.slice(last+2));
@@ -1825,7 +1907,7 @@ if(action==="submitCash"){
    if(sourceRootUpdate)await adminPatchRootAt(sourceRootUpdate.path,sourceRootUpdate.value);
    return {success:true,status};
   }
-  if(decision!=="approve"&&decision!=="approveDuplicate")throw new Error("قرار المراجعة غير صحيح");const updates={};let j,sourceRootUpdate=null;
+  if(decision!=="approve"&&decision!=="approveDuplicate")throw new Error("قرار المراجعة غير صحيح");const updates={};let j,sourceRootUpdate=null,secondaryRootUpdate=null;
   if(doc.type==="journal"){const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{},v=validateJournal(doc,chart,centers);if(v.errors.length)throw new Error(v.errors.join("؛ "));j={...doc,status:"posted",approvedAt:now,approvedBy:claims.sub,postedAt:now};Object.assign(updates,journalUpdates(j));}
   else if(doc.type==="cash"){
    const amount=num(doc.amount),cash=txt(doc.cashAccountCode||"1110",32),movement=txt(doc.movementType||"",40),chart=(await adminRead("chartOfAccounts"))||{};
@@ -2014,6 +2096,7 @@ if(action==="submitCash"){
    }
   await adminPatch(updates);
   if(sourceRootUpdate)await adminPatchRootAt(sourceRootUpdate.path,sourceRootUpdate.value);
+  if(secondaryRootUpdate)await adminPatchRootAt(secondaryRootUpdate.path,secondaryRootUpdate.value);
   return {success:true,status:"posted",journalId:j.id};
  }
  if(action==="returnToReview"){requireFinanceArea("review","edit");throw new Error("إعادة الإرسال المباشر غير مسموح بها لأنها تتجاوز التحقق المحاسبي. أعد حفظ القيد أو الفاتورة من الشاشة المخصصة ليُعاد احتساب الأخطاء والتحقق من البيانات قبل دخول قائمة المراجعة.");}
