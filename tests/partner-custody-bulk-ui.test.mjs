@@ -35,6 +35,8 @@ test("approved custody movement rows expose a destination dialog and journal pre
   assert.match(index, /openCashCustodyTransfer\(cashCustodyTarget,t\)/);
   assert.match(index, /تحويل حركة عهدة معتمدة/);
   assert.match(index, /معاينة القيد المقترح قبل الإرسال للمراجعة/);
+  assert.match(index, /loadCashCustodyTransferPreview/);
+  assert.match(index, /previewOnly:true/);
   assert.match(index, /إرسال القيد إلى المراجعة/);
   assert.match(index, /transferCashCustodyMovement/);
   assert.match(financialApi, /action==="transferCashCustodyMovement"/);
