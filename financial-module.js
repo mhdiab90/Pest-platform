@@ -2590,7 +2590,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
  const expenseSourceRows=expenseSourceAudit.slice().sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))||String(a.journalId||'').localeCompare(String(b.journalId||''))).map((line,index)=>{
   const account=accounts.find(item=>String(item.code)===String(line.accountCode)),sourceDocument=documents.find(item=>String(item.id)===String(line.sourceId));
   let sourceLabel='مصدر غير محدد';
-  if(line.sourceType==='cashCustody')sourceLabel='ترحيل تلقائي من العهدة الشخصية';
+  if(line.sourceType==='cashCustody')sourceLabel='ترحيل تلقائي من العهدة الشخصية إلى الحساب 6100';
   else if(line.sourceType==='invoice')sourceLabel=(sourceDocument&&sourceDocument.invoiceType==='sales'?'فاتورة مبيعات':'فاتورة مشتريات')+' — '+(sourceDocument&&sourceDocument.number||line.reference||line.sourceId||'');
   else if(line.sourceType==='cash')sourceLabel='سند خزينة — '+(sourceDocument&&(sourceDocument.number||sourceDocument.reference)||line.reference||'');
   else if(line.sourceType==='bankLine')sourceLabel='حركة كشف بنك — '+(sourceDocument&&(sourceDocument.number||sourceDocument.reference)||line.reference||'');
@@ -2625,7 +2625,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
   panel('المصروفات الإدارية والعمومية','مصروفات الإدارة والخدمات العمومية المصنفة في دليل الحسابات.',h('div',{className:'space-y-2'},metric('إجمالي المصروفات الإدارية',fmt(administrativeExpenses)),table(['الحساب','مصروف الفترة'],incomeAdministrativeExpenseRows))),
   panel('المصروفات التمويلية والبنكية','العمولات والمصاريف البنكية والتمويلية فقط.',h('div',{className:'space-y-2'},metric('إجمالي المصروفات التمويلية',fmt(financeExpenses)),table(['الحساب','مصروف الفترة'],incomeFinanceExpenseRows))),
   panel('مصروفات غير مصنفة','الحسابات التي لم يتم تحديد مجموعة قائمة الدخل لها في دليل الحسابات. لا يتم افتراض أنها تشغيلية؛ راجع تصنيف الحساب.',h('div',{className:'space-y-2'},metric('إجمالي غير المصنف',fmt(unclassifiedExpenses)),table(['الحساب','مصروف الفترة'],incomeUnclassifiedExpenseRows))),
-  panel('مطابقة المصروفات مع القيود المصدرية','كل مبلغ هنا مرتبط بسطر قيد مرحّل. يوضح المصدر هل المصروف نتج عن فاتورة، أو حركة عهدة، أو سند خزينة، أو قيد يومية. اضغط رقم القيد لمراجعة أطرافه.',h('div',{className:'space-y-3'},
+  panel('مطابقة المصروفات مع القيود المصدرية','كل مبلغ مرتبط بسطر قيد مرحّل. ملاحظة: حركة العهدة المصنفة «مصروف» تُرحّل تلقائيًا إلى 6100، وتحويل الطرف المقابل إلى جاري الشريك لا يلغي المصروف الأصلي. إذا كانت الحركة سحبًا شخصيًا وليست مصروف شركة، يجب تصحيح تصنيف الحركة المصدرية لا استبعادها من القائمة. اضغط رقم القيد لمراجعة أطرافه.',h('div',{className:'space-y-3'},
    h('div',{className:'grid grid-cols-2 md:grid-cols-4 gap-2'},
     metric('مصروفات مرحّلة من العهد الشخصية',fmt(custodyExpenseTotal)),
     metric('مصروفات ناتجة عن الفواتير',fmt(invoiceExpenseTotal)),
