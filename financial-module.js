@@ -259,7 +259,7 @@ function FinanceModule(props){
   "إجمالي مدين":"Total Debits","إجمالي دائن":"Total Credits","صافي الرصيد":"Net Balance","عدد الحركات":"Movement Count",
   "رصيد الحساب من الأستاذ":"GL Account Balance","إجمالي صافي التوزيع":"Total Net Distribution","فرق المطابقة":"Reconciliation Difference",
   "العودة إلى توزيع الحساب":"Back to Account Distribution","مسار التحليل":"Analysis Path",
-  "لا توجد حركات مرحلة لهذا الحساب حتى تاريخ التقرير.":"No posted movements for this account through the report date.","لا توجد حركات أو رصيد لهذا الحساب ضمن القيود المرحلة.":"No posted movements or balance for this account.","اختر حسابًا لعرض رصيده وتحليله.":"Choose an account to view its balance and analysis.","لا توجد حركات لهذا التصنيف.":"No movements in this category."
+  "لا توجد حركات مرحلة لهذا الحساب حتى تاريخ التقرير.":"No posted movements for this account through the report date.","لا توجد حركات أو رصيد لهذا الحساب ضمن القيود المرحلة.":"No posted movements or balance for this account.","اختر حسابًا لعرض رصيده وتحليله.":"Choose an account to view its balance and analysis.","لا توجد حركات لهذا التصنيف.":"No movements in this category.",
   "التقرير":"Report","ميزان المراجعة":"Trial Balance","قائمة الدخل":"Income Statement","المركز المالي":"Balance Sheet",
   "قائمة التدفقات النقدية (مبسطة)":"Cash Flow Statement (Simplified)","دفتر الأستاذ":"General Ledger",
   "الحساب":"Account","افتتاحي مدين":"Opening Debit","افتتاحي دائن":"Opening Credit",
