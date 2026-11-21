@@ -1517,3 +1517,44 @@ test("partner current accounts create separate analytical ledgers and transfer a
     assert.deepEqual(read("cashCustodies/"+thabetUid+"/transactions/"+row.id+"/attachmentsManifest"),row.attachmentsManifest);
   }
 });
+
+
+test("approved custody movement can be reassigned to another employee custody through journal review", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const sourceUid="custody-transfer-source";
+  const destinationUid="custody-transfer-destination";
+  const transactionId="CUSTODY-TRANSFER-REVIEW-01";
+  const sourceJournalId="CUSTODY-TRANSFER-SOURCE-JOURNAL-01";
+  write("users/"+sourceUid,{uid:sourceUid,fullName:"Source Employee",status:"active"});
+  write("users/"+destinationUid,{uid:destinationUid,fullName:"Receiving Employee",status:"active"});
+  write("journals/"+sourceJournalId,{
+    id:sourceJournalId,type:"journal",status:"posted",date:"2026-11-20",
+    lines:[
+      {accountCode:"1220",debit:250,credit:0,partyType:"employeeCustody",partyId:sourceUid,description:"Original custody"},
+      {accountCode:"1110",debit:0,credit:250,description:"Cash issued"}
+    ]
+  });
+  write("cashCustodies/"+sourceUid+"/transactions/"+transactionId,{
+    id:transactionId,ownerUid:sourceUid,bookScope:"personal",type:"receipt",amount:250,currency:"EGP",
+    date:"2026-11-20",description:"Approved custody movement",status:"approved",
+    financialJournalId:sourceJournalId,attachmentsManifest:{fileIds:["custody-file-01"]}
+  });
+  const submitted=await invoke("POST","",{
+    action:"transferCashCustodyMovement",ownerUid:sourceUid,transactionId,destinationOwnerUid:destinationUid
+  });
+  assert.equal(submitted.status,"pending_review");
+  assert.equal(read("documents/"+submitted.journalId).status,"pending_review");
+  assert.ok(read("reviewQueue/"+submitted.journalId));
+  assert.equal(read("cashCustodies/"+sourceUid+"/transactions/"+transactionId+"/cashCustodyTransfer/pending"),true);
+  assert.notEqual(read("cashCustodies/"+sourceUid+"/transactions/"+transactionId+"/cashCustodyTransfer/active"),true);
+  assert.equal(read("cashCustodies/"+destinationUid+"/transactions/"+read("documents/"+submitted.journalId+"/custodyMirrorId")+"/status"),"transfer_pending");
+  assert.deepEqual(read("cashCustodies/"+sourceUid+"/transactions/"+transactionId+"/attachmentsManifest"),{fileIds:["custody-file-01"]});
+  const approved=await invoke("POST","",{action:"review",id:submitted.journalId,decision:"approve"});
+  assert.equal(approved.status,"posted");
+  assert.equal(read("cashCustodies/"+sourceUid+"/transactions/"+transactionId+"/cashCustodyTransfer/active"),true);
+  assert.equal(read("cashCustodies/"+sourceUid+"/transactions/"+transactionId+"/cashCustodyTransfer/pending"),false);
+  const mirrorId=read("documents/"+submitted.journalId+"/custodyMirrorId");
+  assert.equal(read("cashCustodies/"+destinationUid+"/transactions/"+mirrorId+"/status"),"approved");
+  assert.equal(read("journals/"+submitted.journalId).status,"posted");
+  assert.deepEqual(read("cashCustodies/"+sourceUid+"/transactions/"+transactionId+"/attachmentsManifest"),{fileIds:["custody-file-01"]});
+});
