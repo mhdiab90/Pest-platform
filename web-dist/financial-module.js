@@ -911,7 +911,7 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
   return false;
  };
  const sumFrom=(list,type)=>list.filter(x=>x.account.type===type).reduce((sum,x)=>sum+(type==='revenue'?x.amount.credit-x.amount.debit:x.amount.debit-x.amount.credit),0);
- const isCostOfSalesAccount=account=>Boolean(account&&account.type==='expense'&&(accountInBranch(account,'5')||account.statementGroup==='cogs'));
+ const isCostOfSalesAccount=account=>Boolean(account&&account.type==='expense'&&(accountIsInBranch(account,'5')||account.statementGroup==='cogs'));
  const expenseStatementGroup=account=>{
   const value=String(account&&account.statementGroup||'').toLowerCase();
   return ['operating','administrative','finance'].includes(value)?value:'unclassified';
