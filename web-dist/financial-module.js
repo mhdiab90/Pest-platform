@@ -1250,6 +1250,7 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
      h("span",{className:"rounded-full bg-amber-50 text-amber-800 px-3 py-1"},"الحالة: "+status(draft.status)),
      h("span",{className:"rounded-full bg-indigo-50 text-indigo-800 px-3 py-1"},"العملة: EGP")
     ),
+    draft.sourceType==="journalRevision"?h("label",{className:"block text-sm font-bold"},"ملاحظات التعديل / سبب إرجاع القيد",h("textarea",{value:draft.revisionNotes||"",onChange:event=>setJournalModalDraft(old=>Object.assign({},old,{revisionNotes:event.target.value})),rows:3,disabled:!editable,className:"mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal"})):null,
     h("div",{className:"rounded-xl border border-indigo-100 overflow-hidden"},
      h("div",{className:"flex flex-wrap items-center justify-between gap-2 bg-indigo-50 p-3"},
       h("b",null,"سطور القيد المحاسبي"),
@@ -1714,7 +1715,7 @@ const renderJournal = function() {
    documents.filter(function(x){return x.type==='journal';}).forEach(x=>journalMap.set(String(x.id),x));
    journalRecords.forEach(x=>journalMap.set(String(x.id),x));
    const allJournalRows=Array.from(journalMap.values()).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||n(b.postedAt||b.createdAt)-n(a.postedAt||a.createdAt));
-   const journalSourceLabel=x=>({invoice:'فاتورة',cash:'الخزينة',bankLine:'البنك',projectEvent:'حدث مشروع',cashCustody:'عهدة شخصية',manual:'يدوي'}[x.sourceType||'manual']||x.sourceType||'يدوي');
+   const journalSourceLabel=x=>({invoice:'فاتورة',cash:'الخزينة',bankLine:'البنك',projectEvent:'حدث مشروع',cashCustody:'عهدة شخصية',journalRevision:'تعديل معتمد لقيد',manual:'يدوي'}[x.sourceType||'manual']||x.sourceType||'يدوي');
    const draftRows=allJournalRows.map(function(x){
     const manual=!(x.sourceType&&x.sourceType!=='manual'),posted=x.status==='posted'||journalRecords.some(j=>j.id===x.id&&j.status==='posted');
     const debit=(x.lines||[]).reduce((sum,line)=>sum+n(line.debit),0),credit=(x.lines||[]).reduce((sum,line)=>sum+n(line.credit),0);
