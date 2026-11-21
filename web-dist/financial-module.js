@@ -486,7 +486,7 @@ function FinanceModule(props){
  };
  const statementAttachmentActionForReferences=references=>{
   const attachments=statementAttachmentsForReferences(references);if(!attachments.length)return null;
-  return h("button",{type:"button",title:attachments.map(item=>item.fileName).join("، "),className:"inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100 whitespace-nowrap",onClick:()=>{if(attachments.length===1)void openStatementAttachmentFile(attachments[0]);else setStatementAttachmentList({title:"مرفقات الحركة",attachments});}},"📎 "+(attachments.length===1?"مرفق":String(attachments.length)+" مرفقات"));
+  return h("button",{type:"button",title:attachments.map(item=>item.fileName).join("، "),className:"inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100 whitespace-nowrap",onClick:event=>{event.stopPropagation();if(attachments.length===1)void openStatementAttachmentFile(attachments[0]);else setStatementAttachmentList({title:"مرفقات الحركة",attachments});}},"📎 "+(attachments.length===1?"مرفق":String(attachments.length)+" مرفقات"));
  };
  const statementAttachmentAction=record=>statementAttachmentActionForReferences(statementAttachmentReferences(record));
  const closeStatementAttachmentPreview=()=>setStatementAttachmentPreview(previous=>{if(previous&&previous.url)URL.revokeObjectURL(previous.url);return null;});
@@ -1188,7 +1188,7 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
    return Object.assign({},line,{partyType:line.partyType||account&&account.subledgerType||"",partyId:line.partyId||""});
   });
   setJournalModal(Object.assign({},doc));
-  setJournalModalDraft({id:doc.id,type:doc.type||"journal",number:doc.number||doc.journalNumber||'',date:doc.date||today(),description:doc.description||"",reference:doc.reference||"",currency:doc.currency||"EGP",sourceType:doc.sourceType||"manual",projectCode:doc.projectCode||"",reversalOf:doc.reversalOf||"",revisionOf:doc.revisionOf||"",revisionNotes:doc.revisionNotes||"",pendingRevisionId:doc.pendingRevisionId||"",revisedByJournalId:doc.revisedByJournalId||"",reversalJournalId:doc.reversalJournalId||"",reversedByJournalId:doc.reversedByJournalId||"",status:doc.status||"posted",lines:normalizedLines});
+  setJournalModalDraft({id:doc.id,sourceId:doc.sourceId||"",journalId:doc.journalId||"",type:doc.type||"journal",number:doc.number||doc.journalNumber||'',date:doc.date||today(),description:doc.description||"",reference:doc.reference||"",currency:doc.currency||"EGP",sourceType:doc.sourceType||"manual",projectCode:doc.projectCode||"",reversalOf:doc.reversalOf||"",revisionOf:doc.revisionOf||"",revisionNotes:doc.revisionNotes||"",pendingRevisionId:doc.pendingRevisionId||"",revisedByJournalId:doc.revisedByJournalId||"",reversalJournalId:doc.reversalJournalId||"",reversedByJournalId:doc.reversedByJournalId||"",status:doc.status||"posted",lines:normalizedLines});
  };
  const updateJournalModalLine=(index,key,value)=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).map((line,i)=>i===index?Object.assign({},line,{[key]:value}):line)}));
  const saveJournalModal=async()=>{
@@ -1723,7 +1723,7 @@ const renderJournal = function() {
     return h('tr',{key:x.id,className:'border-t hover:bg-slate-50 cursor-pointer',onClick:()=>openJournalModal(x)},
      h('td',{className:'p-2 font-bold'},x.number||x.journalNumber||x.id),
      h('td',{className:'p-2'},x.date||'—'),
-     h('td',{className:'p-2'},x.description||'—'),
+     h('td',{className:'p-2 min-w-[220px]'},h('div',{className:'flex flex-wrap items-center gap-2'},h('span',null,x.description||'—'),statementAttachmentAction(x))),
      h('td',{className:'p-2'},journalSourceLabel(x)),
      h('td',{className:'p-2'},status(posted?'posted':x.status)),
      h('td',{className:'p-2 text-end'},fmt(debit)),
@@ -2493,6 +2493,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
  const statementJournal=statementJournalId?statementJournalMap.get(String(statementJournalId)):null;
   React.useEffect(()=>{if(journalModalDraft)void loadStatementAttachments([journalModalDraft]);},[journalModalDraft&&journalModalDraft.id]);
   React.useEffect(()=>{if(statementJournal)void loadStatementAttachments([statementJournal]);},[statementJournalId]);
+ React.useEffect(()=>{if(tab==='journal'&&journalRecords.length)void loadStatementAttachments(journalRecords);},[tab,journalRecords]);
  const statementJournalLines=statementJournal?(statementJournal.lines||[]).map((line,index)=>{
   const account=accounts.find(item=>String(item.code)===String(line.accountCode));
   const center=centers.find(item=>String(item.code)===String(line.costCenterId));
