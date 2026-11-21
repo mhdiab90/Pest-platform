@@ -914,7 +914,9 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
  const isCostOfSalesAccount=account=>Boolean(account&&account.type==='expense'&&(accountIsInBranch(account,'5')||account.statementGroup==='cogs'));
  const expenseStatementGroup=account=>{
   const value=String(account&&account.statementGroup||'').toLowerCase();
-  return ['operating','administrative','finance'].includes(value)?value:'unclassified';
+  if(['operating','administrative','finance'].includes(value))return value;
+  const legacyDefaults={'6100':'operating','6200':'administrative','6300':'operating','6400':'finance'};
+  return legacyDefaults[String(account&&account.code||'')]||'unclassified';
  };
  const revenue=sumFrom(trial,'revenue'),expenses=sumFrom(trial,'expense');
  const costOfSales=trial.filter(x=>isCostOfSalesAccount(x.account)).reduce((sum,x)=>sum+x.amount.debit-x.amount.credit,0);
