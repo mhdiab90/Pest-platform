@@ -1061,7 +1061,7 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
  };
  const openJournalModal=doc=>{
   setJournalModal(Object.assign({},doc));
-  setJournalModalDraft({id:doc.id,number:doc.number||doc.journalNumber||'',date:doc.date||today(),description:doc.description||"",reference:doc.reference||"",currency:doc.currency||"EGP",sourceType:doc.sourceType||"manual",reversalOf:doc.reversalOf||"",status:doc.status||"posted",lines:(doc.lines||[]).map(line=>Object.assign({},line))});
+  setJournalModalDraft({id:doc.id,type:doc.type||"journal",number:doc.number||doc.journalNumber||'',date:doc.date||today(),description:doc.description||"",reference:doc.reference||"",currency:doc.currency||"EGP",sourceType:doc.sourceType||"manual",projectCode:doc.projectCode||"",reversalOf:doc.reversalOf||"",status:doc.status||"posted",lines:(doc.lines||[]).map(line=>Object.assign({},line))});
  };
  const updateJournalModalLine=(index,key,value)=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).map((line,i)=>i===index?Object.assign({},line,{[key]:value}):line)}));
  const saveJournalModal=async()=>{
