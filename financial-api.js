@@ -260,6 +260,12 @@ function validateJournal(j,chart,centers){
  lines.forEach((l,i)=>{const a=chart[txt(l.accountCode,32)];if(!a)errors.push("السطر "+(i+1)+": الحساب غير موجود");else if(a.isGroup||a.active===false)errors.push("السطر "+(i+1)+": الحساب غير قابل للترحيل");const d=Number(l.debit||0),c=Number(l.credit||0);if(!Number.isFinite(d)||!Number.isFinite(c)||d<0||c<0||((d>0)===(c>0)))errors.push("السطر "+(i+1)+": أدخل مدين أو دائن فقط");if(l.costCenterId&&!centers[l.costCenterId])errors.push("السطر "+(i+1)+": مركز التكلفة غير موجود");if(a&&a.subledgerType&&!l.partyId){const analyticLabel={customer:"العميل",vendor:"المورد",employeeCustody:"الموظف صاحب العهدة",employeeAdvance:"الموظف صاحب السلفة",partnerCurrentAccount:"الشريك"}[a.subledgerType]||"الطرف التحليلي";errors.push("السطر "+(i+1)+": يجب اختيار الطرف التحليلي ("+analyticLabel+") للحساب "+txt(a.code||l.accountCode,32)+" — "+txt(a.name||"",120)+".");}});
  const b=balance(lines);if(Math.abs(b.difference)>0.01)errors.push("القيد غير متوازن. الفرق: "+b.difference);return {errors,balance:b};
 }
+function normalizeJournalAnalyticLines(lines,chart){
+ return (Array.isArray(lines)?lines:[]).map(line=>{
+  const account=chart[txt(line&&line.accountCode||"",32)];
+  return account&&account.subledgerType?{...line,partyType:account.subledgerType}:{...line};
+ });
+}
 function invoiceLineAmounts(inv){
  const rows=(inv.lines||[]).map(function(line){return {line,base:rnd(num(line.quantity)*num(line.unitPrice)-num(line.discount||0))};});
  const subtotal=rnd(rows.reduce(function(sum,row){return sum+row.base;},0));
@@ -1367,7 +1373,9 @@ export async function handleFinancialRequest(ctx){
    });
   }
   if(previous.projectCode)next.lines=(next.lines||[]).map(line=>({...line,projectCode:line.projectCode||previous.projectCode,costCenterId:line.costCenterId||previous.projectCode}));
-  const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{},validation=validateJournal(next,chart,centers);
+  const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{};
+  next.lines=normalizeJournalAnalyticLines(next.lines,chart);
+  const validation=validateJournal(next,chart,centers);
   next.balance=validation.balance;next.errors=validation.errors;next.status="pending_review";next.updatedAt=now;next.updatedBy=claims.sub;
   const updates={};updates["documents/"+docId]=next;updates["reviewQueue/"+docId]=reviewRecord(next);
   updates["audit/"+uid("AUD")]={action:"update_review_journal",documentId:docId,sourceType:next.sourceType||"manual",lineCountBefore:(previous.lines||[]).length,lineCountAfter:(next.lines||[]).length,errors:next.errors,uid:claims.sub,createdAt:now};
@@ -1387,7 +1395,9 @@ export async function handleFinancialRequest(ctx){
    }else requireFinanceArea("journal","add");
    const journalDate=date(body.date),j={id:journalId,number:previous&&previous.number||journalNumberFor(journalDate,journalId),type:"journal",date:journalDate,description:txt(body.description,500),reference:txt(body.reference,120),currency:txt(body.currency||"EGP",3),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:previous&&previous.createdAt||now,createdBy:previous&&previous.createdBy||claims.sub,createdByName:previous&&previous.createdByName||txt(profile.fullName||profile.username||profile.email,120)};
    if(j.currency!=="EGP")throw new Error("القيود متعددة العملات وأسعار الصرف غير مفعّلة بعد. استخدم الجنيه المصري حتى لا تختلط أرصدة العملات في القوائم.");
-   const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{},v=validateJournal(j,chart,centers);
+   const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{};
+   j.lines=normalizeJournalAnalyticLines(j.lines,chart);
+   const v=validateJournal(j,chart,centers);
    if(previous&&previous.status==="posted"){
     if(v.errors.length)throw new Error(v.errors.join("؛ "));
     j.status="posted";j.approvedAt=previous.approvedAt||now;j.approvedBy=previous.approvedBy||claims.sub;j.postedAt=now;j.updatedAt=now;j.updatedBy=claims.sub;
@@ -1460,7 +1470,9 @@ export async function handleFinancialRequest(ctx){
    const lines=(original.lines||[]).map(line=>({...line,debit:Number(line.credit||0),credit:Number(line.debit||0),description:txt(line.description||original.description||"",250)+" — عكس"}));
    const journal={id:reversalId,type:"journal",date:reversalDate,description:txt(body.description||("قيد عكسي للقيد "+originalId+" — "+(original.description||"")),500),reference:txt(body.reference||original.reference||originalId,120),currency:original.currency||"EGP",lines,sourceType:"manual",reversalOf:originalId,createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120)};
    if(journal.currency!=="EGP")throw new Error("القيود متعددة العملات وأسعار الصرف غير مفعّلة بعد.");
-   const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{},validation=validateJournal(journal,chart,centers);
+   const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{};
+   journal.lines=normalizeJournalAnalyticLines(journal.lines,chart);
+   const validation=validateJournal(journal,chart,centers);
    if(validation.errors.length)throw new Error("تعذر تكوين القيد العكسي: "+validation.errors.join("؛ "));
    journal.status="pending_review";journal.balance=validation.balance;journal.errors=[];
    const updates={};updates["documents/"+reversalId]=journal;updates["reviewQueue/"+reversalId]=reviewRecord(journal);
@@ -1489,7 +1501,9 @@ export async function handleFinancialRequest(ctx){
      title:"تعديل القيد "+(original.number||originalId),status:"pending_review"
     };
     if(!revision.lines.length)throw new Error("القيد الأصلي لا يحتوي على سطور قابلة للتعديل.");
-    const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{},validation=validateJournal(revision,chart,centers);
+    const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{};
+    revision.lines=normalizeJournalAnalyticLines(revision.lines,chart);
+    const validation=validateJournal(revision,chart,centers);
     if(validation.errors.length)throw new Error("لا يمكن إرسال نسخة التعديل للمراجعة قبل تصحيح بيانات القيد الأصلي: "+validation.errors.join("؛ "));
     revision.balance=validation.balance;revision.errors=[];
     const updates={};
