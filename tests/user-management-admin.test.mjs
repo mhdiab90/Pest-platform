@@ -11,7 +11,11 @@ const [index, worker, financialApi] = await Promise.all([
 test("Thabet partner custody action is tied to his exact email, including the full user profile when the directory has no email", () => {
   assert.match(index, /profileUser=activeUsers\.find\(item=>item\.uid===ownerUid\)/);
   assert.match(index, /email==='thabetrabea@gmail\.com'/);
-  assert.match(index, /onClick=\{\(\)=>void transferCashCustodyToPartnerCurrent\(cashCustodyTarget,t\)\}/);
+  assert.match(index, /onClick=\{\(\)=>openCashCustodyTransfer\(cashCustodyTarget,t\)\}/);
+  assert.match(index, /async function loadCashCustodyTransferPreview/);
+  assert.match(index, /previewOnly:true/);
+  assert.match(index, /معاينة القيد المقترح قبل الإرسال للمراجعة/);
+  assert.match(financialApi, /action==="transferCashCustodyMovement"/);
   assert.match(financialApi, /email:"thabetrabea@gmail\.com"/);
   assert.match(financialApi, /normalize\(user\.email\)===normalize\(item\.email\)/);
   assert.match(financialApi, /حساب الشريك المرتبط غير نشط/);
