@@ -933,6 +933,10 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
   const openingNet=(n(total.debit)-n(total.credit))-(n(activity.debit)-n(activity.credit)),endingNet=n(total.debit)-n(total.credit);
   return {account:a,amount:total,activity,opening:{debit:Math.max(openingNet,0),credit:Math.max(-openingNet,0)},ending:{debit:Math.max(endingNet,0),credit:Math.max(-endingNet,0)}};
  }).filter(x=>x.amount.debit||x.amount.credit||x.activity.debit||x.activity.credit);
+ const unmappedBalanceRows=Object.entries(balanceBalances).filter(([code,amount])=>!accounts.some(account=>String(account.code)===String(code))&&(n(amount&&amount.debit)||n(amount&&amount.credit))).map(([code,amount])=>({code,debit:n(amount.debit),credit:n(amount.credit),net:n(amount.debit)-n(amount.credit)}));
+ const ledgerBalanceDebit=balanceFlat.reduce((sum,line)=>sum+n(line.debit),0);
+ const ledgerBalanceCredit=balanceFlat.reduce((sum,line)=>sum+n(line.credit),0);
+ const ledgerBalanceDifference=ledgerBalanceDebit-ledgerBalanceCredit;
  const accountIsInBranch=(account,branchCode)=>{
   if(String(account.code)===String(branchCode))return true;
   let parent=String(account.parentCode||''),guard=0;
@@ -2657,8 +2661,8 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
    );
   });
  };
- const statementRowsWithBalance=(predicate,side)=>{
-  return statementAccountData.filter(row=>predicate(row.account)&&(row.amount.debit||row.amount.credit)).map(row=>{
+ const statementRowsWithBalance=(predicate,side,includeZero=false)=>{
+  return statementAccountData.filter(row=>predicate(row.account)&&(includeZero||row.amount.debit||row.amount.credit)).map(row=>{
    const account=row.account,depth=accountDepth(account),group=Boolean(account.isGroup),debit=row.ending.debit,credit=row.ending.credit,net=side==='credit'?credit-debit:debit-credit;
    return h('tr',{key:account.code,className:(group?'bg-slate-50 font-bold ':'')+'border-t hover:bg-blue-50'},
     h('td',{className:'p-2'},h('button',{type:'button',className:'text-blue-700 hover:text-blue-950 underline text-right',style:{paddingRight:(depth*14)+'px'},onClick:()=>openStatementAccount(account.code)},account.code+' — '+account.name+(group?' · تجميعي':''))),
@@ -2759,9 +2763,9 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
   );
  });
  const expenseSourceDifference=otherExpenses-expenseSourceTotal;
- const balanceAssetRows=statementRowsWithBalance(account=>account.type==='asset','debit');
- const balanceLiabilityRows=statementRowsWithBalance(account=>account.type==='liability','credit');
- const balanceEquityRows=statementRowsWithBalance(account=>account.type==='equity','credit');
+ const balanceAssetRows=statementRowsWithBalance(account=>account.type==='asset'&&!account.isGroup,'debit',true);
+ const balanceLiabilityRows=statementRowsWithBalance(account=>account.type==='liability'&&!account.isGroup,'credit',true);
+ const balanceEquityRows=statementRowsWithBalance(account=>account.type==='equity'&&!account.isGroup,'credit',true);
  const incomeStatementContent=()=>h('div',{className:'space-y-3'},
   h('div',{className:'grid grid-cols-2 md:grid-cols-4 gap-2'},
    metric('إجمالي الإيرادات',fmt(revenue)),
@@ -2815,7 +2819,14 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
   ]))
  ); 
  const balanceSheetContent=()=>h('div',{className:'space-y-3'},
-  h('div',{className:'grid grid-cols-2 md:grid-cols-3 gap-2'},metric('إجمالي الأصول',fmt(assets)),metric('إجمالي الالتزامات',fmt(liabilities)),metric('إجمالي حقوق الملكية',fmt(equity))),
+  h('div',{className:'grid grid-cols-2 md:grid-cols-4 gap-2'},
+   metric('إجمالي الأصول',fmt(assets)),
+   metric('إجمالي الالتزامات',fmt(liabilities)),
+   metric('إجمالي حقوق الملكية',fmt(equity)),
+   metric('فرق ميزان المراجعة',fmt(ledgerBalanceDifference))
+  ),
+  Math.abs(ledgerBalanceDifference)>0.01?h('div',{className:'rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900'},'تحذير: إجمالي المدين لا يساوي إجمالي الدائن في الأستاذ. المدين '+fmt(ledgerBalanceDebit)+'، الدائن '+fmt(ledgerBalanceCredit)+'، والفرق '+fmt(ledgerBalanceDifference)+'. لا تعتمد القوائم قبل معالجة الفرق.'):h('div',{className:'rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900'},'إجمالي ميزان المراجعة متوازن.'),
+  unmappedBalanceRows.length?panel('أرصدة غير مرتبطة بدليل الحسابات','هذه الأرصدة موجودة في الأستاذ ولكن كودها غير موجود بدليل الحسابات. يتم إظهارها منفصلة ولا يتم تجاهلها أو ضمها تلقائيًا إلى الأصول أو الالتزامات.',table(['كود الحساب','مدين','دائن','صافي مدين / (دائن)'],unmappedBalanceRows.map(row=>h('tr',{key:row.code,className:'border-t'},h('td',{className:'p-2 font-bold'},row.code),h('td',{className:'p-2 text-end'},fmt(row.debit)),h('td',{className:'p-2 text-end'},fmt(row.credit)),h('td',{className:'p-2 text-end font-bold'},fmt(row.net)))))):null,
   panel('الأصول','الرصيد التراكمي حتى نهاية الفترة، ويشمل الحسابات التجميعية والحسابات التابعة. اضغط على الحساب لعرض كشف الحساب.',table(['الحساب','مدين','دائن','الرصيد الطبيعي'],balanceAssetRows)),
   panel('الالتزامات','الأرصدة الدائنة والمدينة لكل حساب التزام.',table(['الحساب','مدين','دائن','الرصيد الطبيعي'],balanceLiabilityRows)),
   panel('حقوق الملكية','تظهر نتيجة الأعمال المتراكمة بشكل مستقل ضمن حقوق الملكية.',h('div',{className:'space-y-2'},table(['الحساب','مدين','دائن','الرصيد الطبيعي'],balanceEquityRows),table(['البيان','القيمة'],[['الأرباح المتراكمة منذ بداية الدفاتر',fmt(accumulatedProfit)],['إجمالي حقوق الملكية',fmt(equity)]]))),
