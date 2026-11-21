@@ -1237,6 +1237,44 @@ test("reviewers can edit project-event journals before posting", async () => {
   assert.equal(read("ledger/6200/2026-11/"+journalId+"_1"),null,"editing a review journal does not post it");
 });
 
+test("reviewers can edit transfer journals and add extra accounting lines before approval", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const journalId="CUSTODY-TRANSFER-REVIEW-EDIT-01";
+  write("documents/"+journalId,{
+    id:journalId,type:"journal",sourceType:"cashCustodyTransfer",sourceId:"owner-1--transaction-1",
+    ownerUid:"owner-1",custodyTransactionId:"transaction-1",custodyTransferId:"transfer-1",
+    date:"2026-11-19",description:"Custody transfer draft",reference:"TRANSFER-EDIT-01",currency:"EGP",status:"pending_review",
+    lines:[
+      {accountCode:"1220",debit:100,credit:0,description:"Custody"},
+      {accountCode:"1110",debit:0,credit:100,description:"Cash"}
+    ]
+  });
+  write("reviewQueue/"+journalId,{id:journalId,documentId:journalId,type:"journal",status:"pending_review"});
+  const result=await invoke("POST","",{action:"updateReviewJournal",id:journalId,
+    journal:{date:"2026-11-19",description:"Corrected custody transfer",reference:"TRANSFER-EDIT-02"},
+    lines:[
+      {accountCode:"1220",debit:125,credit:0,description:"Custody adjustment"},
+      {accountCode:"1110",debit:0,credit:100,description:"Cash"},
+      {accountCode:"6100",debit:0,credit:25,description:"Additional credit line"}
+    ]});
+  assert.equal(result.status,"pending_review");
+  assert.deepEqual(result.errors,[]);
+  assert.equal(read("documents/"+journalId+"/description"),"Corrected custody transfer");
+  assert.equal(read("documents/"+journalId+"/lines/2/accountCode"),"6100");
+  assert.equal(read("documents/"+journalId+"/lines/2/credit"),25);
+  assert.ok(read("reviewQueue/"+journalId),"the edited transfer journal remains in review");
+  assert.equal(read("ledger/1220/2026-11/"+journalId+"_1"),null,"editing a transfer journal does not affect the ledger");
+  const unbalanced=await invoke("POST","",{action:"updateReviewJournal",id:journalId,
+    lines:[
+      {accountCode:"1220",debit:125,credit:0,description:"Custody adjustment"},
+      {accountCode:"1110",debit:0,credit:100,description:"Cash"},
+      {accountCode:"6100",debit:0,credit:20,description:"Additional credit line"}
+    ]});
+  assert.equal(unbalanced.status,"pending_review");
+  assert.ok(unbalanced.errors.some(error=>error.includes("غير متوازن")),"an unbalanced edited journal must remain flagged for correction");
+  assert.equal(read("ledger/1220/2026-11/"+journalId+"_1"),null,"unapproved edits never post ledger entries");
+});
+
 test("daily journals can be reversed through review and unposted entries can be cancelled", async () => {
   await invoke("GET","?resource=bootstrap");
   const postedDraft=await invoke("POST","",{action:"submitJournal",date:"2026-11-19",description:"Original journal to reverse",reference:"REV-ORIGINAL-01",
