@@ -35,6 +35,7 @@ const rows=o=>o?Object.entries(o).map(([key,v])=>Object.assign({id:v&&v.id||key,
 const id=p=>p+'_'+(crypto.randomUUID?crypto.randomUUID().replace(/-/g,''):Date.now());
 const n=v=>Number(v)||0;
 const fmt=v=>new Intl.NumberFormat('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n(v));
+const journalSourceLabel=record=>{const sourceType=String(record&&record.sourceType||'manual');return ({invoice:'فاتورة',cash:'الخزينة',bankLine:'البنك',projectEvent:'حدث مشروع',cashCustody:'عهدة شخصية',cashCustodyTransfer:'تحويل عهدة',partnerCurrentAccountTransfer:'تحويل جاري شريك',partnerCurrentAccountExpenseCorrection:'تصحيح جاري شريك',journalRevision:'تعديل معتمد لقيد',manual:'يدوي'}[sourceType]||sourceType||'يدوي');};
 const dl=(name,txt)=>{const b=new Blob([txt],{type:'text/csv;charset=utf-8'}),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1200);};
 function FinanceModule(props){
  const {db,currentUser,rtl:rtlProp,language,workerBase,userDirectory=[],can:permissionCheck}=props;
@@ -445,7 +446,8 @@ function FinanceModule(props){
    const parts=sourceId.split("--");if(parts.length>=2&&parts[0]&&parts[1])refs.push({entityType:"cashCustody",entityId:parts.slice(0,2).join("--")});
   }else if(sourceType==="projectEvent"&&sourceId)refs.push({entityType:"projectEvent",entityId:sourceId});
   else if(sourceId)refs.push({entityType:"financial",entityId:sourceId});
-  if(record&&record.journalId)refs.push({entityType:"financial",entityId:String(record.journalId)});
+  const journalDocumentId=record&&(record.journalId||(record.type==="journal"?record.id:""));
+  if(journalDocumentId)refs.push({entityType:"financial",entityId:String(journalDocumentId)});
   return Array.from(new Map(refs.map(reference=>[statementAttachmentKey(reference),reference])).values());
  };
  const loadStatementAttachmentReferences=async references=>{
@@ -1715,7 +1717,6 @@ const renderJournal = function() {
    documents.filter(function(x){return x.type==='journal';}).forEach(x=>journalMap.set(String(x.id),x));
    journalRecords.forEach(x=>journalMap.set(String(x.id),x));
    const allJournalRows=Array.from(journalMap.values()).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||n(b.postedAt||b.createdAt)-n(a.postedAt||a.createdAt));
-   const journalSourceLabel=x=>({invoice:'فاتورة',cash:'الخزينة',bankLine:'البنك',projectEvent:'حدث مشروع',cashCustody:'عهدة شخصية',journalRevision:'تعديل معتمد لقيد',manual:'يدوي'}[x.sourceType||'manual']||x.sourceType||'يدوي');
    const draftRows=allJournalRows.map(function(x){
     const manual=!(x.sourceType&&x.sourceType!=='manual'),posted=x.status==='posted'||journalRecords.some(j=>j.id===x.id&&j.status==='posted');
     const debit=(x.lines||[]).reduce((sum,line)=>sum+n(line.debit),0),credit=(x.lines||[]).reduce((sum,line)=>sum+n(line.credit),0);
@@ -1730,7 +1731,7 @@ const renderJournal = function() {
      h('td',{className:'p-2'},button('فتح القيد',()=>openJournalModal(x),'muted'))
     );
    });
-   const draftsPanel=panel('سجل القيود اليومية الموحد','يعرض القيود اليدوية والقيود المرحّلة الناتجة عن فواتير العملاء والموردين والخزينة والبنوك، إضافة إلى قيود أحداث المشروعات والعهد. اضغط أي صف لفتح تفاصيله. التعديل المباشر متاح للقيود اليدوية ومسودات أحداث المشروع والعهد داخل المراجعة، والقيود المرحّلة من المصادر الأخرى تُعالج من المستند الأصلي أو بقيد عكسي.',table(['رقم القيد','التاريخ','البيان','المصدر','الحالة','مدين','دائن','إجراء'],draftRows,{maxHeight:'min(58dvh, 560px)',minHeight:'180px',overflowY:'auto',overscrollBehavior:'contain',scrollbarGutter:'stable'}));
+   const draftsPanel=panel('سجل القيود اليومية الموحد','يعرض القيود اليدوية والقيود المرحّلة الناتجة عن فواتير العملاء والموردين والخزينة والبنوك، إضافة إلى قيود أحداث المشروعات والعهد. اضغط أي صف لفتح تفاصيله. التعديل المباشر متاح للقيود اليدوية ومسودات أحداث المشروع والعهد داخل المراجعة، والقيود المرحّلة من المصادر الأخرى تُعالج من المستند الأصلي أو بقيد عكسي.',table(['رقم القيد','التاريخ','البيان','المصدر','الحالة','مدين','دائن','إجراء'],draftRows,{maxHeight:'min(58dvh, 560px)',minHeight:'180px',overflowY:'auto',overscrollBehavior:'auto',overscrollBehaviorY:'auto',scrollbarGutter:'stable'}));
    const modal=journalModal&&journalModalDraft?(()=>{
     const draft=journalModalDraft,manual=!draft.sourceType||draft.sourceType==='manual',posted=draft.status==='posted'||journalRecords.some(x=>x.id===draft.id&&x.status==='posted'),reviewEditable=draft.type==='journal'&&['pending_review','needs_correction'].includes(draft.status);
     const editable=reviewEditable,modalDebit=(draft.lines||[]).reduce((sum,line)=>sum+n(line.debit),0),modalCredit=(draft.lines||[]).reduce((sum,line)=>sum+n(line.credit),0);
@@ -1754,7 +1755,7 @@ const renderJournal = function() {
        field('المرجع',draft.reference||'',v=>setJournalModalDraft(old=>Object.assign({},old,{reference:v})),undefined,editable?undefined:{disabled:true}),
        field('البيان',draft.description||'',v=>setJournalModalDraft(old=>Object.assign({},old,{description:v})),undefined,editable?undefined:{disabled:true})
       ),
-      h('div',{className:'flex flex-wrap gap-3 text-sm'},h('b',null,'المصدر: '+journalSourceLabel(draft)),h('b',null,'الحالة: '+status(draft.status)),draft.reversalOf?h('b',null,'قيد عكسي للقيد: '+draft.reversalOf):null,draft.revisionOf?h('b',null,'تعديل للقيد الأصلي: '+draft.revisionOf):null),
+      h('div',{className:'flex flex-wrap items-center gap-3 text-sm'},h('b',null,'المصدر: '+journalSourceLabel(draft)),h('b',null,'الحالة: '+status(draft.status)),draft.reversalOf?h('b',null,'قيد عكسي للقيد: '+draft.reversalOf):null,draft.revisionOf?h('b',null,'تعديل للقيد الأصلي: '+draft.revisionOf):null,statementAttachmentAction(draft)),
       draft.sourceType==='journalRevision'?h('label',{className:'block text-sm font-bold'},'ملاحظات التعديل / سبب إعادة القيد للمراجعة',h('textarea',{value:draft.revisionNotes||'',onChange:e=>setJournalModalDraft(old=>Object.assign({},old,{revisionNotes:e.target.value})),rows:3,disabled:!editable,className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal bg-white'})):null,
       h('div',{className:'space-y-2'},...modalLines,editable?button('إضافة سطر',()=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).concat([{accountCode:'6100',description:'',debit:0,credit:0,costCenterId:'',partyType:'',partyId:''}])})),'muted'):null),
       h('div',{className:'flex flex-wrap gap-4 rounded-lg border p-3'},h('b',null,'المدين: '+fmt(modalDebit)),h('b',null,'الدائن: '+fmt(modalCredit)),h('b',{className:Math.abs(modalDebit-modalCredit)<0.01?'text-emerald-700':'text-rose-700'},'الفرق: '+fmt(modalDebit-modalCredit))),
@@ -2490,6 +2491,8 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
  });
  React.useEffect(()=>{if(accountDetailCode&&accountDetailMovements.length)void loadStatementAttachments(accountDetailMovements);},[accountDetailCode,period.from,period.to]);
  const statementJournal=statementJournalId?statementJournalMap.get(String(statementJournalId)):null;
+  React.useEffect(()=>{if(journalModalDraft)void loadStatementAttachments([journalModalDraft]);},[journalModalDraft&&journalModalDraft.id]);
+  React.useEffect(()=>{if(statementJournal)void loadStatementAttachments([statementJournal]);},[statementJournalId]);
  const statementJournalLines=statementJournal?(statementJournal.lines||[]).map((line,index)=>{
   const account=accounts.find(item=>String(item.code)===String(line.accountCode));
   const center=centers.find(item=>String(item.code)===String(line.costCenterId));
@@ -2553,6 +2556,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
      h('div',{className:'rounded-lg border p-3'},h('span',{className:'text-xs text-slate-500 block'},'المصدر / المستند'),h('b',null,(statementJournal.sourceType||'manual')+' · '+(statementJournal.sourceId||'—'))),
      h('div',{className:'rounded-lg border p-3'},h('span',{className:'text-xs text-slate-500 block'},'الإنشاء / الاعتماد'),h('b',null,(statementJournal.createdByName||statementJournal.createdBy||'—')+' · '+(statementJournal.approvedBy||'—')))
     ),
+     h('div',{className:'flex flex-wrap items-center gap-3 rounded-xl border bg-slate-50 p-3 text-sm'},h('b',null,'مرفقات الحركة / المستند'),statementAttachmentAction(statementJournal)||h('span',{className:'text-slate-500'},'لا توجد مرفقات مرتبطة بهذا القيد')),
     h('div',{className:'overflow-auto border rounded-xl'},
      h('table',{className:'w-full min-w-[950px] text-sm text-right'},
       h('thead',{className:'bg-slate-100'},h('tr',null,['م','الحساب (اضغط لفتح كشف الحساب)','البيان','مركز التكلفة','المشروع','الطرف التحليلي','مدين','دائن'].map(name=>h('th',{key:name,className:'p-2 whitespace-nowrap'},name)))),
