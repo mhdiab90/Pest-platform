@@ -1871,21 +1871,6 @@ if(action==="submitCash"){
     }};
     const mirrorId=id(doc.custodyMirrorId),destinationOwnerUid=id(doc.destinationOwnerUid);
     if(mirrorId&&destinationOwnerUid)await adminPatchRootAt("cashCustodies/"+destinationOwnerUid+"/transactions/"+mirrorId,{status:"rejected",financialReviewStatus:status,financialReviewReason:txt(body.reason,1000)});
-   }else if(doc.type==="journal"&&doc.sourceType==="cashCustodyTransfer"&&doc.sourceId&&adminPatchRootAt){
-    const parts=String(doc.sourceId).split("--"),ownerUid=id(parts[0]),transactionId=id(parts[1]),transferId=id(parts[2]);
-    if(!ownerUid||!transactionId||!transferId)throw new Error("مرجع تحويل العهدة غير صالح.");
-    const sourcePath="cashCustodies/"+ownerUid+"/transactions/"+transactionId;
-    const source=adminReadRoot?await adminReadRoot(sourcePath):null,transfer=source&&source.cashCustodyTransfer||{};
-    if(!source||transfer.pending!==true||transfer.pendingJournalId!==j.id||transfer.transferId!==transferId||transfer.destinationOwnerUid!==doc.destinationOwnerUid)throw new Error("حالة حركة العهدة لا تطابق طلب التحويل. لم يتم تغيير الأرصدة.");
-    sourceRootUpdate={path:sourcePath,value:{
-     "cashCustodyTransfer/active":true,"cashCustodyTransfer/pending":false,"cashCustodyTransfer/pendingJournalId":null,
-     "cashCustodyTransfer/lastJournalId":j.id,"cashCustodyTransfer/lastReviewStatus":"posted",
-     ["cashCustodyTransferHistory/"+transferId+"/status"]:"posted",
-     ["cashCustodyTransferHistory/"+transferId+"/approvedAt"]:now,
-     ["cashCustodyTransferHistory/"+transferId+"/approvedBy"]:claims.sub
-    }};
-    const mirrorId=id(doc.custodyMirrorId),destinationOwnerUid=id(doc.destinationOwnerUid);
-    if(mirrorId&&destinationOwnerUid)secondaryRootUpdate={path:"cashCustodies/"+destinationOwnerUid+"/transactions/"+mirrorId,value:{status:"approved",financialReviewStatus:"posted",financialJournalId:j.id,financialReviewedAt:now,financialReviewedBy:claims.sub,cashCustodyTransfer:{active:true,pending:false,sourceOwnerUid:ownerUid,sourceTransactionId:transactionId,transferId,journalId:j.id}}};
   }else if(doc.type==="journal"&&doc.sourceType==="partnerCurrentAccountTransfer"&&doc.sourceId&&adminPatchRootAt){
     const sourceId=String(doc.sourceId),first=sourceId.indexOf("--"),last=sourceId.lastIndexOf("--");
     if(first<=0||last<=first+2)throw new Error("مرجع تحويل جاري الشريك غير صالح.");
@@ -2067,6 +2052,21 @@ if(action==="submitCash"){
     }
     sourceRootUpdate={path:"cashCustodies/"+ownerUid+"/transactions/"+transactionId,value:custodyUpdates};
    }
+  }else if(doc.type==="journal"&&doc.sourceType==="cashCustodyTransfer"&&doc.sourceId&&adminPatchRootAt){
+    const parts=String(doc.sourceId).split("--"),ownerUid=id(parts[0]),transactionId=id(parts[1]),transferId=id(parts[2]);
+    if(!ownerUid||!transactionId||!transferId)throw new Error("مرجع تحويل العهدة غير صالح.");
+    const sourcePath="cashCustodies/"+ownerUid+"/transactions/"+transactionId;
+    const source=adminReadRoot?await adminReadRoot(sourcePath):null,transfer=source&&source.cashCustodyTransfer||{};
+    if(!source||transfer.pending!==true||transfer.pendingJournalId!==j.id||transfer.transferId!==transferId||transfer.destinationOwnerUid!==doc.destinationOwnerUid)throw new Error("حالة حركة العهدة لا تطابق طلب التحويل. لم يتم تغيير الأرصدة.");
+    sourceRootUpdate={path:sourcePath,value:{
+     "cashCustodyTransfer/active":true,"cashCustodyTransfer/pending":false,"cashCustodyTransfer/pendingJournalId":null,
+     "cashCustodyTransfer/lastJournalId":j.id,"cashCustodyTransfer/lastReviewStatus":"posted",
+     ["cashCustodyTransferHistory/"+transferId+"/status"]:"posted",
+     ["cashCustodyTransferHistory/"+transferId+"/approvedAt"]:now,
+     ["cashCustodyTransferHistory/"+transferId+"/approvedBy"]:claims.sub
+    }};
+    const mirrorId=id(doc.custodyMirrorId),destinationOwnerUid=id(doc.destinationOwnerUid);
+    if(mirrorId&&destinationOwnerUid)secondaryRootUpdate={path:"cashCustodies/"+destinationOwnerUid+"/transactions/"+mirrorId,value:{status:"approved",financialReviewStatus:"posted",financialJournalId:j.id,financialReviewedAt:now,financialReviewedBy:claims.sub,cashCustodyTransfer:{active:true,pending:false,sourceOwnerUid:ownerUid,sourceTransactionId:transactionId,transferId,journalId:j.id}}};
   }else if(doc.type==="journal"&&doc.sourceType==="partnerCurrentAccountTransfer"&&doc.sourceId&&adminPatchRootAt){
     const sourceId=String(doc.sourceId),first=sourceId.indexOf("--"),last=sourceId.lastIndexOf("--");
     if(first<=0||last<=first+2)throw new Error("مرجع تحويل جاري الشريك غير صالح.");
