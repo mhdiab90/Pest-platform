@@ -2028,6 +2028,23 @@ export class AIAgentScheduler {
         const attachments=[...values.values()].sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));
         return jsonResponse({attachments},200,"");
       }
+      if (url.pathname==="/attachment-records-batch" && method==="POST") {
+        const body=await request.json();
+        const references=Array.isArray(body.references)?body.references.slice(0,200):[];
+        const items=[];
+        const seen=new Set();
+        for(const reference of references){
+          const entityType=safeSegment(reference&&reference.entityType,"attachment entity type");
+          const entityId=safeSegment(reference&&reference.entityId,"attachment entity id");
+          const key=entityType+":"+entityId;
+          if(seen.has(key))continue;
+          seen.add(key);
+          const values=await this.ctx.storage.list({prefix:"attachment:"+entityType+":"+entityId+":"});
+          const attachments=[...values.values()].sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));
+          items.push({entityType,entityId,attachments});
+        }
+        return jsonResponse({items},200,"");
+      }
       if (url.pathname==="/attachment-record" && method==="GET") {
         const entityType=safeSegment(url.searchParams.get("entityType"),"attachment entity type");
         const entityId=safeSegment(url.searchParams.get("entityId"),"attachment entity id");
@@ -2552,6 +2569,27 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     const result=await driveStorageRequest(env,"/attachment-records","GET",null,{entityType:type,entityId});
     return {attachments:result.attachments||[]};
   }
+  if(url.pathname==="/attachments/lookup"&&request.method==="POST"){
+    const supplied=Array.isArray(body.references)?body.references:[];
+    if(supplied.length>200)throw new Error("Too many statement attachment references. Load a smaller statement range.");
+    const unique=new Map();
+    for(const reference of supplied){
+      const type=cleanText(reference&&reference.entityType,24),entityId=cleanText(reference&&reference.entityId,120);
+      if(!type||!entityId)continue;
+      unique.set(type+":"+entityId,{entityType:type,entityId});
+    }
+    const authorized=[];
+    for(const reference of unique.values()){
+      try{
+        await validateAttachmentEntity(reference.entityType,reference.entityId,claims,profile,token,"view",undefined,env);
+        authorized.push(reference);
+      }catch(_){}
+    }
+    const result=authorized.length
+      ?await driveStorageRequest(env,"/attachment-records-batch","POST",{references:authorized})
+      :{items:[]};
+    return {items:Array.isArray(result.items)?result.items:[]};
+  }
   if(url.pathname==="/attachments/upload"&&request.method==="POST"){
     googleDriveConfig(env);
     const connection=await getGoogleDriveConnection(env);
@@ -2736,7 +2774,7 @@ export default {
       }, 200, origin);
     }
     if (!["GET","POST","DELETE"].includes(request.method)) return jsonResponse({ error: "Method not allowed." }, 405, origin);
-    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/upload", "/attachments/attach", "/attachments/replace", "/attachments/annotate", "/attachments/file", "/attachments/usage", "/push/notify", "/push/request", "/push/badge/sync", "/admin/users/delete", "/finance"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
+    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/lookup", "/attachments/upload", "/attachments/attach", "/attachments/replace", "/attachments/annotate", "/attachments/file", "/attachments/usage", "/push/notify", "/push/request", "/push/badge/sync", "/admin/users/delete", "/finance"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
 
     try {
       const authorization = request.headers.get("Authorization") || "";
