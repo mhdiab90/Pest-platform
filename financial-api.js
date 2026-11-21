@@ -1859,7 +1859,7 @@ if(action==="submitCash"){
     const separator=String(doc.sourceId).indexOf("--");
     if(separator>0)sourceRootUpdate={path:"cashCustodies/"+id(doc.sourceId.slice(0,separator))+"/transactions/"+id(doc.sourceId.slice(separator+2)),value:{financialReviewStatus:status,financialReviewReason:txt(body.reason,1000),financialReviewedAt:now,financialReviewedBy:claims.sub}};
    }else if(doc.type==="journal"&&doc.sourceType==="cashCustodyTransfer"&&doc.sourceId&&adminPatchRootAt){
-    const parts=String(doc.sourceId).split("--"),ownerUid=id(parts[0]),transactionId=id(parts[1]),transferId=id(parts[2]);
+    const ownerUid=id(doc.ownerUid),transactionId=id(doc.custodyTransactionId),transferId=id(doc.custodyTransferId);
     if(!ownerUid||!transactionId||!transferId)throw new Error("مرجع تحويل العهدة غير صالح.");
     const sourcePath="cashCustodies/"+ownerUid+"/transactions/"+transactionId;
     const source=adminReadRoot?await adminReadRoot(sourcePath):null,transfer=source&&source.cashCustodyTransfer||{};
@@ -2056,7 +2056,7 @@ if(action==="submitCash"){
     sourceRootUpdate={path:"cashCustodies/"+ownerUid+"/transactions/"+transactionId,value:custodyUpdates};
    }
   }else if(doc.type==="journal"&&doc.sourceType==="cashCustodyTransfer"&&doc.sourceId&&adminPatchRootAt){
-    const parts=String(doc.sourceId).split("--"),ownerUid=id(parts[0]),transactionId=id(parts[1]),transferId=id(parts[2]);
+    const ownerUid=id(doc.ownerUid),transactionId=id(doc.custodyTransactionId),transferId=id(doc.custodyTransferId);
     if(!ownerUid||!transactionId||!transferId)throw new Error("مرجع تحويل العهدة غير صالح.");
     const sourcePath="cashCustodies/"+ownerUid+"/transactions/"+transactionId;
     const source=adminReadRoot?await adminReadRoot(sourcePath):null,transfer=source&&source.cashCustodyTransfer||{};
