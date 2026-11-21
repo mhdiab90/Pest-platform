@@ -2493,7 +2493,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
  const statementJournal=statementJournalId?statementJournalMap.get(String(statementJournalId)):null;
   React.useEffect(()=>{if(journalModalDraft)void loadStatementAttachments([journalModalDraft]);},[journalModalDraft&&journalModalDraft.id]);
   React.useEffect(()=>{if(statementJournal)void loadStatementAttachments([statementJournal]);},[statementJournalId]);
- React.useEffect(()=>{if(tab==='journal'&&journalRecords.length)void loadStatementAttachments(journalRecords);},[tab,journalRecords]);
+ React.useEffect(()=>{if(tab==='journal'&&(journalRecords.length||documents.length))void loadStatementAttachments(journalRecords.concat(documents.filter(document=>document&&document.type==='journal')));},[tab,journalRecords,documents]);
  const statementJournalLines=statementJournal?(statementJournal.lines||[]).map((line,index)=>{
   const account=accounts.find(item=>String(item.code)===String(line.accountCode));
   const center=centers.find(item=>String(item.code)===String(line.costCenterId));
