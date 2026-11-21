@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const source = readFileSync(new URL("../financial-module.js", import.meta.url), "utf8");
+const apiSource = readFileSync(new URL("../financial-api.js", import.meta.url), "utf8");
 const shell = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 
 test("journal source labels are shared by the daily register and financial statements", () => {
@@ -53,4 +54,36 @@ test("financial statement journal details expose the same safe journal actions a
 test("confirmed statement journal actions close the statement detail before opening a review dialog", () => {
   assert.match(source, /setStatementJournalId\(''\);\s*setBusy\(true\);/);
   assert.equal((source.match(/setStatementJournalId\(''\);\s*setBusy\(true\);/g)||[]).length, 3);
+});
+
+
+test("statement journal revision launched from reports displays the edit modal", () => {
+  assert.match(source, /setTab\('journal'\);\s*openJournalModal\(result\.item\)/);
+  assert.match(source, /إجراءات القيد/);
+  assert.match(source, /إرجاع للمراجعة/);
+  assert.match(source, /قيد عكسي للمراجعة/);
+});
+
+test("every financial screen table supports the shared search input", () => {
+  assert.match(source, /screenTableSearch/);
+  assert.match(source, /const screenSearchText=node/);
+  assert.match(source, /filtered=query\?source\.filter/);
+  assert.match(source, /بحث في بيانات الشاشة الحالية/);
+});
+
+test("inventory transactions are exposed in a separate screen", () => {
+  assert.match(source, /inventoryMovements:'inventory'/);
+  assert.match(source, /inventoryMovements/);
+  assert.match(source, /const renderInventoryMovements=/);
+  assert.match(source, /resource=inventory/);
+});
+
+test("balance sheet displays leaf accounts, zero inventory, and orphaned ledger codes", () => {
+  assert.match(source, /balanceAssetRows=statementRowsWithBalance\(account=>account\.type==='asset'&&!account\.isGroup,'debit',true\)/);
+  assert.match(source, /unmappedBalanceRows/);
+  assert.match(source, /ledgerBalanceDifference/);
+});
+
+test("existing charts backfill the inventory control account 1300", () => {
+  assert.match(apiSource, /code:'1300',name:'المخزون',type:'asset',nature:'debit',parentCode:'11'/);
 });
