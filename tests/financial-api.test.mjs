@@ -1245,7 +1245,7 @@ test("reviewers can edit transfer journals and add extra accounting lines before
     ownerUid:"owner-1",custodyTransactionId:"transaction-1",custodyTransferId:"transfer-1",
     date:"2026-11-19",description:"Custody transfer draft",reference:"TRANSFER-EDIT-01",currency:"EGP",status:"pending_review",
     lines:[
-      {accountCode:"1220",debit:100,credit:0,description:"Custody"},
+      {accountCode:"1220",debit:100,credit:0,description:"Custody",partyType:"employeeCustody",partyId:"owner-1"},
       {accountCode:"1110",debit:0,credit:100,description:"Cash"}
     ]
   });
@@ -1253,7 +1253,7 @@ test("reviewers can edit transfer journals and add extra accounting lines before
   const result=await invoke("POST","",{action:"updateReviewJournal",id:journalId,
     journal:{date:"2026-11-19",description:"Corrected custody transfer",reference:"TRANSFER-EDIT-02"},
     lines:[
-      {accountCode:"1220",debit:125,credit:0,description:"Custody adjustment",partyType:"employeeCustody",partyId:"owner-1"},
+      {accountCode:"1220",debit:125,credit:0,description:"Custody adjustment"},
       {accountCode:"1110",debit:0,credit:100,description:"Cash"},
       {accountCode:"6100",debit:0,credit:25,description:"Additional credit line"}
     ]});
@@ -1262,6 +1262,8 @@ test("reviewers can edit transfer journals and add extra accounting lines before
   assert.equal(read("documents/"+journalId+"/description"),"Corrected custody transfer");
   assert.equal(read("documents/"+journalId+"/lines/2/accountCode"),"6100");
   assert.equal(read("documents/"+journalId+"/lines/2/credit"),25);
+  assert.equal(read("documents/"+journalId+"/lines/0/partyType"),"employeeCustody","an unchanged analytic account retains its subledger type");
+  assert.equal(read("documents/"+journalId+"/lines/0/partyId"),"owner-1","editing other fields must not discard its assigned employee");
   assert.ok(read("reviewQueue/"+journalId),"the edited transfer journal remains in review");
   assert.equal(read("ledger/1220/2026-11/"+journalId+"_1"),null,"editing a transfer journal does not affect the ledger");
   const unbalanced=await invoke("POST","",{action:"updateReviewJournal",id:journalId,
