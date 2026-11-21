@@ -1066,18 +1066,78 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
  const updateJournalModalLine=(index,key,value)=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).map((line,i)=>i===index?Object.assign({},line,{[key]:value}):line)}));
  const saveJournalModal=async()=>{
   if(!journalModalDraft)return;
-  const draft=journalModalDraft,manual=!draft.sourceType||draft.sourceType==="manual",reviewEditable=["projectEvent","cashCustody"].includes(draft.sourceType)&&["pending_review","needs_correction"].includes(draft.status);
-  if(!manual&&!reviewEditable){setError("هذا القيد مرتبط بمستند مصدر. صحح المستند الأصلي أو عدّل القيد من قائمة المراجعة.");return;}
-  if(!canFinance(manual?"journal":"review","edit")){setError("ليس لديك صلاحية تعديل هذا القيد.");return;}
+  const draft=journalModalDraft,manual=!draft.sourceType||draft.sourceType==="manual";
+  const pendingReview=draft.type==="journal"&&["pending_review","needs_correction"].includes(draft.status);
+  const openedFromReview=tab==="review"&&pendingReview;
+  if(!manual&&!pendingReview){setError("هذا القيد لم يعد معلقًا للمراجعة؛ لا يمكن تعديله من هذه الشاشة.");return;}
+  if(!canFinance(openedFromReview||!manual?"review":"journal","edit")){setError("ليس لديك صلاحية تعديل هذا القيد.");return;}
   setBusy(true);setError("");
   try{
-   const result=manual
+   const result=manual&&!openedFromReview
     ?await api("","POST",{action:"submitJournal",id:draft.id,date:draft.date,description:draft.description,reference:draft.reference,currency:"EGP",lines:draft.lines})
     :await api("","POST",{action:"updateReviewJournal",id:draft.id,journal:{date:draft.date,description:draft.description,reference:draft.reference},lines:draft.lines});
-   setNotice(result.status==="posted"?"تم تعديل القيد المرحّل وتحديث الأستاذ ومراكز التكلفة.":(result.errors||[]).length?"تم حفظ التعديلات وما زالت هناك أخطاء يجب تصحيحها.":"تم حفظ تعديلات القيد وإبقاؤه في مسار المراجعة.");
-   setJournalModal(null);setJournalModalDraft(null);await refresh();await loadPeriod();
+   setNotice((result.errors||[]).length?"تم حفظ التعديلات وما زالت هناك أخطاء يجب تصحيحها قبل الاعتماد.":result.status==="posted"?"تم تعديل القيد المرحّل وتحديث الأستاذ ومراكز التكلفة.":"تم حفظ تعديلات القيد وإبقاؤه في مسار المراجعة دون تغيير الأرصدة.");
+   setJournalModal(null);setJournalModalDraft(null);
+   if(openedFromReview){await refreshReviewQueue(true);await openReviewItem({id:draft.id});}
+   else await refresh();
+   await loadPeriod();
   }catch(error){setError(error.message||String(error));}
   finally{setBusy(false);}
+ };
+ const renderReviewJournalEditor=()=>{
+  if(tab!=="review"||!journalModal||!journalModalDraft)return null;
+  const draft=journalModalDraft,editable=draft.type==="journal"&&["pending_review","needs_correction"].includes(draft.status)&&canFinance("review","edit");
+  const lines=Array.isArray(draft.lines)?draft.lines:[];
+  const debit=lines.reduce((sum,line)=>sum+n(line.debit),0),credit=lines.reduce((sum,line)=>sum+n(line.credit),0),difference=debit-credit;
+  const editLine=(index,key,value)=>updateJournalModalLine(index,key,value);
+  const lineCards=lines.map((line,index)=>h("div",{key:index,className:"grid grid-cols-1 md:grid-cols-12 gap-2 rounded-xl border bg-slate-50 p-3"},
+   h("div",{className:"md:col-span-3"},selectWithAdd("كود / اسم الحساب",line.accountCode||"",value=>{
+    const selectedAccount=posting.find(item=>String(item.code)===String(value));
+    setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).map((row,i)=>i===index?Object.assign({},row,{accountCode:value,partyType:selectedAccount&&selectedAccount.subledgerType||"",partyId:selectedAccount&&selectedAccount.subledgerType&&row.partyType===selectedAccount.subledgerType?row.partyId||"":""}):row)}));
+   },posting.map(item=>({value:item.code,label:item.code+" — "+item.name})))),
+   h("div",{className:"md:col-span-2"},field("البيان",line.description||"",value=>editLine(index,"description",value))),
+   h("div",{className:"md:col-span-1"},field("مدين",line.debit??"",value=>editLine(index,"debit",value),"number")),
+   h("div",{className:"md:col-span-1"},field("دائن",line.credit??"",value=>editLine(index,"credit",value),"number")),
+   h("div",{className:"md:col-span-2"},selectWithAdd("مركز التكلفة",line.costCenterId||"",value=>editLine(index,"costCenterId",value),[{value:"",label:"بدون مركز تكلفة"}].concat(activeCenters.map(item=>({value:item.code,label:item.code+" — "+item.name}))))),
+   h("div",{className:"md:col-span-1"},field("كود الطرف التحليلي",line.partyId||"",value=>editLine(index,"partyId",value))),
+   h("div",{className:"md:col-span-1"},field("كود المشروع",line.projectCode||"",value=>editLine(index,"projectCode",value))),
+   h("div",{className:"md:col-span-1 flex items-end"},button("حذف السطر",()=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).filter((row,i)=>i!==index)})),"danger",!editable))
+  ));
+  return h("div",{className:"fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/60 p-3",onClick:()=>{if(!busy){setJournalModal(null);setJournalModalDraft(null);}}},
+   h("section",{className:"w-full max-w-6xl max-h-[94vh] overflow-y-auto rounded-2xl bg-white p-4 md:p-6 shadow-2xl space-y-4",onClick:event=>event.stopPropagation()},
+    h("div",{className:"flex flex-wrap items-center justify-between gap-3"},
+     h("div",null,h("h3",{className:"font-extrabold text-xl"},"تعديل قيد المراجعة: "+(draft.number||draft.id)),h("p",{className:"text-xs text-slate-500 mt-1"},"يمكن تعديل الحساب والبيان والمدين والدائن ومركز التكلفة والطرف وإضافة أو حذف سطور.")),
+     button("إغلاق",()=>{setJournalModal(null);setJournalModalDraft(null);},"muted",busy)
+    ),
+    h("div",{className:"grid grid-cols-1 md:grid-cols-3 gap-3"},
+     field("تاريخ القيد",draft.date||"",value=>setJournalModalDraft(old=>Object.assign({},old,{date:value})),"date"),
+     field("المرجع",draft.reference||"",value=>setJournalModalDraft(old=>Object.assign({},old,{reference:value}))),
+     field("بيان القيد",draft.description||"",value=>setJournalModalDraft(old=>Object.assign({},old,{description:value})))
+    ),
+    h("div",{className:"flex flex-wrap gap-2 text-xs"},
+     h("span",{className:"rounded-full bg-slate-100 px-3 py-1"},"المصدر: "+(draft.sourceType||"manual")),
+     h("span",{className:"rounded-full bg-amber-50 text-amber-800 px-3 py-1"},"الحالة: "+status(draft.status)),
+     h("span",{className:"rounded-full bg-indigo-50 text-indigo-800 px-3 py-1"},"العملة: EGP")
+    ),
+    h("div",{className:"rounded-xl border border-indigo-100 overflow-hidden"},
+     h("div",{className:"flex flex-wrap items-center justify-between gap-2 bg-indigo-50 p-3"},
+      h("b",null,"سطور القيد المحاسبي"),
+      button("إضافة سطر جديد",()=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).concat([{accountCode:"6100",description:"",debit:0,credit:0,costCenterId:draft.projectCode||"",projectCode:draft.projectCode||"",partyType:"",partyId:""}])})),"primary",!editable||lines.length>=100)
+     ),
+     h("div",{className:"space-y-2 p-3"},lineCards.length?lineCards:h("p",{className:"text-sm text-rose-700"},"القيد لا يحتوي على سطور. أضف سطرين على الأقل.")),
+     h("div",{className:"grid grid-cols-1 sm:grid-cols-3 gap-2 border-t bg-slate-50 p-3 text-sm"},
+      h("b",null,"إجمالي المدين: "+fmt(debit)),
+      h("b",null,"إجمالي الدائن: "+fmt(credit)),
+      h("b",{className:Math.abs(difference)<0.01?"text-emerald-700":"text-rose-700"},"الفرق: "+fmt(difference))
+     )
+    ),
+    h("p",{className:"rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"},"التعديل لا يرحّل القيد ولا يغيّر أي رصيد. سيظل القيد في قائمة المراجعة، ولن يظهر أثره في الأستاذ أو القوائم إلا بعد اعتماده بنجاح وبعد اجتياز التحقق المحاسبي."),
+    h("div",{className:"flex flex-wrap justify-end gap-2"},
+     button("إلغاء",()=>{setJournalModal(null);setJournalModalDraft(null);},"muted",busy),
+     button("حفظ التعديلات وإبقاء القيد للمراجعة",saveJournalModal,"primary",busy||!editable)
+    )
+   )
+  );
  };
  const reverseJournal=async doc=>{
   if(!doc||!canFinance("journal","add")){setError("ليس لديك صلاحية إنشاء قيد عكسي.");return;}
