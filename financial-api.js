@@ -1382,6 +1382,7 @@ export async function handleFinancialRequest(ctx){
     postedRecord=await adminRead("journals/"+journalId);
     previous=previous||postedRecord;
     if(!previous||previous.type!=="journal")throw new Error("القيد المطلوب تعديله غير موجود.");
+    if(previous.status==="posted")throw new Error("القيد مرحّل. استخدم زر «تعديل القيد» لإنشاء إصدار تعديل مستقل يُرسل للمراجعة قبل تحديث الأستاذ.");
     if(previous.sourceType&&previous.sourceType!=="manual")throw new Error("هذا القيد مرتبط بمستند أصلي؛ يجب تعديل المستند المصدر حتى لا تختل أرصدته.");
    }else requireFinanceArea("journal","add");
    const journalDate=date(body.date),j={id:journalId,number:previous&&previous.number||journalNumberFor(journalDate,journalId),type:"journal",date:journalDate,description:txt(body.description,500),reference:txt(body.reference,120),currency:txt(body.currency||"EGP",3),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:previous&&previous.createdAt||now,createdBy:previous&&previous.createdBy||claims.sub,createdByName:previous&&previous.createdByName||txt(profile.fullName||profile.username||profile.email,120)};
@@ -1505,7 +1506,8 @@ export async function handleFinancialRequest(ctx){
    requireFinanceArea("journal","delete");
    const journalId=id(body.id),document=await adminRead("documents/"+journalId),posted=await adminRead("journals/"+journalId),target=posted||document;
    if(!target||target.type!=="journal")throw new Error("قيد اليومية المطلوب حذفه غير موجود.");
-   if(target.sourceType&&target.sourceType!=="manual")throw new Error("لا يمكن حذف قيد ناتج عن فاتورة أو سند؛ صحح المستند المصدر حتى لا تختل حركة المخزون والأرصدة.");
+   if(target.pendingRevisionId||target.revisedByJournalId)throw new Error("لا يمكن حذف هذا القيد لوجود إصدار تعديل معلّق أو معتمد مرتبط به. احتفظ بالتسلسل المحاسبي.");
+    if(target.sourceType&&target.sourceType!=="manual")throw new Error("لا يمكن حذف قيد ناتج عن فاتورة أو سند؛ صحح المستند المصدر حتى لا تختل حركة المخزون والأرصدة.");
    const updates={};updates["documents/"+journalId]=null;updates["reviewQueue/"+journalId]=null;updates["journals/"+journalId]=null;
    if(target.status==="posted"||posted){
     const period=month(target.date);updates["periods/"+period+"/entries/"+journalId]=null;
