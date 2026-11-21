@@ -1546,7 +1546,8 @@ test("approved custody movement can be reassigned to another employee custody th
   assert.equal(preview.preview.lines.length,2);
   assert.equal(preview.preview.balance.difference,0);
   assert.equal(read("cashCustodies/"+sourceUid+"/transactions/"+transactionId+"/cashCustodyTransfer/pending"),null,"preview must not lock or change the source movement");
-  assert.equal(read("reviewQueue/"+preview.preview.number),null,"preview must not create a review item");
+  assert.equal(read("reviewQueue/"+preview.preview.id),null,"preview must not create a review item");
+  assert.equal(read("documents/"+preview.preview.id),null,"preview must not persist a journal document");
   const submitted=await invoke("POST","",{
     action:"transferCashCustodyMovement",ownerUid:sourceUid,transactionId,destinationOwnerUid:destinationUid
   });
