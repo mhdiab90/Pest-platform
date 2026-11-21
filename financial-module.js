@@ -742,7 +742,11 @@ function FinanceModule(props){
  const loadPeriod=async()=>{
   setBusy(true);
   try{
-   const d=await api('?resource=periods&from='+encodeURIComponent(period.from)+'&to='+encodeURIComponent(period.to));
+   const [d,partnerData]=await Promise.all([
+    api('?resource=periods&from='+encodeURIComponent(period.from)+'&to='+encodeURIComponent(period.to)),
+    canFinance('partyStatements','view')?api('?resource=partnerCurrentAccounts').catch(()=>null):Promise.resolve(null)
+   ]);
+   if(partnerData&&Array.isArray(partnerData.items))setPartnerCurrentAccounts(partnerData.items);
    const selected=[],cumulative=[];
    Object.entries(d.entries||{}).forEach(([m,entries])=>Object.values(entries||{}).forEach(j=>{if(j&&j.status==='posted')selected.push(j);}));
    Object.entries(d.balanceEntries||d.entries||{}).forEach(([m,entries])=>Object.values(entries||{}).forEach(j=>{if(j&&j.status==='posted')cumulative.push(j);}));
@@ -1150,7 +1154,7 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
  const area=(label,value,onChange)=>h('label',{className:'block text-sm font-bold'},label,h('textarea',{value,onChange:e=>onChange(e.target.value),rows:2,className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal'}));
  const panel=(title,sub,child)=>h('section',{className:'rounded-2xl border bg-white p-4 shadow-sm min-w-0'},h('div',{className:'mb-3'},h('h3',{className:'font-bold text-lg'},title),sub?h('p',{className:'text-xs text-slate-500'},sub):null),child);
  const metric=(label,value)=>h('div',{className:'rounded-xl border bg-white p-3'},h('div',{className:'text-xs text-slate-500'},label),h('strong',{className:'text-xl block mt-1'},value));
- const table=(headers,data)=>h('div',{className:'overflow-auto border rounded-xl'},h('table',{className:'w-full text-sm text-right'},h('thead',{className:'bg-slate-100'},h('tr',null,headers.map(x=>h('th',{key:x,className:'p-3 whitespace-nowrap'},x)))),h('tbody',null,data.length?data:h('tr',null,h('td',{colSpan:headers.length,className:'p-4 text-center text-slate-400'},'لا توجد بيانات')))));
+ const table=(headers,data,scrollStyle)=>h('div',{className:'overflow-auto border rounded-xl',style:scrollStyle||undefined},h('table',{className:'w-full text-sm text-right'},h('thead',{className:'bg-slate-100'},h('tr',null,headers.map(x=>h('th',{key:x,className:'p-3 whitespace-nowrap'},x)))),h('tbody',null,data.length?data:h('tr',null,h('td',{colSpan:headers.length,className:'p-4 text-center text-slate-400'},'لا توجد بيانات')))));
  const noticeElement=error?h('div',{className:'rounded-xl bg-rose-50 text-rose-800 border border-rose-200 p-3 text-sm'},error):notice?h('div',{className:'rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 p-3 text-sm'},notice):null;
  const saveMaster=async()=>{
   if(!canFinance(masterForm.kind==="chartOfAccounts"?"accounts":financeAreaForMaster(masterForm.kind),masterForm.code&&masterForm.originalCode?"edit":"add")&&!canFinance(masterForm.kind==="chartOfAccounts"?"accounts":financeAreaForMaster(masterForm.kind),"add")){setError("ليس لديك صلاحية إضافة هذا الكود.");return;}
@@ -1704,7 +1708,7 @@ const renderJournal = function() {
      h('td',{className:'p-2'},button('فتح القيد',()=>openJournalModal(x),'muted'))
     );
    });
-   const draftsPanel=panel('سجل القيود اليومية الموحد','يعرض القيود اليدوية والقيود المرحّلة الناتجة عن فواتير العملاء والموردين والخزينة والبنوك، إضافة إلى قيود أحداث المشروعات والعهد. اضغط أي صف لفتح تفاصيله. التعديل المباشر متاح للقيود اليدوية ومسودات أحداث المشروع والعهد داخل المراجعة، والقيود المرحّلة من المصادر الأخرى تُعالج من المستند الأصلي أو بقيد عكسي.',table(['رقم القيد','التاريخ','البيان','المصدر','الحالة','مدين','دائن','إجراء'],draftRows));
+   const draftsPanel=panel('سجل القيود اليومية الموحد','يعرض القيود اليدوية والقيود المرحّلة الناتجة عن فواتير العملاء والموردين والخزينة والبنوك، إضافة إلى قيود أحداث المشروعات والعهد. اضغط أي صف لفتح تفاصيله. التعديل المباشر متاح للقيود اليدوية ومسودات أحداث المشروع والعهد داخل المراجعة، والقيود المرحّلة من المصادر الأخرى تُعالج من المستند الأصلي أو بقيد عكسي.',table(['رقم القيد','التاريخ','البيان','المصدر','الحالة','مدين','دائن','إجراء'],draftRows,{maxHeight:'min(58dvh, 560px)',minHeight:'180px',overflowY:'auto',overscrollBehavior:'contain',scrollbarGutter:'stable'}));
    const modal=journalModal&&journalModalDraft?(()=>{
     const draft=journalModalDraft,manual=!draft.sourceType||draft.sourceType==='manual',posted=draft.status==='posted'||journalRecords.some(x=>x.id===draft.id&&x.status==='posted'),reviewEditable=draft.type==='journal'&&['pending_review','needs_correction'].includes(draft.status);
     const editable=manual||reviewEditable,modalDebit=(draft.lines||[]).reduce((sum,line)=>sum+n(line.debit),0),modalCredit=(draft.lines||[]).reduce((sum,line)=>sum+n(line.credit),0);
@@ -2630,6 +2634,28 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
    h('td',{className:'p-2 text-end font-bold'},fmt(amount))
   );
  });
+ const partnerCurrentCorrectionCounts=partnerCurrentAccounts.reduce((tot,account)=>{
+  (account.transactions||[]).forEach(transaction=>{
+   const marker=transaction.partnerCurrentAccountTransfer||{};
+   if(transaction.type!=='expense'||marker.active!==true||marker.transferTreatment==='personalWithdrawal'||marker.expenseCorrectionStatus==='posted')return;
+   if(marker.expenseCorrectionPendingJournalId||marker.expenseCorrectionStatus==='pending_review')tot.pending++;
+   else tot.needed++;
+  });
+  return tot;
+ },{needed:0,pending:0});
+ const inventoryPurchaseAudit=flat.filter(line=>line.sourceType==='invoice'&&String(line.accountCode)==='1300'&&n(line.debit)>0&&n(line.credit)===0);
+ const inventoryPurchaseTotal=inventoryPurchaseAudit.reduce((sum,line)=>sum+n(line.debit)-n(line.credit),0);
+ const inventoryPurchaseInvoiceCount=new Set(inventoryPurchaseAudit.map(line=>String(line.sourceId||'')).filter(Boolean)).size;
+ const inventoryPurchaseRows=inventoryPurchaseAudit.map((line,index)=>{
+  const sourceDocument=documents.find(item=>String(item.id)===String(line.sourceId));
+  return h('tr',{key:String(line.journalId)+'-'+String(line.lineNo||index),className:'border-t'},
+   h('td',{className:'p-2 whitespace-nowrap'},line.date||'—'),
+   h('td',{className:'p-2'},h('button',{type:'button',className:'font-bold text-blue-700 underline',onClick:()=>openStatementJournal(line.journalId)},line.journalNumber||line.journalId||'—')),
+   h('td',{className:'p-2'},sourceDocument&&sourceDocument.number||line.reference||line.sourceId||'—'),
+   h('td',{className:'p-2'},(line.itemCode?line.itemCode+' — ':'')+(line.description||'بند مخزني')),
+   h('td',{className:'p-2 text-end font-bold'},fmt(n(line.debit)-n(line.credit)))
+  );
+ });
  const expenseSourceDifference=otherExpenses-expenseSourceTotal;
  const balanceAssetRows=statementRowsWithBalance(account=>account.type==='asset','debit');
  const balanceLiabilityRows=statementRowsWithBalance(account=>account.type==='liability','credit');
@@ -2641,19 +2667,31 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
    metric('مجمل الربح',fmt(grossProfit)),
    metric('صافي الربح / الخسارة',fmt(profit))
   ),
+  partnerCurrentCorrectionCounts.needed||partnerCurrentCorrectionCounts.pending?h('div',{className:'rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900'},
+   h('div',{className:'font-bold'},'مراجعة سحوبات الشركاء قبل اعتماد نتيجة الفترة'),
+   partnerCurrentCorrectionCounts.needed?h('p',{className:'mt-1'},'يوجد '+partnerCurrentCorrectionCounts.needed+' حركة مصروف قديمة محولة إلى جاري الشريك لم يُرحّل لها قيد تصحيح بعد. ستظل آثار هذه الحركات ضمن المصروفات حتى اعتماد التصحيح.'):null,
+   partnerCurrentCorrectionCounts.pending?h('p',{className:'mt-1'},'يوجد '+partnerCurrentCorrectionCounts.pending+' قيد تصحيح بانتظار المراجعة والاعتماد. حدّث القوائم بعد ترحيله.'):null,
+   button('فتح جاري الشركاء لمعالجة الحركات',()=>setTab('partnerCurrent'),'muted')
+  ):null,
+  panel('فواتير مشتريات محمّلة على المخزون','بنود المشتريات المخزنية تُرحّل إلى حساب المخزون 1300 وتظهر ضمن الأصول، ولا تدخل المصروفات التشغيلية أو تكلفة المبيعات عند الشراء.',h('div',{className:'space-y-2'},
+   h('div',{className:'grid grid-cols-2 gap-2'},metric('عدد فواتير الشراء المخزني',String(inventoryPurchaseInvoiceCount)),metric('إجمالي الإضافة للمخزون',fmt(inventoryPurchaseTotal))),
+   table(['التاريخ','رقم القيد','رقم الفاتورة','الصنف / البيان','قيمة الإضافة للمخزون'],inventoryPurchaseRows)
+  )),
   panel('الإيرادات','حسابات الإيرادات التفصيلية فقط. إجمالي المجموعة يظهر في المؤشر أعلى القائمة ولا يتكرر مع الحسابات التابعة.',table(['الحساب','إيرادات الفترة'],incomeRevenueRows)),
   panel('تكلفة المبيعات','حسابات تكلفة المبيعات التفصيلية فقط؛ لا تُخلط مع المصروفات التشغيلية.',table(['الحساب','تكلفة الفترة'],incomeCogsRows)),
   panel('المصروفات التشغيلية','الحسابات المصنفة تشغيليًا في دليل الحسابات فقط، دون عرض الحسابات التجميعية بجانب حساباتها التابعة.',h('div',{className:'space-y-2'},metric('إجمالي المصروفات التشغيلية',fmt(operatingExpenses)),table(['الحساب','مصروف الفترة'],incomeOperatingExpenseRows))),
   panel('المصروفات الإدارية والعمومية','مصروفات الإدارة والخدمات العمومية المصنفة في دليل الحسابات.',h('div',{className:'space-y-2'},metric('إجمالي المصروفات الإدارية',fmt(administrativeExpenses)),table(['الحساب','مصروف الفترة'],incomeAdministrativeExpenseRows))),
   panel('المصروفات التمويلية والبنكية','العمولات والمصاريف البنكية والتمويلية فقط.',h('div',{className:'space-y-2'},metric('إجمالي المصروفات التمويلية',fmt(financeExpenses)),table(['الحساب','مصروف الفترة'],incomeFinanceExpenseRows))),
   panel('مصروفات غير مصنفة','الحسابات التي لم يتم تحديد مجموعة قائمة الدخل لها في دليل الحسابات. لا يتم افتراض أنها تشغيلية؛ راجع تصنيف الحساب.',h('div',{className:'space-y-2'},metric('إجمالي غير المصنف',fmt(unclassifiedExpenses)),table(['الحساب','مصروف الفترة'],incomeUnclassifiedExpenseRows))),
-  panel('مطابقة المصروفات مع القيود المصدرية','كل مبلغ مرتبط بسطر قيد مرحّل. ملاحظة: حركة العهدة المصنفة «مصروف» تُرحّل تلقائيًا إلى 6100، وتحويل الطرف المقابل إلى جاري الشريك لا يلغي المصروف الأصلي. إذا كانت الحركة سحبًا شخصيًا وليست مصروف شركة، يجب تصحيح تصنيف الحركة المصدرية لا استبعادها من القائمة. اضغط رقم القيد لمراجعة أطرافه.',h('div',{className:'space-y-3'},
-   h('div',{className:'grid grid-cols-2 md:grid-cols-5 gap-2'},
+  panel('مطابقة المصروفات مع القيود المصدرية','كل مبلغ مرتبط بسطر قيد مرحّل. حركة العهدة التي تم ترحيلها إلى 6100 لا تُعد تلقائيًا مصروف شركة إذا كانت سحبًا شخصيًا؛ تحويلها إلى جاري الشريك لا ينعكس على قائمة الدخل إلا بعد اعتماد قيد التصحيح. فواتير المشتريات المخزنية على 1300 معروضة في قسم مستقل ولا تدخل هذا الإجمالي. اضغط رقم القيد لمراجعة أطرافه.',h('div',{className:'space-y-3'},
+   h('div',{className:'grid grid-cols-2 md:grid-cols-7 gap-2'},
     metric('مصروفات مرحّلة من العهد الشخصية',fmt(custodyExpenseTotal)),
     metric('مصروفات ناتجة عن الفواتير',fmt(invoiceExpenseTotal)),
     metric('مصروفات سندات الخزينة / البنك',fmt(voucherExpenseTotal)),
     metric('مصروفات بقيود أخرى',fmt(manualExpenseTotal)),
-    metric('تخفيض مصروفات سحوبات الشركاء',fmt(Math.max(0,-partnerCurrentCorrectionTotal)))
+    metric('تخفيض مصروفات سحوبات الشركاء',fmt(Math.max(0,-partnerCurrentCorrectionTotal))),
+    metric('سحوبات قديمة تحتاج تصحيح',String(partnerCurrentCorrectionCounts.needed)),
+    metric('تصحيحات بانتظار الاعتماد',String(partnerCurrentCorrectionCounts.pending))
    ),
    h('div',{className:'rounded-lg border p-3 text-sm '+(Math.abs(expenseSourceDifference)>0.01||Math.abs(expenseCategoryDifference)>0.01?'border-rose-300 bg-rose-50':'border-emerald-300 bg-emerald-50')},
     h('div',{className:'font-bold'},'مطابقة إجمالي المصروفات غير تكلفة المبيعات'),
