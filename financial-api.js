@@ -1250,26 +1250,32 @@ export async function handleFinancialRequest(ctx){
   requireFinanceArea("review","edit");
   const docId=id(body.id),previous=await adminRead("documents/"+docId);
   if(!previous||previous.type!=="journal"||!["pending_review","needs_correction"].includes(previous.status))throw new Error("القيد غير متاح للتعديل داخل قائمة المراجعة.");
-  if(!["projectEvent","cashCustody"].includes(previous.sourceType||"")&&previous.sourceType!=="manual")throw new Error("نوع القيد المصدر لا يسمح بتعديله من شاشة المراجعة.");
   const editable=body.journal&&typeof body.journal==="object"&&!Array.isArray(body.journal)?body.journal:{};
   const next={...previous};
   if(Object.prototype.hasOwnProperty.call(editable,"date"))next.date=date(editable.date);
   if(Object.prototype.hasOwnProperty.call(editable,"description"))next.description=txt(editable.description,500);
   if(Object.prototype.hasOwnProperty.call(editable,"reference"))next.reference=txt(editable.reference,120);
   next.currency="EGP";
-  if(Array.isArray(body.lines))next.lines=body.lines.slice(0,100).map((line,index)=>{
-   if(!line||typeof line!=="object"||Array.isArray(line))throw new Error("بيانات السطر "+(index+1)+" غير صحيحة.");
-   const row={...(previous.lines&&previous.lines[index]||{}),...line};
-   row.accountCode=txt(row.accountCode||"",32);row.description=txt(row.description||"",250);
-   for(const key of ["debit","credit"])row[key]=row[key]===""||row[key]===undefined?0:num(row[key]||0);
-   for(const key of ["costCenterId","projectCode","partyType","partyId","itemCode","warehouseCode"])if(row[key]!==undefined)row[key]=txt(row[key]||"",120);
-   return row;
-  });
-  if(previous.projectCode)next.lines=next.lines.map(line=>({...line,projectCode:line.projectCode||previous.projectCode,costCenterId:line.costCenterId||previous.projectCode}));
+  if(Array.isArray(body.lines)){
+   if(body.lines.length>100)throw new Error("لا يمكن أن يحتوي القيد على أكثر من 100 سطر.");
+   next.lines=body.lines.map((line,index)=>{
+    if(!line||typeof line!=="object"||Array.isArray(line))throw new Error("بيانات السطر "+(index+1)+" غير صحيحة.");
+    const row={
+     accountCode:txt(line.accountCode||"",32),
+     description:txt(line.description||"",250),
+     debit:line.debit===""||line.debit===undefined||line.debit===null?0:num(line.debit),
+     credit:line.credit===""||line.credit===undefined||line.credit===null?0:num(line.credit)
+    };
+    for(const key of ["costCenterId","projectCode","partyType","partyId","itemCode","warehouseCode","unit","reference","taxCode","partyCode"])if(Object.prototype.hasOwnProperty.call(line,key))row[key]=txt(line[key]||"",120);
+    if(Object.prototype.hasOwnProperty.call(line,"quantity")&&line.quantity!==""&&line.quantity!==null&&line.quantity!==undefined)row.quantity=num(line.quantity);
+    return row;
+   });
+  }
+  if(previous.projectCode)next.lines=(next.lines||[]).map(line=>({...line,projectCode:line.projectCode||previous.projectCode,costCenterId:line.costCenterId||previous.projectCode}));
   const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{},validation=validateJournal(next,chart,centers);
   next.balance=validation.balance;next.errors=validation.errors;next.status="pending_review";next.updatedAt=now;next.updatedBy=claims.sub;
   const updates={};updates["documents/"+docId]=next;updates["reviewQueue/"+docId]=reviewRecord(next);
-  updates["audit/"+uid("AUD")]={action:"update_review_journal",documentId:docId,sourceType:next.sourceType||"manual",errors:next.errors,uid:claims.sub,createdAt:now};
+  updates["audit/"+uid("AUD")]={action:"update_review_journal",documentId:docId,sourceType:next.sourceType||"manual",lineCountBefore:(previous.lines||[]).length,lineCountAfter:(next.lines||[]).length,errors:next.errors,uid:claims.sub,createdAt:now};
   await adminPatch(updates);
   return {success:true,id:docId,status:next.status,errors:next.errors,balance:next.balance};
  }
