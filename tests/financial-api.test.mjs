@@ -1539,6 +1539,14 @@ test("approved custody movement can be reassigned to another employee custody th
     date:"2026-11-20",description:"Approved custody movement",status:"approved",
     financialJournalId:sourceJournalId,attachmentsManifest:{fileIds:["custody-file-01"]}
   });
+  const preview=await invoke("POST","",{
+    action:"transferCashCustodyMovement",ownerUid:sourceUid,transactionId,destinationOwnerUid:destinationUid,previewOnly:true
+  });
+  assert.equal(preview.status,"preview");
+  assert.equal(preview.preview.lines.length,2);
+  assert.equal(preview.preview.balance.difference,0);
+  assert.equal(read("cashCustodies/"+sourceUid+"/transactions/"+transactionId+"/cashCustodyTransfer/pending"),null,"preview must not lock or change the source movement");
+  assert.equal(read("reviewQueue/"+preview.preview.number),null,"preview must not create a review item");
   const submitted=await invoke("POST","",{
     action:"transferCashCustodyMovement",ownerUid:sourceUid,transactionId,destinationOwnerUid:destinationUid
   });
