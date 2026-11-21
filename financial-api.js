@@ -759,7 +759,7 @@ export async function handleFinancialRequest(ctx){
   const centers=(await adminRead("costCenters"))||{},validation=validateJournal(journal,chart,centers);
   if(validation.errors.length)throw new Error("قيد إعادة التصنيف غير صالح: "+validation.errors.join("؛ "));
   journal.balance=validation.balance;journal.errors=[];
-  if(body.previewOnly===true)return {success:true,status:"preview",accountCode:config.code,partnerName:config.partnerName,preview:{number:journal.number,date:journal.date,description:journal.description,amount:journal.amount,lines:journal.lines,balance:journal.balance}};
+  if(body.previewOnly===true)return {success:true,status:"preview",accountCode:config.code,partnerName:config.partnerName,preview:{id:journal.id,number:journal.number,date:journal.date,description:journal.description,amount:journal.amount,lines:journal.lines,balance:journal.balance}};
   const rootUpdates={};
   rootUpdates["financial/documents/"+journalId]=journal;
   rootUpdates["financial/reviewQueue/"+journalId]=reviewRecord(journal);
