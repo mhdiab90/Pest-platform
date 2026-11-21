@@ -640,6 +640,51 @@ test("all cash and bank transfer postings remain balanced and synchronized with 
   assert.equal(Math.round(bankJournal.lines.reduce((sum,line)=>sum+Number(line.debit||0),0)*100),Math.round(bankJournal.lines.reduce((sum,line)=>sum+Number(line.credit||0),0)*100));
 });
 
+test("manual journal analytical party follows the selected control account and employee subledger", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const employeeUid="EMPLOYEE-ANALYTIC-JOURNAL-TEST";
+  write("users/"+employeeUid,{uid:employeeUid,status:"active",role:"user",fullName:"Employee Analytic Test"});
+  assert.equal(read("chartOfAccounts/1220").subledgerType,"employeeCustody");
+
+  const draft=await invoke("POST","",{
+    action:"submitJournal",date:"2026-11-20",description:"Employee custody analytic journal",
+    lines:[
+      {accountCode:"1220",debit:500,credit:0,partyId:employeeUid,description:"Employee custody"},
+      {accountCode:"1110",debit:0,credit:500,description:"Cash"}
+    ]
+  });
+  assert.equal(draft.status,"pending_review");
+  const initial=read("documents/"+draft.id);
+  assert.equal(initial.lines[0].partyType,"employeeCustody","the server derives the analytic party type from account 1220");
+
+  const updated=await invoke("POST","",{
+    action:"updateReviewJournal",id:draft.id,
+    journal:{description:"Employee custody analytic journal — corrected"},
+    lines:[
+      {accountCode:"1220",debit:500,credit:0,partyId:employeeUid,partyType:"customer",description:"Employee custody"},
+      {accountCode:"1110",debit:0,credit:500,description:"Cash"}
+    ]
+  });
+  assert.deepEqual(updated.errors,[]);
+  assert.equal(read("documents/"+draft.id+"/lines/0/partyType"),"employeeCustody","review edits cannot route account 1220 to a customer ledger");
+
+  const approved=await invoke("POST","",{action:"review",id:draft.id,decision:"approve",reason:"Approve employee analytic test"});
+  assert.equal(approved.status,"posted");
+  const ledgerPath="partyLedger/employeeCustody/"+employeeUid+"/2026-11/"+draft.id+"_1";
+  assert.equal(read(ledgerPath).debit,500,"the approved entry is written to the employee custody subledger");
+  assert.equal(read("partyLedger/customer/"+employeeUid+"/2026-11/"+draft.id+"_1"),null,"the same row must not be written to the customer subledger");
+
+  const missing=await invoke("POST","",{
+    action:"submitJournal",date:"2026-11-20",description:"Missing employee analytic party",
+    lines:[
+      {accountCode:"1220",debit:25,credit:0,description:"Missing employee"},
+      {accountCode:"1110",debit:0,credit:25,description:"Cash"}
+    ]
+  });
+  assert.equal(missing.status,"needs_correction");
+  assert.ok(missing.errors.some(error=>error.includes("الموظف صاحب العهدة")));
+});
+
 test("manual journal receives a unique number and carries it through posting indexes", async () => {
   await invoke("GET","?resource=bootstrap");
   const submitted=await invoke("POST","",{
