@@ -30,3 +30,14 @@ test("bulk endpoint creates one reviewed transfer journal per source movement", 
   assert.match(financialApi, /transactionIds\.length>100/);
   assert.match(financialApi, /results\.push\(\{transactionId,success:true,amount:num\(transaction\.amount\|\|0\),journalId/);
 });
+
+test("approved custody movement rows expose a destination dialog and journal preview", () => {
+  assert.match(index, /openCashCustodyTransfer\(cashCustodyTarget,t\)/);
+  assert.match(index, /تحويل حركة عهدة معتمدة/);
+  assert.match(index, /معاينة القيد المقترح قبل الإرسال للمراجعة/);
+  assert.match(index, /إرسال القيد إلى المراجعة/);
+  assert.match(index, /transferCashCustodyMovement/);
+  assert.match(financialApi, /action==="transferCashCustodyMovement"/);
+  assert.match(financialApi, /sourceType:"cashCustodyTransfer"/);
+  assert.match(financialApi, /cashCustodyTransfer\/active/);
+});
