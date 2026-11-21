@@ -337,6 +337,9 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
     action:"review",id:purchase.id,decision:"approve",reason:"purchase approval"
   });
   assert.equal(purchasePosted.status,"posted");
+  const purchaseJournal = read("journals/"+purchasePosted.journalId);
+  assert.ok(purchaseJournal.lines.some(x=>x.accountCode==="1300"&&x.debit===90),"a stock-only purchase invoice posts its value to inventory");
+  assert.equal(purchaseJournal.lines.some(x=>x.accountCode==="6100"&&x.debit>0),false,"a stock-only purchase invoice must not create an operating expense");
   const purchaseStock = read("inventory/balances/default/ITEM-001");
   assert.equal(purchaseStock.quantity,2);
   assert.equal(purchaseStock.value,90);
