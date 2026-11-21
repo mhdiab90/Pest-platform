@@ -394,7 +394,7 @@ function FinanceModule(props){
   return React.createElement(type,nextAttributes,...children.map(translateChild));
  };
 
- const financeTabAreas={overview:"overview",journal:"journal",review:"review",invoices:"invoices",assignments:"assignments",partyStatements:"partyStatements",partnerCurrent:"partyStatements",masters:"masters",accounts:"accounts",centers:"centers",inventory:"inventory",cash:"cash",bank:"bank",tax:"tax",reports:"reports"};
+ const financeTabAreas={inventoryMovements:'inventory',overview:"overview",journal:"journal",review:"review",invoices:"invoices",assignments:"assignments",partyStatements:"partyStatements",partnerCurrent:"partyStatements",masters:"masters",accounts:"accounts",centers:"centers",inventory:"inventory",cash:"cash",bank:"bank",tax:"tax",reports:"reports"};
  const financeMasterAreas={parties:"masters",chartOfAccounts:"accounts",costCenters:"centers",items:"inventory",itemGroups:"inventory",warehouses:"inventory",bankAccounts:"bank",taxCodes:"tax"};
  const canFinance=(area,action="view")=>{
   if(currentUser&&currentUser.role==="admin")return true;
@@ -407,6 +407,7 @@ function FinanceModule(props){
  const financeAreaForMaster=kind=>financeMasterAreas[kind]||"masters";
  const [tab,setTab]=React.useState('overview'),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[notice,setNotice]=React.useState('');
  const [master,setMaster]=React.useState({chartOfAccounts:{},costCenters:{},items:{},itemGroups:{},warehouses:{},bankAccounts:{},taxCodes:{},parties:{},settings:{},inventory:{balances:{}}});
+ const [inventoryMovements,setInventoryMovements]=React.useState([]);
  const [documents,setDocuments]=React.useState([]),[journalRecords,setJournalRecords]=React.useState([]),[review,setReview]=React.useState([]),[periodJournals,setPeriodJournals]=React.useState([]),[balanceJournals,setBalanceJournals]=React.useState([]),[accountingStartMonth,setAccountingStartMonth]=React.useState('');
  const [journalModal,setJournalModal]=React.useState(null),[journalModalDraft,setJournalModalDraft]=React.useState(null);
  const [clients,setClients]=React.useState([]),[vendors,setVendors]=React.useState([]),[projects,setProjects]=React.useState([]);
@@ -421,7 +422,7 @@ function FinanceModule(props){
  const [invoiceFile,setInvoiceFile]=React.useState(null),[invoicePartySearch,setInvoicePartySearch]=React.useState(''),[cashPartySearch,setCashPartySearch]=React.useState(''),[statementPartySearch,setStatementPartySearch]=React.useState(''),[ocrSuggestions,setOcrSuggestions]=React.useState({party:null,items:[]}),[cash,setCash]=React.useState({movementType:'customer_receipt',date:today(),amount:'',description:'',reference:'',partyType:'customer',partyId:'',partyName:'',employeeUid:'',employeeName:'',cashAccountCode:'1110',bankAccountCode:'1120',offsetAccountCode:'6100',projectCode:'',currency:'EGP'});
  const [cashHistorySearch,setCashHistorySearch]=React.useState(''),[masterViewKind,setMasterViewKind]=React.useState('customers');
  const [bankFile,setBankFile]=React.useState(null),[bankRows,setBankRows]=React.useState([]),[bankAccount,setBankAccount]=React.useState('1120');
- const [search,setSearch]=React.useState(''),[masterPartySearch,setMasterPartySearch]=React.useState('');
+ const [search,setSearch]=React.useState(''),[masterPartySearch,setMasterPartySearch]=React.useState(''),[screenTableSearch,setScreenTableSearch]=React.useState('');
  const [masterImportKind,setMasterImportKind]=React.useState('customers'),[masterImportRows,setMasterImportRows]=React.useState([]),[masterImportName,setMasterImportName]=React.useState('');
  const [selectedMasterCodes,setSelectedMasterCodes]=React.useState([]);
  const [partyStatement,setPartyStatement]=React.useState({type:'customer',id:''}),[partyRows,setPartyRows]=React.useState([]);
@@ -551,6 +552,16 @@ function FinanceModule(props){
   }catch(e){setError(e.message||String(e));}
   finally{setBusy(false);}
  };
+ const loadInventoryMovements=async()=>{
+  try{
+   const result=await api('?resource=inventory');
+   const source=result&&result.items&&result.items.movements||{};
+   const list=Object.entries(source).filter(([,movement])=>movement&&typeof movement==='object').map(([key,movement])=>Object.assign({id:movement.id||key},movement));
+   list.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||n(b.createdAt)-n(a.createdAt));
+   setInventoryMovements(list);
+  }catch(error){setError(error.message||String(error));}
+ };
+ React.useEffect(()=>{if(tab==='inventoryMovements'&&canFinance('inventory','view'))void loadInventoryMovements();},[tab,currentUser&&currentUser.uid]);
  const refreshReviewQueue=async(silent)=>{
   try{
    const result=await api('?resource=review');
@@ -1156,7 +1167,19 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
  const area=(label,value,onChange)=>h('label',{className:'block text-sm font-bold'},label,h('textarea',{value,onChange:e=>onChange(e.target.value),rows:2,className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal'}));
  const panel=(title,sub,child)=>h('section',{className:'rounded-2xl border bg-white p-4 shadow-sm min-w-0'},h('div',{className:'mb-3'},h('h3',{className:'font-bold text-lg'},title),sub?h('p',{className:'text-xs text-slate-500'},sub):null),child);
  const metric=(label,value)=>h('div',{className:'rounded-xl border bg-white p-3'},h('div',{className:'text-xs text-slate-500'},label),h('strong',{className:'text-xl block mt-1'},value));
- const table=(headers,data,scrollStyle)=>h('div',{className:'overflow-auto border rounded-xl',style:scrollStyle||undefined},h('table',{className:'w-full text-sm text-right'},h('thead',{className:'bg-slate-100'},h('tr',null,headers.map(x=>h('th',{key:x,className:'p-3 whitespace-nowrap'},x)))),h('tbody',null,data.length?data:h('tr',null,h('td',{colSpan:headers.length,className:'p-4 text-center text-slate-400'},'لا توجد بيانات')))));
+ const screenSearchText=node=>{
+  if(node===null||node===undefined||typeof node==='boolean')return '';
+  if(typeof node==='string'||typeof node==='number')return String(node);
+  if(Array.isArray(node))return node.map(screenSearchText).join(' ');
+  if(React.isValidElement(node))return screenSearchText(node.props&&node.props.children);
+  return '';
+ };
+ const table=(headers,data,scrollStyle)=>{
+  const query=String(screenTableSearch||'').trim().toLowerCase();
+  const source=Array.isArray(data)?data:[];
+  const filtered=query?source.filter(row=>screenSearchText(row).toLowerCase().includes(query)):source;
+  return h('div',{className:'overflow-auto border rounded-xl',style:scrollStyle||undefined},h('table',{className:'w-full text-sm text-right'},h('thead',{className:'bg-slate-100'},h('tr',null,headers.map(x=>h('th',{key:x,className:'p-3 whitespace-nowrap'},x)))),h('tbody',null,filtered.length?filtered:h('tr',null,h('td',{colSpan:headers.length,className:'p-4 text-center text-slate-400'},query?'لا توجد نتائج مطابقة للبحث':'لا توجد بيانات')))));
+ };
  const noticeElement=error?h('div',{className:'rounded-xl bg-rose-50 text-rose-800 border border-rose-200 p-3 text-sm'},error):notice?h('div',{className:'rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 p-3 text-sm'},notice):null;
  const saveMaster=async()=>{
   if(!canFinance(masterForm.kind==="chartOfAccounts"?"accounts":financeAreaForMaster(masterForm.kind),masterForm.code&&masterForm.originalCode?"edit":"add")&&!canFinance(masterForm.kind==="chartOfAccounts"?"accounts":financeAreaForMaster(masterForm.kind),"add")){setError("ليس لديك صلاحية إضافة هذا الكود.");return;}
@@ -1287,6 +1310,7 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
    await refresh();await loadPeriod();
    if(mode==="edit"){
     setNotice("تم فتح نسخة تعديل القيد وإرسالها لمسار المراجعة. عدّل الحسابات والقيم وأضف الملاحظات ثم احفظها.");
+    setTab('journal');
     openJournalModal(result.item);
    }else{
     setJournalModal(null);setJournalModalDraft(null);setTab("review");
@@ -1651,7 +1675,7 @@ const deleteJournalDocument=async(doc)=>{
   else if(doc.type==='invoice'){const type=doc.invoiceType||'purchase';setInvoice({id:doc.id,type,date:doc.date,number:doc.number,partyId:doc.partyId,partyName:doc.partyName,partyTaxNumber:doc.partyTaxNumber||'',currency:doc.currency||'EGP',taxCode:defaultVatCodeForInvoice(type),taxType:vatTypeForInvoice(type),taxRate:'14',taxAmount:doc.taxAmount==null?'':String(doc.taxAmount),otherTaxes:(doc.otherTaxes||[]).map(x=>Object.assign({},x)),discount:String(doc.discount||''),projectCode:doc.projectCode||'',lines:(doc.lines||[]).map(x=>Object.assign({},x))});setInvoicePartySearch(doc.partyName||doc.partyId||'');setInvoiceTypeManuallySelected(true);setTab('invoices');}
  };
  const nav=[
- ['overview','ملخص مالي','Financial Summary'],['journal','القيود اليومية','Journal Entries'],['review','المراجعة والاعتماد','Review & Approval'],['invoices','فواتير العملاء والموردين','Customer & Supplier Invoices'],['assignments','الإجراءات المحولة إليّ','Tasks Assigned to Me'],['partyStatements','كشوف الأطراف والعاملين','Party & Employee Statements'],['partnerCurrent','جاري الشركاء',"Partners' Current Accounts"],['masters','البيانات الأساسية والاستيراد','Master Data & Import'],['accounts','دليل الحسابات','Chart of Accounts'],['centers','مراكز التكلفة','Cost Centers'],['inventory','المخزون والأكواد','Inventory & Item Codes'],['cash','الخزينة والتحصيل والسداد','Cash, Receipts & Payments'],['bank','كشوف البنوك','Bank Statements'],['tax','الضرائب','Taxes'],['reports','القوائم المالية','Financial Statements']
+ ['overview','ملخص مالي','Financial Summary'],['journal','القيود اليومية','Journal Entries'],['review','المراجعة والاعتماد','Review & Approval'],['invoices','فواتير العملاء والموردين','Customer & Supplier Invoices'],['assignments','الإجراءات المحولة إليّ','Tasks Assigned to Me'],['partyStatements','كشوف الأطراف والعاملين','Party & Employee Statements'],['partnerCurrent','جاري الشركاء',"Partners' Current Accounts"],['masters','البيانات الأساسية والاستيراد','Master Data & Import'],['accounts','دليل الحسابات','Chart of Accounts'],['centers','مراكز التكلفة','Cost Centers'],['inventory','المخزون والأكواد','Inventory & Item Codes'],['inventoryMovements','حركة المخزن','Inventory Movements'],['cash','الخزينة والتحصيل والسداد','Cash, Receipts & Payments'],['bank','كشوف البنوك','Bank Statements'],['tax','الضرائب','Taxes'],['reports','القوائم المالية','Financial Statements']
  ];
  const visibleNav=nav.filter(item=>canFinance(financeTabAreas[item[0]],"view"));
  React.useEffect(()=>{
@@ -2259,6 +2283,36 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
   const detailsPanel=panel('تفاصيل الأصناف والإصدارات','الرصيد والتكلفة محفوظان على مستوى كود الصنف والإصدار والمخزن.',table(['الكود','الصنف','المجموعة','الإصدار','الوحدة','المخزن','الكمية','متوسط التكلفة','القيمة'],stockRows));
   return h('div',{className:'space-y-4'},groupPanel,detailsPanel);
  };
+ const renderInventoryMovements=()=>{
+  const inbound=inventoryMovements.filter(item=>item.kind==='purchase'||n(item.quantity)>0);
+  const outbound=inventoryMovements.filter(item=>item.kind==='sale'||n(item.quantity)<0);
+  const inboundQty=inbound.reduce((sum,item)=>sum+Math.abs(n(item.quantity)),0);
+  const outboundQty=outbound.reduce((sum,item)=>sum+Math.abs(n(item.quantity)),0);
+  const netValue=inventoryMovements.reduce((sum,item)=>sum+n(item.value),0);
+  const itemNames=new Map(items.map(item=>[String(item.code),item.name]));
+  const movementRows=inventoryMovements.map(item=>h('tr',{key:item.id,className:'border-t hover:bg-slate-50'},
+   h('td',{className:'p-2 whitespace-nowrap'},item.date||'—'),
+   h('td',{className:'p-2'},item.kind==='purchase'?'إضافة / وارد':item.kind==='sale'?'صرف / صادر':item.kind||'حركة'),
+   h('td',{className:'p-2'},item.itemCode||'—'),
+   h('td',{className:'p-2'},itemNames.get(String(item.itemCode))||'صنف غير موجود بالدليل'),
+   h('td',{className:'p-2'},item.warehouseCode||'—'),
+   h('td',{className:'p-2 text-end'},fmt(item.quantity)),
+   h('td',{className:'p-2 text-end'},fmt(item.unitCost)),
+   h('td',{className:'p-2 text-end font-bold'},fmt(item.value)),
+   h('td',{className:'p-2'},item.invoiceId||'—'),
+   h('td',{className:'p-2'},item.journalId||'—')
+  ));
+  return h('div',{className:'space-y-4'},
+   h('div',{className:'grid grid-cols-2 md:grid-cols-4 gap-2'},
+    metric('عدد حركات المخزن',String(inventoryMovements.length)),
+    metric('كمية الوارد',fmt(inboundQty)),
+    metric('كمية الصادر',fmt(outboundQty)),
+    metric('صافي قيمة الحركات',fmt(netValue))
+   ),
+   h('div',{className:'flex flex-wrap gap-2'},button('تحديث حركات المخزن',loadInventoryMovements,'muted',busy)),
+   panel('سجل حركة المخزن','عرض مستقل لكل حركات الإضافة والصرف المرتبطة بالفواتير مع الصنف والمخزن والكمية والتكلفة والقيمة.',table(['التاريخ','نوع الحركة','كود الصنف','اسم الصنف','المخزن','الكمية','تكلفة الوحدة','القيمة','رقم الفاتورة','رقم القيد'],movementRows))
+  );
+ };
  const masterPermissionModule=kind=>"financial_"+financeAreaForMaster(kind);
  const canMasterAction=(kind,action)=>canFinance(financeAreaForMaster(kind),action);
  const editMasterRecord=(kind,item)=>{
@@ -2570,14 +2624,16 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
       h('tbody',null,statementJournalLines.length?statementJournalLines:h('tr',null,h('td',{colSpan:8,className:'p-6 text-center text-slate-400'},'القيد لا يحتوي على بنود.')))
      )
     ),
-    h('div',{className:'flex flex-wrap gap-2 rounded-xl border border-blue-200 bg-blue-50/60 p-3'},
-     statementJournalPosted&&statementJournalManual&&canFinance('journal','edit')?button('تعديل القيد',()=>void startJournalRevision(statementJournal,'edit'),'primary',busy||statementJournalHasLinkedAction||!canFinance('review','edit')):null,
-     statementJournalPosted&&statementJournalManual&&canFinance('journal','edit')?button('إرجاع للمراجعة',()=>void startJournalRevision(statementJournal,'return'),'muted',busy||statementJournalHasLinkedAction||!canFinance('review','edit')):null,
-     statementJournalPosted&&statementJournalManual&&canFinance('journal','add')?button('إلغاء القيد (إنشاء قيد عكسي)',()=>void reverseJournal(statementJournal),'danger',busy||statementJournalHasLinkedAction):null,
-     !statementJournalPosted&&canFinance('journal','edit')?button('إلغاء القيد',()=>void cancelJournal(statementJournal),'danger',busy):null,
-     statementJournalPosted&&!statementJournalManual?h('p',{className:'w-full text-xs text-amber-800'},'هذا القيد ناتج عن مستند مصدر. يجب تعديل الفاتورة أو السند أو حركة المصدر الأصلية حتى لا تختل أرصدة المخزون والأطراف. إجراءات تعديل القيد أو إرجاعه للمراجعة أو إلغاؤه غير متاحة مباشرة من تتبع الحساب.'):null,
+    h('div',{className:'space-y-2 rounded-xl border border-blue-200 bg-blue-50/60 p-3'},
+     h('div',{className:'font-bold text-sm'},'إجراءات القيد'),
+     h('div',{className:'flex flex-wrap gap-2'},
+      canFinance('journal','edit')?button('تعديل القيد',()=>void startJournalRevision(statementJournal,'edit'),'primary',busy||!statementJournalPosted||!statementJournalManual||statementJournalHasLinkedAction||!canFinance('review','edit')):null,
+      canFinance('journal','edit')?button('إرجاع للمراجعة',()=>void startJournalRevision(statementJournal,'return'),'muted',busy||!statementJournalPosted||!statementJournalManual||statementJournalHasLinkedAction||!canFinance('review','edit')):null,
+      canFinance('journal','edit')?button(statementJournalPosted?'إلغاء القيد (قيد عكسي للمراجعة)':'إلغاء القيد',()=>statementJournalPosted?void reverseJournal(statementJournal):void cancelJournal(statementJournal),'danger',busy||statementJournalHasLinkedAction||(statementJournalPosted&&!statementJournalManual)):null
+     ),
+     statementJournalPosted&&!statementJournalManual?h('p',{className:'w-full text-xs text-amber-800'},'القيد مرتبط بمستند مصدر ('+String(statementJournal.sourceType||'غير محدد')+'). الإجراءات تظهر هنا، لكن التعديل أو الإلغاء المباشر ممنوع حتى لا تنفصل الفاتورة أو السند عن المخزون والأستاذ الفرعي.'):null,
      statementJournalPosted&&statementJournalManual&&statementJournalHasLinkedAction?h('p',{className:'w-full text-xs text-amber-800'},'هذا القيد مرتبط بطلب تعديل أو إلغاء أو قيد عكسي سابق؛ راجع القيد المرتبط قبل إنشاء إجراء جديد.'):null,
-     !statementJournalPosted&&!canFinance('journal','edit')?h('p',{className:'w-full text-xs text-slate-600'},'لا تتوفر لديك صلاحية إلغاء هذا القيد.'):null
+     !canFinance('journal','edit')?h('p',{className:'w-full text-xs text-slate-600'},'لا تتوفر لديك صلاحية تعديل أو إلغاء القيود.'):null
     ),
     h('div',{className:'flex flex-wrap justify-end gap-4 rounded-xl border bg-slate-50 p-3 text-sm font-bold'},
      h('span',null,'المدين: '+fmt(statementJournalDebit)),
@@ -2935,13 +2991,15 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
  if(tab==='accounts')content=renderMaster('accounts');
  if(tab==='centers')content=h('div',{className:'space-y-4'},renderMaster('centers'),renderCostCenterAnalysis());
  if(tab==='inventory')content=renderInventory();
+ if(tab==='inventoryMovements')content=renderInventoryMovements();
  if(tab==='cash')content=renderCash();
  if(tab==='bank')content=renderBank();
  if(tab==='tax')content=renderTax();
  if(tab==='reports')content=renderReports();
  return h('div',{className:'p-2 md:p-3 space-y-2',dir:rtl?'rtl':'ltr'},
   h('header',{className:'flex flex-wrap items-center justify-between gap-3'},h('div',null,h('h2',{className:'text-2xl font-extrabold'},t('النظام المالي والمحاسبي','Financial & Accounting System')),h('p',{className:'text-xs text-slate-500'},t('دفتر أستاذ مستقل — لا ترحيل قبل المراجعة والاعتماد','Separate General Ledger — No Posting Before Review & Approval'))),button(busy?t('جارٍ التحديث','Updating'):t('تحديث البيانات','Refresh Data'),refresh,'muted',busy)),
-  h('nav',{className:'flex flex-wrap gap-2'},visibleNav.map(x=>button(rtl?x[1]:x[2],()=>{setTab(x[0]);setNotice('');setError('');},tab===x[0]?'primary':'muted'))),
+  h('nav',{className:'flex flex-wrap gap-2'},visibleNav.map(x=>button(rtl?x[1]:x[2],()=>{setTab(x[0]);setNotice('');setError('');setScreenTableSearch('');},tab===x[0]?'primary':'muted'))),
+  field(t('بحث في بيانات الشاشة الحالية','Search current screen data'),screenTableSearch,setScreenTableSearch),
   noticeElement,content,renderQuickAdd(),statementAttachmentListModal,statementAttachmentPreviewModal,busy?h('p',{className:'text-xs text-slate-500'},'جارٍ تحميل البيانات...'):null,
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
