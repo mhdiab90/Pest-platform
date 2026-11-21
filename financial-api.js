@@ -257,7 +257,7 @@ async function findMasterReferences(ctx,kind,code,partyType="") {
 }
 function validateJournal(j,chart,centers){
  const errors=[],lines=Array.isArray(j.lines)?j.lines:[];if(lines.length<2)errors.push("القيد يجب أن يحتوي على سطرين على الأقل");
- lines.forEach((l,i)=>{const a=chart[txt(l.accountCode,32)];if(!a)errors.push("السطر "+(i+1)+": الحساب غير موجود");else if(a.isGroup||a.active===false)errors.push("السطر "+(i+1)+": الحساب غير قابل للترحيل");const d=Number(l.debit||0),c=Number(l.credit||0);if(!Number.isFinite(d)||!Number.isFinite(c)||d<0||c<0||((d>0)===(c>0)))errors.push("السطر "+(i+1)+": أدخل مدين أو دائن فقط");if(l.costCenterId&&!centers[l.costCenterId])errors.push("السطر "+(i+1)+": مركز التكلفة غير موجود");if(a&&a.subledgerType&&!l.partyId)errors.push("السطر "+(i+1)+": يجب اختيار الطرف التحليلي");});
+ lines.forEach((l,i)=>{const a=chart[txt(l.accountCode,32)];if(!a)errors.push("السطر "+(i+1)+": الحساب غير موجود");else if(a.isGroup||a.active===false)errors.push("السطر "+(i+1)+": الحساب غير قابل للترحيل");const d=Number(l.debit||0),c=Number(l.credit||0);if(!Number.isFinite(d)||!Number.isFinite(c)||d<0||c<0||((d>0)===(c>0)))errors.push("السطر "+(i+1)+": أدخل مدين أو دائن فقط");if(l.costCenterId&&!centers[l.costCenterId])errors.push("السطر "+(i+1)+": مركز التكلفة غير موجود");if(a&&a.subledgerType&&!l.partyId){const analyticLabel={customer:"العميل",vendor:"المورد",employeeCustody:"الموظف صاحب العهدة",employeeAdvance:"الموظف صاحب السلفة",partnerCurrentAccount:"الشريك"}[a.subledgerType]||"الطرف التحليلي";errors.push("السطر "+(i+1)+": يجب اختيار الطرف التحليلي ("+analyticLabel+") للحساب "+txt(a.code||l.accountCode,32)+" — "+txt(a.name||"",120)+".");}});
  const b=balance(lines);if(Math.abs(b.difference)>0.01)errors.push("القيد غير متوازن. الفرق: "+b.difference);return {errors,balance:b};
 }
 function invoiceLineAmounts(inv){
@@ -1266,7 +1266,10 @@ export async function handleFinancialRequest(ctx){
      debit:line.debit===""||line.debit===undefined||line.debit===null?0:num(line.debit),
      credit:line.credit===""||line.credit===undefined||line.credit===null?0:num(line.credit)
     };
+    const previousLine=(previous.lines||[])[index]||{},sameAccount=String(row.accountCode)===String(previousLine.accountCode||"");
     for(const key of ["costCenterId","projectCode","partyType","partyId","itemCode","warehouseCode","unit","reference","taxCode","partyCode"])if(Object.prototype.hasOwnProperty.call(line,key))row[key]=txt(line[key]||"",120);
+    if(sameAccount&&!Object.prototype.hasOwnProperty.call(line,"partyType")&&previousLine.partyType)row.partyType=txt(previousLine.partyType,120);
+    if(sameAccount&&!Object.prototype.hasOwnProperty.call(line,"partyId")&&previousLine.partyId)row.partyId=txt(previousLine.partyId,120);
     if(Object.prototype.hasOwnProperty.call(line,"quantity")&&line.quantity!==""&&line.quantity!==null&&line.quantity!==undefined)row.quantity=num(line.quantity);
     return row;
    });
