@@ -1453,6 +1453,9 @@ test("partner current accounts create separate analytical ledgers and transfer a
   const approval=await invoke("POST","",{action:"review",id:draft.id,decision:"approve"});
   assert.equal(approval.status,"posted");
   assert.equal(read("cashCustodies/"+haithamUid+"/transactions/"+transactionId+"/financialReviewStatus"),"posted");
+  const originalCustodyJournal=read("journals/"+draft.id);
+  assert.ok(originalCustodyJournal.lines.some(line=>line.accountCode==="6100"&&line.debit===350),"a custody movement explicitly typed as expense is automatically posted to the default operating expense account");
+  assert.equal(originalCustodyJournal.lines.filter(line=>line.accountCode==="6100").reduce((sum,line)=>sum+Number(line.debit||0)-Number(line.credit||0),0),350);
 
   const transferred=await invoke("POST","",{action:"transferPartnerCurrentAccount",ownerUid:haithamUid,transactionId,direction:"toCurrent"});
   assert.equal(transferred.status,"pending_review");
@@ -1464,6 +1467,10 @@ test("partner current accounts create separate analytical ledgers and transfer a
   assert.equal(read("partyLedger/partnerCurrentAccount/"+haithamUid+"/2026-11"),null,"the partner ledger must not change before approval");
   const approvedTransfer=await invoke("POST","",{action:"review",id:transferred.journalId,decision:"approve",reason:"Approve partner custody reclassification"});
   assert.equal(approvedTransfer.status,"posted");
+  const partnerTransferJournal=read("journals/"+transferred.journalId);
+  assert.ok(partnerTransferJournal.lines.some(line=>line.accountCode==="3201"&&line.credit===350),"the partner-current transfer reclassifies the custody credit to partner equity");
+  assert.ok(partnerTransferJournal.lines.some(line=>line.accountCode==="1220"&&line.debit===350),"the partner-current transfer clears the custody subledger");
+  assert.equal(partnerTransferJournal.lines.some(line=>line.accountCode==="6100"||line.accountCode==="6200"),false,"the partner-current transfer must not create a second operating or administrative expense");
   assert.equal(read("cashCustodies/"+haithamUid+"/transactions/"+transactionId+"/partnerCurrentAccountTransfer/active"),true);
   assert.deepEqual(read("cashCustodies/"+haithamUid+"/transactions/"+transactionId+"/attachmentsManifest"),attachmentsManifest);
   assert.ok(read("partyLedger/partnerCurrentAccount/"+haithamUid+"/2026-11"),"partner account subledger receives the reclassification only after approval");
