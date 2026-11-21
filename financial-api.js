@@ -1849,7 +1849,7 @@ if(action==="submitCash"){
   if(decision==="approve"&&doc.status==="duplicate_review"&&doc.duplicateOf)throw new Error("هذه الحركة مكررة محتملة. لا تعتمدها إلا باستخدام قرار اعتماد التكرار الصريح.");
   if(decision==="approveDuplicate"&&doc.status!=="duplicate_review")throw new Error("هذا المستند ليس تكرارًا محتملاً.");
   if(decision==="reject"||decision==="return"){
-   const status=decision==="reject"?"rejected":"needs_correction",u={};let sourceRootUpdate=null;
+   const status=decision==="reject"?"rejected":"needs_correction",u={};let sourceRootUpdate=null,secondaryRootUpdate=null;
    u["documents/"+docId+"/status"]=status;u["documents/"+docId+"/reviewReason"]=txt(body.reason,1000);u["documents/"+docId+"/reviewedBy"]=claims.sub;u["documents/"+docId+"/reviewedAt"]=now;u["reviewQueue/"+docId]=null;
    u["audit/"+uid("AUD")]={action:status,documentId:docId,uid:claims.sub,createdAt:now};
    if(doc.type==="journal"&&doc.sourceType==="projectEvent"&&doc.sourceId&&adminPatchRootAt){
@@ -1873,7 +1873,7 @@ if(action==="submitCash"){
      ["cashCustodyTransferHistory/"+transferId+"/reviewReason"]:txt(body.reason,1000)
     }};
     const mirrorId=id(doc.custodyMirrorId),destinationOwnerUid=id(doc.destinationOwnerUid);
-    if(mirrorId&&destinationOwnerUid)await adminPatchRootAt("cashCustodies/"+destinationOwnerUid+"/transactions/"+mirrorId,{status:"rejected",financialReviewStatus:status,financialReviewReason:txt(body.reason,1000)});
+    if(mirrorId&&destinationOwnerUid)secondaryRootUpdate={path:"cashCustodies/"+destinationOwnerUid+"/transactions/"+mirrorId,value:{status:"rejected",financialReviewStatus:status,financialReviewReason:txt(body.reason,1000)}};
   }else if(doc.type==="journal"&&doc.sourceType==="partnerCurrentAccountTransfer"&&doc.sourceId&&adminPatchRootAt){
     const sourceId=String(doc.sourceId),first=sourceId.indexOf("--"),last=sourceId.lastIndexOf("--");
     if(first<=0||last<=first+2)throw new Error("مرجع تحويل جاري الشريك غير صالح.");
@@ -1892,7 +1892,15 @@ if(action==="submitCash"){
     }};
    }
    await adminPatch(u);
-   if(sourceRootUpdate)await adminPatchRootAt(sourceRootUpdate.path,sourceRootUpdate.value);
+   if(sourceRootUpdate&&secondaryRootUpdate&&adminPatchRoot){
+    const rootUpdates={};
+    Object.entries(sourceRootUpdate.value).forEach(([key,value])=>{rootUpdates[sourceRootUpdate.path+"/"+key]=value;});
+    Object.entries(secondaryRootUpdate.value).forEach(([key,value])=>{rootUpdates[secondaryRootUpdate.path+"/"+key]=value;});
+    await adminPatchRoot(rootUpdates);
+   }else{
+    if(sourceRootUpdate)await adminPatchRootAt(sourceRootUpdate.path,sourceRootUpdate.value);
+    if(secondaryRootUpdate)await adminPatchRootAt(secondaryRootUpdate.path,secondaryRootUpdate.value);
+   }
    return {success:true,status};
   }
   if(decision!=="approve"&&decision!=="approveDuplicate")throw new Error("قرار المراجعة غير صحيح");const updates={};let j,sourceRootUpdate=null,secondaryRootUpdate=null;
@@ -2098,8 +2106,15 @@ if(action==="submitCash"){
     }};
    }
   await adminPatch(updates);
-  if(sourceRootUpdate)await adminPatchRootAt(sourceRootUpdate.path,sourceRootUpdate.value);
-  if(secondaryRootUpdate)await adminPatchRootAt(secondaryRootUpdate.path,secondaryRootUpdate.value);
+  if(sourceRootUpdate&&secondaryRootUpdate&&adminPatchRoot){
+   const rootUpdates={};
+   Object.entries(sourceRootUpdate.value).forEach(([key,value])=>{rootUpdates[sourceRootUpdate.path+"/"+key]=value;});
+   Object.entries(secondaryRootUpdate.value).forEach(([key,value])=>{rootUpdates[secondaryRootUpdate.path+"/"+key]=value;});
+   await adminPatchRoot(rootUpdates);
+  }else{
+   if(sourceRootUpdate)await adminPatchRootAt(sourceRootUpdate.path,sourceRootUpdate.value);
+   if(secondaryRootUpdate)await adminPatchRootAt(secondaryRootUpdate.path,secondaryRootUpdate.value);
+  }
   return {success:true,status:"posted",journalId:j.id};
  }
  if(action==="returnToReview"){requireFinanceArea("review","edit");throw new Error("إعادة الإرسال المباشر غير مسموح بها لأنها تتجاوز التحقق المحاسبي. أعد حفظ القيد أو الفاتورة من الشاشة المخصصة ليُعاد احتساب الأخطاء والتحقق من البيانات قبل دخول قائمة المراجعة.");}
