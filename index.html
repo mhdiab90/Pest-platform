@@ -1156,6 +1156,7 @@ function App(){
   const [cashCustodyTransferPreview,setCashCustodyTransferPreview] = useState(null);
   const [cashCustodyTransferPreviewLoading,setCashCustodyTransferPreviewLoading] = useState(false);
   const [cashCustodyTransferPreviewError,setCashCustodyTransferPreviewError] = useState('');
+  const cashCustodyTransferPreviewRequestRef=useRef(0);
   const [cashCustodyPartnerOwnerLoading,setCashCustodyPartnerOwnerLoading] = useState(false);
   const cashCustodyPartnerLoadRef=useRef(0);
   const cashCustodyJournalSyncRef=useRef(false);
@@ -3533,6 +3534,7 @@ function App(){
   }
   function isConfiguredPartnerCurrentOwner(ownerUid){return Boolean(getConfiguredPartnerCurrentAccount(ownerUid));}
   async function loadCashCustodyTransferPreview(ownerUid,transactionId,destination){
+    const requestId=++cashCustodyTransferPreviewRequestRef.current;
     setCashCustodyTransferPreview(null);
     setCashCustodyTransferPreviewError('');
     setCashCustodyTransferPreviewLoading(true);
@@ -3541,9 +3543,12 @@ function App(){
         ?await sendPushWorkerRequest('/finance',{action:'transferPartnerCurrentAccount',ownerUid,transactionId,direction:'toCurrent',previewOnly:true})
         :await sendPushWorkerRequest('/finance',{action:'transferCashCustodyMovement',ownerUid,transactionId,destinationOwnerUid:destination,previewOnly:true});
       if(!result||!result.preview||!Array.isArray(result.preview.lines))throw new Error(rtl?'لم يتم استلام معاينة القيد من الخادم.':'The server did not return a journal preview.');
-      setCashCustodyTransferPreview(result.preview);
-    }catch(error){setCashCustodyTransferPreviewError(String(error.message||error));}
-    finally{setCashCustodyTransferPreviewLoading(false);}
+      if(requestId===cashCustodyTransferPreviewRequestRef.current)setCashCustodyTransferPreview(result.preview);
+    }catch(error){
+      if(requestId===cashCustodyTransferPreviewRequestRef.current)setCashCustodyTransferPreviewError(String(error.message||error));
+    }finally{
+      if(requestId===cashCustodyTransferPreviewRequestRef.current)setCashCustodyTransferPreviewLoading(false);
+    }
   }
   function openCashCustodyTransfer(ownerUid,transaction){
     if(!isAdmin||!hasPermission('cashCustody','edit'))return alert(rtl?'ليس لديك صلاحية تحويل حركات العهدة.':'You do not have permission to transfer custody movements.');
@@ -3574,7 +3579,7 @@ function App(){
     const lines=cashCustodyTransferPreview.lines||[];
     const debitTotal=lines.reduce((sum,line)=>sum+Number(line.debit||0),0),creditTotal=lines.reduce((sum,line)=>sum+Number(line.credit||0),0);
     if(!lines.length||Math.abs(debitTotal-creditTotal)>0.01)return alert(rtl?'القيد المعروض غير متوازن أو لا يحتوي على تفاصيل. تم إيقاف العملية.':'The displayed journal is empty or unbalanced. Transfer cancelled.');
-    if(!window.confirm((rtl?'سيتم إرسال القيد المحسوب من النظام التالي إلى المراجعة فقط. لن تتغير الأرصدة قبل الاعتماد.\\n\\nمن: ':'This server-calculated journal will be submitted for review only. Balances will not change before approval.\\n\\nFrom: ')+fromName+'\\n'+(rtl?'إلى: ':'To: ')+toName+'\\n'+(rtl?'المبلغ: ':'Amount: ')+money(cashCustodyTransferPreview.amount||amount)+' EGP\\n\\n'+lines.map(line=>(line.accountCode+' | '+(line.accountName||line.description||'')+' | مدين '+money(line.debit)+' | دائن '+money(line.credit))).join('\\n')+'\\n\\n'+(rtl?'هل تريد إرسال القيد للمراجعة؟':'Submit this journal for review?')))return;
+    if(!window.confirm((rtl?'سيتم إرسال القيد المحسوب من النظام التالي إلى المراجعة فقط. لن تتغير الأرصدة قبل الاعتماد.\\n\\nمن: ':'This server-calculated journal will be submitted for review only. Balances will not change before approval.\n\nFrom: ')+fromName+'\n'+(rtl?'إلى: ':'To: ')+toName+'\n'+(rtl?'المبلغ: ':'Amount: ')+money(cashCustodyTransferPreview.amount||amount)+' EGP\n\n'+lines.map(line=>(line.accountCode+' | '+(line.accountName||line.description||'')+' | مدين '+money(line.debit)+' | دائن '+money(line.credit))).join('\n')+'\n\n'+(rtl?'هل تريد إرسال القيد للمراجعة؟':'Submit this journal for review?')))return;
     setCashCustodyBusy(true);setCashCustodyNotice('');
     try{
       const result=targetType==='current'
