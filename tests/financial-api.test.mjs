@@ -1624,7 +1624,8 @@ test("legacy partner-current expense transfers can be corrected safely through r
   assert.equal(secondRun.submitted,0,"a corrected movement must not create a duplicate correction journal");
   assert.equal(secondRun.skipped,1);
 });
-\ntest("approved custody movement can be reassigned to another employee custody through journal review", async () => {
+
+test("approved custody movement can be reassigned to another employee custody through journal review", async () => {
   await invoke("GET","?resource=bootstrap");
   const sourceUid="custody-transfer-source";
   const destinationUid="custody-transfer-destination";
