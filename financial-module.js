@@ -426,6 +426,9 @@ function FinanceModule(props){
  const [partyStatement,setPartyStatement]=React.useState({type:'customer',id:''}),[partyRows,setPartyRows]=React.useState([]);
  const [partnerCurrentAccounts,setPartnerCurrentAccounts]=React.useState([]),[partnerCurrentSelectedUid,setPartnerCurrentSelectedUid]=React.useState(''),[partnerCurrentSearch,setPartnerCurrentSearch]=React.useState(''),[partnerCurrentAttachmentView,setPartnerCurrentAttachmentView]=React.useState(null);
  const [accountDetailCode,setAccountDetailCode]=React.useState(''),[statementJournalId,setStatementJournalId]=React.useState('');
+ const [statementAttachmentIndex,setStatementAttachmentIndex]=React.useState({});
+ const [statementAttachmentList,setStatementAttachmentList]=React.useState(null),[statementAttachmentPreview,setStatementAttachmentPreview]=React.useState(null);
+ const statementAttachmentCacheRef=React.useRef(new Set());
  const api=async(path,method,body)=>{
   const auth=window.PEST_FIREBASE_AUTH&&window.PEST_FIREBASE_AUTH.currentUser;
   if(!auth)throw new Error(t('جلسة الدخول انتهت. أعد تسجيل الدخول.','Your session expired. Sign in again.'));
@@ -435,6 +438,56 @@ function FinanceModule(props){
   if(!response.ok)throw new Error(data.error||('HTTP '+response.status));
   return data;
  };
+ const statementAttachmentKey=reference=>String(reference.entityType)+":"+String(reference.entityId);
+ const statementAttachmentReferences=record=>{
+  const refs=[],sourceType=String(record&&record.sourceType||""),sourceId=String(record&&record.sourceId||"");
+  if(["cashCustody","partnerCurrentAccountTransfer","cashCustodyTransfer"].includes(sourceType)){
+   const parts=sourceId.split("--");if(parts.length>=2&&parts[0]&&parts[1])refs.push({entityType:"cashCustody",entityId:parts.slice(0,2).join("--")});
+  }else if(sourceType==="projectEvent"&&sourceId)refs.push({entityType:"projectEvent",entityId:sourceId});
+  else if(sourceId)refs.push({entityType:"financial",entityId:sourceId});
+  if(record&&record.journalId)refs.push({entityType:"financial",entityId:String(record.journalId)});
+  return Array.from(new Map(refs.map(reference=>[statementAttachmentKey(reference),reference])).values());
+ };
+ const loadStatementAttachmentReferences=async references=>{
+  const unique=new Map();(references||[]).forEach(reference=>{if(reference&&reference.entityType&&reference.entityId)unique.set(statementAttachmentKey(reference),{entityType:String(reference.entityType),entityId:String(reference.entityId)});});
+  const missing=Array.from(unique.entries()).filter(([key])=>!statementAttachmentCacheRef.current.has(key));
+  for(let offset=0;offset<missing.length;offset+=150){
+   const chunk=missing.slice(offset,offset+150),chunkRefs=chunk.map(([,reference])=>reference);chunk.forEach(([key])=>statementAttachmentCacheRef.current.add(key));
+   try{
+    const auth=window.PEST_FIREBASE_AUTH&&window.PEST_FIREBASE_AUTH.currentUser;if(!auth)throw new Error("جلسة الدخول انتهت. أعد تسجيل الدخول.");
+    const token=await auth.getIdToken(),response=await fetch(base+"/attachments/lookup",{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({references:chunkRefs})});
+    const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"تعذر فحص مرفقات كشف الحساب.");
+    const found=new Map((Array.isArray(data.items)?data.items:[]).map(item=>[statementAttachmentKey(item),Array.isArray(item.attachments)?item.attachments:[]]));
+    const updates={};chunk.forEach(([key])=>{updates[key]=found.get(key)||[];});setStatementAttachmentIndex(previous=>Object.assign({},previous,updates));
+   }catch(error){chunk.forEach(([key])=>statementAttachmentCacheRef.current.delete(key));setError(error.message||String(error));return;}
+  }
+ };
+ const loadStatementAttachments=records=>loadStatementAttachmentReferences((records||[]).flatMap(statementAttachmentReferences));
+ const statementAttachmentsForReferences=references=>{
+  const found=new Map();(references||[]).forEach(reference=>{const key=statementAttachmentKey(reference);(statementAttachmentIndex[key]||[]).forEach(attachment=>found.set(key+":"+attachment.id,Object.assign({},attachment,{entityType:reference.entityType,entityId:reference.entityId})));});return Array.from(found.values());
+ };
+ const openStatementAttachmentFile=async attachment=>{
+  setBusy(true);setError('');
+  try{
+   const auth=window.PEST_FIREBASE_AUTH&&window.PEST_FIREBASE_AUTH.currentUser;if(!auth)throw new Error("جلسة الدخول انتهت. أعد تسجيل الدخول.");
+   const token=await auth.getIdToken(),url=base+"/attachments/file?entityType="+encodeURIComponent(attachment.entityType)+"&entityId="+encodeURIComponent(attachment.entityId)+"&id="+encodeURIComponent(attachment.id);
+   const response=await fetch(url,{headers:{Authorization:"Bearer "+token}});if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.error||"تعذر فتح المرفق.");}
+   const blob=await response.blob(),mime=String(attachment.mimeType||blob.type||"").toLowerCase();
+   if(mime.includes("spreadsheet")||mime==="application/vnd.ms-excel"){
+    if(window.XLSX){const workbook=window.XLSX.read(await blob.arrayBuffer(),{type:"array"}),sheet=workbook.Sheets[workbook.SheetNames[0]],rows=sheet?window.XLSX.utils.sheet_to_json(sheet,{header:1,defval:"",blankrows:false}).slice(0,250).map(row=>row.slice(0,24)):[];setStatementAttachmentPreview({kind:"table",fileName:attachment.fileName,rows});}
+    else{const objectUrl=URL.createObjectURL(blob),link=document.createElement("a");link.href=objectUrl;link.download=attachment.fileName||"attachment";document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(objectUrl),60000);}
+   }else if(mime==="text/plain"||mime==="text/csv")setStatementAttachmentPreview({kind:"text",fileName:attachment.fileName,text:(await blob.text()).slice(0,500000)});
+   else if(["application/pdf","image/jpeg","image/png","image/webp"].includes(mime))setStatementAttachmentPreview(previous=>{if(previous&&previous.url)URL.revokeObjectURL(previous.url);return {kind:"media",fileName:attachment.fileName,mimeType:mime,url:URL.createObjectURL(blob)};});
+   else{const objectUrl=URL.createObjectURL(blob),link=document.createElement("a");link.href=objectUrl;link.download=attachment.fileName||"attachment";document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(objectUrl),60000);setNotice("هذا النوع من الملفات لا يدعم المعاينة داخل النظام؛ بدأ تنزيل الملف.");}
+   setStatementAttachmentList(null);
+  }catch(error){setError(error.message||String(error));}finally{setBusy(false);}
+ };
+ const statementAttachmentActionForReferences=references=>{
+  const attachments=statementAttachmentsForReferences(references);if(!attachments.length)return null;
+  return h("button",{type:"button",title:attachments.map(item=>item.fileName).join("، "),className:"inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100 whitespace-nowrap",onClick:()=>{if(attachments.length===1)void openStatementAttachmentFile(attachments[0]);else setStatementAttachmentList({title:"مرفقات الحركة",attachments});}},"📎 "+(attachments.length===1?"مرفق":String(attachments.length)+" مرفقات"));
+ };
+ const statementAttachmentAction=record=>statementAttachmentActionForReferences(statementAttachmentReferences(record));
+ const closeStatementAttachmentPreview=()=>setStatementAttachmentPreview(previous=>{if(previous&&previous.url)URL.revokeObjectURL(previous.url);return null;});
  const downloadFinancialAttachment=async(documentId,attachment)=>{
   setBusy(true);setError('');
   try{
@@ -731,13 +784,14 @@ function FinanceModule(props){
    Object.values(result.entries||{}).forEach(function(periodRows){Object.values(periodRows||{}).forEach(function(entry){entries.push(entry);});});
    entries.sort(function(a,b){return String(a.date||'').localeCompare(String(b.date||''))||String(a.journalId||'').localeCompare(String(b.journalId||''));});
    setPartyRows(entries);
+   void loadStatementAttachments(entries);
   }catch(error){setError(error.message||String(error));}
   finally{setBusy(false);}
  };
  const accounts=rows(master.chartOfAccounts).sort((a,b)=>String(a.code).localeCompare(String(b.code),undefined,{numeric:true}));
  const loadPartnerCurrentAccounts=async(silent=false)=>{
  if(!silent)setBusy(true);setError('');
- try{const result=await api('?resource=partnerCurrentAccounts'),list=Array.isArray(result.items)?result.items:[];setPartnerCurrentAccounts(list);if(!list.some(item=>item.uid===partnerCurrentSelectedUid&&item.linked)){const first=list.find(item=>item.linked);setPartnerCurrentSelectedUid(first&&first.uid||'');}return list;}
+ try{const result=await api('?resource=partnerCurrentAccounts'),list=Array.isArray(result.items)?result.items:[];setPartnerCurrentAccounts(list);const refs=[];list.forEach(account=>{(account.entries||[]).forEach(entry=>refs.push(...statementAttachmentReferences(entry)));(account.transactions||[]).forEach(transaction=>{if(account.uid&&transaction.id)refs.push({entityType:'cashCustody',entityId:account.uid+'--'+transaction.id});});});void loadStatementAttachmentReferences(refs);if(!list.some(item=>item.uid===partnerCurrentSelectedUid&&item.linked)){}const first=list.find(item=>item.linked);setPartnerCurrentSelectedUid(first&&first.uid||'');}return list;}
  catch(error){setError(error.message||String(error));return [];}finally{if(!silent)setBusy(false);}
 };
 const downloadPartnerCustodyAttachment=async(account,transaction,attachment)=>{
@@ -1857,7 +1911,7 @@ const renderJournal = function() {
    const movement=partyStatement.type==="vendor"?n(line.credit)-n(line.debit):n(line.debit)-n(line.credit);
    running+=movement;
    return h("tr",{key:(line.journalId||"entry")+"-"+index,className:"border-t"},
-    h("td",{className:"p-2"},line.date||"—"),h("td",{className:"p-2"},line.reference||"—"),h("td",{className:"p-2"},line.journalId||"—"),h("td",{className:"p-2"},line.description||"—"),h("td",{className:"p-2"},fmt(line.debit)),h("td",{className:"p-2"},fmt(line.credit)),h("td",{className:"p-2 font-bold"},fmt(running))
+    h("td",{className:"p-2"},line.date||"—"),h("td",{className:"p-2"},line.reference||"—"),h("td",{className:"p-2"},line.journalId||"—"),h("td",{className:"p-2 min-w-[220px]"},h("div",{className:"flex flex-wrap items-center gap-2"},h("span",null,line.description||"—"),statementAttachmentAction(line))),h("td",{className:"p-2"},fmt(line.debit)),h("td",{className:"p-2"},fmt(line.credit)),h("td",{className:"p-2 font-bold"},fmt(running))
    );
   });
   const selectedParty=list.find(p=>String(p.code||p.id)===String(partyStatement.id));
@@ -1879,7 +1933,7 @@ const renderJournal = function() {
  const totalDebit=selected?(selected.entries||[]).reduce((sum,line)=>sum+n(line.debit),0):0,totalCredit=selected?(selected.entries||[]).reduce((sum,line)=>sum+n(line.credit),0):0;
  const movements=(selected&&selected.transactions||[]).filter(item=>!partnerCurrentSearch||[item.date,item.description,item.reference,item.projectCode,item.type,item.id].join(' ').toLowerCase().includes(partnerCurrentSearch.toLowerCase()));
  let running=0;
- const statementRows=(selected&&selected.entries||[]).map((line,index)=>{running+=n(line.credit)-n(line.debit);return h('tr',{key:(line.journalId||'entry')+'-'+index,className:'border-t'},h('td',{className:'p-2 whitespace-nowrap'},line.date||'—'),h('td',{className:'p-2'},line.journalNumber||line.journalId||'—'),h('td',{className:'p-2 min-w-48'},line.description||'—'),h('td',{className:'p-2'},line.reference||'—'),h('td',{className:'p-2 text-end'},fmt(line.debit)),h('td',{className:'p-2 text-end'},fmt(line.credit)),h('td',{className:'p-2 text-end font-bold'},fmt(running)));});
+ const statementRows=(selected&&selected.entries||[]).map((line,index)=>{running+=n(line.credit)-n(line.debit);return h('tr',{key:(line.journalId||'entry')+'-'+index,className:'border-t'},h('td',{className:'p-2 whitespace-nowrap'},line.date||'—'),h('td',{className:'p-2'},line.journalNumber||line.journalId||'—'),h('td',{className:'p-2 min-w-56'},h('div',{className:'flex flex-wrap items-center gap-2'},h('span',null,line.description||'—'),statementAttachmentAction(line))),h('td',{className:'p-2'},line.reference||'—'),h('td',{className:'p-2 text-end'},fmt(line.debit)),h('td',{className:'p-2 text-end'},fmt(line.credit)),h('td',{className:'p-2 text-end font-bold'},fmt(running)));});
  const movementRows=movements.map(transaction=>{const marker=transaction.partnerCurrentAccountTransfer||{},incoming=['receipt','topup','refund','opening_balance','adjustment_in','transfer_in'].includes(transaction.type);return h('tr',{key:transaction.id,className:'border-t align-top'},h('td',{className:'p-2 whitespace-nowrap'},transaction.date||'—'),h('td',{className:'p-2'},incoming?'وارد':'منصرف'),h('td',{className:'p-2 min-w-56'},transaction.description||'—'),h('td',{className:'p-2'},transaction.reference||'—'),h('td',{className:'p-2 text-end font-bold'},fmt(transaction.amount)+' '+(transaction.currency||'EGP')),h('td',{className:'p-2'},transaction.projectCode||'—'),h('td',{className:'p-2'},marker.lastJournalId||marker.transferJournalId||'—'),h('td',{className:'p-2'},h('div',{className:'flex flex-wrap gap-2'},button('عرض المرفقات',()=>openPartnerCustodyAttachments(selected,transaction),'muted',busy),currentUser&&currentUser.role==='admin'?button(marker.pending?'بانتظار المراجعة':'إرسال إعادة إلى العهدة للمراجعة',()=>transferPartnerCustodyMovement(selected,transaction),'primary',busy||marker.pending):null)));});
  return h('div',{className:'space-y-4'},
   h('div',{className:'grid md:grid-cols-2 gap-3'},...partnerCurrentAccounts.map(account=>{const balance=(account.entries||[]).reduce((sum,line)=>sum+n(line.credit)-n(line.debit),0);return h('button',{type:'button',onClick:()=>{setPartnerCurrentSelectedUid(account.uid||'');setPartnerCurrentAttachmentView(null);},className:'text-start rounded-xl border p-4 '+(account.uid===partnerCurrentSelectedUid?'border-blue-500 bg-blue-50':'bg-white')},h('div',{className:'flex items-start justify-between gap-2'},h('div',null,h('div',{className:'font-bold'},account.partnerName),h('div',{className:'text-xs text-slate-500 mt-1'},account.accountCode+' — '+account.accountName)),h('span',{className:'text-xs rounded-full px-2 py-1 '+(account.linked&&account.active?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-800')},account.linked?(account.active?'مرتبط بالمستخدم':'المستخدم غير نشط'):'لم يتم العثور على المستخدم')),h('div',{className:'text-2xl font-extrabold mt-3'},fmt(balance)+' ج.م'),h('div',{className:'text-xs text-slate-500 mt-1'},'عدد الحركات: '+(account.transactions||[]).length));})),
@@ -2350,13 +2404,14 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
    h('td',{className:'p-2 whitespace-nowrap'},line.date||'—'),
    h('td',{className:'p-2'},h('button',{type:'button',className:'font-bold text-blue-700 underline',onClick:()=>openStatementJournal(line.journalId)},line.journalNumber||line.journalId)),
    h('td',{className:'p-2'},line.accountCode+' — '+(account&&account.name||'')),
-   h('td',{className:'p-2 min-w-[220px]'},line.description||'—'),
+   h('td',{className:'p-2 min-w-[240px]'},h('div',{className:'flex flex-wrap items-center gap-2'},h('span',null,line.description||'—'),statementAttachmentAction(line))),
    h('td',{className:'p-2'},[line.partyId,costCenter&&costCenter.name||line.costCenterId||line.projectCode].filter(Boolean).join(' / ')||'—'),
    h('td',{className:'p-2 text-end'},fmt(line.debit)),
    h('td',{className:'p-2 text-end'},fmt(line.credit)),
    h('td',{className:'p-2 text-end font-bold'},runningLabel)
   );
  });
+ React.useEffect(()=>{if(accountDetailCode&&accountDetailMovements.length)void loadStatementAttachments(accountDetailMovements);},[accountDetailCode,period.from,period.to]);
  const statementJournal=statementJournalId?statementJournalMap.get(String(statementJournalId)):null;
  const statementJournalLines=statementJournal?(statementJournal.lines||[]).map((line,index)=>{
   const account=accounts.find(item=>String(item.code)===String(line.accountCode));
@@ -2661,6 +2716,16 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
    )
   );
  };
+ const statementAttachmentListModal=statementAttachmentList?h('div',{className:'fixed inset-0 z-[180] bg-slate-950/70 flex items-center justify-center p-2 sm:p-4',onClick:()=>setStatementAttachmentList(null)},
+  h('section',{className:'w-full max-w-3xl max-h-[90vh] overflow-auto rounded-2xl bg-white shadow-2xl',onClick:e=>e.stopPropagation()},
+   h('header',{className:'sticky top-0 z-10 flex items-center justify-between gap-2 bg-slate-900 p-4 text-white'},h('h3',{className:'font-extrabold'},statementAttachmentList.title||'مرفقات الحركة'),h('button',{type:'button',className:'rounded-lg border border-white/30 px-3 py-2 text-sm',onClick:()=>setStatementAttachmentList(null)},'إغلاق')),
+   table(['اسم الملف','النوع','الحجم','فتح'],statementAttachmentList.attachments.map(item=>h('tr',{key:item.entityType+'/'+item.entityId+'/'+item.id,className:'border-t'},h('td',{className:'p-2'},item.fileName||'—'),h('td',{className:'p-2'},item.mimeType||'—'),h('td',{className:'p-2'},fmt((Number(item.fileSize)||0)/1024)+' KB'),h('td',{className:'p-2'},h('button',{type:'button',className:'rounded-lg border px-3 py-1 text-xs font-bold text-blue-700',onClick:()=>void openStatementAttachmentFile(item)},'فتح المرفق')))))
+  )):null;
+ const statementAttachmentPreviewModal=statementAttachmentPreview?h('div',{className:'fixed inset-0 z-[190] bg-slate-950/80 flex items-center justify-center p-2 sm:p-4',onClick:closeStatementAttachmentPreview},
+  h('section',{className:'flex h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl',onClick:e=>e.stopPropagation()},
+   h('header',{className:'flex shrink-0 items-center justify-between gap-2 bg-slate-900 p-3 text-white'},h('div',{className:'font-bold truncate'},statementAttachmentPreview.fileName||'معاينة المرفق'),h('button',{type:'button',className:'rounded-lg border border-white/30 px-3 py-2 text-sm',onClick:closeStatementAttachmentPreview},'إغلاق')),
+   h('div',{className:'min-h-0 flex-1 overflow-auto bg-slate-100 p-2'},statementAttachmentPreview.kind==='media'?(statementAttachmentPreview.mimeType==='application/pdf'?h('iframe',{title:statementAttachmentPreview.fileName,src:statementAttachmentPreview.url,className:'h-full min-h-[70vh] w-full rounded-lg bg-white'}):h('img',{src:statementAttachmentPreview.url,alt:statementAttachmentPreview.fileName,className:'mx-auto max-h-full max-w-full object-contain'})):statementAttachmentPreview.kind==='text'?h('pre',{className:'whitespace-pre-wrap break-words rounded-lg bg-white p-4 text-sm'},statementAttachmentPreview.text):statementAttachmentPreview.kind==='table'?table((statementAttachmentPreview.rows[0]||[]).map((_,index)=>String(index+1)),statementAttachmentPreview.rows.slice(1).map((row,index)=>h('tr',{key:index,className:'border-t'},row.map((cell,column)=>h('td',{key:column,className:'p-2'},String(cell)))))):null)
+  )):null;
  let content=null;
  if(tab==='overview')content=renderOverview();
  if(tab==='journal')content=renderJournal();
@@ -2681,9 +2746,9 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
  return h('div',{className:'p-2 md:p-3 space-y-2',dir:rtl?'rtl':'ltr'},
   h('header',{className:'flex flex-wrap items-center justify-between gap-3'},h('div',null,h('h2',{className:'text-2xl font-extrabold'},t('النظام المالي والمحاسبي','Financial & Accounting System')),h('p',{className:'text-xs text-slate-500'},t('دفتر أستاذ مستقل — لا ترحيل قبل المراجعة والاعتماد','Separate General Ledger — No Posting Before Review & Approval'))),button(busy?t('جارٍ التحديث','Updating'):t('تحديث البيانات','Refresh Data'),refresh,'muted',busy)),
   h('nav',{className:'flex flex-wrap gap-2'},visibleNav.map(x=>button(rtl?x[1]:x[2],()=>{setTab(x[0]);setNotice('');setError('');},tab===x[0]?'primary':'muted'))),
-  noticeElement,content,renderQuickAdd(),busy?h('p',{className:'text-xs text-slate-500'},'جارٍ تحميل البيانات...'):null,
+  noticeElement,content,renderQuickAdd(),statementAttachmentListModal,statementAttachmentPreviewModal,busy?h('p',{className:'text-xs text-slate-500'},'جارٍ تحميل البيانات...'):null,
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261121-analytic-party-selector-v2";
+ window.PEST_FINANCE_MODULE_VERSION="20261121-statement-attachments-v1";
 })();
