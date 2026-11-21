@@ -29,7 +29,7 @@ test("daily journal rows search attachments against both the source document and
   assert.match(source, /sourceId:doc\.sourceId\|\|""/);
   assert.match(source, /journalId:doc\.journalId\|\|""/);
   assert.match(source, /statementAttachmentAction\(x\)/);
-  assert.match(source, /loadStatementAttachments\(journalRecords\)/);
+  assert.match(source, /loadStatementAttachments\(journalRecords\.concat\(documents\.filter\(document=>document&&document\.type==='journal'\)\)\)/);
   assert.match(source, /event\.stopPropagation\(\)/);
 });
 
