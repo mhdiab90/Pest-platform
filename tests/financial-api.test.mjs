@@ -1468,16 +1468,16 @@ test("partner current accounts create separate analytical ledgers and transfer a
   const approvedTransfer=await invoke("POST","",{action:"review",id:transferred.journalId,decision:"approve",reason:"Approve partner custody reclassification"});
   assert.equal(approvedTransfer.status,"posted");
   const partnerTransferJournal=read("journals/"+transferred.journalId);
-  assert.ok(partnerTransferJournal.lines.some(line=>line.accountCode==="3201"&&line.credit===350),"the partner-current transfer reclassifies the custody credit to partner equity");
-  assert.ok(partnerTransferJournal.lines.some(line=>line.accountCode==="1220"&&line.debit===350),"the partner-current transfer clears the custody subledger");
-  assert.equal(partnerTransferJournal.lines.some(line=>line.accountCode==="6100"||line.accountCode==="6200"),false,"the partner-current transfer must not create a second operating or administrative expense");
+  assert.ok(partnerTransferJournal.lines.some(line=>line.accountCode==="3201"&&line.debit===350),"a personal expense transferred to partner current is recorded as a partner receivable");
+  assert.ok(partnerTransferJournal.lines.some(line=>line.accountCode==="6100"&&line.credit===350),"the transfer reverses the original expense classification without editing its posted source journal");
+  assert.equal(partnerTransferJournal.lines.some(line=>line.accountCode==="1220"),false,"the original custody credit remains as the cash reduction already recorded by the source journal");
   assert.equal(read("cashCustodies/"+haithamUid+"/transactions/"+transactionId+"/partnerCurrentAccountTransfer/active"),true);
   assert.deepEqual(read("cashCustodies/"+haithamUid+"/transactions/"+transactionId+"/attachmentsManifest"),attachmentsManifest);
   assert.ok(read("partyLedger/partnerCurrentAccount/"+haithamUid+"/2026-11"),"partner account subledger receives the reclassification only after approval");
   const partnerLedgerAfterTransfer=Object.values(read("partyLedger/partnerCurrentAccount/"+haithamUid+"/2026-11")||{});
-  assert.equal(partnerLedgerAfterTransfer.reduce((sum,row)=>sum+row.credit-row.debit,0),350);
+  assert.equal(partnerLedgerAfterTransfer.reduce((sum,row)=>sum+row.credit-row.debit,0),-350,"personal withdrawals create a debit balance in partner current");
   const custodyLedgerAfterTransfer=Object.values(read("partyLedger/employeeCustody/"+haithamUid+"/2026-11")||{});
-  assert.equal(custodyLedgerAfterTransfer.reduce((sum,row)=>sum+row.debit-row.credit,0),0,"the transferred value is cleared from the personal-custody subledger");
+  assert.equal(custodyLedgerAfterTransfer.reduce((sum,row)=>sum+row.debit-row.credit,0),-350,"the source custody credit remains intact and is not duplicated by the partner-current correction");
   const currentListing=await invoke("GET","?resource=partnerCurrentAccounts");
   assert.equal(currentListing.items.find(item=>item.uid===haithamUid).transactions.length,1);
 
@@ -1493,7 +1493,7 @@ test("partner current accounts create separate analytical ledgers and transfer a
   const partnerLedgerAfterReturn=Object.values(read("partyLedger/partnerCurrentAccount/"+haithamUid+"/2026-11")||{});
   assert.equal(partnerLedgerAfterReturn.reduce((sum,row)=>sum+row.credit-row.debit,0),0,"returning the row fully reverses the partner current-account balance");
   const custodyLedgerAfterReturn=Object.values(read("partyLedger/employeeCustody/"+haithamUid+"/2026-11")||{});
-  assert.equal(custodyLedgerAfterReturn.reduce((sum,row)=>sum+row.debit-row.credit,0),-350,"returning the row restores the original personal-custody balance");
+  assert.equal(custodyLedgerAfterReturn.reduce((sum,row)=>sum+row.debit-row.credit,0),-350,"reversing the partner-current reclassification restores the original expense while preserving the source custody credit");
   const finalListing=await invoke("GET","?resource=partnerCurrentAccounts");
   assert.equal(finalListing.items.find(item=>item.uid===haithamUid).transactions.length,0);
   assert.equal(read("journals/"+transferred.journalId).status,"posted");
@@ -1566,7 +1566,65 @@ test("partner current accounts create separate analytical ledgers and transfer a
 });
 
 
-test("approved custody movement can be reassigned to another employee custody through journal review", async () => {
+test("legacy partner-current expense transfers can be corrected safely through review without rewriting posted source journals", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const ownerUid="PARTNER-LEGACY-REPAIR-01",transactionId="PARTNER-LEGACY-EXPENSE-01";
+  const sourceJournalId="PARTNER-LEGACY-SOURCE-JOURNAL-01",transferJournalId="PARTNER-LEGACY-TRANSFER-JOURNAL-01";
+  write("users/"+ownerUid,{uid:ownerUid,status:"active",role:"user",username:"haitham Ibrahim mahmoud",fullName:"Haitham Legacy Test"});
+  const sourceJournal={
+    id:sourceJournalId,type:"journal",date:"2026-11-19",description:"Original personal custody expense",
+    sourceType:"cashCustody",sourceId:ownerUid+"--"+transactionId,status:"posted",
+    lines:[
+      {accountCode:"6100",debit:100,credit:0,description:"Personal expense"},
+      {accountCode:"1220",debit:0,credit:100,description:"Personal expense",partyType:"employeeCustody",partyId:ownerUid}
+    ]
+  };
+  const transferJournal={
+    id:transferJournalId,type:"journal",date:"2026-11-20",description:"Legacy partner transfer",
+    sourceType:"partnerCurrentAccountTransfer",sourceId:ownerUid+"--"+transactionId+"--OLD-TRANSFER",
+    transferDirection:"toCurrent",status:"posted",
+    lines:[
+      {accountCode:"3201",debit:0,credit:100,description:"Old partner current transfer",partyType:"partnerCurrentAccount",partyId:ownerUid},
+      {accountCode:"1220",debit:100,credit:0,description:"Old custody clearing",partyType:"employeeCustody",partyId:ownerUid}
+    ]
+  };
+  write("journals/"+sourceJournalId,sourceJournal);
+  write("journals/"+transferJournalId,transferJournal);
+  write("cashCustodies/"+ownerUid+"/transactions/"+transactionId,{
+    id:transactionId,ownerUid,bookScope:"personal",type:"expense",amount:100,currency:"EGP",
+    date:"2026-11-19",description:"Personal expense incorrectly shown as company expense",
+    reference:"LEGACY-PC-01",status:"approved",financialJournalId:sourceJournalId,
+    partnerCurrentAccountTransfer:{active:true,pending:false,lastDirection:"toCurrent",lastJournalId:transferJournalId}
+  });
+
+  const submitted=await invoke("POST","",{action:"repairPartnerCurrentAccountExpenseTransfers",ownerUid});
+  assert.equal(submitted.submitted,1,"one exact legacy personal-expense transfer should be sent for review");
+  assert.equal(submitted.failed,0);
+  assert.equal(submitted.totalAmount,100);
+  const correctionId=submitted.journalIds[0],correction=read("documents/"+correctionId);
+  assert.equal(correction.status,"pending_review");
+  assert.equal(correction.sourceType,"partnerCurrentAccountExpenseCorrection");
+  assert.equal(read("reviewQueue/"+correctionId).status,"pending_review");
+  assert.equal(read("cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/partnerCurrentAccountTransfer/expenseCorrectionPendingJournalId"),correctionId);
+  const debit=correction.lines.reduce((sum,line)=>sum+Number(line.debit||0),0);
+  const credit=correction.lines.reduce((sum,line)=>sum+Number(line.credit||0),0);
+  assert.equal(debit,200,"the correction reverses the old partner credit and establishes a debit partner balance");
+  assert.equal(credit,200,"the correction reverses the old custody clearing and the expense debit");
+  assert.equal(read("journals/"+sourceJournalId).status,"posted","the original source journal remains untouched");
+  assert.equal(read("journals/"+transferJournalId).status,"posted","the original transfer journal remains untouched");
+
+  const approved=await invoke("POST","",{action:"review",id:correctionId,decision:"approve",reason:"Correct personal withdrawal classification"});
+  assert.equal(approved.status,"posted");
+  assert.equal(read("journals/"+correctionId).status,"posted");
+  assert.equal(read("cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/partnerCurrentAccountTransfer/expenseCorrectionStatus"),"posted");
+  assert.equal(read("cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/partnerCurrentAccountTransfer/transferTreatment"),"personalWithdrawal");
+  assert.equal(read("cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/partnerCurrentAccountTransfer/expenseCorrectionPendingJournalId"),null);
+  assert.equal(read("ledger/6100/2026-11/"+correctionId+"_4").credit,100,"the correction posts the credit that removes the personal amount from operating expenses");
+  const secondRun=await invoke("POST","",{action:"repairPartnerCurrentAccountExpenseTransfers",ownerUid});
+  assert.equal(secondRun.submitted,0,"a corrected movement must not create a duplicate correction journal");
+  assert.equal(secondRun.skipped,1);
+});
+\ntest("approved custody movement can be reassigned to another employee custody through journal review", async () => {
   await invoke("GET","?resource=bootstrap");
   const sourceUid="custody-transfer-source";
   const destinationUid="custody-transfer-destination";
