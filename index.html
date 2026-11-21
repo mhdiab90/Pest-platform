@@ -3566,19 +3566,15 @@ function App(){
     if(!cashCustodyTransferPreview)return alert(rtl?'انتظر حتى يتم احتساب القيد من الخادم وعرضه قبل الإرسال.':'Wait for the server-calculated journal preview before submitting.');
     if(targetType==='custody'&&(!targetUid||targetUid===ownerUid))return alert(rtl?'اختر صاحب عهدة آخر مختلفًا عن صاحب الحركة الأصلية.':'Select a different receiving custody owner.');
     if(targetType==='current'&&!partnerInfo)return alert(rtl?'لا يوجد حساب جاري شريك مربوط بصاحب العهدة المحدد.':'The custody owner is not linked to a partner current account.');
-    const sign=cashCustodySign(transaction.type),amount=Number(transaction.amount||0);
+    const amount=Number(transaction.amount||0);
     if(!Number.isFinite(amount)||amount<=0)return alert(rtl?'قيمة الحركة غير صحيحة.':'Invalid movement amount.');
     const fromName=(userDirectory.find(u=>u.uid===ownerUid)||{}).fullName||((ownerUid===currentUser.uid&&currentUser.fullName)||ownerUid);
     const toUser=targetType==='custody'?(userDirectory.find(u=>u.uid===targetUid)||{}):null;
     const toName=targetType==='current'?(partnerInfo.partnerName+' ('+partnerInfo.accountCode+')'):(toUser.fullName||toUser.username||toUser.email||targetUid);
-    const sourceDebit=sign>0?amount:0,sourceCredit=sign>0?0:amount;
-    const destinationDebit=sourceCredit,destinationCredit=sourceDebit;
-    const lines=targetType==='current'
-      ?[{accountCode:partnerInfo.accountCode,accountName:partnerInfo.partnerName,debit:sourceDebit,credit:sourceCredit},{accountCode:'1220',accountName:'العهد لدى العاملين',debit:sourceCredit,credit:sourceDebit}]
-      :[{accountCode:'1220',accountName:'عهدة '+toName,partyId:targetUid,debit:sourceDebit,credit:sourceCredit},{accountCode:'1220',accountName:'عهدة '+fromName,partyId:ownerUid,debit:sourceCredit,credit:sourceDebit}];
+    const lines=cashCustodyTransferPreview.lines||[];
     const debitTotal=lines.reduce((sum,line)=>sum+Number(line.debit||0),0),creditTotal=lines.reduce((sum,line)=>sum+Number(line.credit||0),0);
-    if(Math.abs(debitTotal-creditTotal)>0.01)return alert(rtl?'القيد المقترح غير متوازن، تم إيقاف العملية.':'The proposed journal is unbalanced. Transfer cancelled.');
-    if(!window.confirm((rtl?'سيتم إرسال القيد التالي إلى المراجعة فقط. لن تتغير الأرصدة قبل الاعتماد.\n\nمن: ':'This journal will be submitted for review only. Balances will not change before approval.\n\nFrom: ')+fromName+'\n'+(rtl?'إلى: ':'To: ')+toName+'\n'+(rtl?'المبلغ: ':'Amount: ')+money(amount)+' EGP\n\n'+lines.map(line=>(line.accountCode+' | '+(line.accountName||'')+' | مدين '+money(line.debit)+' | دائن '+money(line.credit))).join('\n')+'\n\n'+(rtl?'هل تريد إرسال القيد للمراجعة؟':'Submit this journal for review?')))return;
+    if(!lines.length||Math.abs(debitTotal-creditTotal)>0.01)return alert(rtl?'القيد المعروض غير متوازن أو لا يحتوي على تفاصيل. تم إيقاف العملية.':'The displayed journal is empty or unbalanced. Transfer cancelled.');
+    if(!window.confirm((rtl?'سيتم إرسال القيد المحسوب من النظام التالي إلى المراجعة فقط. لن تتغير الأرصدة قبل الاعتماد.\\n\\nمن: ':'This server-calculated journal will be submitted for review only. Balances will not change before approval.\\n\\nFrom: ')+fromName+'\\n'+(rtl?'إلى: ':'To: ')+toName+'\\n'+(rtl?'المبلغ: ':'Amount: ')+money(cashCustodyTransferPreview.amount||amount)+' EGP\\n\\n'+lines.map(line=>(line.accountCode+' | '+(line.accountName||line.description||'')+' | مدين '+money(line.debit)+' | دائن '+money(line.credit))).join('\\n')+'\\n\\n'+(rtl?'هل تريد إرسال القيد للمراجعة؟':'Submit this journal for review?')))return;
     setCashCustodyBusy(true);setCashCustodyNotice('');
     try{
       const result=targetType==='current'
