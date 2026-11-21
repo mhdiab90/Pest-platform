@@ -3552,7 +3552,7 @@ function App(){
   }
   function openCashCustodyTransfer(ownerUid,transaction){
     if(!isAdmin||!hasPermission('cashCustody','edit'))return alert(rtl?'ليس لديك صلاحية تحويل حركات العهدة.':'You do not have permission to transfer custody movements.');
-    if(!transaction||transaction.status!=='approved'||transaction.pairRole==='counterparty'||transaction.bookScope!=='personal')return alert(rtl?'يجب اختيار حركة أصلية معتمدة من العهدة الشخصية.':'Select an approved original personal-custody movement.');
+    if(!transaction||transaction.status!=='approved'||transaction.pairRole==='counterparty'||String(transaction.bookScope||'personal')!=='personal')return alert(rtl?'يجب اختيار حركة أصلية معتمدة من العهدة الشخصية.':'Select an approved original personal-custody movement.');
     const transfer=transaction.cashCustodyTransfer||transaction.partnerCurrentAccountTransfer||{};
     if(transfer.pending===true)return alert(rtl?'هذا التحويل ما زال في انتظار المراجعة.':'This movement already has a transfer awaiting review.');
     if(transfer.active===true)return alert(rtl?'هذه الحركة محولة بالفعل. افتح الحركة المقابلة في دفتر الجهة المستفيدة.':'This movement has already been transferred. Open the counterpart movement in the receiving ledger.');
