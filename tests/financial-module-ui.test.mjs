@@ -3177,3 +3177,21 @@ test("account analysis drills from account balance to analytical source and post
   assert.ok(source.includes("const renderAccountAnalysis=()=>{"));
   assert.ok(source.includes("if(tab==='accountAnalysis')content=renderAccountAnalysis()"));
 });
+
+
+test("financial tables align RTL amounts below matching headers", () => {
+  assert.match(source, /className:'pest-finance-workspace p-2 md:p-3 space-y-2'/);
+  assert.match(source, /\.pest-finance-workspace\[dir="rtl"\] table\{direction:rtl!important;text-align:right!important;\}/);
+  assert.match(source, /table td\[class~="text-end"\]\{direction:ltr!important;text-align:right!important;white-space:nowrap;font-variant-numeric:tabular-nums;\}/);
+  assert.match(source, /className:'p-3 whitespace-nowrap text-right align-middle'/);
+  assert.match(source, /dir:rtl\?'rtl':'ltr',className:'w-full text-sm text-right'/);
+});
+
+test("all shared financial sections have individual collapse and expand buttons", () => {
+  assert.match(source, /const \[collapsedPanels,setCollapsedPanels\]=React\.useState\(\{\}\)/);
+  assert.match(source, /const panel=\(title,sub,child\)=>\{/);
+  assert.match(source, /aria-expanded':!collapsed/);
+  assert.match(source, /setCollapsedPanels\(previous=>Object\.assign\(\{\},previous,\{\[panelKey\]:!previous\[panelKey\]\}\)\)/);
+  assert.match(source, /collapsed\?null:h\('div',\{className:'mt-3 min-w-0'\},child\)/);
+  assert.match(source, /collapsed\?t\('إظهار القسم','Show section'\):t\('إخفاء القسم','Hide section'\)/);
+});
