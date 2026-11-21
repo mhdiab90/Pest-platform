@@ -759,6 +759,7 @@ export async function handleFinancialRequest(ctx){
   const centers=(await adminRead("costCenters"))||{},validation=validateJournal(journal,chart,centers);
   if(validation.errors.length)throw new Error("قيد إعادة التصنيف غير صالح: "+validation.errors.join("؛ "));
   journal.balance=validation.balance;journal.errors=[];
+  if(body.previewOnly===true)return {success:true,status:"preview",accountCode:config.code,partnerName:config.partnerName,preview:{number:journal.number,date:journal.date,description:journal.description,amount:journal.amount,lines:journal.lines,balance:journal.balance}};
   const rootUpdates={};
   rootUpdates["financial/documents/"+journalId]=journal;
   rootUpdates["financial/reviewQueue/"+journalId]=reviewRecord(journal);
@@ -781,7 +782,8 @@ export async function handleFinancialRequest(ctx){
   if(!transaction||transaction.id!==transactionId||transaction.ownerUid!==ownerUid||transaction.bookScope!=="personal"||transaction.pairRole==="counterparty")throw new Error("حركة العهدة الأصلية غير موجودة أو غير قابلة للتحويل.");
   if(transaction.status!=="approved")throw new Error("يجب أن تكون حركة العهدة الأصلية معتمدة.");
   if(String(transaction.currency||"EGP").toUpperCase()!=="EGP")throw new Error("التحويل متاح حاليًا بالجنيه المصري فقط.");
-  const transfer=transaction.cashCustodyTransfer||{};
+  const transfer=transaction.cashCustodyTransfer||{},partnerTransfer=transaction.partnerCurrentAccountTransfer||{};
+  if(partnerTransfer.pending===true||partnerTransfer.active===true)throw new Error("الحركة محولة بالفعل إلى جاري الشريك أو يوجد طلب تحويل قيد المراجعة.");
   if(transfer.pending===true||transfer.active===true)throw new Error("الحركة محولة بالفعل أو يوجد طلب تحويل لها قيد المراجعة.");
   const destinationUser=adminReadRoot?await adminReadRoot("users/"+destinationOwnerUid):null;
   if(!destinationUser||!["active","نشط","مفعل","enabled"].includes(String(destinationUser.status||"").toLowerCase()))throw new Error("صاحب العهدة المستفيدة غير موجود أو غير نشط.");
@@ -811,6 +813,7 @@ export async function handleFinancialRequest(ctx){
   const centers=(await adminRead("costCenters"))||{},validation=validateJournal(journal,chart,centers);
   if(validation.errors.length)throw new Error("قيد تحويل العهدة غير صالح: "+validation.errors.join("؛ "));
   journal.balance=validation.balance;journal.errors=[];
+  if(body.previewOnly===true)return {success:true,status:"preview",destinationOwnerUid,destinationName,preview:{number:journal.number,date:journal.date,description:journal.description,amount:journal.amount,lines:journal.lines,balance:journal.balance}};
   const mirror={...transaction,id:mirrorId,ownerUid:destinationOwnerUid,bookScope:"personal",status:"transfer_pending",pairRole:"counterparty",pairGroupId:transferId,linkedOwnerUid:ownerUid,linkedTransactionId:transactionId,counterparty:sourceName,counterpartyType:"user",counterpartyUid:ownerUid,counterpartyName:sourceName,description:"حركة عهدة محولة من "+sourceName+": "+txt(transaction.description||transactionId,220),financialReviewStatus:"pending_review",financialJournalId:journalId,cashCustodyTransfer:{active:false,pending:true,pendingJournalId:journalId,transferId,sourceOwnerUid:ownerUid,sourceTransactionId:transactionId}};
   const rootUpdates={};
   rootUpdates["financial/documents/"+journalId]=journal;
@@ -819,7 +822,7 @@ export async function handleFinancialRequest(ctx){
   rootUpdates[sourcePath+"/cashCustodyTransfer"]={active:false,pending:true,pendingJournalId:journalId,transferId,destinationOwnerUid,destinationName,mirrorId,createdAt:now,createdBy:claims.sub};
   rootUpdates[sourcePath+"/cashCustodyTransferHistory/"+transferId]={id:transferId,journalId,destinationOwnerUid,destinationName,mirrorId,amount,date:dateValue,status:"pending_review",createdAt:now,createdBy:claims.sub};
   rootUpdates["cashCustodies/"+destinationOwnerUid+"/transactions/"+mirrorId]=mirror;
-  if(!adminPatchRoot)throw new Error("خدمة التحويل الموحد للعهد غير متاحة.");
+  if(!adminPatchRoot||!adminPatchRootAt)throw new Error("خدمة التحويل الموحد للعهد غير متاحة.");
   await adminPatchRoot(rootUpdates);
   return {success:true,status:"pending_review",journalId,journalNumber:journal.number,amount,destinationOwnerUid,destinationName};
  }
