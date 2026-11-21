@@ -1346,6 +1346,7 @@ export async function handleFinancialRequest(ctx){
   if(Object.prototype.hasOwnProperty.call(editable,"date"))next.date=date(editable.date);
   if(Object.prototype.hasOwnProperty.call(editable,"description"))next.description=txt(editable.description,500);
   if(Object.prototype.hasOwnProperty.call(editable,"reference"))next.reference=txt(editable.reference,120);
+  if(Object.prototype.hasOwnProperty.call(editable,"revisionNotes"))next.revisionNotes=txt(editable.revisionNotes,2000);
   next.currency="EGP";
   if(Array.isArray(body.lines)){
    if(body.lines.length>100)throw new Error("لا يمكن أن يحتوي القيد على أكثر من 100 سطر.");
@@ -1435,7 +1436,11 @@ export async function handleFinancialRequest(ctx){
      const projectCode=target.sourceId.slice(0,separator),eventId=target.sourceId.slice(separator+2);
      await adminPatchRootAt("projects/"+id(projectCode)+"/events/"+id(eventId),{accountingStatus:"cancelled",accountingImpact:false,accountingCancelledAt:now,accountingCancelledBy:claims.sub});
     }
-   }else if(target.sourceType==="cashCustody"&&target.sourceId&&adminPatchRootAt){
+   }else if(target.sourceType==="journalRevision"&&target.revisionOf){
+     updates["journals/"+id(target.revisionOf)+"/pendingRevisionId"]=null;
+     updates["journals/"+id(target.revisionOf)+"/revisionCancelledAt"]=now;
+     updates["journals/"+id(target.revisionOf)+"/revisionCancelledBy"]=claims.sub;
+    }else if(target.sourceType==="cashCustody"&&target.sourceId&&adminPatchRootAt){
     const separator=String(target.sourceId).indexOf("--");
     if(separator>0){
      const ownerUid=id(target.sourceId.slice(0,separator)),transactionId=id(target.sourceId.slice(separator+2));
@@ -1448,7 +1453,8 @@ export async function handleFinancialRequest(ctx){
    requireFinanceArea("journal","add");
    const originalId=id(body.id),original=await adminRead("journals/"+originalId);
    if(!original||original.type!=="journal"||original.status!=="posted")throw new Error("لا يمكن إنشاء قيد عكسي إلا لقيد مرحّل.");
-   if(original.reversalJournalId||original.reversedByJournalId)throw new Error("تم إنشاء قيد عكسي لهذا القيد من قبل.");
+   if(original.reversalJournalId||original.reversedByJournalId||original.revisedByJournalId)throw new Error("هذا القيد سبق عكسه أو تعديله؛ راجع القيود المرتبطة قبل إنشاء قيد عكسي جديد.");
+    if(original.pendingRevisionId)throw new Error("يوجد إصدار تعديل لهذا القيد بانتظار المراجعة.");
    const reversalId=uid("REV-JRN"),reversalDate=date(body.date||new Date().toISOString().slice(0,10));
    const lines=(original.lines||[]).map(line=>({...line,debit:Number(line.credit||0),credit:Number(line.debit||0),description:txt(line.description||original.description||"",250)+" — عكس"}));
    const journal={id:reversalId,type:"journal",date:reversalDate,description:txt(body.description||("قيد عكسي للقيد "+originalId+" — "+(original.description||"")),500),reference:txt(body.reference||original.reference||originalId,120),currency:original.currency||"EGP",lines,sourceType:"manual",reversalOf:originalId,createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120)};
@@ -1463,7 +1469,39 @@ export async function handleFinancialRequest(ctx){
    await adminPatch(updates);
    return {success:true,id:reversalId,status:"pending_review",reversalOf:originalId,errors:[]};
   }
-  if(action==="deleteJournal"){
+  if(action==="createJournalRevision"){
+    requireFinanceArea("journal","edit");
+    const originalId=id(body.id),original=await adminRead("journals/"+originalId);
+    if(!original||original.type!=="journal"||original.status!=="posted")throw new Error("القيد الأصلي غير موجود أو غير مرحّل.");
+    if(original.sourceType&&original.sourceType!=="manual")throw new Error("هذا القيد مرتبط بمستند مصدر ("+String(original.sourceType)+"). يجب تعديل الفاتورة أو السند أو حركة المصدر حتى تظل أرصدة المخزون والأطراف والتحليلات متطابقة.");
+    if(original.reversalJournalId||original.reversedByJournalId||original.revisedByJournalId)throw new Error("لا يمكن إنشاء تعديل جديد؛ القيد سبق عكسه أو تعديله. راجع القيد المرتبط.");
+    if(original.pendingRevisionId)throw new Error("يوجد طلب تعديل آخر لهذا القيد. افتح الطلب الموجود من قائمة المراجعة بدل إنشاء نسخة مكررة.");
+    const revisionId=uid("JRN-REV"),revisionDate=date(original.date||new Date().toISOString().slice(0,10));
+    const revision={
+     id:revisionId,number:journalNumberFor(revisionDate,revisionId),type:"journal",date:revisionDate,
+     description:txt(original.description||("تعديل القيد "+(original.number||original.id)),500),
+     reference:txt(original.reference||original.number||original.id,120),currency:"EGP",
+     lines:(original.lines||[]).map(line=>({...line})),
+     sourceType:"journalRevision",revisionOf:originalId,revisionOriginalNumber:original.number||originalId,
+     revisionNotes:"",revisionRequestedBy:claims.sub,revisionRequestedAt:now,
+     createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120),
+     title:"تعديل القيد "+(original.number||originalId),status:"pending_review"
+    };
+    if(!revision.lines.length)throw new Error("القيد الأصلي لا يحتوي على سطور قابلة للتعديل.");
+    const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{},validation=validateJournal(revision,chart,centers);
+    if(validation.errors.length)throw new Error("لا يمكن إرسال نسخة التعديل للمراجعة قبل تصحيح بيانات القيد الأصلي: "+validation.errors.join("؛ "));
+    revision.balance=validation.balance;revision.errors=[];
+    const updates={};
+    updates["documents/"+revisionId]=revision;
+    updates["reviewQueue/"+revisionId]=reviewRecord(revision);
+    updates["journals/"+originalId+"/pendingRevisionId"]=revisionId;
+    updates["journals/"+originalId+"/revisionRequestedAt"]=now;
+    updates["journals/"+originalId+"/revisionRequestedBy"]=claims.sub;
+    updates["audit/"+uid("AUD")]={action:body.mode==="return"?"return_posted_journal_to_review":"create_posted_journal_revision",documentId:revisionId,originalJournalId:originalId,uid:claims.sub,createdAt:now};
+    await adminPatch(updates);
+    return {success:true,id:revisionId,status:"pending_review",originalJournalId:originalId,item:revision,errors:[]};
+   }
+   if(action==="deleteJournal"){
    requireFinanceArea("journal","delete");
    const journalId=id(body.id),document=await adminRead("documents/"+journalId),posted=await adminRead("journals/"+journalId),target=posted||document;
    if(!target||target.type!=="journal")throw new Error("قيد اليومية المطلوب حذفه غير موجود.");
@@ -1952,6 +1990,11 @@ if(action==="submitCash"){
    const status=decision==="reject"?"rejected":"needs_correction",u={};let sourceRootUpdate=null,secondaryRootUpdate=null;
    u["documents/"+docId+"/status"]=status;u["documents/"+docId+"/reviewReason"]=txt(body.reason,1000);u["documents/"+docId+"/reviewedBy"]=claims.sub;u["documents/"+docId+"/reviewedAt"]=now;u["reviewQueue/"+docId]=null;
    u["audit/"+uid("AUD")]={action:status,documentId:docId,uid:claims.sub,createdAt:now};
+   if(doc.sourceType==="journalRevision"&&doc.revisionOf&&decision==="reject"){
+    u["journals/"+id(doc.revisionOf)+"/pendingRevisionId"]=null;
+    u["journals/"+id(doc.revisionOf)+"/revisionRejectedAt"]=now;
+    u["journals/"+id(doc.revisionOf)+"/revisionRejectedBy"]=claims.sub;
+   }
    if(doc.type==="journal"&&doc.sourceType==="projectEvent"&&doc.sourceId&&adminPatchRootAt){
     const separator=String(doc.sourceId).lastIndexOf("--");
     if(separator>0)sourceRootUpdate={path:"projects/"+id(doc.sourceId.slice(0,separator))+"/events/"+id(doc.sourceId.slice(separator+2)),value:{accountingStatus:status,accountingReviewReason:txt(body.reason,1000),accountingReviewedAt:now,accountingReviewedBy:claims.sub}};
@@ -2019,7 +2062,34 @@ await adminPatch(u);
    return {success:true,status};
   }
   if(decision!=="approve"&&decision!=="approveDuplicate")throw new Error("قرار المراجعة غير صحيح");const updates={};let j,sourceRootUpdate=null,secondaryRootUpdate=null;
-  if(doc.type==="journal"){const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{},v=validateJournal(doc,chart,centers);if(v.errors.length)throw new Error(v.errors.join("؛ "));j={...doc,status:"posted",approvedAt:now,approvedBy:claims.sub,postedAt:now};Object.assign(updates,journalUpdates(j));}
+  if(doc.type==="journal"){
+   const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{},v=validateJournal(doc,chart,centers);
+   if(v.errors.length)throw new Error(v.errors.join("؛ "));
+   if(doc.sourceType==="journalRevision"&&doc.revisionOf){
+    const originalId=id(doc.revisionOf),original=await adminRead("journals/"+originalId);
+    if(!original||original.status!=="posted"||original.type!=="journal")throw new Error("القيد الأصلي لم يعد مرحّلًا؛ أوقف اعتماد التعديل وراجع ارتباط القيد.");
+    if(String(original.pendingRevisionId||"")!==String(docId))throw new Error("طلب التعديل لم يعد هو الإصدار المعلّق المرتبط بالقيد الأصلي.");
+    if(original.reversalJournalId||original.reversedByJournalId||original.revisedByJournalId)throw new Error("القيد الأصلي تم عكسه أو تعديله بطريق آخر. أوقف الاعتماد وراجع التسلسل المحاسبي.");
+    const originalNumber=original.number||original.id;
+    const reverseLines=(original.lines||[]).map(line=>({...line,debit:Number(line.credit||0),credit:Number(line.debit||0),description:txt(line.description||original.description||"",250)+" — عكس القيد الأصلي "+originalNumber}));
+    const replacementLines=(doc.lines||[]).map(line=>({...line}));
+    const combinedLines=reverseLines.concat(replacementLines),combinedBalance=balance(combinedLines);
+    if(Math.abs(combinedBalance.difference)>0.01)throw new Error("قيد التعديل مع عكس الأصل غير متوازن. لم يتم ترحيل أي أثر.");
+    j={...doc,id:docId,sourceType:"journalRevision",revisionOf:originalId,originalJournalNumber:originalNumber,
+     description:"تعديل معتمد للقيد "+originalNumber+" — "+txt(doc.description||original.description||"",400),
+     lines:combinedLines,status:"posted",balance:combinedBalance,approvedAt:now,approvedBy:claims.sub,postedAt:now,
+     revisionNotes:txt(doc.revisionNotes,2000),revisionApprovedAt:now,revisionApprovedBy:claims.sub};
+    Object.assign(updates,journalUpdates(j));
+    updates["documents/"+docId]=j;updates["reviewQueue/"+docId]=null;
+    updates["journals/"+originalId+"/pendingRevisionId"]=null;
+    updates["journals/"+originalId+"/revisedByJournalId"]=docId;
+    updates["journals/"+originalId+"/revisionApprovedAt"]=now;
+    updates["journals/"+originalId+"/revisionApprovedBy"]=claims.sub;
+    updates["audit/"+uid("AUD")]={action:"approve_posted_journal_revision",documentId:docId,originalJournalId:originalId,revisionNotes:j.revisionNotes,uid:claims.sub,createdAt:now};
+   }else{
+    j={...doc,status:"posted",approvedAt:now,approvedBy:claims.sub,postedAt:now};Object.assign(updates,journalUpdates(j));
+   }
+  }
   else if(doc.type==="cash"){
    const amount=num(doc.amount),cash=txt(doc.cashAccountCode||"1110",32),movement=txt(doc.movementType||"",40),chart=(await adminRead("chartOfAccounts"))||{};
    const validate=(code,type)=>{const account=chart[code];if(!account||account.isGroup||account.active===false||account.type!==type)throw new Error("الحساب المقابل غير صالح: "+code);return account;};
