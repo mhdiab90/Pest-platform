@@ -1114,6 +1114,11 @@ test("posted manual journal edits create reviewed revisions and preserve the ori
   const approved=await invoke("POST","",{action:"review",id:draft.id,decision:"approve",reason:"test approval"});
   assert.equal(approved.status,"posted");
   assert.equal(read("ledger/6100/2026-11/"+draft.id+"_1").debit,100);
+  await assert.rejects(
+    invoke("POST","",{action:"submitJournal",id:draft.id,date:"2026-11-19",description:"Silent direct edit must be blocked",reference:"PERM-JRN-01",
+      lines:[{accountCode:"6200",debit:125,credit:0,description:"After edit"},{accountCode:"1110",debit:0,credit:125,description:"Cash"}]}),
+    /القيد مرحّل/
+  );
 
   const editCalls=[];
   const editPermission=(_profile,moduleId,action)=>{
