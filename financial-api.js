@@ -677,6 +677,74 @@ export async function handleFinancialRequest(ctx){
   throw new Error("Unknown financial data resource.");
  }
  if(request.method!=="POST")throw new Error("Method not allowed.");const action=txt(body.action,40),now=Date.now();
+ if(action==="repairPartnerCurrentAccountExpenseTransfers"){
+  if(profile.role!=="admin")throw new Error("تصحيح تصنيف حركات جاري الشركاء متاح لمدير النظام فقط.");
+  if(!adminReadRoot||!adminPatchRoot)throw new Error("خدمة تصحيح القيود الموحدة غير متاحة.");
+  const ownerUid=id(body.ownerUid),user=await adminReadRoot("users/"+ownerUid);
+  if(!user)throw new Error("المستخدم صاحب الحركات غير موجود.");
+  const normalize=value=>String(value||"").trim().toLowerCase().replace(/\s+/g," ");
+  const config=PARTNER_CURRENT_ACCOUNT_CONFIG.find(item=>item.email
+   ?normalize(user.email)===normalize(item.email)
+   :[normalize(user.username),normalize(user.fullName),normalize(String(user.email||"").split("@")[0])].includes(normalize(item.username)));
+  if(!config)throw new Error("المستخدم المحدد غير مربوط بحساب جاري أحد الشريكين.");
+  const transactions=(await adminReadRoot("cashCustodies/"+ownerUid+"/transactions"))||{},chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{};
+  const results=[],journalIds=[];let submitted=0,skipped=0,failed=0,totalAmount=0;
+  const isOrdinaryExpense=line=>{
+   const account=chart[String(line&&line.accountCode||"")];
+   if(!account||account.type!=="expense"||account.isGroup)return false;
+   let cursor=account,guard=0;
+   while(cursor&&guard++<20){if(String(cursor.code)==="5")return false;cursor=cursor.parentCode?chart[String(cursor.parentCode)]:null;}
+   return true;
+  };
+  for(const [transactionKey,transaction] of Object.entries(transactions)){
+   if(!transaction||transaction.type!=="expense"||transaction.bookScope!=="personal"||transaction.pairRole==="counterparty"||!transaction.partnerCurrentAccountTransfer||transaction.partnerCurrentAccountTransfer.active!==true)continue;
+   const transfer=transaction.partnerCurrentAccountTransfer,transactionId=id(transaction.id||transactionKey);
+   if(transfer.transferTreatment==="personalWithdrawal"||transfer.expenseCorrectionStatus==="posted"){skipped++;results.push({transactionId,status:"already_corrected"});continue;}
+   if(transfer.expenseCorrectionPendingJournalId||transfer.expenseCorrectionStatus==="pending_review"){skipped++;results.push({transactionId,status:"pending_correction"});continue;}
+   try{
+    const transferJournalId=id(transfer.lastJournalId||"");
+    if(!transferJournalId)throw new Error("رقم قيد تحويل الجاري السابق غير موجود.");
+    const transferJournal=await adminRead("journals/"+transferJournalId)||await adminRead("documents/"+transferJournalId);
+    if(!transferJournal||transferJournal.status!=="posted"||transferJournal.sourceType!=="partnerCurrentAccountTransfer"||transferJournal.transferDirection!=="toCurrent")throw new Error("قيد تحويل الجاري السابق غير مرحّل أو لا يطابق الحركة.");
+    const sourceJournalId=id(transaction.financialJournalId||transaction.financialDocumentId||await adminRead("cashCustodyJournalLinks/"+ownerUid+"/"+transactionId));
+    const sourceJournal=sourceJournalId?(await adminRead("journals/"+sourceJournalId)||await adminRead("documents/"+sourceJournalId)):null;
+    if(!sourceJournal||sourceJournal.status!=="posted")throw new Error("القيد الأصلي لحركة العهدة غير موجود أو غير مرحّل.");
+    const sourceCustodyLines=(sourceJournal.lines||[]).filter(line=>String(line.accountCode)==="1220"&&line.partyType==="employeeCustody"&&String(line.partyId)===ownerUid&&Number(line.credit||0)>0&&Number(line.debit||0)===0);
+    const expenseLines=(sourceJournal.lines||[]).filter(line=>isOrdinaryExpense(line)&&Number(line.debit||0)>0&&Number(line.credit||0)===0);
+    const oldPartnerLines=(transferJournal.lines||[]).filter(line=>String(line.accountCode)===config.code&&line.partyType==="partnerCurrentAccount"&&String(line.partyId)===ownerUid&&Number(line.credit||0)>0&&Number(line.debit||0)===0);
+    const oldCustodyLines=(transferJournal.lines||[]).filter(line=>String(line.accountCode)==="1220"&&line.partyType==="employeeCustody"&&String(line.partyId)===ownerUid&&Number(line.debit||0)>0&&Number(line.credit||0)===0);
+    const sourceCustodyTotal=rnd(sourceCustodyLines.reduce((sum,line)=>sum+Number(line.credit||0),0));
+    const expenseTotal=rnd(expenseLines.reduce((sum,line)=>sum+Number(line.debit||0),0));
+    const oldPartnerTotal=rnd(oldPartnerLines.reduce((sum,line)=>sum+Number(line.credit||0),0));
+    const oldCustodyTotal=rnd(oldCustodyLines.reduce((sum,line)=>sum+Number(line.debit||0),0));
+    if(!sourceCustodyLines.length||!expenseLines.length||Math.abs(sourceCustodyTotal-expenseTotal)>0.01||Math.abs(oldPartnerTotal-sourceCustodyTotal)>0.01||Math.abs(oldCustodyTotal-sourceCustodyTotal)>0.01)throw new Error("لا تتطابق أطراف قيد العهدة والمصروف وتحويل الجاري؛ تم تجاوز الحركة دون تغيير.");
+    if((transferJournal.lines||[]).length!==oldPartnerLines.length+oldCustodyLines.length)throw new Error("قيد التحويل السابق يحتوي على أطراف إضافية؛ يلزم فحص يدوي.");
+    const correctionId=uid("PCX"),journalId=uid("PCX-JRN"),dateValue=date(new Date(now).toISOString().slice(0,10));
+    const description="تصحيح تصنيف سحب شخصي من جاري الشريك — "+config.partnerName+" — "+txt(transaction.description||transactionId,220);
+    const lines=[
+     {accountCode:config.code,debit:sourceCustodyTotal,credit:0,description:"عكس قيد التحويل السابق — "+description,partyType:"partnerCurrentAccount",partyId:ownerUid,reference:txt(transaction.reference||transactionId,120)},
+     {accountCode:"1220",debit:0,credit:sourceCustodyTotal,description:"عكس تفريغ العهدة في التحويل السابق — "+description,partyType:"employeeCustody",partyId:ownerUid,reference:txt(transaction.reference||transactionId,120)},
+     {accountCode:config.code,debit:sourceCustodyTotal,credit:0,description:"إثبات السحب الشخصي على جاري الشريك — "+description,partyType:"partnerCurrentAccount",partyId:ownerUid,reference:txt(transaction.reference||transactionId,120)},
+     ...expenseLines.map(line=>({...line,debit:0,credit:Number(line.debit||0),description:"عكس المصروف المصنف كسحب شخصي — "+txt(line.description||transaction.description||transactionId,220)}))
+    ];
+    const journal={id:journalId,number:journalNumberFor(dateValue,journalId),type:"journal",sourceType:"partnerCurrentAccountExpenseCorrection",sourceId:ownerUid+"--"+transactionId+"--"+correctionId,ownerUid,partnerCurrentAccountUid:ownerUid,partnerCurrentAccountCode:config.code,custodyTransactionId:transactionId,correctionId,correctionOfJournalId:transferJournalId,sourceJournalId,transferTreatment:"personalWithdrawal",date:dateValue,description,reference:txt(transaction.reference||transactionId,120),currency:"EGP",amount:sourceCustodyTotal,lines,status:"pending_review",balance:balance(lines),createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120),title:description};
+    const validation=validateJournal(journal,chart,centers);
+    if(validation.errors.length)throw new Error("قيد التصحيح غير صالح: "+validation.errors.join("؛ "));
+    journal.balance=validation.balance;journal.errors=[];
+    const rootUpdates={};
+    rootUpdates["financial/documents/"+journalId]=journal;
+    rootUpdates["financial/reviewQueue/"+journalId]=reviewRecord(journal);
+    rootUpdates["financial/audit/"+uid("AUD")]={action:"submit_partner_current_expense_correction",documentId:journalId,ownerUid,transactionId,transferJournalId,sourceJournalId,uid:claims.sub,createdAt:now};
+    rootUpdates["cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/partnerCurrentAccountTransfer/expenseCorrectionPendingJournalId"]=journalId;
+    rootUpdates["cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/partnerCurrentAccountTransfer/expenseCorrectionStatus"]="pending_review";
+    rootUpdates["cashCustodies/"+ownerUid+"/transactions/"+transactionId+"/partnerCurrentAccountTransferHistory/"+correctionId]={id:correctionId,journalId,transferJournalId,sourceJournalId,direction:"personalWithdrawalCorrection",amount:sourceCustodyTotal,status:"pending_review",createdAt:now,createdBy:claims.sub};
+    await adminPatchRoot(rootUpdates);
+    submitted++;totalAmount+=sourceCustodyTotal;journalIds.push(journalId);
+    results.push({transactionId,status:"pending_review",journalId,amount:sourceCustodyTotal});
+   }catch(error){failed++;results.push({transactionId,status:"failed",error:String(error&&error.message||error).slice(0,360)});}
+  }
+  return {success:failed===0,ownerUid,accountCode:config.code,partnerName:config.partnerName,requested:submitted+skipped+failed,submitted,skipped,failed,totalAmount:rnd(totalAmount),journalIds,results};
+ }
  if(action==="transferPartnerCurrentAccountBulk"){
   if(profile.role!=="admin")throw new Error("تحويلات جاري الشركاء متاحة لمدير النظام فقط.");
   const ownerUid=id(body.ownerUid),direction=txt(body.direction,24);
@@ -745,17 +813,40 @@ export async function handleFinancialRequest(ctx){
   const originalDebit=num(originalLine.debit||0),originalCredit=num(originalLine.credit||0);
   if(rnd(originalDebit+originalCredit)<=0)throw new Error("قيمة سطر العهدة الأصلي تساوي صفرًا.");
   const toCurrent=direction==="toCurrent";
-  const partnerDebit=toCurrent?originalDebit:originalCredit,partnerCredit=toCurrent?originalCredit:originalDebit;
-  const description=(toCurrent?"تحويل من العهدة إلى جاري الشريك — ":"إعادة من جاري الشريك إلى العهدة — ")+config.partnerName+" — "+txt(transaction.description||transactionId,240);
+  const sourceExpenseLines=(sourceJournal.lines||[]).filter(line=>{
+   const account=chart[String(line.accountCode||"")];
+   if(!account||account.type!=="expense"||account.isGroup||Number(line.debit||0)<=0||Number(line.credit||0)!==0)return false;
+   let cursor=account,guard=0;
+   while(cursor&&guard++<20){if(String(cursor.code)==="5")return false;cursor=cursor.parentCode?chart[String(cursor.parentCode)]:null;}
+   return true;
+  });
+  const sourceExpenseTotal=rnd(sourceExpenseLines.reduce((sum,line)=>sum+Number(line.debit||0)-Number(line.credit||0),0));
+  const personalWithdrawal=toCurrent?String(transaction.type||"").toLowerCase()==="expense":previousTransfer.transferTreatment==="personalWithdrawal";
+  if(personalWithdrawal&&(originalDebit>0||originalCredit<=0||Math.abs(sourceExpenseTotal-originalCredit)>0.01||!sourceExpenseLines.length))throw new Error("تعذر مطابقة حركة المصروف مع سطور المصروف في القيد الأصلي. لم يتم إنشاء تحويل جاري الشريك.");
+  const transferTreatment=personalWithdrawal?"personalWithdrawal":"custodyReclassification";
+  const amount=personalWithdrawal?sourceExpenseTotal:rnd(originalDebit+originalCredit);
+  const description=(toCurrent?(personalWithdrawal?"إثبات سحب شخصي على جاري الشريك — ":"تحويل من العهدة إلى جاري الشريك — "):(personalWithdrawal?"إعادة تصنيف السحب الشخصي إلى مصروف العهدة — ":"إعادة من جاري الشريك إلى العهدة — "))+config.partnerName+" — "+txt(transaction.description||transactionId,240);
   const projectCode=txt(transaction.projectCode||originalLine.projectCode||"",120),costCenterId=txt(originalLine.costCenterId||"",120),dateValue=date(new Date(now).toISOString().slice(0,10));
   const transferId=uid("PCA"),journalId=uid("PCA-JRN");
-  const lines=[
-   {accountCode:config.code,debit:partnerDebit,credit:partnerCredit,description,partyType:"partnerCurrentAccount",partyId:ownerUid,projectCode,costCenterId,reference:txt(transaction.reference||transactionId,120)},
-   {accountCode:"1220",debit:partnerCredit,credit:partnerDebit,description,partyType:"employeeCustody",partyId:ownerUid,projectCode,costCenterId,reference:txt(transaction.reference||transactionId,120)}
-  ];
+  let lines=[];
+  if(personalWithdrawal){
+   if(toCurrent){
+    lines.push({accountCode:config.code,debit:amount,credit:0,description,partyType:"partnerCurrentAccount",partyId:ownerUid,projectCode,costCenterId,reference:txt(transaction.reference||transactionId,120)});
+    sourceExpenseLines.forEach(line=>lines.push({...line,debit:0,credit:Number(line.debit||0),description:"إعادة تصنيف سحب شخصي — "+txt(line.description||transaction.description||transactionId,220)}));
+   }else{
+    sourceExpenseLines.forEach(line=>lines.push({...line,debit:Number(line.debit||0),credit:0,description:"إعادة الحركة إلى المصروف الأصلي — "+txt(line.description||transaction.description||transactionId,220)}));
+    lines.push({accountCode:config.code,debit:0,credit:amount,description,partyType:"partnerCurrentAccount",partyId:ownerUid,projectCode,costCenterId,reference:txt(transaction.reference||transactionId,120)});
+   }
+  }else{
+   const partnerDebit=toCurrent?originalDebit:originalCredit,partnerCredit=toCurrent?originalCredit:originalDebit;
+   lines=[
+    {accountCode:config.code,debit:partnerDebit,credit:partnerCredit,description,partyType:"partnerCurrentAccount",partyId:ownerUid,projectCode,costCenterId,reference:txt(transaction.reference||transactionId,120)},
+    {accountCode:"1220",debit:partnerCredit,credit:partnerDebit,description,partyType:"employeeCustody",partyId:ownerUid,projectCode,costCenterId,reference:txt(transaction.reference||transactionId,120)}
+   ];
+  }
   const totals=balance(lines);
   if(Math.abs(totals.difference)>0.01)throw new Error("قيد إعادة التصنيف غير متوازن. تم إيقاف التحويل.");
-  const journal={id:journalId,number:journalNumberFor(dateValue,journalId),type:"journal",sourceType:"partnerCurrentAccountTransfer",sourceId:ownerUid+"--"+transactionId+"--"+transferId,ownerUid,partnerCurrentAccountUid:ownerUid,partnerCurrentAccountCode:config.code,custodyTransactionId:transactionId,transferDirection:direction,date:dateValue,description,reference:txt(transaction.reference||transactionId,120),currency:"EGP",amount:rnd(originalDebit+originalCredit),lines,status:"pending_review",balance:totals,createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120),title:description};
+  const journal={id:journalId,number:journalNumberFor(dateValue,journalId),type:"journal",sourceType:"partnerCurrentAccountTransfer",sourceId:ownerUid+"--"+transactionId+"--"+transferId,ownerUid,partnerCurrentAccountUid:ownerUid,partnerCurrentAccountCode:config.code,custodyTransactionId:transactionId,transferDirection:direction,date:dateValue,description,reference:txt(transaction.reference||transactionId,120),currency:"EGP",amount,transferTreatment,lines,status:"pending_review",balance:totals,createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120),title:description};
   const centers=(await adminRead("costCenters"))||{},validation=validateJournal(journal,chart,centers);
   if(validation.errors.length)throw new Error("قيد إعادة التصنيف غير صالح: "+validation.errors.join("؛ "));
   journal.balance=validation.balance;journal.errors=[];
@@ -765,13 +856,13 @@ export async function handleFinancialRequest(ctx){
   rootUpdates["financial/reviewQueue/"+journalId]=reviewRecord(journal);
   rootUpdates["financial/audit/"+uid("AUD")]={action:"submit_partner_current_transfer_for_review",documentId:journalId,ownerUid,transactionId,partnerAccountCode:config.code,direction,uid:claims.sub,createdAt:now};
   const historyPath=path+"/partnerCurrentAccountTransferHistory/"+transferId;
-  rootUpdates[historyPath]={id:transferId,direction,partnerUid:ownerUid,partnerName:config.partnerName,accountCode:config.code,journalId,amount:rnd(originalDebit+originalCredit),date:dateValue,status:"pending_review",createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120)};
-  rootUpdates[path+"/partnerCurrentAccountTransfer"]={...previousTransfer,active:currentState,pending:true,pendingDirection:direction,pendingJournalId:journalId,pendingTransferId:transferId,pendingAt:now,pendingBy:claims.sub,partnerUid:ownerUid,partnerName:config.partnerName,accountCode:config.code,accountName:config.name,lastDirection:direction,lastJournalId:journalId,updatedAt:now,updatedBy:claims.sub};
+  rootUpdates[historyPath]={id:transferId,direction,partnerUid:ownerUid,partnerName:config.partnerName,accountCode:config.code,journalId,amount,date:dateValue,status:"pending_review",transferTreatment,createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120)};
+  rootUpdates[path+"/partnerCurrentAccountTransfer"]={...previousTransfer,active:currentState,pending:true,pendingDirection:direction,pendingJournalId:journalId,pendingTransferId:transferId,pendingAt:now,pendingBy:claims.sub,partnerUid:ownerUid,partnerName:config.partnerName,accountCode:config.code,accountName:config.name,lastDirection:direction,lastJournalId:journalId,transferTreatment,updatedAt:now,updatedBy:claims.sub};
   rootUpdates[path+"/partnerCurrentAccountTransferActive"]=currentState;
   rootUpdates[path+"/partnerCurrentAccountLastJournalId"]=journalId;
   if(!adminPatchRoot)throw new Error("خدمة الترحيل الموحد لجاري الشركاء غير متاحة.");
   await adminPatchRoot(rootUpdates);
-  return {success:true,status:"pending_review",journalId,journalNumber:journal.number,accountCode:config.code,partnerName:config.partnerName,transactionId};
+  return {success:true,status:"pending_review",journalId,journalNumber:journal.number,accountCode:config.code,partnerName:config.partnerName,transactionId,transferTreatment};
  }
  if(action==="transferCashCustodyMovement"){
   if(profile.role!=="admin")throw new Error("تحويل حركات العهدة متاح لمدير النظام فقط.");
@@ -1899,8 +1990,23 @@ if(action==="submitCash"){
      ["partnerCurrentAccountTransferHistory/"+transferId+"/reviewedBy"]:claims.sub,
      ["partnerCurrentAccountTransferHistory/"+transferId+"/reviewReason"]:txt(body.reason,1000)
     }};
+   }else if(doc.type==="journal"&&doc.sourceType==="partnerCurrentAccountExpenseCorrection"&&doc.sourceId&&adminPatchRootAt){
+    const sourceId=String(doc.sourceId),first=sourceId.indexOf("--"),last=sourceId.lastIndexOf("--");
+    if(first<=0||last<=first+2)throw new Error("مرجع تصحيح جاري الشريك غير صالح.");
+    const ownerUid=id(sourceId.slice(0,first)),transactionId=id(sourceId.slice(first+2,last)),correctionId=id(sourceId.slice(last+2));
+    const sourcePath="cashCustodies/"+ownerUid+"/transactions/"+transactionId,source=adminReadRoot?await adminReadRoot(sourcePath):null,transfer=source&&source.partnerCurrentAccountTransfer||{};
+    if(!source||transfer.expenseCorrectionPendingJournalId!==docId)throw new Error("طلب تصحيح المصروف لا يطابق الحركة الأصلية.");
+    sourceRootUpdate={path:sourcePath,value:{
+     "partnerCurrentAccountTransfer/expenseCorrectionPendingJournalId":null,
+     "partnerCurrentAccountTransfer/expenseCorrectionStatus":status,
+     "partnerCurrentAccountTransfer/expenseCorrectionReason":txt(body.reason,1000),
+     ["partnerCurrentAccountTransferHistory/"+correctionId+"/status"]:status,
+     ["partnerCurrentAccountTransferHistory/"+correctionId+"/reviewedAt"]:now,
+     ["partnerCurrentAccountTransferHistory/"+correctionId+"/reviewedBy"]:claims.sub,
+     ["partnerCurrentAccountTransferHistory/"+correctionId+"/reviewReason"]:txt(body.reason,1000)
+    }};
    }
-   await adminPatch(u);
+await adminPatch(u);
    if(sourceRootUpdate&&secondaryRootUpdate&&adminPatchRoot){
     const rootUpdates={};
     Object.entries(sourceRootUpdate.value).forEach(([key,value])=>{rootUpdates[sourceRootUpdate.path+"/"+key]=value;});
@@ -2103,6 +2209,7 @@ if(action==="submitCash"){
      "partnerCurrentAccountTransfer/pendingDirection":null,
      "partnerCurrentAccountTransfer/lastJournalId":j.id,
      "partnerCurrentAccountTransfer/lastDirection":doc.transferDirection,
+     "partnerCurrentAccountTransfer/transferTreatment":doc.transferDirection==="toCurrent"?(doc.transferTreatment||"custodyReclassification"):"custodyReclassification",
      "partnerCurrentAccountTransfer/lastReviewStatus":"posted",
      "partnerCurrentAccountTransfer/lastReviewReason":null,
      "partnerCurrentAccountTransfer/updatedAt":now,
@@ -2112,6 +2219,22 @@ if(action==="submitCash"){
      ["partnerCurrentAccountTransferHistory/"+transferId+"/approvedBy"]:claims.sub,
      "partnerCurrentAccountTransferActive":active,
      "partnerCurrentAccountLastJournalId":j.id
+    }};
+   }else if(doc.type==="journal"&&doc.sourceType==="partnerCurrentAccountExpenseCorrection"&&doc.sourceId&&adminPatchRootAt){
+    const sourceId=String(doc.sourceId),first=sourceId.indexOf("--"),last=sourceId.lastIndexOf("--");
+    if(first<=0||last<=first+2)throw new Error("مرجع تصحيح جاري الشريك غير صالح.");
+    const ownerUid=id(sourceId.slice(0,first)),transactionId=id(sourceId.slice(first+2,last)),correctionId=id(sourceId.slice(last+2));
+    const sourcePath="cashCustodies/"+ownerUid+"/transactions/"+transactionId,source=adminReadRoot?await adminReadRoot(sourcePath):null,transfer=source&&source.partnerCurrentAccountTransfer||{};
+    if(!source||transfer.expenseCorrectionPendingJournalId!==j.id)throw new Error("طلب تصحيح المصروف لا يطابق الحركة الأصلية. لم يتم تغيير الأرصدة.");
+    sourceRootUpdate={path:sourcePath,value:{
+     "partnerCurrentAccountTransfer/expenseCorrectionPendingJournalId":null,
+     "partnerCurrentAccountTransfer/expenseCorrectionStatus":"posted",
+     "partnerCurrentAccountTransfer/expenseCorrectionJournalId":j.id,
+     "partnerCurrentAccountTransfer/transferTreatment":"personalWithdrawal",
+     "partnerCurrentAccountTransfer/expenseCorrectionReason":null,
+     ["partnerCurrentAccountTransferHistory/"+correctionId+"/status"]:"posted",
+     ["partnerCurrentAccountTransferHistory/"+correctionId+"/approvedAt"]:now,
+     ["partnerCurrentAccountTransferHistory/"+correctionId+"/approvedBy"]:claims.sub
     }};
    }
   await adminPatch(updates);
