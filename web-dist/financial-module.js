@@ -252,6 +252,14 @@ function FinanceModule(props){
   "فواتير المبيعات — ضريبة المخرجات":"Sales Invoices — Output VAT",
   "تصدير فواتير المشتريات CSV":"Export Purchase Invoices CSV","تصدير فواتير المبيعات CSV":"Export Sales Invoices CSV",
   "الأكواد الضريبية المستخدمة":"Tax Codes Used","اسم الضريبة":"Tax Name","بداية السريان":"Effective Date",
+  "تحليل الحسابات":"Account Analysis","اختر أي حساب من دليل الحسابات لعرض رصيده حتى نهاية الشهر المحدد، ثم تحليل مصادر هذا الرصيد. التوزيع يُبنى على القيود المرحلة فقط، وتظهر الحركات غير المرتبطة بطرف أو مركز تكلفة تحت تصنيف واضح.":"Choose any chart-of-accounts entry to view its balance through the selected month and analyze its sources. Distribution uses posted journals only; items without a party or cost center are shown in a separate category.",
+  "اختر الحساب المحاسبي":"Select GL Account","اختر الحساب":"Choose an account","تحديث التحليل":"Refresh Analysis",
+  "إجمالي المدين منذ بداية الدفاتر":"Debits Since Books Opened","إجمالي الدائن منذ بداية الدفاتر":"Credits Since Books Opened","حركة الفترة — مدين":"Period Debits","حركة الفترة — دائن":"Period Credits",
+  "توزيع الرصيد حسب الطرف أو مركز التكلفة أو الحساب المقابل":"Balance Distribution by Party, Cost Center, or Offset Account","بحث في التوزيع":"Search Distribution","الطرف / مصدر الرصيد":"Party / Balance Source",
+  "إجمالي مدين":"Total Debits","إجمالي دائن":"Total Credits","صافي الرصيد":"Net Balance","عدد الحركات":"Movement Count",
+  "رصيد الحساب من الأستاذ":"GL Account Balance","إجمالي صافي التوزيع":"Total Net Distribution","فرق المطابقة":"Reconciliation Difference",
+  "العودة إلى توزيع الحساب":"Back to Account Distribution","مسار التحليل":"Analysis Path",
+  "لا توجد حركات مرحلة لهذا الحساب حتى تاريخ التقرير.":"No posted movements for this account through the report date.","لا توجد حركات أو رصيد لهذا الحساب ضمن القيود المرحلة.":"No posted movements or balance for this account.","اختر حسابًا لعرض رصيده وتحليله.":"Choose an account to view its balance and analysis.","لا توجد حركات لهذا التصنيف.":"No movements in this category.",
   "التقرير":"Report","ميزان المراجعة":"Trial Balance","قائمة الدخل":"Income Statement","المركز المالي":"Balance Sheet",
   "قائمة التدفقات النقدية (مبسطة)":"Cash Flow Statement (Simplified)","دفتر الأستاذ":"General Ledger",
   "الحساب":"Account","افتتاحي مدين":"Opening Debit","افتتاحي دائن":"Opening Credit",
@@ -364,6 +372,7 @@ function FinanceModule(props){
   " ج.م":" EGP","ج.م":"EGP"
  });
  const financeDynamicPrefixes=[
+  ["حركات ","Transactions: "],["الرصيد حتى ","Balance through "],["عدد الحركات: ","Movement count: "],["مسار التحليل","Analysis path"],
   ["تفاصيل القيد: ","Journal Entry Details: "],["قيد عكسي للقيد: ","Reversal of Entry: "],
   ["المدين: ","Debit: "],["الدائن: ","Credit: "],["الفرق: ","Difference: "],
   ["المصدر: ","Source: "],["الحالة: ","Status: "],["رقم ضريبي: ","Tax No.: "],
