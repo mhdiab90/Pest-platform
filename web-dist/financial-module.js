@@ -911,9 +911,21 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
   return false;
  };
  const sumFrom=(list,type)=>list.filter(x=>x.account.type===type).reduce((sum,x)=>sum+(type==='revenue'?x.amount.credit-x.amount.debit:x.amount.debit-x.amount.credit),0);
+ const isCostOfSalesAccount=account=>Boolean(account&&account.type==='expense'&&(accountInBranch(account,'5')||account.statementGroup==='cogs'));
+ const expenseStatementGroup=account=>{
+  const value=String(account&&account.statementGroup||'').toLowerCase();
+  return ['operating','administrative','finance'].includes(value)?value:'unclassified';
+ };
  const revenue=sumFrom(trial,'revenue'),expenses=sumFrom(trial,'expense');
- const costOfSales=trial.filter(x=>x.account.type==='expense'&&(accountIsInBranch(x.account,'5')||x.account.statementGroup==='cogs')).reduce((sum,x)=>sum+x.amount.debit-x.amount.credit,0);
- const grossProfit=revenue-costOfSales,operatingExpenses=expenses-costOfSales,profit=grossProfit-operatingExpenses;
+ const costOfSales=trial.filter(x=>isCostOfSalesAccount(x.account)).reduce((sum,x)=>sum+x.amount.debit-x.amount.credit,0);
+ const otherExpenseForGroup=group=>trial.filter(x=>x.account.type==='expense'&&!isCostOfSalesAccount(x.account)&&expenseStatementGroup(x.account)===group).reduce((sum,x)=>sum+x.amount.debit-x.amount.credit,0);
+ const operatingExpenses=otherExpenseForGroup('operating');
+ const administrativeExpenses=otherExpenseForGroup('administrative');
+ const financeExpenses=otherExpenseForGroup('finance');
+ const unclassifiedExpenses=otherExpenseForGroup('unclassified');
+ const otherExpenses=expenses-costOfSales;
+ const expenseCategoryDifference=otherExpenses-operatingExpenses-administrativeExpenses-financeExpenses-unclassifiedExpenses;
+ const grossProfit=revenue-costOfSales,profit=grossProfit-otherExpenses;
  const cumulativeRevenue=sumFrom(balanceTrial,'revenue'),cumulativeExpenses=sumFrom(balanceTrial,'expense'),accumulatedProfit=cumulativeRevenue-cumulativeExpenses;
  const assets=sumFrom(balanceTrial,'asset'),liabilities=balanceTrial.filter(x=>x.account.type==='liability').reduce((sum,x)=>sum+x.amount.credit-x.amount.debit,0);
  const equity=balanceTrial.filter(x=>x.account.type==='equity').reduce((sum,x)=>sum+x.amount.credit-x.amount.debit,0)+accumulatedProfit;
@@ -2560,9 +2572,43 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
   h('p',{className:'mt-1'},'عدد القيود المرحلة: '+periodJournals.length+' · القيود غير المتوازنة: '+unbalancedJournalCount+' · فرق إجمالي الحركة: '+fmt(selectedDebit-selectedCredit)+'.'),
   h('p',{className:'text-xs mt-1'},'يعرض التقرير القيود بحالة مرحّل فقط. هذا الفحص يختبر توازن القيود والفترة، ولا يستبدل المراجعة التفصيلية للمستندات ومطابقة الحسابات الفرعية.')
  );
- const incomeRevenueRows=statementRows(account=>account.type==='revenue','revenue');
- const incomeCogsRows=statementRows(account=>account.type==='expense'&&(accountInBranch(account,'5')||account.statementGroup==='cogs'),'expense');
- const incomeOtherExpenseRows=statementRows(account=>account.type==='expense'&&!accountInBranch(account,'5')&&account.statementGroup!=='cogs','expense');
+ const incomeRevenueRows=statementRows(account=>account.type==='revenue'&&!account.isGroup,'revenue');
+ const incomeCogsRows=statementRows(account=>isCostOfSalesAccount(account)&&!account.isGroup,'expense');
+ const incomeOperatingExpenseRows=statementRows(account=>account.type==='expense'&&!account.isGroup&&!isCostOfSalesAccount(account)&&expenseStatementGroup(account)==='operating','expense');
+ const incomeAdministrativeExpenseRows=statementRows(account=>account.type==='expense'&&!account.isGroup&&!isCostOfSalesAccount(account)&&expenseStatementGroup(account)==='administrative','expense');
+ const incomeFinanceExpenseRows=statementRows(account=>account.type==='expense'&&!account.isGroup&&!isCostOfSalesAccount(account)&&expenseStatementGroup(account)==='finance','expense');
+ const incomeUnclassifiedExpenseRows=statementRows(account=>account.type==='expense'&&!account.isGroup&&!isCostOfSalesAccount(account)&&expenseStatementGroup(account)==='unclassified','expense');
+ const expenseSourceAudit=flat.filter(line=>{
+  const account=accounts.find(item=>String(item.code)===String(line.accountCode));
+  return account&&account.type==='expense'&&!isCostOfSalesAccount(account);
+ });
+ const expenseSourceTotal=expenseSourceAudit.reduce((sum,line)=>sum+n(line.debit)-n(line.credit),0);
+ const custodyExpenseTotal=expenseSourceAudit.filter(line=>line.sourceType==='cashCustody').reduce((sum,line)=>sum+n(line.debit)-n(line.credit),0);
+ const invoiceExpenseTotal=expenseSourceAudit.filter(line=>line.sourceType==='invoice').reduce((sum,line)=>sum+n(line.debit)-n(line.credit),0);
+ const voucherExpenseTotal=expenseSourceAudit.filter(line=>line.sourceType==='cash'||line.sourceType==='bankLine').reduce((sum,line)=>sum+n(line.debit)-n(line.credit),0);
+ const manualExpenseTotal=expenseSourceAudit.filter(line=>!['cashCustody','invoice','cash','bankLine'].includes(line.sourceType)).reduce((sum,line)=>sum+n(line.debit)-n(line.credit),0);
+ const expenseSourceRows=expenseSourceAudit.slice().sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))||String(a.journalId||'').localeCompare(String(b.journalId||''))).map((line,index)=>{
+  const account=accounts.find(item=>String(item.code)===String(line.accountCode)),sourceDocument=documents.find(item=>String(item.id)===String(line.sourceId));
+  let sourceLabel='مصدر غير محدد';
+  if(line.sourceType==='cashCustody')sourceLabel='ترحيل تلقائي من العهدة الشخصية';
+  else if(line.sourceType==='invoice')sourceLabel=(sourceDocument&&sourceDocument.invoiceType==='sales'?'فاتورة مبيعات':'فاتورة مشتريات')+' — '+(sourceDocument&&sourceDocument.number||line.reference||line.sourceId||'');
+  else if(line.sourceType==='cash')sourceLabel='سند خزينة — '+(sourceDocument&&(sourceDocument.number||sourceDocument.reference)||line.reference||'');
+  else if(line.sourceType==='bankLine')sourceLabel='حركة كشف بنك — '+(sourceDocument&&(sourceDocument.number||sourceDocument.reference)||line.reference||'');
+  else if(line.sourceType==='manual')sourceLabel='قيد يومية يدوي';
+  else if(line.sourceType==='projectEvent')sourceLabel='حدث مشروع';
+  else if(line.sourceType)sourceLabel=String(line.sourceType);
+  const amount=n(line.debit)-n(line.credit);
+  return h('tr',{key:String(line.journalId)+'-'+String(line.lineNo||index),className:'border-t hover:bg-blue-50'},
+   h('td',{className:'p-2 whitespace-nowrap'},line.date||'—'),
+   h('td',{className:'p-2'},h('button',{type:'button',className:'font-bold text-blue-700 underline',onClick:()=>openStatementJournal(line.journalId)},line.journalNumber||line.journalId||'—')),
+   h('td',{className:'p-2'},line.accountCode+' — '+(account&&account.name||'')),
+   h('td',{className:'p-2 min-w-[180px]'},line.description||line.journalDescription||'—'),
+   h('td',{className:'p-2 min-w-[190px]'},sourceLabel),
+   h('td',{className:'p-2'},line.reference||'—'),
+   h('td',{className:'p-2 text-end font-bold'},fmt(amount))
+  );
+ });
+ const expenseSourceDifference=otherExpenses-expenseSourceTotal;
  const balanceAssetRows=statementRowsWithBalance(account=>account.type==='asset','debit');
  const balanceLiabilityRows=statementRowsWithBalance(account=>account.type==='liability','credit');
  const balanceEquityRows=statementRowsWithBalance(account=>account.type==='equity','credit');
@@ -2573,11 +2619,38 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
    metric('مجمل الربح',fmt(grossProfit)),
    metric('صافي الربح / الخسارة',fmt(profit))
   ),
-  panel('الإيرادات','تفصيل الحسابات الإيرادية وفق دليل الحسابات؛ اضغط على اسم الحساب لفتح كشفه وحركاته.',table(['الحساب','إيرادات الفترة'],incomeRevenueRows)),
-  panel('تكلفة المبيعات','تفصيل تكلفة البضاعة / المنتجات المباعة حسب الحسابات المحملة عليها.',table(['الحساب','تكلفة الفترة'],incomeCogsRows)),
-  panel('المصروفات التشغيلية والإدارية والتمويلية','كل حساب يظهر تحت مجموعته وفق دليل الحسابات. القيم تمثل صافي حركة الفترة.',table(['الحساب','مصروف الفترة'],incomeOtherExpenseRows)),
-  panel('نتيجة الفترة','الإيرادات أقل تكلفة المبيعات والمصروفات الأخرى.',table(['البيان','القيمة'],[['مجمل الربح',fmt(grossProfit)],['مصروفات أخرى',fmt(operatingExpenses)],['صافي الربح / الخسارة',fmt(profit)]]))
- );
+  panel('الإيرادات','حسابات الإيرادات التفصيلية فقط. إجمالي المجموعة يظهر في المؤشر أعلى القائمة ولا يتكرر مع الحسابات التابعة.',table(['الحساب','إيرادات الفترة'],incomeRevenueRows)),
+  panel('تكلفة المبيعات','حسابات تكلفة المبيعات التفصيلية فقط؛ لا تُخلط مع المصروفات التشغيلية.',table(['الحساب','تكلفة الفترة'],incomeCogsRows)),
+  panel('المصروفات التشغيلية','الحسابات المصنفة تشغيليًا في دليل الحسابات فقط، دون عرض الحسابات التجميعية بجانب حساباتها التابعة.',h('div',{className:'space-y-2'},metric('إجمالي المصروفات التشغيلية',fmt(operatingExpenses)),table(['الحساب','مصروف الفترة'],incomeOperatingExpenseRows))),
+  panel('المصروفات الإدارية والعمومية','مصروفات الإدارة والخدمات العمومية المصنفة في دليل الحسابات.',h('div',{className:'space-y-2'},metric('إجمالي المصروفات الإدارية',fmt(administrativeExpenses)),table(['الحساب','مصروف الفترة'],incomeAdministrativeExpenseRows))),
+  panel('المصروفات التمويلية والبنكية','العمولات والمصاريف البنكية والتمويلية فقط.',h('div',{className:'space-y-2'},metric('إجمالي المصروفات التمويلية',fmt(financeExpenses)),table(['الحساب','مصروف الفترة'],incomeFinanceExpenseRows))),
+  panel('مصروفات غير مصنفة','الحسابات التي لم يتم تحديد مجموعة قائمة الدخل لها في دليل الحسابات. لا يتم افتراض أنها تشغيلية؛ راجع تصنيف الحساب.',h('div',{className:'space-y-2'},metric('إجمالي غير المصنف',fmt(unclassifiedExpenses)),table(['الحساب','مصروف الفترة'],incomeUnclassifiedExpenseRows))),
+  panel('مطابقة المصروفات مع القيود المصدرية','كل مبلغ هنا مرتبط بسطر قيد مرحّل. يوضح المصدر هل المصروف نتج عن فاتورة، أو حركة عهدة، أو سند خزينة، أو قيد يومية. اضغط رقم القيد لمراجعة أطرافه.',h('div',{className:'space-y-3'},
+   h('div',{className:'grid grid-cols-2 md:grid-cols-4 gap-2'},
+    metric('مصروفات مرحّلة من العهد الشخصية',fmt(custodyExpenseTotal)),
+    metric('مصروفات ناتجة عن الفواتير',fmt(invoiceExpenseTotal)),
+    metric('مصروفات سندات الخزينة / البنك',fmt(voucherExpenseTotal)),
+    metric('مصروفات بقيود أخرى',fmt(manualExpenseTotal))
+   ),
+   h('div',{className:'rounded-lg border p-3 text-sm '+(Math.abs(expenseSourceDifference)>0.01||Math.abs(expenseCategoryDifference)>0.01?'border-rose-300 bg-rose-50':'border-emerald-300 bg-emerald-50')},
+    h('div',{className:'font-bold'},'مطابقة إجمالي المصروفات غير تكلفة المبيعات'),
+    h('div',null,'مصروفات قائمة الدخل: '+fmt(otherExpenses)+' ج.م'),
+    h('div',null,'مجموع سطور المصروفات في القيود: '+fmt(expenseSourceTotal)+' ج.م'),
+    h('div',{className:'font-extrabold mt-1'},'فرق المطابقة: '+fmt(expenseSourceDifference)+' ج.م'),
+    h('div',{className:'mt-1 text-xs'},'فرق تصنيف مجموعات المصروفات: '+fmt(expenseCategoryDifference)+' ج.م')
+   ),
+   table(['التاريخ','رقم القيد','الحساب','البيان','مصدر الحركة','المرجع','صافي المصروف'],expenseSourceRows)
+  )),
+  panel('نتيجة الفترة','الإيرادات ناقص تكلفة المبيعات ثم جميع المصروفات التشغيلية والإدارية والتمويلية وغير المصنفة.',table(['البيان','القيمة'],[
+   ['مجمل الربح',fmt(grossProfit)],
+   ['مصروفات تشغيلية',fmt(operatingExpenses)],
+   ['مصروفات إدارية وعمومية',fmt(administrativeExpenses)],
+   ['مصروفات تمويلية',fmt(financeExpenses)],
+   ['مصروفات غير مصنفة',fmt(unclassifiedExpenses)],
+   ['إجمالي المصروفات الأخرى',fmt(otherExpenses)],
+   ['صافي الربح / الخسارة',fmt(profit)]
+  ]))
+ ); 
  const balanceSheetContent=()=>h('div',{className:'space-y-3'},
   h('div',{className:'grid grid-cols-2 md:grid-cols-3 gap-2'},metric('إجمالي الأصول',fmt(assets)),metric('إجمالي الالتزامات',fmt(liabilities)),metric('إجمالي حقوق الملكية',fmt(equity))),
   panel('الأصول','الرصيد التراكمي حتى نهاية الفترة، ويشمل الحسابات التجميعية والحسابات التابعة. اضغط على الحساب لعرض كشف الحساب.',table(['الحساب','مدين','دائن','الرصيد الطبيعي'],balanceAssetRows)),
