@@ -1253,7 +1253,7 @@ test("reviewers can edit transfer journals and add extra accounting lines before
   const result=await invoke("POST","",{action:"updateReviewJournal",id:journalId,
     journal:{date:"2026-11-19",description:"Corrected custody transfer",reference:"TRANSFER-EDIT-02"},
     lines:[
-      {accountCode:"1220",debit:125,credit:0,description:"Custody adjustment"},
+      {accountCode:"1220",debit:125,credit:0,description:"Custody adjustment",partyType:"employeeCustody",partyId:"owner-1"},
       {accountCode:"1110",debit:0,credit:100,description:"Cash"},
       {accountCode:"6100",debit:0,credit:25,description:"Additional credit line"}
     ]});
@@ -1266,7 +1266,7 @@ test("reviewers can edit transfer journals and add extra accounting lines before
   assert.equal(read("ledger/1220/2026-11/"+journalId+"_1"),null,"editing a transfer journal does not affect the ledger");
   const unbalanced=await invoke("POST","",{action:"updateReviewJournal",id:journalId,
     lines:[
-      {accountCode:"1220",debit:125,credit:0,description:"Custody adjustment"},
+      {accountCode:"1220",debit:125,credit:0,description:"Custody adjustment",partyType:"employeeCustody",partyId:"owner-1"},
       {accountCode:"1110",debit:0,credit:100,description:"Cash"},
       {accountCode:"6100",debit:0,credit:20,description:"Additional credit line"}
     ]});
