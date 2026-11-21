@@ -445,7 +445,7 @@ export async function handleFinancialRequest(ctx){
    if(profile.role==="admin"){
     const migrated={};
     const updates={};
-    for(const account of [...DEFAULT_PARTNER_CURRENT_ACCOUNTS,...DEFAULT_EXPENSE_ACCOUNTS,...DEFAULT_STAFF_ACCOUNTS,...DEFAULT_PARTY_ADVANCE_ACCOUNTS,...DEFAULT_CHEQUE_ACCOUNTS]){
+    for(const account of [...DEFAULT_PARTNER_CURRENT_ACCOUNTS,{code:'1300',name:'المخزون',type:'asset',nature:'debit',parentCode:'11',isControl:true},...DEFAULT_EXPENSE_ACCOUNTS,...DEFAULT_STAFF_ACCOUNTS,...DEFAULT_PARTY_ADVANCE_ACCOUNTS,...DEFAULT_CHEQUE_ACCOUNTS]){
      if(chart[account.code])continue;
      const parent=account.parentCode?(chart[account.parentCode]||migrated[account.parentCode]):null;
      if(account.parentCode&&(!parent||!parent.isGroup))continue;
