@@ -725,8 +725,8 @@ export async function handleFinancialRequest(ctx){
   if(!["active","نشط","مفعل","enabled"].includes(String(user.status||"").toLowerCase()))throw new Error("حساب الشريك المرتبط غير نشط. لم يتم تحويل الحركة إلى حساب آخر.");
   const path="cashCustodies/"+ownerUid+"/transactions/"+transactionId;
   const transaction=adminReadRoot?await adminReadRoot(path):null;
-  if(!transaction||transaction.id!==transactionId)throw new Error("سجل العهدة المطلوب غير موجود.");
-  if(transaction.ownerUid!==ownerUid||transaction.bookScope!=="personal"||transaction.pairRole==="counterparty")throw new Error("يمكن تحويل السجل الأصلي من دفتر العهدة الشخصية للشريك فقط.");
+  if(!transaction||(transaction.id&&transaction.id!==transactionId))throw new Error("سجل العهدة المطلوب غير موجود.");
+  if((transaction.ownerUid&&transaction.ownerUid!==ownerUid)||String(transaction.bookScope||"personal")!=="personal"||transaction.pairRole==="counterparty")throw new Error("يمكن تحويل السجل الأصلي من دفتر العهدة الشخصية للشريك فقط.");
   if(transaction.status!=="approved")throw new Error("لا يمكن التحويل قبل اعتماد حركة العهدة.");
   if(String(transaction.currency||"EGP").toUpperCase()!=="EGP")throw new Error("تحويل الجاري متاح حاليًا للجنيه المصري فقط.");
   const previousTransfer=transaction.partnerCurrentAccountTransfer||{},currentState=previousTransfer.active===true;
@@ -779,7 +779,7 @@ export async function handleFinancialRequest(ctx){
   if(!ownerUid||!transactionId||!destinationOwnerUid||ownerUid===destinationOwnerUid)throw new Error("حدد صاحب العهدة الأصلية وصاحب العهدة المستفيدة بصورة صحيحة.");
   const sourcePath="cashCustodies/"+ownerUid+"/transactions/"+transactionId;
   const transaction=adminReadRoot?await adminReadRoot(sourcePath):null;
-  if(!transaction||transaction.id!==transactionId||transaction.ownerUid!==ownerUid||transaction.bookScope!=="personal"||transaction.pairRole==="counterparty")throw new Error("حركة العهدة الأصلية غير موجودة أو غير قابلة للتحويل.");
+  if(!transaction||(transaction.id&&transaction.id!==transactionId)||(transaction.ownerUid&&transaction.ownerUid!==ownerUid)||String(transaction.bookScope||"personal")!=="personal"||transaction.pairRole==="counterparty")throw new Error("حركة العهدة الأصلية غير موجودة أو غير قابلة للتحويل.");
   if(transaction.status!=="approved")throw new Error("يجب أن تكون حركة العهدة الأصلية معتمدة.");
   if(String(transaction.currency||"EGP").toUpperCase()!=="EGP")throw new Error("التحويل متاح حاليًا بالجنيه المصري فقط.");
   const transfer=transaction.cashCustodyTransfer||{},partnerTransfer=transaction.partnerCurrentAccountTransfer||{};
