@@ -1186,24 +1186,22 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
    return Object.assign({},line,{partyType:line.partyType||account&&account.subledgerType||"",partyId:line.partyId||""});
   });
   setJournalModal(Object.assign({},doc));
-  setJournalModalDraft({id:doc.id,type:doc.type||"journal",number:doc.number||doc.journalNumber||'',date:doc.date||today(),description:doc.description||"",reference:doc.reference||"",currency:doc.currency||"EGP",sourceType:doc.sourceType||"manual",projectCode:doc.projectCode||"",reversalOf:doc.reversalOf||"",status:doc.status||"posted",lines:normalizedLines});
+  setJournalModalDraft({id:doc.id,type:doc.type||"journal",number:doc.number||doc.journalNumber||'',date:doc.date||today(),description:doc.description||"",reference:doc.reference||"",currency:doc.currency||"EGP",sourceType:doc.sourceType||"manual",projectCode:doc.projectCode||"",reversalOf:doc.reversalOf||"",revisionOf:doc.revisionOf||"",revisionNotes:doc.revisionNotes||"",pendingRevisionId:doc.pendingRevisionId||"",revisedByJournalId:doc.revisedByJournalId||"",reversalJournalId:doc.reversalJournalId||"",reversedByJournalId:doc.reversedByJournalId||"",status:doc.status||"posted",lines:normalizedLines});
  };
  const updateJournalModalLine=(index,key,value)=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).map((line,i)=>i===index?Object.assign({},line,{[key]:value}):line)}));
  const saveJournalModal=async()=>{
   if(!journalModalDraft)return;
-  const draft=journalModalDraft,manual=!draft.sourceType||draft.sourceType==="manual";
+  const draft=journalModalDraft;
   const pendingReview=draft.type==="journal"&&["pending_review","needs_correction"].includes(draft.status);
   const openedFromReview=tab==="review"&&pendingReview;
-  if(!manual&&!pendingReview){setError("هذا القيد لم يعد معلقًا للمراجعة؛ لا يمكن تعديله من هذه الشاشة.");return;}
-  if(!canFinance(openedFromReview||!manual?"review":"journal","edit")){setError("ليس لديك صلاحية تعديل هذا القيد.");return;}
+  if(!pendingReview){setError("القيد المرحّل لا يُعدّل مباشرة. استخدم «تعديل القيد» لإنشاء نسخة مراجعة مرتبطة بالأصل.");return;}
+  if(!canFinance("review","edit")){setError("ليس لديك صلاحية تعديل القيود داخل المراجعة.");return;}
   const missingAnalytic=(draft.lines||[]).map((line,index)=>({line,index,account:posting.find(item=>String(item.code)===String(line.accountCode))})).find(item=>item.account&&item.account.subledgerType&&!String(item.line.partyId||"").trim());
   if(missingAnalytic){setError("السطر "+(missingAnalytic.index+1)+": الحساب "+missingAnalytic.account.code+" — "+missingAnalytic.account.name+" يتطلب اختيار "+analyticPartyLabel(missingAnalytic.account.subledgerType)+". اختر الطرف من قائمة الطرف التحليلي قبل الحفظ.");return;}
   setBusy(true);setError("");
   try{
-   const result=manual&&!openedFromReview
-    ?await api("","POST",{action:"submitJournal",id:draft.id,date:draft.date,description:draft.description,reference:draft.reference,currency:"EGP",lines:draft.lines})
-    :await api("","POST",{action:"updateReviewJournal",id:draft.id,journal:{date:draft.date,description:draft.description,reference:draft.reference},lines:draft.lines});
-   setNotice((result.errors||[]).length?"تم حفظ التعديلات وما زالت هناك أخطاء يجب تصحيحها قبل الاعتماد.":result.status==="posted"?"تم تعديل القيد المرحّل وتحديث الأستاذ ومراكز التكلفة.":"تم حفظ تعديلات القيد وإبقاؤه في مسار المراجعة دون تغيير الأرصدة.");
+   const result=await api("","POST",{action:"updateReviewJournal",id:draft.id,journal:{date:draft.date,description:draft.description,reference:draft.reference,revisionNotes:draft.revisionNotes||""},lines:draft.lines});
+   setNotice((result.errors||[]).length?"تم حفظ التعديلات وما زالت هناك أخطاء يجب تصحيحها قبل الاعتماد.":"تم حفظ التعديلات وإبقاء القيد في مسار المراجعة دون تغيير الأرصدة.");
    setJournalModal(null);setJournalModalDraft(null);
    if(openedFromReview){await refreshReviewQueue(true);await openReviewItem({id:draft.id});}
    else await refresh();
@@ -1271,6 +1269,29 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
     )
    )
   );
+ };
+ const startJournalRevision=async(doc,mode)=>{
+  if(!doc||!canFinance("journal","edit")||!canFinance("review","edit")){setError("تعديل القيود المرحلة يتطلب صلاحية تعديل اليومية وصلاحية تعديل المراجعة.");return;}
+  const sourceType=doc.sourceType||"manual";
+  if(sourceType!=="manual"){setError("هذا القيد مرتبط بمستند مصدر. يجب تعديل الفاتورة أو السند أو حركة العهدة الأصلية حتى لا تختل أرصدة المخزون والأطراف.");return;}
+  if(doc.pendingRevisionId||doc.revisedByJournalId||doc.reversalJournalId||doc.reversedByJournalId){setError("هذا القيد لديه تعديل معلّق أو تعديل/عكس سابق؛ راجع القيد المرتبط قبل إنشاء طلب جديد.");return;}
+  const actionLabel=mode==="return"?"إرجاع القيد للمراجعة":"تعديل القيد";
+  if(!window.confirm(actionLabel+" "+(doc.number||doc.id)+"؟ سيتم إنشاء نسخة مراجعة مستقلة مرتبطة بالقيد الأصلي. سيظل القيد الأصلي وأثره في الأستاذ كما هما حتى اعتماد التعديل."))return;
+  setBusy(true);setError("");setNotice("");
+  try{
+   const result=await api("","POST",{action:"createJournalRevision",id:doc.id,mode});
+   await refresh();await loadPeriod();
+   if(mode==="edit"){
+    setNotice("تم فتح نسخة تعديل القيد وإرسالها لمسار المراجعة. عدّل الحسابات والقيم وأضف الملاحظات ثم احفظها.");
+    openJournalModal(result.item);
+   }else{
+    setJournalModal(null);setJournalModalDraft(null);setTab("review");
+    const queue=await refreshReviewQueue(true);
+    await openReviewItem((queue||[]).find(item=>item.id===result.id)||{id:result.id});
+    setNotice("تم إرجاع القيد إلى قائمة المراجعة كنسخة مرتبطة بالأصل. يمكن للمراجع تعديلها أو إعادتها للتصحيح أو اعتمادها.");
+   }
+  }catch(error){setError(error.message||String(error));}
+  finally{setBusy(false);}
  };
  const reverseJournal=async doc=>{
   if(!doc||!canFinance("journal","add")){setError("ليس لديك صلاحية إنشاء قيد عكسي.");return;}
