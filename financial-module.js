@@ -394,7 +394,7 @@ function FinanceModule(props){
   return React.createElement(type,nextAttributes,...children.map(translateChild));
  };
 
- const financeTabAreas={overview:"overview",journal:"journal",review:"review",invoices:"invoices",assignments:"assignments",partyStatements:"partyStatements",partnerCurrent:"partyStatements",masters:"masters",accounts:"accounts",centers:"centers",inventory:"inventory",cash:"cash",bank:"bank",tax:"tax",reports:"reports"};
+ const financeTabAreas={inventoryMovements:'inventory',overview:"overview",journal:"journal",review:"review",invoices:"invoices",assignments:"assignments",partyStatements:"partyStatements",partnerCurrent:"partyStatements",masters:"masters",accounts:"accounts",centers:"centers",inventory:"inventory",cash:"cash",bank:"bank",tax:"tax",reports:"reports"};
  const financeMasterAreas={parties:"masters",chartOfAccounts:"accounts",costCenters:"centers",items:"inventory",itemGroups:"inventory",warehouses:"inventory",bankAccounts:"bank",taxCodes:"tax"};
  const canFinance=(area,action="view")=>{
   if(currentUser&&currentUser.role==="admin")return true;
@@ -407,6 +407,7 @@ function FinanceModule(props){
  const financeAreaForMaster=kind=>financeMasterAreas[kind]||"masters";
  const [tab,setTab]=React.useState('overview'),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[notice,setNotice]=React.useState('');
  const [master,setMaster]=React.useState({chartOfAccounts:{},costCenters:{},items:{},itemGroups:{},warehouses:{},bankAccounts:{},taxCodes:{},parties:{},settings:{},inventory:{balances:{}}});
+ const [inventoryMovements,setInventoryMovements]=React.useState([]);
  const [documents,setDocuments]=React.useState([]),[journalRecords,setJournalRecords]=React.useState([]),[review,setReview]=React.useState([]),[periodJournals,setPeriodJournals]=React.useState([]),[balanceJournals,setBalanceJournals]=React.useState([]),[accountingStartMonth,setAccountingStartMonth]=React.useState('');
  const [journalModal,setJournalModal]=React.useState(null),[journalModalDraft,setJournalModalDraft]=React.useState(null);
  const [clients,setClients]=React.useState([]),[vendors,setVendors]=React.useState([]),[projects,setProjects]=React.useState([]);
@@ -551,6 +552,16 @@ function FinanceModule(props){
   }catch(e){setError(e.message||String(e));}
   finally{setBusy(false);}
  };
+ const loadInventoryMovements=async()=>{
+  try{
+   const result=await api('?resource=inventory');
+   const source=result&&result.items&&result.items.movements||{};
+   const list=Object.entries(source).filter(([,movement])=>movement&&typeof movement==='object').map(([key,movement])=>Object.assign({id:movement.id||key},movement));
+   list.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||n(b.createdAt)-n(a.createdAt));
+   setInventoryMovements(list);
+  }catch(error){setError(error.message||String(error));}
+ };
+ React.useEffect(()=>{if(tab==='inventoryMovements'&&canFinance('inventory','view'))void loadInventoryMovements();},[tab,currentUser&&currentUser.uid]);
  const refreshReviewQueue=async(silent)=>{
   try{
    const result=await api('?resource=review');
@@ -1664,7 +1675,7 @@ const deleteJournalDocument=async(doc)=>{
   else if(doc.type==='invoice'){const type=doc.invoiceType||'purchase';setInvoice({id:doc.id,type,date:doc.date,number:doc.number,partyId:doc.partyId,partyName:doc.partyName,partyTaxNumber:doc.partyTaxNumber||'',currency:doc.currency||'EGP',taxCode:defaultVatCodeForInvoice(type),taxType:vatTypeForInvoice(type),taxRate:'14',taxAmount:doc.taxAmount==null?'':String(doc.taxAmount),otherTaxes:(doc.otherTaxes||[]).map(x=>Object.assign({},x)),discount:String(doc.discount||''),projectCode:doc.projectCode||'',lines:(doc.lines||[]).map(x=>Object.assign({},x))});setInvoicePartySearch(doc.partyName||doc.partyId||'');setInvoiceTypeManuallySelected(true);setTab('invoices');}
  };
  const nav=[
- ['overview','ملخص مالي','Financial Summary'],['journal','القيود اليومية','Journal Entries'],['review','المراجعة والاعتماد','Review & Approval'],['invoices','فواتير العملاء والموردين','Customer & Supplier Invoices'],['assignments','الإجراءات المحولة إليّ','Tasks Assigned to Me'],['partyStatements','كشوف الأطراف والعاملين','Party & Employee Statements'],['partnerCurrent','جاري الشركاء',"Partners' Current Accounts"],['masters','البيانات الأساسية والاستيراد','Master Data & Import'],['accounts','دليل الحسابات','Chart of Accounts'],['centers','مراكز التكلفة','Cost Centers'],['inventory','المخزون والأكواد','Inventory & Item Codes'],['cash','الخزينة والتحصيل والسداد','Cash, Receipts & Payments'],['bank','كشوف البنوك','Bank Statements'],['tax','الضرائب','Taxes'],['reports','القوائم المالية','Financial Statements']
+ ['overview','ملخص مالي','Financial Summary'],['journal','القيود اليومية','Journal Entries'],['review','المراجعة والاعتماد','Review & Approval'],['invoices','فواتير العملاء والموردين','Customer & Supplier Invoices'],['assignments','الإجراءات المحولة إليّ','Tasks Assigned to Me'],['partyStatements','كشوف الأطراف والعاملين','Party & Employee Statements'],['partnerCurrent','جاري الشركاء',"Partners' Current Accounts"],['masters','البيانات الأساسية والاستيراد','Master Data & Import'],['accounts','دليل الحسابات','Chart of Accounts'],['centers','مراكز التكلفة','Cost Centers'],['inventory','المخزون والأكواد','Inventory & Item Codes'],['inventoryMovements','حركة المخزن','Inventory Movements'],['cash','الخزينة والتحصيل والسداد','Cash, Receipts & Payments'],['bank','كشوف البنوك','Bank Statements'],['tax','الضرائب','Taxes'],['reports','القوائم المالية','Financial Statements']
  ];
  const visibleNav=nav.filter(item=>canFinance(financeTabAreas[item[0]],"view"));
  React.useEffect(()=>{
@@ -2271,6 +2282,36 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
   const groupPanel=panel('إجمالي المخزون حسب المجموعة والمخزن','يمكن فتح المجموعة لمشاهدة الإصدارات والأكواد التفصيلية.',table(['المجموعة','المخزن','إجمالي الكمية','متوسط تكلفة المجموعة','قيمة الرصيد'],groupRows));
   const detailsPanel=panel('تفاصيل الأصناف والإصدارات','الرصيد والتكلفة محفوظان على مستوى كود الصنف والإصدار والمخزن.',table(['الكود','الصنف','المجموعة','الإصدار','الوحدة','المخزن','الكمية','متوسط التكلفة','القيمة'],stockRows));
   return h('div',{className:'space-y-4'},groupPanel,detailsPanel);
+ };
+ const renderInventoryMovements=()=>{
+  const inbound=inventoryMovements.filter(item=>item.kind==='purchase'||n(item.quantity)>0);
+  const outbound=inventoryMovements.filter(item=>item.kind==='sale'||n(item.quantity)<0);
+  const inboundQty=inbound.reduce((sum,item)=>sum+Math.abs(n(item.quantity)),0);
+  const outboundQty=outbound.reduce((sum,item)=>sum+Math.abs(n(item.quantity)),0);
+  const netValue=inventoryMovements.reduce((sum,item)=>sum+n(item.value),0);
+  const itemNames=new Map(items.map(item=>[String(item.code),item.name]));
+  const movementRows=inventoryMovements.map(item=>h('tr',{key:item.id,className:'border-t hover:bg-slate-50'},
+   h('td',{className:'p-2 whitespace-nowrap'},item.date||'—'),
+   h('td',{className:'p-2'},item.kind==='purchase'?'إضافة / وارد':item.kind==='sale'?'صرف / صادر':item.kind||'حركة'),
+   h('td',{className:'p-2'},item.itemCode||'—'),
+   h('td',{className:'p-2'},itemNames.get(String(item.itemCode))||'صنف غير موجود بالدليل'),
+   h('td',{className:'p-2'},item.warehouseCode||'—'),
+   h('td',{className:'p-2 text-end'},fmt(item.quantity)),
+   h('td',{className:'p-2 text-end'},fmt(item.unitCost)),
+   h('td',{className:'p-2 text-end font-bold'},fmt(item.value)),
+   h('td',{className:'p-2'},item.invoiceId||'—'),
+   h('td',{className:'p-2'},item.journalId||'—')
+  ));
+  return h('div',{className:'space-y-4'},
+   h('div',{className:'grid grid-cols-2 md:grid-cols-4 gap-2'},
+    metric('عدد حركات المخزن',String(inventoryMovements.length)),
+    metric('كمية الوارد',fmt(inboundQty)),
+    metric('كمية الصادر',fmt(outboundQty)),
+    metric('صافي قيمة الحركات',fmt(netValue))
+   ),
+   h('div',{className:'flex flex-wrap gap-2'},button('تحديث حركات المخزن',loadInventoryMovements,'muted',busy)),
+   panel('سجل حركة المخزن','عرض مستقل لكل حركات الإضافة والصرف المرتبطة بالفواتير مع الصنف والمخزن والكمية والتكلفة والقيمة.',table(['التاريخ','نوع الحركة','كود الصنف','اسم الصنف','المخزن','الكمية','تكلفة الوحدة','القيمة','رقم الفاتورة','رقم القيد'],movementRows))
+  );
  };
  const masterPermissionModule=kind=>"financial_"+financeAreaForMaster(kind);
  const canMasterAction=(kind,action)=>canFinance(financeAreaForMaster(kind),action);
@@ -2950,13 +2991,15 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
  if(tab==='accounts')content=renderMaster('accounts');
  if(tab==='centers')content=h('div',{className:'space-y-4'},renderMaster('centers'),renderCostCenterAnalysis());
  if(tab==='inventory')content=renderInventory();
+ if(tab==='inventoryMovements')content=renderInventoryMovements();
  if(tab==='cash')content=renderCash();
  if(tab==='bank')content=renderBank();
  if(tab==='tax')content=renderTax();
  if(tab==='reports')content=renderReports();
  return h('div',{className:'p-2 md:p-3 space-y-2',dir:rtl?'rtl':'ltr'},
   h('header',{className:'flex flex-wrap items-center justify-between gap-3'},h('div',null,h('h2',{className:'text-2xl font-extrabold'},t('النظام المالي والمحاسبي','Financial & Accounting System')),h('p',{className:'text-xs text-slate-500'},t('دفتر أستاذ مستقل — لا ترحيل قبل المراجعة والاعتماد','Separate General Ledger — No Posting Before Review & Approval'))),button(busy?t('جارٍ التحديث','Updating'):t('تحديث البيانات','Refresh Data'),refresh,'muted',busy)),
-  h('nav',{className:'flex flex-wrap gap-2'},visibleNav.map(x=>button(rtl?x[1]:x[2],()=>{setTab(x[0]);setNotice('');setError('');},tab===x[0]?'primary':'muted'))),
+  h('nav',{className:'flex flex-wrap gap-2'},visibleNav.map(x=>button(rtl?x[1]:x[2],()=>{setTab(x[0]);setNotice('');setError('');setScreenTableSearch('');},tab===x[0]?'primary':'muted'))),
+  field(t('بحث في بيانات الشاشة الحالية','Search current screen data'),screenTableSearch,setScreenTableSearch),
   noticeElement,content,renderQuickAdd(),statementAttachmentListModal,statementAttachmentPreviewModal,busy?h('p',{className:'text-xs text-slate-500'},'جارٍ تحميل البيانات...'):null,
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
