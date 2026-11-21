@@ -1104,7 +1104,7 @@ test("forwarded invoices preserve full details and attachments through a multi-u
   assert.equal(read("documents/"+invoiceId).status,"posted");
 });
 
-test("journal edit and delete permissions work for any manual journal and clean posted ledgers", async () => {
+test("posted manual journal edits create reviewed revisions and preserve the original ledger", async () => {
   await invoke("GET","?resource=bootstrap");
   const draft=await invoke("POST","",{
     action:"submitJournal",date:"2026-11-19",description:"Permission journal test",reference:"PERM-JRN-01",
@@ -1121,36 +1121,84 @@ test("journal edit and delete permissions work for any manual journal and clean 
     if(moduleId!=="financial_journal"||action!=="edit")throw new Error("wrong journal edit permission scope");
     return true;
   };
-  const edited=await invoke("POST","",{
-    action:"submitJournal",id:draft.id,date:"2026-11-19",description:"Permission journal test — edited",
-    reference:"PERM-JRN-01",lines:[{accountCode:"6200",debit:125,credit:0,description:"After edit"},{accountCode:"1110",debit:0,credit:125,description:"Cash"}]
-  },{
+  const revision=await invoke("POST","",{action:"createJournalRevision",id:draft.id,mode:"edit"},{
     profile:{uid:"FIN-JOURNAL-EDITOR",role:"user",status:"active",fullName:"Journal Editor"},
     claims:{sub:"FIN-JOURNAL-EDITOR"},requirePermission:editPermission
   });
-  assert.equal(edited.status,"posted");
+  assert.equal(revision.status,"pending_review");
   assert.deepEqual(editCalls[0],["financial_journal","edit"]);
-  assert.equal(read("ledger/6100/2026-11/"+draft.id+"_1"),null,"editing removes the old account row");
-  assert.equal(read("ledger/6200/2026-11/"+draft.id+"_1").debit,125,"editing recreates the ledger row with the new account and amount");
-  assert.equal(read("ledger/1110/2026-11/"+draft.id+"_2").credit,125);
+  assert.equal(read("documents/"+revision.id+"/revisionOf"),draft.id);
+  assert.equal(read("documents/"+revision.id+"/status"),"pending_review");
+  assert.equal(read("journals/"+draft.id+"/pendingRevisionId"),revision.id);
+  assert.equal(read("journals/"+draft.id+"/status"),"posted","the posted original remains posted while its revision is in review");
+  assert.equal(read("ledger/6100/2026-11/"+draft.id+"_1").debit,100,"the original ledger entry is preserved before approval");
+  assert.equal(read("ledger/6200/2026-11/"+revision.id+"_3"),null,"the edited account has no ledger effect before approval");
 
+  const edited=await invoke("POST","",{action:"updateReviewJournal",id:revision.id,
+    journal:{date:"2026-11-21",description:"Permission journal test — amended",reference:"PERM-JRN-01",revisionNotes:"تم تصحيح الحساب والقيمة بناءً على المراجعة."},
+    lines:[
+      {accountCode:"6200",debit:125,credit:0,description:"After edit"},
+      {accountCode:"1110",debit:0,credit:125,description:"Cash"}
+    ]
+  });
+  assert.equal(edited.status,"pending_review");
+  assert.deepEqual(edited.errors,[]);
+  assert.equal(read("documents/"+revision.id+"/revisionNotes"),"تم تصحيح الحساب والقيمة بناءً على المراجعة.");
+
+  const approvedRevision=await invoke("POST","",{action:"review",id:revision.id,decision:"approve",reason:"Approve amended manual journal"});
+  assert.equal(approvedRevision.status,"posted");
+  const adjusted=read("journals/"+revision.id);
+  assert.equal(adjusted.sourceType,"journalRevision");
+  assert.equal(adjusted.revisionOf,draft.id);
+  assert.equal(adjusted.lines.length,4,"the approved revision posts reversal lines and the replacement lines together");
+  assert.equal(read("journals/"+draft.id).status,"posted","the original journal is preserved as posted history");
+  assert.equal(read("journals/"+draft.id+"/pendingRevisionId"),null);
+  assert.equal(read("journals/"+draft.id+"/revisedByJournalId"),revision.id);
+  assert.equal(read("ledger/6100/2026-11/"+draft.id+"_1").debit,100,"the original ledger row remains intact");
+  assert.equal(read("ledger/6100/2026-11/"+revision.id+"_1").credit,100,"the revision posts an exact reversal of the original expense");
+  assert.equal(read("ledger/6200/2026-11/"+revision.id+"_3").debit,125,"the replacement expense is posted only after approval");
+  assert.equal(read("ledger/1110/2026-11/"+revision.id+"_4").credit,125,"the replacement cash amount is posted with the revised journal");
+  await assert.rejects(
+    invoke("POST","",{action:"createJournalRevision",id:draft.id,mode:"edit"}),
+    /سبق عكسه أو تعديله/
+  );
+
+  const returnDraft=await invoke("POST","",{
+    action:"submitJournal",date:"2026-11-20",description:"Journal to return to review",reference:"PERM-JRN-RETURN-01",
+    lines:[{accountCode:"6100",debit:50,credit:0,description:"Expense"},{accountCode:"1110",debit:0,credit:50,description:"Cash"}]
+  });
+  await invoke("POST","",{action:"review",id:returnDraft.id,decision:"approve",reason:"Approve for return test"});
+  const returned=await invoke("POST","",{action:"createJournalRevision",id:returnDraft.id,mode:"return"});
+  assert.equal(returned.status,"pending_review");
+  assert.ok(read("reviewQueue/"+returned.id),"return to review creates a new visible review item");
+  assert.equal(read("journals/"+returnDraft.id+"/pendingRevisionId"),returned.id);
+  const rejected=await invoke("POST","",{action:"review",id:returned.id,decision:"reject",reason:"Test rejected revision"});
+  assert.equal(rejected.status,"rejected");
+  assert.equal(read("journals/"+returnDraft.id+"/pendingRevisionId"),null,"rejecting the revision releases the original journal lock");
+  assert.equal(read("journals/"+returnDraft.id+"/status"),"posted","rejecting a revision never changes the original posted journal");
+
+  const deleteDraft=await invoke("POST","",{
+    action:"submitJournal",date:"2026-11-20",description:"Journal to delete",reference:"PERM-JRN-DELETE-01",
+    lines:[{accountCode:"6100",debit:20,credit:0,description:"Expense"},{accountCode:"1110",debit:0,credit:20,description:"Cash"}]
+  });
+  await invoke("POST","",{action:"review",id:deleteDraft.id,decision:"approve",reason:"Approve deletion test"});
   const deleteCalls=[];
   const deletePermission=(_profile,moduleId,action)=>{
     deleteCalls.push([moduleId,action]);
     if(moduleId!=="financial_journal"||action!=="delete")throw new Error("wrong journal delete permission scope");
     return true;
   };
-  const removed=await invoke("POST","",{action:"deleteJournal",id:draft.id},{
+  const removed=await invoke("POST","",{action:"deleteJournal",id:deleteDraft.id},{
     profile:{uid:"FIN-JOURNAL-DELETE",role:"user",status:"active",fullName:"Journal Deleter"},
     claims:{sub:"FIN-JOURNAL-DELETE"},requirePermission:deletePermission
   });
   assert.equal(removed.deleted,true);
   assert.deepEqual(deleteCalls[0],["financial_journal","delete"]);
-  assert.equal(read("journals/"+draft.id),null);
-  assert.equal(read("documents/"+draft.id),null);
-  assert.equal(read("periods/2026-11/entries/"+draft.id),null);
-  assert.equal(read("ledger/6200/2026-11/"+draft.id+"_1"),null);
-  assert.equal(read("ledger/1110/2026-11/"+draft.id+"_2"),null);
+  assert.equal(read("journals/"+deleteDraft.id),null);
+  assert.equal(read("documents/"+deleteDraft.id),null);
+  assert.equal(read("periods/2026-11/entries/"+deleteDraft.id),null);
+  assert.equal(read("ledger/6100/2026-11/"+deleteDraft.id+"_1"),null);
+  assert.equal(read("ledger/1110/2026-11/"+deleteDraft.id+"_2"),null);
 });
 
 test("invoice drafts can be deleted and review invoices can be safely cancelled", async () => {
