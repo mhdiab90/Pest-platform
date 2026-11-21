@@ -421,7 +421,7 @@ function FinanceModule(props){
  const [invoiceFile,setInvoiceFile]=React.useState(null),[invoicePartySearch,setInvoicePartySearch]=React.useState(''),[cashPartySearch,setCashPartySearch]=React.useState(''),[statementPartySearch,setStatementPartySearch]=React.useState(''),[ocrSuggestions,setOcrSuggestions]=React.useState({party:null,items:[]}),[cash,setCash]=React.useState({movementType:'customer_receipt',date:today(),amount:'',description:'',reference:'',partyType:'customer',partyId:'',partyName:'',employeeUid:'',employeeName:'',cashAccountCode:'1110',bankAccountCode:'1120',offsetAccountCode:'6100',projectCode:'',currency:'EGP'});
  const [cashHistorySearch,setCashHistorySearch]=React.useState(''),[masterViewKind,setMasterViewKind]=React.useState('customers');
  const [bankFile,setBankFile]=React.useState(null),[bankRows,setBankRows]=React.useState([]),[bankAccount,setBankAccount]=React.useState('1120');
- const [search,setSearch]=React.useState(''),[masterPartySearch,setMasterPartySearch]=React.useState('');
+ const [search,setSearch]=React.useState(''),[masterPartySearch,setMasterPartySearch]=React.useState(''),[screenTableSearch,setScreenTableSearch]=React.useState('');
  const [masterImportKind,setMasterImportKind]=React.useState('customers'),[masterImportRows,setMasterImportRows]=React.useState([]),[masterImportName,setMasterImportName]=React.useState('');
  const [selectedMasterCodes,setSelectedMasterCodes]=React.useState([]);
  const [partyStatement,setPartyStatement]=React.useState({type:'customer',id:''}),[partyRows,setPartyRows]=React.useState([]);
@@ -1156,7 +1156,19 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
  const area=(label,value,onChange)=>h('label',{className:'block text-sm font-bold'},label,h('textarea',{value,onChange:e=>onChange(e.target.value),rows:2,className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal'}));
  const panel=(title,sub,child)=>h('section',{className:'rounded-2xl border bg-white p-4 shadow-sm min-w-0'},h('div',{className:'mb-3'},h('h3',{className:'font-bold text-lg'},title),sub?h('p',{className:'text-xs text-slate-500'},sub):null),child);
  const metric=(label,value)=>h('div',{className:'rounded-xl border bg-white p-3'},h('div',{className:'text-xs text-slate-500'},label),h('strong',{className:'text-xl block mt-1'},value));
- const table=(headers,data,scrollStyle)=>h('div',{className:'overflow-auto border rounded-xl',style:scrollStyle||undefined},h('table',{className:'w-full text-sm text-right'},h('thead',{className:'bg-slate-100'},h('tr',null,headers.map(x=>h('th',{key:x,className:'p-3 whitespace-nowrap'},x)))),h('tbody',null,data.length?data:h('tr',null,h('td',{colSpan:headers.length,className:'p-4 text-center text-slate-400'},'لا توجد بيانات')))));
+ const screenSearchText=node=>{
+  if(node===null||node===undefined||typeof node==='boolean')return '';
+  if(typeof node==='string'||typeof node==='number')return String(node);
+  if(Array.isArray(node))return node.map(screenSearchText).join(' ');
+  if(React.isValidElement(node))return screenSearchText(node.props&&node.props.children);
+  return '';
+ };
+ const table=(headers,data,scrollStyle)=>{
+  const query=String(screenTableSearch||'').trim().toLowerCase();
+  const source=Array.isArray(data)?data:[];
+  const filtered=query?source.filter(row=>screenSearchText(row).toLowerCase().includes(query)):source;
+  return h('div',{className:'overflow-auto border rounded-xl',style:scrollStyle||undefined},h('table',{className:'w-full text-sm text-right'},h('thead',{className:'bg-slate-100'},h('tr',null,headers.map(x=>h('th',{key:x,className:'p-3 whitespace-nowrap'},x)))),h('tbody',null,filtered.length?filtered:h('tr',null,h('td',{colSpan:headers.length,className:'p-4 text-center text-slate-400'},query?'لا توجد نتائج مطابقة للبحث':'لا توجد بيانات')))));
+ };
  const noticeElement=error?h('div',{className:'rounded-xl bg-rose-50 text-rose-800 border border-rose-200 p-3 text-sm'},error):notice?h('div',{className:'rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 p-3 text-sm'},notice):null;
  const saveMaster=async()=>{
   if(!canFinance(masterForm.kind==="chartOfAccounts"?"accounts":financeAreaForMaster(masterForm.kind),masterForm.code&&masterForm.originalCode?"edit":"add")&&!canFinance(masterForm.kind==="chartOfAccounts"?"accounts":financeAreaForMaster(masterForm.kind),"add")){setError("ليس لديك صلاحية إضافة هذا الكود.");return;}
@@ -1287,6 +1299,7 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
    await refresh();await loadPeriod();
    if(mode==="edit"){
     setNotice("تم فتح نسخة تعديل القيد وإرسالها لمسار المراجعة. عدّل الحسابات والقيم وأضف الملاحظات ثم احفظها.");
+    setTab('journal');
     openJournalModal(result.item);
    }else{
     setJournalModal(null);setJournalModalDraft(null);setTab("review");
@@ -2570,14 +2583,16 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
       h('tbody',null,statementJournalLines.length?statementJournalLines:h('tr',null,h('td',{colSpan:8,className:'p-6 text-center text-slate-400'},'القيد لا يحتوي على بنود.')))
      )
     ),
-    h('div',{className:'flex flex-wrap gap-2 rounded-xl border border-blue-200 bg-blue-50/60 p-3'},
-     statementJournalPosted&&statementJournalManual&&canFinance('journal','edit')?button('تعديل القيد',()=>void startJournalRevision(statementJournal,'edit'),'primary',busy||statementJournalHasLinkedAction||!canFinance('review','edit')):null,
-     statementJournalPosted&&statementJournalManual&&canFinance('journal','edit')?button('إرجاع للمراجعة',()=>void startJournalRevision(statementJournal,'return'),'muted',busy||statementJournalHasLinkedAction||!canFinance('review','edit')):null,
-     statementJournalPosted&&statementJournalManual&&canFinance('journal','add')?button('إلغاء القيد (إنشاء قيد عكسي)',()=>void reverseJournal(statementJournal),'danger',busy||statementJournalHasLinkedAction):null,
-     !statementJournalPosted&&canFinance('journal','edit')?button('إلغاء القيد',()=>void cancelJournal(statementJournal),'danger',busy):null,
-     statementJournalPosted&&!statementJournalManual?h('p',{className:'w-full text-xs text-amber-800'},'هذا القيد ناتج عن مستند مصدر. يجب تعديل الفاتورة أو السند أو حركة المصدر الأصلية حتى لا تختل أرصدة المخزون والأطراف. إجراءات تعديل القيد أو إرجاعه للمراجعة أو إلغاؤه غير متاحة مباشرة من تتبع الحساب.'):null,
+    h('div',{className:'space-y-2 rounded-xl border border-blue-200 bg-blue-50/60 p-3'},
+     h('div',{className:'font-bold text-sm'},'إجراءات القيد'),
+     h('div',{className:'flex flex-wrap gap-2'},
+      canFinance('journal','edit')?button('تعديل القيد',()=>void startJournalRevision(statementJournal,'edit'),'primary',busy||!statementJournalPosted||!statementJournalManual||statementJournalHasLinkedAction||!canFinance('review','edit')):null,
+      canFinance('journal','edit')?button('إرجاع للمراجعة',()=>void startJournalRevision(statementJournal,'return'),'muted',busy||!statementJournalPosted||!statementJournalManual||statementJournalHasLinkedAction||!canFinance('review','edit')):null,
+      canFinance('journal','edit')?button(statementJournalPosted?'إلغاء القيد (قيد عكسي للمراجعة)':'إلغاء القيد',()=>statementJournalPosted?void reverseJournal(statementJournal):void cancelJournal(statementJournal),'danger',busy||statementJournalHasLinkedAction||(statementJournalPosted&&!statementJournalManual)):null
+     ),
+     statementJournalPosted&&!statementJournalManual?h('p',{className:'w-full text-xs text-amber-800'},'القيد مرتبط بمستند مصدر ('+String(statementJournal.sourceType||'غير محدد')+'). الإجراءات تظهر هنا، لكن التعديل أو الإلغاء المباشر ممنوع حتى لا تنفصل الفاتورة أو السند عن المخزون والأستاذ الفرعي.'):null,
      statementJournalPosted&&statementJournalManual&&statementJournalHasLinkedAction?h('p',{className:'w-full text-xs text-amber-800'},'هذا القيد مرتبط بطلب تعديل أو إلغاء أو قيد عكسي سابق؛ راجع القيد المرتبط قبل إنشاء إجراء جديد.'):null,
-     !statementJournalPosted&&!canFinance('journal','edit')?h('p',{className:'w-full text-xs text-slate-600'},'لا تتوفر لديك صلاحية إلغاء هذا القيد.'):null
+     !canFinance('journal','edit')?h('p',{className:'w-full text-xs text-slate-600'},'لا تتوفر لديك صلاحية تعديل أو إلغاء القيود.'):null
     ),
     h('div',{className:'flex flex-wrap justify-end gap-4 rounded-xl border bg-slate-50 p-3 text-sm font-bold'},
      h('span',null,'المدين: '+fmt(statementJournalDebit)),
