@@ -46,9 +46,9 @@ test("financial statement journal details expose the same safe journal actions a
   assert.match(source, /statementJournalManual=Boolean\(statementJournal/);
   assert.match(source, /button\('تعديل القيد',\(\)=>void startJournalRevision\(statementJournal,'edit'\)/);
   assert.match(source, /button\('إرجاع للمراجعة',\(\)=>void startJournalRevision\(statementJournal,'return'\)/);
-  assert.match(source, /button\('إلغاء القيد \(إنشاء قيد عكسي\)',\(\)=>void reverseJournal\(statementJournal\)/);
-  assert.match(source, /button\('إلغاء القيد',\(\)=>void cancelJournal\(statementJournal\)/);
-  assert.match(source, /إجراءات تعديل القيد أو إرجاعه للمراجعة أو إلغاؤه غير متاحة مباشرة من تتبع الحساب/);
+  assert.match(source, /button\(statementJournalPosted\?'إلغاء القيد \(قيد عكسي للمراجعة\)'/);
+  assert.match(source, /void cancelJournal\(statementJournal\)/);
+  assert.match(source, /القيد مرتبط بمستند مصدر/);
 });
 
 test("confirmed statement journal actions close the statement detail before opening a review dialog", () => {
