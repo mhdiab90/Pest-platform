@@ -1205,7 +1205,7 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
      const rows=[];
      if(tableNode){
       Array.from(tableNode.querySelectorAll("tr")).forEach(row=>{
-       const cells=Array.from(row.querySelectorAll("th,td")).map(cell=>String(cell.innerText||cell.textContent||"").replaceAll("\\n"," ").replaceAll("\\r"," ").trim());
+       const cells=Array.from(row.querySelectorAll("th,td")).map(cell=>String(cell.innerText||cell.textContent||"").replaceAll(String.fromCharCode(10)," ").replaceAll(String.fromCharCode(13)," ").trim());;
        if(cells.length)rows.push(cells);
       });
      }else{
