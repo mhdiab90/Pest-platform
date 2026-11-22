@@ -1950,6 +1950,75 @@ test("deleting a posted invoice-source journal directly cancels its source and r
   assert.ok(Object.values(read("audit")||{}).some(item=>item&&item.action==="delete_source_journal"&&item.documentId===journalId&&item.snapshot));
 });
 
+test("deleting an original journal removes its posted reversing journal and both ledger impacts", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const originalId="CHAIN-ORIGINAL-DELETE-01",reversalId="CHAIN-REVERSAL-DELETE-01";
+  const originalLines=[{accountCode:"6100",debit:100,credit:0},{accountCode:"1110",debit:0,credit:100}];
+  const reversalLines=[{accountCode:"6100",debit:0,credit:100},{accountCode:"1110",debit:100,credit:0}];
+  write("journals/"+originalId,{id:originalId,type:"journal",status:"posted",date:"2026-11-18",sourceType:"manual",reversalJournalId:reversalId,reversedByJournalId:reversalId,lines:originalLines});
+  write("documents/"+originalId,{id:originalId,type:"journal",status:"posted",date:"2026-11-18",sourceType:"manual",reversalJournalId:reversalId,reversedByJournalId:reversalId,lines:originalLines});
+  write("journals/"+reversalId,{id:reversalId,type:"journal",status:"posted",date:"2026-11-19",sourceType:"manual",reversalOf:originalId,lines:reversalLines});
+  write("documents/"+reversalId,{id:reversalId,type:"journal",status:"posted",date:"2026-11-19",sourceType:"manual",reversalOf:originalId,lines:reversalLines});
+  write("periods/2026-11/entries/"+originalId,{id:originalId,status:"posted",date:"2026-11-18"});
+  write("periods/2026-11/entries/"+reversalId,{id:reversalId,status:"posted",date:"2026-11-19"});
+  write("ledger/6100/2026-11/"+originalId+"_1",{accountCode:"6100",debit:100,credit:0});
+  write("ledger/1110/2026-11/"+originalId+"_2",{accountCode:"1110",debit:0,credit:100});
+  write("ledger/6100/2026-11/"+reversalId+"_1",{accountCode:"6100",debit:0,credit:100});
+  write("ledger/1110/2026-11/"+reversalId+"_2",{accountCode:"1110",debit:100,credit:0});
+  const result=await invoke("POST","",{action:"deleteJournal",id:originalId,reason:"delete original and reversal"});
+  assert.equal(result.deleted,true);
+  assert.deepEqual(new Set(result.deletedIds),new Set([originalId,reversalId]));
+  assert.equal(result.linkedJournalsDeleted,1);
+  for(const id of [originalId,reversalId]){
+    assert.equal(read("documents/"+id),null);
+    assert.equal(read("journals/"+id),null);
+    assert.equal(read("reviewQueue/"+id),null);
+    assert.equal(read("periods/2026-11/entries/"+id),null);
+  }
+  assert.equal(read("ledger/6100/2026-11/"+originalId+"_1"),null);
+  assert.equal(read("ledger/1110/2026-11/"+originalId+"_2"),null);
+  assert.equal(read("ledger/6100/2026-11/"+reversalId+"_1"),null);
+  assert.equal(read("ledger/1110/2026-11/"+reversalId+"_2"),null);
+  const auditRows=Object.values(read("audit")||{}).filter(row=>row&&row.action==="delete_linked_journal_chain");
+  assert.ok(auditRows.some(row=>row.documentId===originalId&&row.snapshot));
+  assert.ok(auditRows.some(row=>row.documentId===reversalId&&row.snapshot));
+});
+
+test("deleting a reversing journal from its own row also deletes the original journal", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const originalId="CHAIN-ORIGINAL-DELETE-02",reversalId="CHAIN-REVERSAL-DELETE-02";
+  const originalLines=[{accountCode:"6200",debit:75,credit:0},{accountCode:"1110",debit:0,credit:75}];
+  const reversalLines=[{accountCode:"6200",debit:0,credit:75},{accountCode:"1110",debit:75,credit:0}];
+  write("journals/"+originalId,{id:originalId,type:"journal",status:"posted",date:"2026-11-17",sourceType:"manual",reversalJournalId:reversalId,reversedByJournalId:reversalId,lines:originalLines});
+  write("journals/"+reversalId,{id:reversalId,type:"journal",status:"posted",date:"2026-11-18",sourceType:"manual",reversalOf:originalId,lines:reversalLines});
+  write("documents/"+originalId,{id:originalId,type:"journal",status:"posted",date:"2026-11-17",sourceType:"manual",reversalJournalId:reversalId,reversedByJournalId:reversalId,lines:originalLines});
+  write("documents/"+reversalId,{id:reversalId,type:"journal",status:"posted",date:"2026-11-18",sourceType:"manual",reversalOf:originalId,lines:reversalLines});
+  const result=await invoke("POST","",{action:"deleteJournal",id:reversalId,reason:"delete from reversing row"});
+  assert.equal(result.deleted,true);
+  assert.deepEqual(new Set(result.deletedIds),new Set([originalId,reversalId]));
+  assert.equal(read("journals/"+originalId),null);
+  assert.equal(read("journals/"+reversalId),null);
+  assert.equal(read("documents/"+originalId),null);
+  assert.equal(read("documents/"+reversalId),null);
+});
+
+test("deleting an original journal also deletes a pending reversal from the review queue", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const originalId="CHAIN-ORIGINAL-DELETE-03",reversalId="CHAIN-PENDING-REVERSAL-DELETE-03";
+  const lines=[{accountCode:"6100",debit:25,credit:0},{accountCode:"1110",debit:0,credit:25}];
+  write("journals/"+originalId,{id:originalId,type:"journal",status:"posted",date:"2026-11-16",sourceType:"manual",reversalJournalId:reversalId,lines});
+  write("documents/"+originalId,{id:originalId,type:"journal",status:"posted",date:"2026-11-16",sourceType:"manual",reversalJournalId:reversalId,lines});
+  write("documents/"+reversalId,{id:reversalId,type:"journal",status:"pending_review",date:"2026-11-20",sourceType:"manual",reversalOf:originalId,lines:lines.map(line=>({...line,debit:line.credit,credit:line.debit}))});
+  write("reviewQueue/"+reversalId,{id:reversalId,status:"pending_review"});
+  const result=await invoke("POST","",{action:"deleteJournal",id:originalId,reason:"remove original and pending reversal"});
+  assert.equal(result.deleted,true);
+  assert.deepEqual(new Set(result.deletedIds),new Set([originalId,reversalId]));
+  assert.equal(read("journals/"+originalId),null);
+  assert.equal(read("documents/"+originalId),null);
+  assert.equal(read("documents/"+reversalId),null);
+  assert.equal(read("reviewQueue/"+reversalId),null);
+});
+
 test("deleting a source invoice journal is not blocked by later stock movements and reports the negative stock impact", async () => {
   await invoke("GET","?resource=bootstrap");
   const invoiceId="INVOICE-SOURCE-DELETE-LATER-01",journalId="INVOICE-SOURCE-JOURNAL-DELETE-LATER-01";
