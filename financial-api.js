@@ -1614,7 +1614,7 @@ export async function handleFinancialRequest(ctx){
    if(target.pendingRevisionId||target.revisedByJournalId)throw new Error("لا يمكن حذف هذا القيد لوجود إصدار تعديل معلّق أو معتمد مرتبط به. احذف/عالج إصدار التعديل المرتبط أولاً.");
    if(target.reversalJournalId||target.reversedByJournalId)throw new Error("هذا القيد مرتبط بطلب عكس سابق أو تم عكسه بالفعل. راجع القيد المرتبط قبل الحذف.");
    const isPosted=target.status==="posted"||Boolean(posted&&posted.status==="posted");
-   const sourceType=String(target.sourceType||"manual"),sourceId=id(target.sourceId||"");
+   const sourceType=String(target.sourceType||"manual"),sourceId=target.sourceId?id(target.sourceId):"";
    const reason=txt(body.reason||"حذف القيد من شاشة القيود اليومية",500);
    const updates={},stockEffects=[],inventoryWarnings=[];
    if(isPosted&&sourceType==="invoice"&&sourceId){
