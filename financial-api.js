@@ -1527,7 +1527,8 @@ export async function handleFinancialRequest(ctx){
    next.sourceWarningsAcknowledgedAt=now;next.sourceWarningsAcknowledgedBy=claims.sub;
   }
   const unresolvedSourceWarnings=previous.sourceType==="legacyImport"&&(next.warnings||[]).length>0&&!next.sourceWarningsAcknowledgedAt;
-  next.status=validation.errors.length||unresolvedSourceWarnings?"needs_correction":"pending_review";next.updatedAt=now;next.updatedBy=claims.sub;
+  const remainsLegacyCorrection=previous.sourceType==="legacyImport"&&(validation.errors.length>0||unresolvedSourceWarnings);
+  next.status=remainsLegacyCorrection?"needs_correction":"pending_review";next.updatedAt=now;next.updatedBy=claims.sub;
   const updates={};updates["documents/"+docId]=next;updates["reviewQueue/"+docId]=next.status==="pending_review"?reviewRecord(next):null;
   updates["audit/"+uid("AUD")]={action:"update_review_journal",documentId:docId,sourceType:next.sourceType||"manual",lineCountBefore:(previous.lines||[]).length,lineCountAfter:(next.lines||[]).length,errors:next.errors,uid:claims.sub,createdAt:now};
   await adminPatch(updates);
