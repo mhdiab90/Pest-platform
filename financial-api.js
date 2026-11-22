@@ -655,11 +655,12 @@ export async function handleFinancialRequest(ctx){
    if(!/^\d{4}-\d{2}$/.test(from)||!/^\d{4}-\d{2}$/.test(to))throw new Error("Invalid financial period.");
    const configuredStart=String(await adminRead("settings/accountingStartMonth")||"");
    const sourceJournals=(await adminRead("journals"))||{};
-   const postedJournalMonths=Object.entries(sourceJournals).filter(([key,value])=>
-    value&&typeof value==="object"&&value.status==="posted"&&/^\\d{4}-\\d{2}-\\d{2}$/.test(String(value.date||""))
-   ).map(([key,value])=>month(value.date));
+   const postedJournalMonths=Object.entries(sourceJournals).filter(([key,value])=>{
+    const valueDate=String(value&&value.date||"");
+    return value&&typeof value==="object"&&value.status==="posted"&&valueDate.length===10&&valueDate[4]==="-"&&valueDate[7]==="-"&&Number.isFinite(Date.parse(valueDate+"T00:00:00Z"));
+   }).map(([key,value])=>month(value.date));
    const earliestPostedMonth=postedJournalMonths.filter(value=>value<=to).sort()[0]||"";
-   const configuredMonth=/^\\d{4}-\\d{2}$/.test(configuredStart)?configuredStart:"";
+   const configuredMonth=configuredStart.length===7&&configuredStart[4]==="-"?configuredStart:"";
    const balanceFrom=[configuredMonth,earliestPostedMonth,from].filter(Boolean).sort()[0]||from;
    if(!/^\d{4}-\d{2}$/.test(balanceFrom))throw new Error("تاريخ بداية الدفاتر المحاسبية غير مضبوط. راجع إعدادات النظام المالي.");
    const startDate=new Date(balanceFrom+"-01T00:00:00Z"),fromDate=new Date(from+"-01T00:00:00Z"),toDate=new Date(to+"-01T00:00:00Z");
