@@ -40,7 +40,7 @@ const rows=o=>o?Object.entries(o).map(([key,v])=>Object.assign({id:v&&v.id||key,
 const id=p=>p+'_'+(crypto.randomUUID?crypto.randomUUID().replace(/-/g,''):Date.now());
 const n=v=>Number(v)||0;
 const fmt=v=>new Intl.NumberFormat('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n(v));
-const journalSourceLabel=record=>{const sourceType=record&&record.openingBalance?'openingBalance':String(record&&record.sourceType||'manual');return ({openingBalance:'الأرصدة الافتتاحية',invoice:'فاتورة',cash:'الخزينة',bankLine:'البنك',projectEvent:'حدث مشروع',cashCustody:'عهدة شخصية',cashCustodyTransfer:'تحويل عهدة',partnerCurrentAccountTransfer:'تحويل جاري شريك',partnerCurrentAccountExpenseCorrection:'تصحيح جاري شريك',journalRevision:'تعديل معتمد لقيد',manual:'يدوي'}[sourceType]||sourceType||'يدوي');};
+const journalSourceLabel=record=>{const sourceType=record&&record.openingBalance?'openingBalance':String(record&&record.sourceType||'manual');return ({openingBalance:'الأرصدة الافتتاحية',invoice:'فاتورة',cash:'الخزينة',bankLine:'البنك',projectEvent:'حدث مشروع',cashCustody:'عهدة شخصية',cashCustodyTransfer:'تحويل عهدة',partnerCurrentAccountTransfer:'تحويل جاري شريك',partnerCurrentAccountExpenseCorrection:'تصحيح جاري شريك',journalRevision:'تعديل معتمد لقيد',legacyImport:'استيراد أرشيف القيود',manual:'يدوي'}[sourceType]||sourceType||'يدوي');};
 const dl=(name,txt)=>{const b=new Blob([txt],{type:'text/csv;charset=utf-8'}),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1200);};
 function FinanceModule(props){
  const {db,currentUser,rtl:rtlProp,language,workerBase,userDirectory=[],can:permissionCheck}=props;
@@ -408,7 +408,7 @@ function FinanceModule(props){
   return React.createElement(type,nextAttributes,...children.map(translateChild));
  };
 
- const financeTabAreas={inventoryMovements:'inventory',overview:"overview",journal:"journal",openingBalances:"journal",review:"review",invoices:"invoices",assignments:"assignments",partyStatements:"partyStatements",partnerCurrent:"partyStatements",masters:"masters",accounts:"accounts",centers:"centers",inventory:"inventory",cash:"cash",bank:"bank",tax:"tax",reports:"reports",accountAnalysis:"reports"};
+ const financeTabAreas={legacyImport:"journal",inventoryMovements:'inventory',overview:"overview",journal:"journal",openingBalances:"journal",review:"review",invoices:"invoices",assignments:"assignments",partyStatements:"partyStatements",partnerCurrent:"partyStatements",masters:"masters",accounts:"accounts",centers:"centers",inventory:"inventory",cash:"cash",bank:"bank",tax:"tax",reports:"reports",accountAnalysis:"reports"};
  const financeMasterAreas={parties:"masters",chartOfAccounts:"accounts",costCenters:"centers",items:"inventory",itemGroups:"inventory",warehouses:"inventory",bankAccounts:"bank",taxCodes:"tax"};
  const canFinance=(area,action="view")=>{
   if(currentUser&&currentUser.role==="admin")return true;
@@ -439,6 +439,7 @@ function FinanceModule(props){
  const [bankFile,setBankFile]=React.useState(null),[bankRows,setBankRows]=React.useState([]),[bankAccount,setBankAccount]=React.useState('1120');
  const [search,setSearch]=React.useState(''),[masterPartySearch,setMasterPartySearch]=React.useState(''),[screenTableSearch,setScreenTableSearch]=React.useState('');
  const [masterImportKind,setMasterImportKind]=React.useState('customers'),[masterImportRows,setMasterImportRows]=React.useState([]),[masterImportName,setMasterImportName]=React.useState('');
+ const [legacyImportPackage,setLegacyImportPackage]=React.useState(null),[legacyImportFileName,setLegacyImportFileName]=React.useState(""),[legacyImportProgress,setLegacyImportProgress]=React.useState(null);
  const [selectedMasterCodes,setSelectedMasterCodes]=React.useState([]);
  const [partyStatement,setPartyStatement]=React.useState({type:'account',id:''}),[partyRows,setPartyRows]=React.useState([]);
  const [partnerCurrentAccounts,setPartnerCurrentAccounts]=React.useState([]),[partnerCurrentSelectedUid,setPartnerCurrentSelectedUid]=React.useState(''),[partnerCurrentSearch,setPartnerCurrentSearch]=React.useState(''),[partnerCurrentAttachmentView,setPartnerCurrentAttachmentView]=React.useState(null);
@@ -1389,7 +1390,7 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
    return Object.assign({},line,{partyType:line.partyType||account&&account.subledgerType||"",partyId:line.partyId||""});
   });
   setJournalModal(Object.assign({},doc));
-  setJournalModalDraft({id:doc.id,sourceId:doc.sourceId||"",journalId:doc.journalId||"",type:doc.type||"journal",number:doc.number||doc.journalNumber||'',date:doc.date||today(),description:doc.description||"",reference:doc.reference||"",currency:doc.currency||"EGP",sourceType:doc.sourceType||"manual",openingBalance:doc.openingBalance===true,inventoryMovementChange:doc.inventoryMovementChange||null,projectCode:doc.projectCode||"",reversalOf:doc.reversalOf||"",revisionOf:doc.revisionOf||"",revisionNotes:doc.revisionNotes||"",pendingRevisionId:doc.pendingRevisionId||"",revisedByJournalId:doc.revisedByJournalId||"",reversalJournalId:doc.reversalJournalId||"",reversedByJournalId:doc.reversedByJournalId||"",status:doc.status||"posted",lines:normalizedLines});
+  setJournalModalDraft({id:doc.id,sourceId:doc.sourceId||"",journalId:doc.journalId||"",type:doc.type||"journal",number:doc.number||doc.journalNumber||'',date:doc.date||today(),description:doc.description||"",reference:doc.reference||"",currency:doc.currency||"EGP",sourceType:doc.sourceType||"manual",openingBalance:doc.openingBalance===true,inventoryMovementChange:doc.inventoryMovementChange||null,projectCode:doc.projectCode||"",reversalOf:doc.reversalOf||"",revisionOf:doc.revisionOf||"",revisionNotes:doc.revisionNotes||"",acknowledgeSourceWarnings:Boolean(doc.sourceWarningsAcknowledgedAt),pendingRevisionId:doc.pendingRevisionId||"",revisedByJournalId:doc.revisedByJournalId||"",reversalJournalId:doc.reversalJournalId||"",reversedByJournalId:doc.reversedByJournalId||"",status:doc.status||"posted",lines:normalizedLines});
  };
  const updateJournalModalLine=(index,key,value)=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).map((line,i)=>i===index?Object.assign({},line,{[key]:value}):line)}));
  const updateJournalModalAccount=(index,accountCode)=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).map((line,i)=>{if(i!==index)return line;const currentAccount=posting.find(item=>String(item.code)===String(line.accountCode)),nextAccount=posting.find(item=>String(item.code)===String(accountCode)),currentType=currentAccount&&currentAccount.subledgerType||line.partyType||"",nextType=nextAccount&&nextAccount.subledgerType||"",keepParty=Boolean(nextType&&currentType===nextType&&line.partyId);return Object.assign({},line,{accountCode,partyType:nextType,partyId:keepParty?line.partyId:""});})}));
@@ -1404,7 +1405,7 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
   if(missingAnalytic){setError("السطر "+(missingAnalytic.index+1)+": الحساب "+missingAnalytic.account.code+" — "+missingAnalytic.account.name+" يتطلب اختيار "+analyticPartyLabel(missingAnalytic.account.subledgerType)+". اختر الطرف من قائمة الطرف التحليلي قبل الحفظ.");return;}
   setBusy(true);setError("");
   try{
-   const result=await api("","POST",{action:"updateReviewJournal",id:draft.id,journal:{date:draft.date,description:draft.description,reference:draft.reference,revisionNotes:draft.revisionNotes||""},lines:draft.lines});
+   const result=await api("","POST",{action:"updateReviewJournal",id:draft.id,acknowledgeSourceWarnings:draft.acknowledgeSourceWarnings===true,journal:{date:draft.date,description:draft.description,reference:draft.reference,revisionNotes:draft.revisionNotes||""},lines:draft.lines});
    setNotice((result.errors||[]).length?"تم حفظ التعديلات وما زالت هناك أخطاء يجب تصحيحها قبل الاعتماد.":"تم حفظ التعديلات وإبقاء القيد في مسار المراجعة دون تغيير الأرصدة.");
    setJournalModal(null);setJournalModalDraft(null);
    if(openedFromReview){await refreshReviewQueue(true);await openReviewItem({id:draft.id});}
@@ -1455,10 +1456,11 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
      h("span",{className:"rounded-full bg-indigo-50 text-indigo-800 px-3 py-1"},"العملة: EGP")
     ),
     draft.sourceType==="journalRevision"?h("label",{className:"block text-sm font-bold"},"ملاحظات التعديل / سبب إرجاع القيد",h("textarea",{value:draft.revisionNotes||"",onChange:event=>setJournalModalDraft(old=>Object.assign({},old,{revisionNotes:event.target.value})),rows:3,disabled:!editable,className:"mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal"})):null,
+    draft.sourceType==="legacyImport"&&(draft.warnings||[]).length?h("div",{className:"rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-2"},h("b",{className:"text-amber-900"},"ملاحظات المصدر التي يجب مراجعتها قبل الاعتماد"),h("ul",{className:"list-disc pr-5 text-sm text-amber-900"},(draft.warnings||[]).map((warning,index)=>h("li",{key:index},warning))),h("label",{className:"flex items-start gap-2 text-sm font-bold text-amber-950"},h("input",{type:"checkbox",checked:Boolean(draft.acknowledgeSourceWarnings||draft.sourceWarningsAcknowledgedAt),disabled:!editable,onChange:event=>setJournalModalDraft(old=>Object.assign({},old,{acknowledgeSourceWarnings:event.target.checked}))}),"أؤكد أنني راجعت ملاحظات هذا القيد وصححت تصنيفه أو تحققت من صحته، ويمكن إرساله للمراجعة والاعتماد.")):null,
     h("div",{className:"rounded-xl border border-indigo-100 overflow-hidden"},
      h("div",{className:"flex flex-wrap items-center justify-between gap-2 bg-indigo-50 p-3"},
       h("b",null,"سطور القيد المحاسبي"),
-      button("إضافة سطر جديد",()=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).concat([{accountCode:"6100",description:"",debit:0,credit:0,costCenterId:draft.projectCode||"",projectCode:draft.projectCode||"",partyType:"",partyId:""}])})),"primary",!editable||lines.length>=(draft.openingBalance?2000:100))
+      button("إضافة سطر جديد",()=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).concat([{accountCode:"6100",description:"",debit:0,credit:0,costCenterId:draft.projectCode||"",projectCode:draft.projectCode||"",partyType:"",partyId:""}])})),"primary",!editable||lines.length>=(draft.sourceType==="legacyImport"?500:draft.openingBalance?2000:100))
      ),
      h("div",{className:"space-y-2 p-3"},lineCards.length?lineCards:h("p",{className:"text-sm text-rose-700"},"القيد لا يحتوي على سطور. أضف سطرين على الأقل.")),
      h("div",{className:"grid grid-cols-1 sm:grid-cols-3 gap-2 border-t bg-slate-50 p-3 text-sm"},
@@ -1954,9 +1956,9 @@ const submitJournal=async()=>{
    setInvoiceDecisionDoc(doc);setTab('invoices');
   };
   const nav=[
- ['overview','ملخص مالي','Financial Summary'],['journal','القيود اليومية','Journal Entries'],['openingBalances','الأرصدة الافتتاحية','Opening Balances'],['review','المراجعة والاعتماد','Review & Approval'],['invoices','فواتير العملاء والموردين','Customer & Supplier Invoices'],['assignments','الإجراءات المحولة إليّ','Tasks Assigned to Me'],['partyStatements','كشوف الحسابات والأطراف','Account & Party Statements'],['partnerCurrent','جاري الشركاء',"Partners' Current Accounts"],['masters','البيانات الأساسية والاستيراد','Master Data & Import'],['accounts','دليل الحسابات','Chart of Accounts'],['centers','مراكز التكلفة','Cost Centers'],['inventory','المخزون والأكواد','Inventory & Item Codes'],['inventoryMovements','حركة المخزن','Inventory Movements'],['cash','الخزينة والتحصيل والسداد','Cash, Receipts & Payments'],['bank','كشوف البنوك','Bank Statements'],['tax','الضرائب','Taxes'],['accountAnalysis','تحليل الحسابات','Account Analysis'],['reports','القوائم المالية','Financial Statements']
+ ['overview','ملخص مالي','Financial Summary'],['journal','القيود اليومية','Journal Entries'],['openingBalances','الأرصدة الافتتاحية','Opening Balances'],['review','المراجعة والاعتماد','Review & Approval'],['invoices','فواتير العملاء والموردين','Customer & Supplier Invoices'],['assignments','الإجراءات المحولة إليّ','Tasks Assigned to Me'],['partyStatements','كشوف الحسابات والأطراف','Account & Party Statements'],['partnerCurrent','جاري الشركاء',"Partners' Current Accounts"],['masters','البيانات الأساسية والاستيراد','Master Data & Import'],['accounts','دليل الحسابات','Chart of Accounts'],['centers','مراكز التكلفة','Cost Centers'],['inventory','المخزون والأكواد','Inventory & Item Codes'],['inventoryMovements','حركة المخزن','Inventory Movements'],['cash','الخزينة والتحصيل والسداد','Cash, Receipts & Payments'],['bank','كشوف البنوك','Bank Statements'],['tax','الضرائب','Taxes'],['accountAnalysis','تحليل الحسابات','Account Analysis'],['reports','القوائم المالية','Financial Statements'],['legacyImport','استيراد أرشيف القيود','Legacy Journal Archive Import']
  ];
- const visibleNav=nav.filter(item=>canFinance(financeTabAreas[item[0]],"view"));
+ const visibleNav=nav.filter(item=>item[0]==="legacyImport"?(currentUser&&currentUser.role==="admin"):canFinance(financeTabAreas[item[0]],"view"));
  React.useEffect(()=>{
   const area=financeTabAreas[tab];
   if(area&&!canFinance(area,"view")){
@@ -2837,6 +2839,127 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
   canMasterAction(kind,"edit")?button("تعديل",()=>editMasterRecord(kind,item),"muted",busy):null,
   canMasterAction(kind,"delete")?button("حذف",()=>deleteMasterRecord(kind,item),"danger",busy):null
  );
+
+ const readLegacyImportFile=event=>{
+  const file=event.target&&event.target.files&&event.target.files[0];
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=()=>{
+   try{
+    const parsed=JSON.parse(String(reader.result||""));
+    if(parsed.packageVersion!=="pest-legacy-journals-v1"||!Array.isArray(parsed.journals)||!parsed.masters||!parsed.sourceSummary)throw new Error("ملف الحزمة غير معروف أو غير مكتمل.");
+    const lines=parsed.journals.reduce((sum,item)=>sum+(Array.isArray(item.lines)?item.lines.length:0),0);
+    if(lines!==Number(parsed.sourceSummary.lineCount)||parsed.journals.length!==Number(parsed.sourceSummary.importGroups))throw new Error("إجمالي القيود أو السطور لا يطابق ملخص الحزمة.");
+    if(parsed.currency!=="EGP")throw new Error("الحزمة يجب أن تكون بالجنيه المصري.");
+    setLegacyImportPackage(parsed);setLegacyImportFileName(file.name||"Pest_Legacy_Import_Package.json");setLegacyImportProgress(null);setError("");
+   }catch(error){setLegacyImportPackage(null);setLegacyImportFileName("");setError(error.message||String(error));}
+  };
+  reader.onerror=()=>setError("تعذر قراءة ملف حزمة الاستيراد.");
+  reader.readAsText(file,"UTF-8");
+ };
+ const importLegacyArchive=async()=>{
+  if(!currentUser||currentUser.role!=="admin"){setError("استيراد الأرشيف متاح لمدير النظام فقط.");return;}
+  if(!legacyImportPackage||!Array.isArray(legacyImportPackage.journals)||!legacyImportPackage.journals.length){setError("اختر ملف حزمة الأرشيف الصحيح أولاً.");return;}
+  if(!window.confirm("سيتم إنشاء الحسابات الناقصة ثم حفظ جميع قيود الأرشيف كمسودات أو قيود بانتظار المراجعة. لن يتم ترحيل أي قيد تلقائيًا. القيود المتداخلة مع الفواتير والملاحظات غير المحسومة ستظل بحاجة إلى تصحيح. هل تبدأ النقل؟"))return;
+  setBusy(true);setError("");setNotice("");setLegacyImportProgress({phase:"masters",done:0,total:legacyImportPackage.journals.length,created:0,skipped:0,lines:0,pendingReview:0,needsCorrection:0});
+  try{
+   const live=await api("?resource=bootstrap"),liveChart=live.chartOfAccounts||{};
+   const sameMaster=(current,expected)=>Boolean(current&&String(current.name||"")===String(expected.name||"")&&String(current.type||"")===String(expected.type||"")&&String(current.nature||"")===String(expected.nature||"")&&String(current.parentCode||"")===String(expected.parentCode||"")&&Boolean(current.isGroup)===Boolean(expected.isGroup)&&String(current.subledgerType||"")===String(expected.subledgerType||""));
+   const importChartRows=async rows=>{
+    if(!rows.length)return;
+    await api("","POST",{action:"importMasters",kind:"chartOfAccounts",rows});
+   };
+   const missingGroups=(legacyImportPackage.masters.chartGroups||[]).filter(row=>{
+    const current=liveChart[String(row.code)];
+    if(current&&!sameMaster(current,row))throw new Error("الكود "+row.code+" موجود في البرنامج باسم أو طبيعة مختلفة؛ تم إيقاف الاستيراد لحماية الدليل.");
+    return !current;
+   });
+   await importChartRows(missingGroups);
+   const afterGroups=await api("?resource=bootstrap"),chartAfterGroups=afterGroups.chartOfAccounts||{};
+   const missingAccounts=(legacyImportPackage.masters.chartOfAccounts||[]).filter(row=>{
+    const current=chartAfterGroups[String(row.code)];
+    if(current&&!sameMaster(current,row))throw new Error("الكود "+row.code+" مستخدم حاليًا بحساب مختلف؛ لم يتم استبداله.");
+    const parent=row.parentCode&&chartAfterGroups[String(row.parentCode)];
+    if(row.parentCode&&(!parent||!parent.isGroup))throw new Error("الحساب الأب "+row.parentCode+" غير موجود أو ليس تجميعيًا للكود "+row.code+".");
+    return !current;
+   });
+   await importChartRows(missingAccounts);
+   const verified=await api("?resource=bootstrap"),verifiedChart=verified.chartOfAccounts||{};
+   const requiredCodes=new Set(legacyImportPackage.journals.flatMap(item=>(item.lines||[]).map(line=>String(line.accountCode||""))));
+   const missingCodes=[...requiredCodes].filter(code=>!verifiedChart[code]||verifiedChart[code].isGroup||verifiedChart[code].active===false);
+   if(missingCodes.length)throw new Error("توقف النقل قبل القيود: الحسابات التالية غير مهيأة أو غير قابلة للترحيل: "+missingCodes.join("، "));
+   setLegacyImportProgress({phase:"journals",done:0,total:legacyImportPackage.journals.length,created:0,skipped:0,lines:0,pendingReview:0,needsCorrection:0});
+   let done=0,created=0,skipped=0,lines=0,pendingReview=0,needsCorrection=0,batch=[];
+   const flush=async()=>{
+    if(!batch.length)return;
+    const result=await api("","POST",{action:"bulkImportJournals",batchId:"PEST-LEGACY-20261122-V1",journals:batch});
+    if(!result.success)throw new Error("لم تنجح دفعة من استيراد القيود.");
+    created+=Number(result.created||0);skipped+=Number(result.skipped||0);lines+=Number(result.totalLines||0);
+    pendingReview+=Number(result.pendingReview||0);needsCorrection+=Number(result.needsCorrection||0);
+    done+=batch.length;
+    setLegacyImportProgress({phase:"journals",done,total:legacyImportPackage.journals.length,created,skipped,lines,pendingReview,needsCorrection});
+    batch=[];
+   };
+   for(const item of legacyImportPackage.journals){
+    const itemLines=(item.lines||[]).length;
+    if(batch.length>=4||batch.reduce((sum,record)=>sum+(record.lines||[]).length,0)+itemLines>450)await flush();
+    if(itemLines>450)throw new Error("القيد "+(item.sourceJournalNumber||item.id)+" يتجاوز حد الدفعة؛ لم يتم تقسيم سطوره.");
+    batch.push(item);
+   }
+   await flush();
+   await refresh();
+   setLegacyImportProgress({phase:"complete",done:legacyImportPackage.journals.length,total:legacyImportPackage.journals.length,created,skipped,lines,pendingReview,needsCorrection});
+   setNotice("اكتمل استيراد الأرشيف: "+created+" قيد جديد، "+skipped+" قيد تم تجاوزه لأنه مستورد سابقًا، "+lines+" سطرًا. بانتظار المراجعة: "+pendingReview+"، ومسودات تحتاج تصحيحًا: "+needsCorrection+". لم يتم ترحيل أي قيد تلقائيًا.");
+  }catch(error){
+   setError(error.message||String(error));
+   setLegacyImportProgress(previous=>previous?Object.assign({},previous,{phase:"error",message:error.message||String(error)}):{phase:"error",message:error.message||String(error)});
+  }finally{setBusy(false);}
+ };
+ const renderLegacyImport=()=>{
+  const summary=legacyImportPackage&&legacyImportPackage.sourceSummary||{};
+  const imported=documents.filter(item=>item&&item.sourceType==="legacyImport");
+  const corrections=imported.filter(item=>item.status==="needs_correction");
+  const waiting=imported.filter(item=>item.status==="pending_review");
+  const correctionRows=corrections.slice().sort((a,b)=>String(a.date||"").localeCompare(String(b.date||""))).map(item=>h("tr",{key:item.id,className:"border-t"},
+   h("td",{className:"p-2 font-bold"},item.sourceJournalNumber||item.number||item.id),
+   h("td",{className:"p-2"},item.date||"—"),
+   h("td",{className:"p-2 text-end"},String((item.lines||[]).length)),
+   h("td",{className:"p-2 text-rose-700 text-xs"},(item.errors||[]).concat(item.warnings||[]).slice(0,3).join(" · ")||"مراجعة مطلوبة"),
+   h("td",{className:"p-2"},button("فتح واستكمال",()=>{setSelected(item);setTab("review");openJournalModal(item);},"muted",!canFinance("review","edit")))
+  ));
+  return h("div",{className:"space-y-4"},
+   panel("استيراد أرشيف القيود اليومية","ارفع ملف الحزمة الذي تم تجهيزه بعد مطابقة الإكسل مع نسخة قاعدة البيانات. هذه العملية تنشئ الحسابات ثم تحفظ القيود للمراجعة فقط؛ لا يتم ترحيل أي قيد.",h("div",{className:"space-y-3"},
+    h("div",{className:"rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"},"تنبيه سلامة: لا يتم استبدال حساب موجود إذا اختلف اسمه أو طبيعته، ولا يتم ربط التحليل بعميل أو موظف غير معروف. تكرار تشغيل الحزمة آمن؛ القيود المستوردة سابقًا سيتم تجاوزها بالمعرّف المرجعي نفسه."),
+    h("div",{className:"flex flex-wrap items-end gap-3"},
+     h("label",{className:"block text-sm font-bold"},"ملف حزمة الاستيراد JSON",h("input",{type:"file",accept:".json,application/json",onChange:readLegacyImportFile,className:"block mt-1 w-full rounded-lg border p-2 font-normal bg-white"})),
+     button("تنفيذ التكويد ورفع القيود",importLegacyArchive,"primary",busy||!legacyImportPackage||currentUser.role!=="admin"),
+     button("تحديث السجلات المستوردة",refresh,"muted",busy)
+    ),
+    legacyImportFileName?h("div",{className:"text-xs text-slate-500"},"الملف المحدد: "+legacyImportFileName):null,
+    legacyImportPackage?h("div",{className:"grid grid-cols-2 md:grid-cols-4 gap-3"},
+     metric("عدد السطور",String(summary.lineCount||0)),
+     metric("مجموعات القيود",String(summary.importGroups||0)),
+     metric("إجمالي المدين",moneyLabel(summary.totalDebit)),
+     metric("إجمالي الدائن",moneyLabel(summary.totalCredit)),
+     metric("حسابات جديدة",String((legacyImportPackage.masters.chartGroups||[]).length+(legacyImportPackage.masters.chartOfAccounts||[]).length)),
+     metric("قيود طويلة محفوظة كاملة",(summary.longGroups||[]).map(item=>item.sourceJournalNumber+": "+item.lineCount).join(" · ")||"—"),
+     metric("تداخلات الفواتير",String(summary.existingInvoiceOverlaps||0)),
+     metric("أسطر تحليل عميل ناقصة",String(summary.missingCustomerAnalyticRows||0))
+    ):h("div",{className:"rounded-lg border border-dashed p-5 text-sm text-slate-500"},"لم يتم اختيار حزمة استيراد بعد."),
+    legacyImportProgress?panel("حالة عملية النقل","",h("div",{className:"space-y-2 text-sm"},
+     h("div",{className:"font-bold"},({masters:"إنشاء الحسابات",journals:"نقل القيود",complete:"اكتملت عملية النقل",error:"توقفت العملية"}[legacyImportProgress.phase]||"جارٍ الفحص")),
+     h("div",null,"المجموعات المعالجة: "+(legacyImportProgress.done||0)+" / "+(legacyImportProgress.total||0)),
+     h("div",null,"القيود الجديدة: "+(legacyImportProgress.created||0)+" · المتجاوزة: "+(legacyImportProgress.skipped||0)+" · السطور: "+(legacyImportProgress.lines||0)),
+     h("div",null,"بانتظار المراجعة: "+(legacyImportProgress.pendingReview||0)+" · تحتاج تصحيحًا: "+(legacyImportProgress.needsCorrection||0)),
+     legacyImportProgress.message?h("p",{className:"text-rose-700"},legacyImportProgress.message):null
+    )):null
+   )),
+   panel("القيود المستوردة التي تحتاج استكمالًا","افتح القيد لتصحيح الحساب أو الطرف التحليلي أو تأكيد الملاحظات. لا يظهر أثرها في الأستاذ والقوائم قبل الاعتماد.",h("div",{className:"space-y-2"},
+    h("div",{className:"flex flex-wrap gap-3 text-sm font-bold"},h("span",null,"كل القيود المستوردة: "+imported.length),h("span",{className:"text-amber-700"},"تحتاج تصحيحًا: "+corrections.length),h("span",{className:"text-indigo-700"},"بانتظار المراجعة: "+waiting.length)),
+    corrections.length?table(["رقم المصدر","التاريخ","عدد السطور","ملاحظات الفحص","إجراء"],correctionRows):h("div",{className:"rounded-lg border border-dashed p-4 text-center text-sm text-slate-500"},"لا توجد قيود تحتاج تصحيحًا أو لم يتم تحديث السجلات بعد.")
+   ))
+  );
+ };
  const renderMasters=()=>{
   const config=masterImportConfig[masterImportKind];
   const preview=masterImportRows.slice(0,12);
@@ -3941,6 +4064,7 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
  if(tab==='assignments')content=renderAssignments();
  if(tab==='partyStatements')content=renderPartyStatements();
  if(tab==='partnerCurrent')content=renderPartnerCurrent();
+ if(tab==='legacyImport')content=renderLegacyImport();
  if(tab==='masters')content=renderMasters();
  if(tab==='accounts')content=renderMaster('accounts');
  if(tab==='centers')content=h('div',{className:'space-y-4'},renderMaster('centers'),renderCostCenterAnalysis());
