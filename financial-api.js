@@ -1447,7 +1447,8 @@ export async function handleFinancialRequest(ctx){
   if(Object.prototype.hasOwnProperty.call(editable,"revisionNotes"))next.revisionNotes=txt(editable.revisionNotes,2000);
   next.currency="EGP";
   if(Array.isArray(body.lines)){
-   if(body.lines.length>100)throw new Error("لا يمكن أن يحتوي القيد على أكثر من 100 سطر.");
+   const maxLines=previous.openingBalance===true?2000:100;
+   if(body.lines.length>maxLines)throw new Error("لا يمكن أن يحتوي هذا القيد على أكثر من "+maxLines+" سطر.");
    next.lines=body.lines.map((line,index)=>{
     if(!line||typeof line!=="object"||Array.isArray(line))throw new Error("بيانات السطر "+(index+1)+" غير صحيحة.");
     const row={
@@ -1473,6 +1474,50 @@ export async function handleFinancialRequest(ctx){
   updates["audit/"+uid("AUD")]={action:"update_review_journal",documentId:docId,sourceType:next.sourceType||"manual",lineCountBefore:(previous.lines||[]).length,lineCountAfter:(next.lines||[]).length,errors:next.errors,uid:claims.sub,createdAt:now};
   await adminPatch(updates);
   return {success:true,id:docId,status:next.status,errors:next.errors,balance:next.balance};
+ }
+ if(action==="submitOpeningBalances"){
+  requireFinanceArea("journal","add");
+  const openingDate=date(body.date),configuredStart=String(await adminRead("settings/accountingStartMonth")||"");
+  if(/^(\d{4})-(\d{2})$/.test(configuredStart)&&openingDate>=configuredStart+"-01")throw new Error("يجب أن يسبق تاريخ الأرصدة الافتتاحية بداية الفترة المحاسبية ("+configuredStart+"-01).");
+  const [chart,centers,allJournals,allDocuments]=await Promise.all([
+   adminRead("chartOfAccounts"),adminRead("costCenters"),adminRead("journals"),adminRead("documents")
+  ]);
+  const existing=[...Object.values(allJournals||{}),...Object.values(allDocuments||{})].find(record=>record&&(record.openingBalance===true||record.sourceType==="openingBalance")&&!["cancelled","deleted","rejected"].includes(String(record.status||"")));
+  if(existing)throw new Error("تم إنشاء قيد الأرصدة الافتتاحية بالفعل برقم "+String(existing.number||existing.id)+". لا يمكن إنشاء قيد افتتاحي مكرر.");
+  if(!Array.isArray(body.lines)||!body.lines.length)throw new Error("أدخل رصيد حساب واحدًا على الأقل.");
+  if(body.lines.length>1999)throw new Error("لا يمكن أن يتجاوز الإدخال 1,999 سطرًا قبل إضافة الحساب الموازن.");
+  const openingLines=body.lines.map((line,index)=>{
+   if(!line||typeof line!=="object"||Array.isArray(line))throw new Error("بيانات السطر "+(index+1)+" غير صحيحة.");
+   const accountCode=txt(line.accountCode||"",32);
+   if(accountCode==="3100")throw new Error("الحساب 3100 يُضاف تلقائيًا لموازنة الأرصدة الافتتاحية ولا يُدخل يدويًا.");
+   const row={
+    accountCode,description:txt(line.description||"رصيد افتتاحي",250),
+    debit:line.debit===""||line.debit===undefined||line.debit===null?0:num(line.debit),
+    credit:line.credit===""||line.credit===undefined||line.credit===null?0:num(line.credit)
+   };
+   for(const key of ["costCenterId","projectCode","partyType","partyId"])if(Object.prototype.hasOwnProperty.call(line,key))row[key]=txt(line[key]||"",120);
+   return row;
+  }).filter(line=>line.debit>0||line.credit>0);
+  if(!openingLines.length)throw new Error("إجمالي الأرصدة المدخلة يساوي صفرًا.");
+  const initialBalance=balance(openingLines),offset=initialBalance.difference,openingAccount=(chart||{})["3100"];
+  if(Math.abs(offset)>0.01&&(!openingAccount||openingAccount.isGroup||openingAccount.active===false||openingAccount.type!=="equity"))throw new Error("حساب 3100 — رأس المال والأرصدة الافتتاحية غير موجود أو غير نشط أو غير قابل للترحيل.");
+  if(Math.abs(offset)>0.01)openingLines.push({accountCode:"3100",description:"حساب موازن للأرصدة الافتتاحية",debit:offset< -0.01?Math.abs(offset):0,credit:offset>0.01?offset:0});
+  const journalId=uid("OPENING"),journal={
+   id:journalId,number:journalNumberFor(openingDate,journalId),type:"journal",sourceType:"manual",openingBalance:true,
+   date:openingDate,description:txt(body.description||"قيد الأرصدة الافتتاحية",500),
+   reference:txt(body.reference||("OPENING-"+openingDate),120),currency:"EGP",
+   lines:normalizeJournalAnalyticLines(openingLines,chart||{}),createdAt:now,createdBy:claims.sub,
+   createdByName:txt(profile.fullName||profile.username||profile.email,120),status:"pending_review"
+  };
+  const validation=validateJournal(journal,chart||{},centers||{});
+  if(validation.errors.length)throw new Error("تعذر إنشاء قيد الأرصدة الافتتاحية: "+validation.errors.join("؛ "));
+  journal.balance=validation.balance;journal.errors=[];
+  const updates={};
+  updates["documents/"+journalId]=journal;
+  updates["reviewQueue/"+journalId]=reviewRecord(journal);
+  updates["audit/"+uid("AUD")]={action:"submit_opening_balances",documentId:journalId,sourceType:"manual",openingBalance:true,lineCount:journal.lines.length,uid:claims.sub,createdAt:now};
+  await adminPatch(updates);
+  return {success:true,id:journalId,number:journal.number,status:journal.status,balance:journal.balance,openingBalance:true};
  }
  if(action==="submitJournal"){
    const journalId=id(body.id||uid("DOC"));let previous=null,postedRecord=null;

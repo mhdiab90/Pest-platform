@@ -29,7 +29,8 @@ test("all shared financial sections have individual collapse and expand buttons"
   assert.match(source, /const \[collapsedPanels,setCollapsedPanels\]=React\.useState\(\{\}\)/);
   assert.match(source, /const panel=\(title,sub,child\)=>\{/);
   assert.match(source, /aria-expanded':!collapsed/);
-  assert.match(source, /setCollapsedPanels\(previous=>Object\.assign\(\{\},previous,\{\[panelKey\]:!previous\[panelKey\]\}\)\)/);
+  assert.match(source, /collapsedPanels\[panelKey\]===undefined\?true:Boolean\(collapsedPanels\[panelKey\]\)/);
+  assert.match(source, /setCollapsedPanels\(previous=>Object\.assign\(\{\},previous,\{\[panelKey\]:!collapsed\}\)\)/);
   assert.match(source, /collapsed\?null:h\('div',\{className:'mt-3 min-w-0'\},child\)/);
   assert.match(source, /collapsed\?t\('إظهار القسم','Show section'\):t\('إخفاء القسم','Hide section'\)/);
 });
@@ -167,3 +168,30 @@ test("journal entry account, cost center and analytic party fields support typin
 });
 
 
+
+test("opening balances screen supports account and analytical party balances with one reviewable journal", () => {
+  assert.match(source, /\['openingBalances','الأرصدة الافتتاحية','Opening Balances'\]/);
+  assert.match(source, /const renderOpeningBalances=\(\)=>\{/);
+  assert.match(source, /openingAnalyticOptions\(detailAccount\.subledgerType/);
+  assert.match(source, /partyType:account\.subledgerType,partyId:String\(detail\.partyId\)/);
+  assert.match(source, /action:"submitOpeningBalances"/);
+  assert.match(source, /حساب موازن تلقائي/);
+  assert.match(source, /if\(tab==='openingBalances'\)content=renderOpeningBalances\(\)/);
+});
+
+test("journal entry form compacts details and places line labels beside the account selector", () => {
+  assert.match(source, /md:col-span-8.*field\('البيان'/);
+  assert.match(source, /'السطر '\+\(index\+1\)/);
+  assert.match(source, /panel\('سطور القيد','',/);
+  assert.doesNotMatch(source, /panel\('سطور القيد','يجب أن يتساوى المدين والدائن\.'/);
+});
+
+test("searchable financial dropdowns close when clicking outside their picker", () => {
+  assert.match(source, /document\.addEventListener\('pointerdown',closeFinancePickers,true\)/);
+  assert.match(source, /data-finance-picker-root':'true'/);
+});
+
+test("daily journal rows show green posted and red cancelled status badges", () => {
+  assert.match(source, /border-emerald-200 bg-emerald-50 text-emerald-700/);
+  assert.match(source, /border-rose-200 bg-rose-50 text-rose-700/);
+});
