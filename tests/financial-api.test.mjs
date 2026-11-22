@@ -1452,8 +1452,8 @@ test("unposting an invoice journal returns its invoice to review and removes sto
   const invoiceId="UNPOST-INVOICE-SOURCE-01",journalId="UNPOST-INVOICE-JOURNAL-01";
   const lines=[{accountCode:"1300",debit:1000,credit:0,description:"Stock"},{accountCode:"1410",debit:140,credit:0,description:"Input VAT"},{accountCode:"281",debit:0,credit:1140,partyType:"vendor",partyId:"UNPOST-VENDOR"}];
   write("documents/"+invoiceId,{id:invoiceId,type:"invoice",invoiceType:"purchase",status:"posted",date:"2026-11-18",number:"PUR-UNPOST-01",partyId:"UNPOST-VENDOR",partyName:"Supplier",fingerprint:"FP-UNPOST-01",totals:{net:1000,vat:140,total:1140},lines:[{description:"Stock item",kind:"stock",itemCode:"ITEM-UNPOST-01",quantity:2,unitPrice:500}],journalId});
-  write("journals/"+journalId,{id:journalId,type:"journal",status:"posted",date:"2026-11-18",sourceType:"invoice",sourceId:invoiceId,lines});
-  write("documents/"+journalId,{id:journalId,type:"journal",status:"posted",date:"2026-11-18",sourceType:"invoice",sourceId:invoiceId,lines});
+  // Invoice-generated journals live only under journals/ and historically omit type.
+  write("journals/"+journalId,{id:journalId,status:"posted",date:"2026-11-18",sourceType:"invoice",sourceId:invoiceId,lines});
   write("inventory/balances/default/ITEM-UNPOST-01",{quantity:2,value:1000,averageCost:500});
   write("inventory/movements/MOV-UNPOST-01",{id:"MOV-UNPOST-01",date:"2026-11-18",invoiceId,journalId,itemCode:"ITEM-UNPOST-01",warehouseCode:"default",kind:"purchase",quantity:2,unitCost:500,value:1000,createdAt:100});
   write("sourceLocks/invoice_"+invoiceId,{journalId});
@@ -2010,8 +2010,7 @@ test("deleting a posted invoice-source journal directly cancels its source and r
   await invoke("GET","?resource=bootstrap");
   const invoiceId="INVOICE-SOURCE-DELETE-01",journalId="INVOICE-SOURCE-JOURNAL-DELETE-01";
   write("documents/"+invoiceId,{id:invoiceId,type:"invoice",invoiceType:"purchase",status:"posted",date:"2026-11-18",number:"PUR-DELETE-SOURCE-01",partyId:"VENDOR-DELETE-SOURCE",fingerprint:"FP-DELETE-SOURCE",totals:{net:1000,vat:140,total:1140},lines:[{description:"Stock item",kind:"stock",itemCode:"ITEM-DELETE-SOURCE",quantity:2,unitPrice:500}],journalId});
-  write("journals/"+journalId,{id:journalId,type:"journal",status:"posted",date:"2026-11-18",sourceType:"invoice",sourceId:invoiceId,lines:[{accountCode:"1300",debit:1000,credit:0},{accountCode:"1410",debit:140,credit:0},{accountCode:"281",debit:0,credit:1140,partyType:"vendor",partyId:"VENDOR-DELETE-SOURCE"}]});
-  write("documents/"+journalId,{id:journalId,type:"journal",status:"posted",date:"2026-11-18",sourceType:"invoice",sourceId:invoiceId,lines:[{accountCode:"1300",debit:1000,credit:0},{accountCode:"1410",debit:140,credit:0},{accountCode:"281",debit:0,credit:1140,partyType:"vendor",partyId:"VENDOR-DELETE-SOURCE"}]});
+  write("journals/"+journalId,{id:journalId,status:"posted",date:"2026-11-18",sourceType:"invoice",sourceId:invoiceId,lines:[{accountCode:"1300",debit:1000,credit:0},{accountCode:"1410",debit:140,credit:0},{accountCode:"281",debit:0,credit:1140,partyType:"vendor",partyId:"VENDOR-DELETE-SOURCE"}]});
   write("inventory/balances/default/ITEM-DELETE-SOURCE",{quantity:2,value:1000,averageCost:500});
   write("inventory/movements/MOV-DELETE-SOURCE",{id:"MOV-DELETE-SOURCE",date:"2026-11-18",invoiceId,journalId,itemCode:"ITEM-DELETE-SOURCE",warehouseCode:"default",kind:"purchase",quantity:2,unitCost:500,value:1000,createdAt:100});
   write("sourceLocks/invoice_"+invoiceId,{journalId});
@@ -2075,10 +2074,9 @@ test("deleting an invoice and its already-posted reversing journal does not chan
   const originalLines=[{accountCode:"1300",debit:1000,credit:0},{accountCode:"281",debit:0,credit:1000,partyType:"vendor",partyId:"VENDOR-ALREADY-REVERSED"}];
   const reversalLines=[{accountCode:"1300",debit:0,credit:1000},{accountCode:"281",debit:1000,credit:0,partyType:"vendor",partyId:"VENDOR-ALREADY-REVERSED"}];
   write("documents/"+invoiceId,{id:invoiceId,type:"invoice",invoiceType:"purchase",status:"reversed",date:"2026-11-12",number:"PUR-ALREADY-REVERSED",partyId:"VENDOR-ALREADY-REVERSED",lines:[{description:"Stock",kind:"stock",itemCode:"ITEM-ALREADY-REVERSED",quantity:2,unitPrice:500}],journalId:originalId,reversedByJournalId:reversalId});
-  write("journals/"+originalId,{id:originalId,type:"journal",status:"posted",date:"2026-11-12",sourceType:"invoice",sourceId:invoiceId,reversalJournalId:reversalId,reversedByJournalId:reversalId,lines:originalLines});
-  write("documents/"+originalId,{id:originalId,type:"journal",status:"posted",date:"2026-11-12",sourceType:"invoice",sourceId:invoiceId,reversalJournalId:reversalId,reversedByJournalId:reversalId,lines:originalLines});
-  write("journals/"+reversalId,{id:reversalId,type:"journal",status:"posted",date:"2026-11-13",sourceType:"manual",reversalOf:originalId,lines:reversalLines});
-  write("documents/"+reversalId,{id:reversalId,type:"journal",status:"posted",date:"2026-11-13",sourceType:"manual",reversalOf:originalId,lines:reversalLines});
+  // Source-generated and linked posted entries can be stored only in journals/ without type.
+  write("journals/"+originalId,{id:originalId,status:"posted",date:"2026-11-12",sourceType:"invoice",sourceId:invoiceId,reversalJournalId:reversalId,reversedByJournalId:reversalId,lines:originalLines});
+  write("journals/"+reversalId,{id:reversalId,status:"posted",date:"2026-11-13",sourceType:"manual",reversalOf:originalId,lines:reversalLines});
   write("inventory/balances/default/ITEM-ALREADY-REVERSED",{quantity:3,value:1500,averageCost:500});
   write("inventory/movements/MOV-ALREADY-REVERSED",{id:"MOV-ALREADY-REVERSED",date:"2026-11-12",invoiceId,journalId:originalId,itemCode:"ITEM-ALREADY-REVERSED",warehouseCode:"default",kind:"purchase",quantity:2,unitCost:500,value:1000,reversedByJournalId:reversalId,createdAt:100});
   const result=await invoke("POST","",{action:"deleteJournal",id:originalId,reason:"remove invoice and its posted reversal"});
@@ -2132,8 +2130,7 @@ test("deleting a source invoice journal is not blocked by later stock movements 
   await invoke("GET","?resource=bootstrap");
   const invoiceId="INVOICE-SOURCE-DELETE-LATER-01",journalId="INVOICE-SOURCE-JOURNAL-DELETE-LATER-01";
   write("documents/"+invoiceId,{id:invoiceId,type:"invoice",invoiceType:"purchase",status:"posted",date:"2026-11-10",number:"PUR-DELETE-LATER-01",partyId:"VENDOR-DELETE-LATER",lines:[{description:"Stock item",kind:"stock",itemCode:"ITEM-DELETE-LATER",quantity:2,unitPrice:500}],journalId});
-  write("documents/"+journalId,{id:journalId,type:"journal",status:"posted",date:"2026-11-10",sourceType:"invoice",sourceId:invoiceId,lines:[{accountCode:"1300",debit:1000,credit:0},{accountCode:"1410",debit:140,credit:0},{accountCode:"281",debit:0,credit:1140,partyType:"vendor",partyId:"VENDOR-DELETE-LATER"}]});
-  write("journals/"+journalId,{id:journalId,type:"journal",status:"posted",date:"2026-11-10",sourceType:"invoice",sourceId:invoiceId,lines:[{accountCode:"1300",debit:1000,credit:0},{accountCode:"1410",debit:140,credit:0},{accountCode:"281",debit:0,credit:1140,partyType:"vendor",partyId:"VENDOR-DELETE-LATER"}]});
+  write("journals/"+journalId,{id:journalId,status:"posted",date:"2026-11-10",sourceType:"invoice",sourceId:invoiceId,lines:[{accountCode:"1300",debit:1000,credit:0},{accountCode:"1410",debit:140,credit:0},{accountCode:"281",debit:0,credit:1140,partyType:"vendor",partyId:"VENDOR-DELETE-LATER"}]});
   write("inventory/balances/default/ITEM-DELETE-LATER",{quantity:1,value:500,averageCost:500});
   write("inventory/movements/MOV-DELETE-LATER-SOURCE",{id:"MOV-DELETE-LATER-SOURCE",date:"2026-11-10",invoiceId,journalId,itemCode:"ITEM-DELETE-LATER",warehouseCode:"default",kind:"purchase",quantity:2,unitCost:500,value:1000,createdAt:100});
   write("inventory/movements/MOV-DELETE-LATER-SALE",{id:"MOV-DELETE-LATER-SALE",date:"2026-11-11",invoiceId:"LATER-SALE",journalId:"LATER-SALE-JOURNAL",itemCode:"ITEM-DELETE-LATER",warehouseCode:"default",kind:"sale",quantity:-1,unitCost:500,value:-500,createdAt:200});
