@@ -658,11 +658,9 @@ export async function handleFinancialRequest(ctx){
    const postedJournalMonths=Object.entries(sourceJournals).filter(([key,value])=>
     value&&typeof value==="object"&&value.status==="posted"&&/^\\d{4}-\\d{2}-\\d{2}$/.test(String(value.date||""))
    ).map(([key,value])=>month(value.date));
-   const earliestPostedMonth=postedJournalMonths.sort()[0]||"";
+   const earliestPostedMonth=postedJournalMonths.filter(value=>value<=to).sort()[0]||"";
    const configuredMonth=/^\\d{4}-\\d{2}$/.test(configuredStart)?configuredStart:"";
-   const balanceFrom=configuredMonth
-    ?(earliestPostedMonth&&earliestPostedMonth<configuredMonth?earliestPostedMonth:configuredMonth)
-    :(earliestPostedMonth||from);
+   const balanceFrom=[configuredMonth,earliestPostedMonth,from].filter(Boolean).sort()[0]||from;
    if(!/^\d{4}-\d{2}$/.test(balanceFrom))throw new Error("تاريخ بداية الدفاتر المحاسبية غير مضبوط. راجع إعدادات النظام المالي.");
    const startDate=new Date(balanceFrom+"-01T00:00:00Z"),fromDate=new Date(from+"-01T00:00:00Z"),toDate=new Date(to+"-01T00:00:00Z");
    const diff=(toDate.getUTCFullYear()-startDate.getUTCFullYear())*12+toDate.getUTCMonth()-startDate.getUTCMonth();
