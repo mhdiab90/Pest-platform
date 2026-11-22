@@ -468,12 +468,12 @@ export async function handleFinancialRequest(ctx){
     if(Object.keys(taxUpdates).length)await adminPatch(taxUpdates);
     const accountingStartMonth=await adminRead("settings/accountingStartMonth");
     if(!accountingStartMonth){
-     const postedJournals=Object.values((await adminRead("journals"))||{}).filter(j=>j&&j.status==="posted"&&/^\\d{4}-\\d{2}-\\d{2}$/.test(String(j.date||"")));
+     const postedJournals=Object.values((await adminRead("journals"))||{}).filter(j=>j&&j.status==="posted"&&/^\d{4}-\d{2}-\d{2}$/.test(String(j.date||"")));
      // Older installations may hold posted entries only in periods/{YYYY-MM}/entries.
      // Include those periods when initializing the accounting start month.
      const existingPeriodTree=(await adminRead("periods"))||{};
      const legacyPeriodMonths=Object.entries(existingPeriodTree).flatMap(([monthKey,period])=>{
-      if(!/^\\d{4}-\\d{2}$/.test(monthKey)||!period||typeof period!=="object")return [];
+      if(!/^\d{4}-\d{2}$/.test(monthKey)||!period||typeof period!=="object")return [];
       return Object.values(period.entries||{}).some(entry=>entry&&entry.status==="posted")?[monthKey]:[];
      });
      const earliestMonth=[...postedJournals.map(j=>String(j.date).slice(0,7)),...legacyPeriodMonths].sort()[0]||new Date().toISOString().slice(0,7);
@@ -599,9 +599,9 @@ export async function handleFinancialRequest(ctx){
   if(res==="bank"){requireFinanceArea("bank","view");return {items:(await adminRead("bankImports"))||{},accounts:(await adminRead("bankAccounts"))||{}};}
   if(res==="periods"){if(!hasFinanceArea("reports","view")&&!hasFinanceArea("overview","view")&&!hasFinanceArea("centers","view")&&!hasFinanceArea("tax","view"))throw new Error("ليس لديك صلاحية عرض التقارير المالية.");
    const from=txt(url.searchParams.get("from")||new Date().toISOString().slice(0,7),7),to=txt(url.searchParams.get("to")||from,7);
-   if(!/^\\d{4}-\\d{2}$/.test(from)||!/^\\d{4}-\\d{2}$/.test(to))throw new Error("Invalid financial period.");
+   if(!/^\d{4}-\d{2}$/.test(from)||!/^\d{4}-\d{2}$/.test(to))throw new Error("Invalid financial period.");
    const configuredStart=await adminRead("settings/accountingStartMonth"),balanceFrom=String(configuredStart||from);
-   if(!/^\\d{4}-\\d{2}$/.test(balanceFrom))throw new Error("تاريخ بداية الدفاتر المحاسبية غير مضبوط. راجع إعدادات النظام المالي.");
+   if(!/^\d{4}-\d{2}$/.test(balanceFrom))throw new Error("تاريخ بداية الدفاتر المحاسبية غير مضبوط. راجع إعدادات النظام المالي.");
    const startDate=new Date(balanceFrom+"-01T00:00:00Z"),fromDate=new Date(from+"-01T00:00:00Z"),toDate=new Date(to+"-01T00:00:00Z");
    const diff=(toDate.getUTCFullYear()-startDate.getUTCFullYear())*12+toDate.getUTCMonth()-startDate.getUTCMonth();
    const periodDiff=(toDate.getUTCFullYear()-fromDate.getUTCFullYear())*12+toDate.getUTCMonth()-fromDate.getUTCMonth();
@@ -611,7 +611,7 @@ export async function handleFinancialRequest(ctx){
    // trees are derived indexes and may be incomplete for older posted entries.
    const sourceJournals=(await adminRead("journals"))||{},canonicalByMonth=new Map();
    Object.entries(sourceJournals).forEach(([key,value])=>{
-    if(!value||typeof value!=="object"||value.status!=="posted"||!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(value.date||"")))return;
+    if(!value||typeof value!=="object"||value.status!=="posted"||!/^\d{4}-\d{2}-\d{2}$/.test(String(value.date||"")))return;
     const journalId=String(value.id||key),monthKey=month(value.date);
     if(monthKey<balanceFrom||monthKey>to)return;
     const number=value.number||journalNumberFor(value.date,journalId);
@@ -625,7 +625,7 @@ export async function handleFinancialRequest(ctx){
     const stored=(await adminRead("periods/"+m+"/entries"))||{},merged=new Map();
     Object.entries(stored).forEach(([key,value])=>{
      const entryPath="periods/"+m+"/entries/"+key;
-     if(!value||typeof value!=="object"||value.status!=="posted"||!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(value.date||"")))return;
+     if(!value||typeof value!=="object"||value.status!=="posted"||!/^\d{4}-\d{2}-\d{2}$/.test(String(value.date||"")))return;
      const journalId=String(value.id||key);
      if(month(value.date)!==m){repairUpdates[entryPath]=null;return;}
      const previous=merged.get(journalId);
@@ -692,7 +692,7 @@ export async function handleFinancialRequest(ctx){
    Object.entries(stored).forEach(([monthKey,periodRows])=>{merged[monthKey]=Object.assign({},periodRows||{});});
    const sourceJournals=(await adminRead("journals"))||{};
    Object.entries(sourceJournals).forEach(([journalKey,journal])=>{
-    if(!journal||typeof journal!=="object"||journal.status!=="posted"||!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(journal.date||"")))return;
+    if(!journal||typeof journal!=="object"||journal.status!=="posted"||!/^\d{4}-\d{2}-\d{2}$/.test(String(journal.date||"")))return;
     const journalId=String(journal.id||journalKey),monthKey=month(journal.date);
     (Array.isArray(journal.lines)?journal.lines:[]).forEach((line,index)=>{
      if(String(line.partyType||"")!==requested||String(line.partyId||"")!==partyId)return;
