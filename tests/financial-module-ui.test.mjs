@@ -86,3 +86,10 @@ test("financial reports validate critical balance-sheet and tax control account 
   assert.match(source, /const criticalAccountMismatchCount=/);
   assert.match(source, /criticalAccountIntegrityPanel\(\)/);
 });
+
+
+test("inventory balances and movement rows are both loaded into financial module state", () => {
+  assert.match(source, /setMaster\(previous=>Object\.assign\(\{\},previous,\{inventory:Object\.assign\(\{\},previous\.inventory\|\|\{\},\{\.\.\.inventory,balances:inventory\.balances\|\|previous\.inventory&&previous\.inventory\.balances\|\|\{\},movements:inventory\.movements\|\|\{\}\}\)\}\)\)/);
+  assert.match(source, /tab==='inventory'\|\|tab==='inventoryMovements'\|\|\(tab==='reports'&&report==='balance'\)/);
+  assert.match(source, /const warehouseBalances=master\.inventory&&master\.inventory\.balances\|\|\{\}/);
+});
