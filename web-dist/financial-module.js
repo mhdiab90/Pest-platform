@@ -421,7 +421,7 @@ function FinanceModule(props){
  const financeAreaForMaster=kind=>financeMasterAreas[kind]||"masters";
  const [tab,setTab]=React.useState('overview'),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[notice,setNotice]=React.useState('');
  const [master,setMaster]=React.useState({chartOfAccounts:{},costCenters:{},items:{},itemGroups:{},warehouses:{},bankAccounts:{},taxCodes:{},parties:{},settings:{},inventory:{balances:{}}});
- const [inventoryMovements,setInventoryMovements]=React.useState([]);
+ const [inventoryMovements,setInventoryMovements]=React.useState([]),[inventoryMovementModal,setInventoryMovementModal]=React.useState(null);
  const [documents,setDocuments]=React.useState([]),[journalRecords,setJournalRecords]=React.useState([]),[review,setReview]=React.useState([]),[periodJournals,setPeriodJournals]=React.useState([]),[balanceJournals,setBalanceJournals]=React.useState([]),[accountingStartMonth,setAccountingStartMonth]=React.useState('');
  const [journalModal,setJournalModal]=React.useState(null),[journalModalDraft,setJournalModalDraft]=React.useState(null);
  const [clients,setClients]=React.useState([]),[vendors,setVendors]=React.useState([]),[projects,setProjects]=React.useState([]);
@@ -1389,7 +1389,7 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
    return Object.assign({},line,{partyType:line.partyType||account&&account.subledgerType||"",partyId:line.partyId||""});
   });
   setJournalModal(Object.assign({},doc));
-  setJournalModalDraft({id:doc.id,sourceId:doc.sourceId||"",journalId:doc.journalId||"",type:doc.type||"journal",number:doc.number||doc.journalNumber||'',date:doc.date||today(),description:doc.description||"",reference:doc.reference||"",currency:doc.currency||"EGP",sourceType:doc.sourceType||"manual",openingBalance:doc.openingBalance===true,projectCode:doc.projectCode||"",reversalOf:doc.reversalOf||"",revisionOf:doc.revisionOf||"",revisionNotes:doc.revisionNotes||"",pendingRevisionId:doc.pendingRevisionId||"",revisedByJournalId:doc.revisedByJournalId||"",reversalJournalId:doc.reversalJournalId||"",reversedByJournalId:doc.reversedByJournalId||"",status:doc.status||"posted",lines:normalizedLines});
+  setJournalModalDraft({id:doc.id,sourceId:doc.sourceId||"",journalId:doc.journalId||"",type:doc.type||"journal",number:doc.number||doc.journalNumber||'',date:doc.date||today(),description:doc.description||"",reference:doc.reference||"",currency:doc.currency||"EGP",sourceType:doc.sourceType||"manual",openingBalance:doc.openingBalance===true,inventoryMovementChange:doc.inventoryMovementChange||null,projectCode:doc.projectCode||"",reversalOf:doc.reversalOf||"",revisionOf:doc.revisionOf||"",revisionNotes:doc.revisionNotes||"",pendingRevisionId:doc.pendingRevisionId||"",revisedByJournalId:doc.revisedByJournalId||"",reversalJournalId:doc.reversalJournalId||"",reversedByJournalId:doc.reversedByJournalId||"",status:doc.status||"posted",lines:normalizedLines});
  };
  const updateJournalModalLine=(index,key,value)=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).map((line,i)=>i===index?Object.assign({},line,{[key]:value}):line)}));
  const updateJournalModalAccount=(index,accountCode)=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).map((line,i)=>{if(i!==index)return line;const currentAccount=posting.find(item=>String(item.code)===String(line.accountCode)),nextAccount=posting.find(item=>String(item.code)===String(accountCode)),currentType=currentAccount&&currentAccount.subledgerType||line.partyType||"",nextType=nextAccount&&nextAccount.subledgerType||"",keepParty=Boolean(nextType&&currentType===nextType&&line.partyId);return Object.assign({},line,{accountCode,partyType:nextType,partyId:keepParty?line.partyId:""});})}));
@@ -1415,7 +1415,7 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
  };
  const renderReviewJournalEditor=()=>{
   if(tab!=="review"||!journalModal||!journalModalDraft)return null;
-  const draft=journalModalDraft,editable=draft.type==="journal"&&["pending_review","needs_correction"].includes(draft.status)&&canFinance("review","edit");
+  const draft=journalModalDraft,editable=draft.type==="journal"&&["pending_review","needs_correction"].includes(draft.status)&&canFinance("review","edit")&&!draft.inventoryMovementChange;
   const lines=Array.isArray(draft.lines)?draft.lines:[];
   const debit=lines.reduce((sum,line)=>sum+n(line.debit),0),credit=lines.reduce((sum,line)=>sum+n(line.credit),0),difference=debit-credit;
   const editLine=(index,key,value)=>updateJournalModalLine(index,key,value);
@@ -2043,7 +2043,7 @@ const renderJournal = function() {
    });
    const draftsPanel=panel('سجل القيود اليومية الموحد','يعرض القيود اليدوية والقيود المرحّلة الناتجة عن فواتير العملاء والموردين والخزينة والبنوك، إضافة إلى قيود أحداث المشروعات والعهد. اضغط أي صف لفتح تفاصيله. التعديل المباشر متاح للقيود اليدوية ومسودات أحداث المشروع والعهد داخل المراجعة، والقيود المرحّلة من المصادر الأخرى تُعالج من المستند الأصلي أو بقيد عكسي.',table(['رقم القيد','التاريخ','البيان','المصدر','الحالة','مدين','دائن','إجراء'],draftRows,{maxHeight:'min(58dvh, 560px)',minHeight:'180px',overflowY:'auto',overscrollBehavior:'auto',overscrollBehaviorY:'auto',scrollbarGutter:'stable'}));
    const modal=journalModal&&journalModalDraft?(()=>{
-    const draft=journalModalDraft,manual=!draft.sourceType||draft.sourceType==='manual',posted=draft.status==='posted'||journalRecords.some(x=>x.id===draft.id&&x.status==='posted'),reviewEditable=draft.type==='journal'&&['pending_review','needs_correction'].includes(draft.status);
+    const draft=journalModalDraft,manual=!draft.sourceType||draft.sourceType==='manual',posted=draft.status==='posted'||journalRecords.some(x=>x.id===draft.id&&x.status==='posted'),reviewEditable=draft.type==='journal'&&['pending_review','needs_correction'].includes(draft.status)&&!draft.inventoryMovementChange;
     const editable=reviewEditable,modalDebit=(draft.lines||[]).reduce((sum,line)=>sum+n(line.debit),0),modalCredit=(draft.lines||[]).reduce((sum,line)=>sum+n(line.credit),0);
     const modalLines=(draft.lines||[]).map((line,index)=>{
      const account=accounts.find(x=>String(x.code)===String(line.accountCode))||{},analyticType=account.subledgerType||line.partyType||'';
@@ -2682,36 +2682,114 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
   const detailsPanel=panel('تفاصيل الأصناف والإصدارات','الرصيد والتكلفة محفوظان على مستوى كود الصنف والإصدار والمخزن.',table(['الكود','الصنف','المجموعة','الإصدار','الوحدة','المخزن','الكمية','متوسط التكلفة','القيمة'],stockRows));
   return h('div',{className:'space-y-4'},groupPanel,detailsPanel);
  };
+ const openInventoryMovementEditor=movement=>{
+  setInventoryMovementModal({mode:"editMovement",movementId:movement.id,itemCode:movement.itemCode,warehouseCode:movement.warehouseCode||"default",
+   date:movement.date||today(),kind:movement.kind==="sale"?"sale":"purchase",quantity:String(Math.abs(n(movement.quantity))),value:String(Math.abs(n(movement.value))});
+ };
+ const openInventoryBalanceEditor=(itemCode,warehouseCode,stock)=>{
+  setInventoryMovementModal({mode:"setBalance",itemCode,warehouseCode:warehouseCode||"default",date:today(),quantity:String(n(stock&&stock.quantity)),value:String(n(stock&&stock.value))});
+ };
+ const submitInventoryChange=async form=>{
+  if(!form||busy)return;
+  if(form.mode!=="deleteMovement"&&(!String(form.quantity??"").trim()||!String(form.value??"").trim())){setError("أدخل الكمية والقيمة قبل الحفظ.");return;}
+  setBusy(true);setError("");setNotice("");
+  try{
+   const result=await api("","POST",{action:"changeInventoryMovement",mode:form.mode,movementId:form.movementId,itemCode:form.itemCode,
+    warehouseCode:form.warehouseCode,date:form.date,kind:form.kind,quantity:form.quantity,value:form.value,
+    description:form.mode==="setBalance"?"تسوية رصيد المخزون من شاشة المخزون":"تعديل حركة مخزون"});
+   setInventoryMovementModal(null);
+   if(result.pendingReview)setNotice("تم إرسال تسوية المخزون إلى المراجعة بقيد رقم "+(result.number||result.id)+". لن يتغير الرصيد إلا بعد الاعتماد.");
+   else setNotice("تم تحديث حركة المخزون والرصيد بنجاح.");
+   await refresh();
+  }catch(error){setError(error.message||String(error));}
+  finally{setBusy(false);}
+ };
+ const deleteInventoryMovement=async movement=>{
+  if(!movement||busy)return;
+  if(!window.confirm("تأكيد حذف حركة المخزون للصنف "+movement.itemCode+" في المخزن "+(movement.warehouseCode||"default")+"؟ سيتم إعادة احتساب الرصيد، وإذا تغيرت قيمة حساب المخزون فسيُنشأ قيد تسوية للمراجعة."))return;
+  await submitInventoryChange({mode:"deleteMovement",movementId:movement.id,itemCode:movement.itemCode,warehouseCode:movement.warehouseCode||"default"});
+ };
+ const clearInventoryBalance=async(itemCode,warehouseCode)=>{
+  if(!window.confirm("سيتم تصفير كمية وقيمة الصنف "+itemCode+" في المخزن "+warehouseCode+". إذا تغيرت قيمة حساب المخزون فسيُنشأ قيد تسوية للمراجعة. هل تريد المتابعة؟"))return;
+  await submitInventoryChange({mode:"setBalance",itemCode,warehouseCode,date:today(),quantity:"0",value:"0"});
+ };
  const renderInventoryMovements=()=>{
-  const inbound=inventoryMovements.filter(item=>item.kind==='purchase'||n(item.quantity)>0);
-  const outbound=inventoryMovements.filter(item=>item.kind==='sale'||n(item.quantity)<0);
+  const activeMovements=inventoryMovements.filter(item=>!item.cancelledByJournalDeletion&&!item.cancelledByJournalUnpost&&!item.reversedByJournalId);
+  const inbound=activeMovements.filter(item=>item.kind==="purchase"||n(item.quantity)>0);
+  const outbound=activeMovements.filter(item=>item.kind==="sale"||n(item.quantity)<0);
   const inboundQty=inbound.reduce((sum,item)=>sum+Math.abs(n(item.quantity)),0);
   const outboundQty=outbound.reduce((sum,item)=>sum+Math.abs(n(item.quantity)),0);
-  const netValue=inventoryMovements.reduce((sum,item)=>sum+n(item.value),0);
+  const netValue=activeMovements.reduce((sum,item)=>sum+n(item.value),0);
   const itemNames=new Map(items.map(item=>[String(item.code),item.name]));
-  const movementRows=inventoryMovements.map(item=>h('tr',{key:item.id,className:'border-t hover:bg-slate-50'},
-   h('td',{className:'p-2 whitespace-nowrap'},item.date||'—'),
-   h('td',{className:'p-2'},item.kind==='purchase'?'إضافة / وارد':item.kind==='sale'?'صرف / صادر':item.kind||'حركة'),
-   h('td',{className:'p-2'},item.itemCode||'—'),
-   h('td',{className:'p-2'},itemNames.get(String(item.itemCode))||'صنف غير موجود بالدليل'),
-   h('td',{className:'p-2'},item.warehouseCode||'—'),
-   h('td',{className:'p-2 text-end'},fmt(item.quantity)),
-   h('td',{className:'p-2 text-end'},fmt(item.unitCost)),
-   h('td',{className:'p-2 text-end font-bold'},fmt(item.value)),
-   h('td',{className:'p-2'},item.invoiceId||'—'),
-   h('td',{className:'p-2'},item.journalId||'—')
-  ));
-  return h('div',{className:'space-y-4'},
-   h('div',{className:'grid grid-cols-2 md:grid-cols-4 gap-2'},
-    metric('عدد حركات المخزن',String(inventoryMovements.length)),
-    metric('كمية الوارد',fmt(inboundQty)),
-    metric('كمية الصادر',fmt(outboundQty)),
-    metric('صافي قيمة الحركات',fmt(netValue))
+  const movementRows=inventoryMovements.map(item=>{
+   const inactive=Boolean(item.cancelledByJournalDeletion||item.cancelledByJournalUnpost||item.reversedByJournalId);
+   const stateLabel=item.cancelledByJournalDeletion?"ملغي بحذف القيد":item.cancelledByJournalUnpost?"مفكوك الترحيل":item.reversedByJournalId?"معكوس":item.journalId?"مرتبط بقيد":"حركة غير مرتبطة بقيد";
+   return h("tr",{key:item.id,className:"border-t hover:bg-slate-50"},
+    h("td",{className:"p-2 whitespace-nowrap"},item.date||"—"),
+    h("td",{className:"p-2"},item.kind==="purchase"?"إضافة / وارد":item.kind==="sale"?"صرف / صادر":item.kind==="adjustment"?"تسوية يدوية":item.kind||"حركة"),
+    h("td",{className:"p-2"},item.itemCode||"—"),
+    h("td",{className:"p-2"},itemNames.get(String(item.itemCode))||"صنف غير موجود بالدليل"),
+    h("td",{className:"p-2"},item.warehouseCode||"—"),
+    h("td",{className:"p-2 text-end"},fmt(item.quantity)),
+    h("td",{className:"p-2 text-end"},fmt(item.unitCost)),
+    h("td",{className:"p-2 text-end font-bold"},fmt(item.value)),
+    h("td",{className:"p-2"},item.invoiceId||"—"),
+    h("td",{className:"p-2"},item.journalId||"—"),
+    h("td",{className:"p-2"},h("span",{className:"text-xs "+(inactive?"text-slate-400":"text-slate-600")},stateLabel)),
+    h("td",{className:"p-2"},h("div",{className:"flex flex-wrap gap-1"},
+     canFinance("inventory","edit")?button("تعديل",()=>openInventoryMovementEditor(item),"muted",busy||inactive):null,
+     canFinance("inventory","delete")?button("حذف",()=>void deleteInventoryMovement(item),"danger",busy||inactive):null
+    ))
+   );
+  });
+  const balanceRows=[],balanceTree=master.inventory&&master.inventory.balances||{};
+  Object.entries(balanceTree).forEach(([warehouseCode,warehouseRows])=>Object.entries(warehouseRows||{}).forEach(([itemCode,stock])=>{
+   if(!stock||Math.abs(n(stock.quantity))<0.005&&Math.abs(n(stock.value))<0.005)return;
+   balanceRows.push(h("tr",{key:warehouseCode+"|"+itemCode,className:"border-t"},
+    h("td",{className:"p-2"},itemCode),
+    h("td",{className:"p-2"},itemNames.get(String(itemCode))||"صنف غير موجود بالدليل"),
+    h("td",{className:"p-2"},warehouseCode),
+    h("td",{className:"p-2 text-end"},fmt(stock.quantity)),
+    h("td",{className:"p-2 text-end"},fmt(stock.averageCost)),
+    h("td",{className:"p-2 text-end font-bold"},fmt(stock.value)),
+    h("td",{className:"p-2"},h("div",{className:"flex flex-wrap gap-1"},
+     canFinance("inventory","edit")?button("تعديل الرصيد",()=>openInventoryBalanceEditor(itemCode,warehouseCode,stock),"muted",busy):null,
+     canFinance("inventory","edit")?button("تصفير الرصيد",()=>void clearInventoryBalance(itemCode,warehouseCode),"danger",busy):null
+    ))
+   ));
+  }));
+  const modal=inventoryMovementModal?h("div",{className:"fixed inset-0 z-[180] flex items-center justify-center bg-slate-950/60 p-3",onClick:()=>setInventoryMovementModal(null)},
+   h("section",{className:"w-full max-w-2xl rounded-2xl bg-white p-4 md:p-5 shadow-2xl space-y-3",onClick:event=>event.stopPropagation()},
+    h("div",{className:"flex flex-wrap items-center justify-between gap-3"},
+     h("h3",{className:"text-lg font-extrabold"},inventoryMovementModal.mode==="setBalance"?"تعديل رصيد المخزون":"تعديل حركة المخزون"),
+     button("إغلاق",()=>setInventoryMovementModal(null),"muted")
+    ),
+    h("div",{className:"grid grid-cols-1 md:grid-cols-2 gap-3"},
+     field("كود الصنف",inventoryMovementModal.itemCode,()=>{},"text",{disabled:true}),
+     field("المخزن",inventoryMovementModal.warehouseCode,()=>{},"text",{disabled:true}),
+     inventoryMovementModal.mode==="setBalance"?null:field("تاريخ الحركة",inventoryMovementModal.date,value=>setInventoryMovementModal(old=>Object.assign({},old,{date:value})),"date"),
+     inventoryMovementModal.mode==="setBalance"?null:select("نوع الحركة",inventoryMovementModal.kind,value=>setInventoryMovementModal(old=>Object.assign({},old,{kind:value})),[{value:"purchase",label:"إضافة / وارد"},{value:"sale",label:"صرف / صادر"}]),
+     field(inventoryMovementModal.mode==="setBalance"?"الكمية النهائية":"الكمية",inventoryMovementModal.quantity,value=>setInventoryMovementModal(old=>Object.assign({},old,{quantity:value})),"number",{min:"0"}),
+     field(inventoryMovementModal.mode==="setBalance"?"القيمة النهائية":"إجمالي قيمة الحركة",inventoryMovementModal.value,value=>setInventoryMovementModal(old=>Object.assign({},old,{value:value})),"number",{min:"0"})
+    ),
+    h("p",{className:"text-xs text-slate-500"},inventoryMovementModal.mode==="setBalance"?"أدخل الرصيد النهائي المطلوب. سيضيف النظام حركة تسوية بالفرق، ولن يمحو الحركات الأصلية.":"أدخل الكمية وإجمالي القيمة؛ تكلفة الوحدة تُحسب تلقائيًا. لا يمكن تعديل حركة مرتبطة بقيد مرحّل مباشرة."),
+    h("div",{className:"flex justify-end gap-2"},
+     button("إلغاء",()=>setInventoryMovementModal(null),"muted"),
+     button(inventoryMovementModal.mode==="setBalance"?"حفظ تسوية الرصيد":"حفظ التعديل",()=>void submitInventoryChange(inventoryMovementModal),"primary",busy||!String(inventoryMovementModal.quantity||"").trim()||!String(inventoryMovementModal.value||"").trim())
+    )
+   )
+  ):null;
+  return h("div",{className:"space-y-4"},
+   h("div",{className:"grid grid-cols-2 md:grid-cols-4 gap-2"},
+    metric("عدد حركات المخزن",String(activeMovements.length)),metric("كمية الوارد",fmt(inboundQty)),metric("كمية الصادر",fmt(outboundQty)),metric("صافي قيمة الحركات",fmt(netValue))
    ),
-   h('div',{className:'flex flex-wrap gap-2'},button('تحديث حركات المخزن',loadInventoryMovements,'muted',busy)),
-   panel('سجل حركة المخزن','عرض مستقل لكل حركات الإضافة والصرف المرتبطة بالفواتير مع الصنف والمخزن والكمية والتكلفة والقيمة.',table(['التاريخ','نوع الحركة','كود الصنف','اسم الصنف','المخزن','الكمية','تكلفة الوحدة','القيمة','رقم الفاتورة','رقم القيد'],movementRows))
+   h("div",{className:"flex flex-wrap gap-2"},button("تحديث حركات المخزن",loadInventoryMovements,"muted",busy)),
+   panel("سجل حركة المخزن","يمكن تعديل أو حذف الحركة غير المرتبطة بقيد مرحّل. إذا أثّر التعديل على قيمة المخزون، يُرسل قيد تسوية إلى المراجعة قبل تحديث الرصيد.",table(["التاريخ","نوع الحركة","كود الصنف","اسم الصنف","المخزن","الكمية","تكلفة الوحدة","القيمة","رقم الفاتورة","رقم القيد","الحالة","إجراء"],movementRows)),
+   panel("الأرصدة الحالية بالمخازن","يمكن تعديل الرصيد النهائي أو تصفيره حتى عندما لا توجد حركة أصلية. التغيير ذو الأثر المالي يُرسل إلى المراجعة أولًا.",table(["كود الصنف","الصنف","المخزن","الكمية","متوسط التكلفة","القيمة","تسوية"],balanceRows)),
+   modal
   );
  };
+
  const masterPermissionModule=kind=>"financial_"+financeAreaForMaster(kind);
  const canMasterAction=(kind,action)=>canFinance(financeAreaForMaster(kind),action);
  const editMasterRecord=(kind,item)=>{
@@ -3162,6 +3240,26 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
  });
  const expenseSourceDifference=otherExpenses-expenseSourceTotal;
  const balanceAssetRows=statementRowsWithBalance(account=>account.type==='asset'&&!account.isGroup,'debit',true);
+
+ const inventoryStatementRows=(()=>{
+  const balanceTree=master.inventory&&master.inventory.balances||{},names=new Map(items.map(item=>[String(item.code),item.name]));
+  return Object.entries(balanceTree).flatMap(([warehouseCode,warehouseRows])=>Object.entries(warehouseRows||{})
+   .filter(([,stock])=>stock&&(Math.abs(n(stock.quantity))>0.005||Math.abs(n(stock.value))>0.01))
+   .map(([itemCode,stock])=>({warehouseCode,itemCode,name:names.get(String(itemCode))||"صنف غير موجود بالدليل",quantity:n(stock.quantity),averageCost:n(stock.averageCost),value:n(stock.value)})));
+ })();
+ const inventorySubledgerValue=inventoryStatementRows.reduce((sum,row)=>sum+row.value,0);
+ const inventoryControlAccount=balanceTrial.find(row=>String(row.account.code)==="1300");
+ const inventoryLedgerBalance=inventoryControlAccount?n(inventoryControlAccount.amount.debit)-n(inventoryControlAccount.amount.credit):0;
+ const inventoryStatementDifference=inventorySubledgerValue-inventoryLedgerBalance;
+ const inventoryStatementReconciliationPanel=()=>panel("مطابقة قيمة المخزون مع حساب الأستاذ 1300","تعرض أرصدة الكميات والقيم الفعلية من المخازن، وتقارنها برصيد حساب المخزون في الأستاذ العام. فرق المطابقة لا يُضم تلقائيًا إلى إجمالي الأصول حتى لا تُعرض قيمة مزدوجة أو غير معتمدة.",h("div",{className:"space-y-3"},
+  h("div",{className:"grid grid-cols-1 md:grid-cols-3 gap-2"},
+   metric("قيمة المخزون في المخازن",fmt(inventorySubledgerValue)),metric("رصيد حساب 1300 في الأستاذ",fmt(inventoryLedgerBalance)),metric("فرق المطابقة",fmt(inventoryStatementDifference))
+  ),
+  Math.abs(inventoryStatementDifference)>0.01?h("div",{className:"rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"},"يوجد فرق بين رصيد حركة المخازن وحساب 1300. راجع حركة المخزن ونفّذ تعديلًا أو تصفيرًا، ثم اعتمد قيد التسوية من قائمة المراجعة حتى يظهر الرصيد بالقيمة الصحيحة في إجمالي الأصول."):h("div",{className:"rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800"},"قيمة المخزون متطابقة مع حساب 1300."),
+  table(["المخزن","كود الصنف","اسم الصنف","الكمية","متوسط التكلفة","القيمة"],inventoryStatementRows.map(row=>h("tr",{key:row.warehouseCode+"|"+row.itemCode,className:"border-t"},h("td",{className:"p-2"},row.warehouseCode),h("td",{className:"p-2"},row.itemCode),h("td",{className:"p-2"},row.name),h("td",{className:"p-2 text-end"},fmt(row.quantity)),h("td",{className:"p-2 text-end"},fmt(row.averageCost)),h("td",{className:"p-2 text-end font-bold"},fmt(row.value))))),
+  button("فتح حركة المخزن لتصحيح الرصيد",()=>setTab("inventoryMovements"),"muted",!canFinance("inventory","view"))
+ ));
+
  const balanceLiabilityRows=statementRowsWithBalance(account=>account.type==='liability'&&!account.isGroup,'credit',true);
  const balanceEquityRows=statementRowsWithBalance(account=>account.type==='equity'&&!account.isGroup,'credit',true);
  const incomeStatementContent=()=>h('div',{className:'space-y-3'},
@@ -3382,7 +3480,7 @@ const criticalAccountConfiguration=[
   Math.abs(ledgerBalanceDifference)>0.01?h('div',{className:'rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900'},'تحذير: إجمالي المدين لا يساوي إجمالي الدائن في الأستاذ. المدين '+fmt(ledgerBalanceDebit)+'، الدائن '+fmt(ledgerBalanceCredit)+'، والفرق '+fmt(ledgerBalanceDifference)+'. لا تعتمد القوائم قبل معالجة الفرق.'):h('div',{className:'rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900'},'إجمالي ميزان المراجعة متوازن.'),
   unmappedBalanceRows.length?panel('أرصدة غير مرتبطة بدليل الحسابات','هذه الأرصدة موجودة في الأستاذ ولكن كودها غير موجود بدليل الحسابات. يتم إظهارها منفصلة ولا يتم تجاهلها أو ضمها تلقائيًا إلى الأصول أو الالتزامات.',table(['كود الحساب','مدين','دائن','صافي مدين / (دائن)'],unmappedBalanceRows.map(row=>h('tr',{key:row.code,className:'border-t'},h('td',{className:'p-2 font-bold'},row.code),h('td',{className:'p-2 text-end'},fmt(row.debit)),h('td',{className:'p-2 text-end'},fmt(row.credit)),h('td',{className:'p-2 text-end font-bold'},fmt(row.net)))))):null,
   invoicePostingReconciliationPanel(),
-  
+  inventoryStatementReconciliationPanel(),
   panel('الأصول','الرصيد التراكمي حتى نهاية الفترة، ويشمل الحسابات التجميعية والحسابات التابعة. اضغط على الحساب لعرض كشف الحساب.',table(['الحساب','مدين','دائن','الرصيد الطبيعي'],balanceAssetRows)),
   panel('الالتزامات','الأرصدة الدائنة والمدينة لكل حساب التزام.',table(['الحساب','مدين','دائن','الرصيد الطبيعي'],balanceLiabilityRows)),
   panel('حقوق الملكية','تظهر نتيجة الأعمال المتراكمة بشكل مستقل ضمن حقوق الملكية.',h('div',{className:'space-y-2'},table(['الحساب','مدين','دائن','الرصيد الطبيعي'],balanceEquityRows),table(['البيان','القيمة'],[['الأرباح المتراكمة منذ بداية الدفاتر',fmt(accumulatedProfit)],['إجمالي حقوق الملكية',fmt(equity)]]))),
@@ -3870,5 +3968,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261122-opening-balances-journal-ui-v1";
+ window.PEST_FINANCE_MODULE_VERSION="20261122-inventory-movement-controls-v1";
 })();
