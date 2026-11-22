@@ -1758,11 +1758,14 @@ export async function handleFinancialRequest(ctx){
     }
     const invoiceGenerated=String(record.sourceType||"")==="invoice";
     const separateRootJournal=separateSourceTypes.has(sourceType)&&linkedId===rootId;
-    const childOfSourceInvoice=hasInvoiceSources&&linkedId!==rootId&&family.some(parent=>String(parent.record.sourceType||"")==="invoice"&&String(record.reversalOf||"")===String(parent.id));
+    const childOfSeparateSource=separateSourceTypes.has(sourceType)&&linkedId!==rootId&&family.some(parent=>
+     separateSourceTypes.has(String(parent.record.sourceType||""))&&
+     (String(record.reversalOf||"")===String(parent.id)||String(record.revisionOf||"")===String(parent.id))
+    );
     if(separateRootJournal||invoiceGenerated){
      updates["documents/"+linkedId]=null;
      updates["reviewQueue/"+linkedId]=null;
-    }else if(childOfSourceInvoice){
+    }else if(childOfSeparateSource){
      updates["documents/"+linkedId]={...record,type:"journal",status:"cancelled",unpostedAt:now,unpostedBy:claims.sub,unpostReason:"تم إلغاء القيد المرتبط لأن فاتورة المصدر عادت للمراجعة."};
      updates["reviewQueue/"+linkedId]=null;
     }else{
