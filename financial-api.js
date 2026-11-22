@@ -2448,6 +2448,56 @@ await adminPatch(u);
     if(separator<=0)throw new Error("مرجع حدث المشروع المصدر غير صالح.");
     sourceRootUpdate={path:"projects/"+id(String(original.sourceId).slice(0,separator))+"/events/"+id(String(original.sourceId).slice(separator+2)),value:{accountingStatus:"reversed",accountingImpact:false,accountingJournalId:j.id,accountingReversedAt:now,accountingReversedBy:claims.sub}};
     updates["sourceLocks/"+String(original.sourceType)+"_"+id(original.sourceId)]=null;
+   }else if(original.sourceType==="cashCustodyTransfer"){
+    if(!adminReadRoot||!adminPatchRootAt)throw new Error("خدمة تحديث العهد المرتبطة غير متاحة؛ لم يتم اعتماد عكس التحويل.");
+    const ownerUid=id(original.ownerUid||""),transactionId=id(original.custodyTransactionId||""),transferId=id(original.custodyTransferId||"");
+    if(!ownerUid||!transactionId||!transferId)throw new Error("مرجع تحويل العهدة غير مكتمل.");
+    const sourcePath="cashCustodies/"+ownerUid+"/transactions/"+transactionId,source=await adminReadRoot(sourcePath);
+    if(!source)throw new Error("حركة العهدة الأصلية غير موجودة.");
+    sourceRootUpdate={path:sourcePath,value:{
+     "cashCustodyTransfer/active":false,"cashCustodyTransfer/pending":false,"cashCustodyTransfer/pendingJournalId":null,
+     "cashCustodyTransfer/lastJournalId":j.id,"cashCustodyTransfer/lastReviewStatus":"reversed","cashCustodyTransfer/reversedAt":now,
+     ["cashCustodyTransferHistory/"+transferId+"/status"]:"reversed",
+     ["cashCustodyTransferHistory/"+transferId+"/reversedAt"]:now
+    }};
+    const mirrorId=String(original.custodyMirrorId||"");
+    if(mirrorId&&original.destinationOwnerUid)secondaryRootUpdate={path:"cashCustodies/"+id(original.destinationOwnerUid)+"/transactions/"+id(mirrorId),value:{status:"reversed",financialReviewStatus:"reversed",financialJournalId:j.id,financialReversedAt:now}};
+    updates["sourceLocks/"+String(original.sourceType)+"_"+id(original.sourceId||journalId)]=null;
+   }else if(original.sourceType==="partnerCurrentAccountTransfer"&&original.sourceId){
+    if(!adminReadRoot||!adminPatchRootAt)throw new Error("خدمة تحديث جاري الشريك غير متاحة؛ لم يتم اعتماد عكس التحويل.");
+    const sourceId=String(original.sourceId),first=sourceId.indexOf("--"),last=sourceId.lastIndexOf("--");
+    if(first<=0||last<=first+2)throw new Error("مرجع تحويل جاري الشريك غير صالح.");
+    const ownerUid=id(sourceId.slice(0,first)),transactionId=id(sourceId.slice(first+2,last)),transferId=id(sourceId.slice(last+2));
+    const sourcePath="cashCustodies/"+ownerUid+"/transactions/"+transactionId,source=await adminReadRoot(sourcePath);
+    if(!source)throw new Error("حركة العهدة الأصلية غير موجودة.");
+    const activeAfterReversal=original.transferDirection==="toCustody";
+    sourceRootUpdate={path:sourcePath,value:{
+     "partnerCurrentAccountTransfer/active":activeAfterReversal,
+     "partnerCurrentAccountTransfer/pending":false,"partnerCurrentAccountTransfer/pendingJournalId":null,
+     "partnerCurrentAccountTransfer/pendingTransferId":null,"partnerCurrentAccountTransfer/pendingDirection":null,
+     "partnerCurrentAccountTransfer/lastJournalId":j.id,"partnerCurrentAccountTransfer/lastReviewStatus":"reversed",
+     "partnerCurrentAccountTransfer/reversedAt":now,"partnerCurrentAccountTransferActive":activeAfterReversal,
+     "partnerCurrentAccountLastJournalId":j.id,
+     ["partnerCurrentAccountTransferHistory/"+transferId+"/status"]:"reversed",
+     ["partnerCurrentAccountTransferHistory/"+transferId+"/reversedAt"]:now
+    }};
+    updates["sourceLocks/"+String(original.sourceType)+"_"+id(original.sourceId)]=null;
+   }else if(original.sourceType==="partnerCurrentAccountExpenseCorrection"&&original.sourceId){
+    if(!adminReadRoot||!adminPatchRootAt)throw new Error("خدمة تحديث تصحيح جاري الشريك غير متاحة؛ لم يتم اعتماد عكس التصحيح.");
+    const sourceId=String(original.sourceId),first=sourceId.indexOf("--"),last=sourceId.lastIndexOf("--");
+    if(first<=0||last<=first+2)throw new Error("مرجع تصحيح جاري الشريك غير صالح.");
+    const ownerUid=id(sourceId.slice(0,first)),transactionId=id(sourceId.slice(first+2,last)),correctionId=id(sourceId.slice(last+2));
+    const sourcePath="cashCustodies/"+ownerUid+"/transactions/"+transactionId,source=await adminReadRoot(sourcePath);
+    if(!source)throw new Error("حركة العهدة الأصلية غير موجودة.");
+    sourceRootUpdate={path:sourcePath,value:{
+     "partnerCurrentAccountTransfer/expenseCorrectionStatus":"reversed",
+     "partnerCurrentAccountTransfer/expenseCorrectionReversedByJournalId":j.id,
+     "partnerCurrentAccountTransfer/expenseCorrectionReversedAt":now,
+     "partnerCurrentAccountTransfer/expenseCorrectionPendingJournalId":null,
+     ["partnerCurrentAccountTransferHistory/"+correctionId+"/expenseCorrectionStatus"]:"reversed",
+     ["partnerCurrentAccountTransferHistory/"+correctionId+"/expenseCorrectionReversedAt"]:now
+    }};
+    updates["sourceLocks/"+String(original.sourceType)+"_"+id(original.sourceId)]=null;
    }else if(original.sourceId){
     const sourceDocument=await adminRead("documents/"+id(original.sourceId));
     if(sourceDocument&&sourceDocument.type!=="journal"){
