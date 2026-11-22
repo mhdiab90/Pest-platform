@@ -1614,17 +1614,17 @@ export async function handleFinancialRequest(ctx){
    const [firstDocument,firstPosted,allDocuments,allPosted]=await Promise.all([
     adminRead("documents/"+journalId),adminRead("journals/"+journalId),adminRead("documents"),adminRead("journals")
    ]);
-   const firstTarget=firstPosted||firstDocument;
+   const firstTarget=firstPosted&&typeof firstPosted==="object"?{...firstPosted,type:"journal"}:firstDocument;
    if(!firstTarget||firstTarget.type!=="journal")throw new Error("القيد المطلوب فك ترحيله غير موجود.");
    const allJournalRecords=new Map();
    Object.entries(allDocuments||{}).forEach(([key,value])=>{if(value&&value.type==="journal")allJournalRecords.set(String(value.id||key),{record:value,posted:false});});
-   Object.entries(allPosted||{}).forEach(([key,value])=>{if(value&&value.type==="journal")allJournalRecords.set(String(value.id||key),{record:value,posted:value.status==="posted"});});
+   Object.entries(allPosted||{}).forEach(([key,value])=>{if(value&&typeof value==="object")allJournalRecords.set(String(value.id||key),{record:{...value,type:"journal"},posted:value.status==="posted"});});
    const familyMap=new Map(),pendingIds=[journalId];
    while(pendingIds.length){
     const currentId=id(pendingIds.shift());
     if(!currentId||familyMap.has(currentId))continue;
     const [currentDocument,currentPosted]=await Promise.all([adminRead("documents/"+currentId),adminRead("journals/"+currentId)]);
-    const current=currentPosted||currentDocument;
+    const current=currentPosted&&typeof currentPosted==="object"?{...currentPosted,type:"journal"}:currentDocument;
     if(!current||current.type!=="journal")continue;
     const indexed=allJournalRecords.get(currentId);
     familyMap.set(currentId,{id:currentId,record:current,posted:Boolean(currentPosted&&currentPosted.status==="posted"||indexed&&indexed.posted)});
@@ -1800,11 +1800,11 @@ export async function handleFinancialRequest(ctx){
    const [firstDocument,firstPosted,allDocuments,allPosted]=await Promise.all([
      adminRead("documents/"+journalId),adminRead("journals/"+journalId),adminRead("documents"),adminRead("journals")
     ]);
-    const firstTarget=firstPosted||firstDocument;
+    const firstTarget=firstPosted&&typeof firstPosted==="object"?{...firstPosted,type:"journal"}:firstDocument;
     if(!firstTarget||firstTarget.type!=="journal")throw new Error("قيد اليومية المطلوب حذفه غير موجود.");
     const allJournalRecords=new Map();
     Object.entries(allDocuments||{}).forEach(([key,value])=>{if(value&&value.type==="journal")allJournalRecords.set(String(value.id||key),{record:value,posted:false});});
-    Object.entries(allPosted||{}).forEach(([key,value])=>{if(value&&value.type==="journal")allJournalRecords.set(String(value.id||key),{record:value,posted:value.status==="posted"});});
+    Object.entries(allPosted||{}).forEach(([key,value])=>{if(value&&typeof value==="object")allJournalRecords.set(String(value.id||key),{record:{...value,type:"journal"},posted:value.status==="posted"});});
     const deleteRecords=new Map(),pendingIds=[journalId];
     while(pendingIds.length){
      const currentId=id(pendingIds.shift());
