@@ -1897,3 +1897,14 @@ test("supplier payment settles canonical posted payable even when partyLedger in
   assert.ok(journal.lines.some(line=>line.accountCode==="281"&&line.debit===500&&line.partyId==="VENDOR-NO-SUBLEDGER"),"payment must settle the canonical vendor payable");
   assert.equal(journal.lines.some(line=>line.accountCode==="1240"&&line.debit>0),false,"payment must not be misclassified as an advance when the stored subledger index is missing");
 });
+
+
+test("inventory endpoint returns persisted warehouse balances and stock movements", async () => {
+  const balance={quantity:8,value:7892,averageCost:986.5,updatedAt:123456789};
+  const movement={id:"INV-MOVEMENT-7892",date:"2026-11-18",kind:"purchase",itemCode:"ITEM-7892",warehouseCode:"default",quantity:8,unitCost:986.5,value:7892,journalId:"INV-JOURNAL-7892"};
+  write("inventory/balances/default/ITEM-7892",balance);
+  write("inventory/movements/INV-MOVEMENT-7892",movement);
+  const result=await invoke("GET","?resource=inventory");
+  assert.deepEqual(result.items.balances.default["ITEM-7892"],balance,"warehouse balance must be returned to the financial UI");
+  assert.deepEqual(result.items.movements["INV-MOVEMENT-7892"],movement,"stock movement must be returned with its journal link");
+});
