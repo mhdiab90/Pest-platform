@@ -261,6 +261,53 @@ function validateJournal(j,chart,centers){
  lines.forEach((l,i)=>{const a=chart[txt(l.accountCode,32)];if(!a)errors.push("السطر "+(i+1)+": الحساب غير موجود");else if(a.isGroup||a.active===false)errors.push("السطر "+(i+1)+": الحساب غير قابل للترحيل");const d=Number(l.debit||0),c=Number(l.credit||0);if(!Number.isFinite(d)||!Number.isFinite(c)||d<0||c<0||((d>0)===(c>0)))errors.push("السطر "+(i+1)+": أدخل مدين أو دائن فقط");if(l.costCenterId&&!centers[l.costCenterId])errors.push("السطر "+(i+1)+": مركز التكلفة غير موجود");if(a&&a.subledgerType&&!l.partyId){const analyticLabel={customer:"العميل",vendor:"المورد",employeeCustody:"الموظف صاحب العهدة",employeeAdvance:"الموظف صاحب السلفة",partnerCurrentAccount:"الشريك"}[a.subledgerType]||"الطرف التحليلي";errors.push("السطر "+(i+1)+": يجب اختيار الطرف التحليلي ("+analyticLabel+") للحساب "+txt(a.code||l.accountCode,32)+" — "+txt(a.name||"",120)+".");}});
  const b=balance(lines);if(Math.abs(b.difference)>0.01)errors.push("القيد غير متوازن. الفرق: "+b.difference);return {errors,balance:b};
 }
+
+function inventoryMovementIsActive(movement){
+ return Boolean(movement&&typeof movement==="object"&&!movement.cancelledByJournalDeletion&&!movement.cancelledByJournalUnpost&&!movement.reversedByJournalId&&!movement.cancelledAt&&!movement.deletedAt);
+}
+function inventoryMovementEntries(allMovements,warehouseCode,itemCode){
+ return Object.entries(allMovements||{}).filter(([,movement])=>movement&&typeof movement==="object"&&String(movement.warehouseCode||"default")===String(warehouseCode)&&String(movement.itemCode||"")===String(itemCode))
+ .sort((a,b)=>String(a[1].date||"").localeCompare(String(b[1].date||""))||Number(a[1].createdAt||0)-Number(b[1].createdAt||0)||String(a[0]).localeCompare(String(b[0])));
+}
+function inventoryMovementSignature(entries){
+ const raw=JSON.stringify((entries||[]).map(([key,movement])=>[key,movement]));let hash=2166136261;
+ for(let index=0;index<raw.length;index++){hash^=raw.charCodeAt(index);hash=Math.imul(hash,16777619);}
+ return (hash>>>0).toString(16);
+}
+function replayInventoryMovements(allMovements,warehouseCode,itemCode,change){
+ let entries=inventoryMovementEntries(allMovements,warehouseCode,itemCode);
+ const signature=inventoryMovementSignature(entries);
+ if(change&&change.mode==="deleteMovement")entries=entries.filter(([key])=>String(key)!==String(change.movementId));
+ else if(change&&change.mode==="editMovement"){
+  if(!entries.some(([key])=>String(key)===String(change.movementId)))throw new Error("حركة المخزون المطلوب تعديلها لم تعد موجودة.");
+  entries=entries.map(([key,movement])=>String(key)===String(change.movementId)?[key,change.afterMovement]:[key,movement]);
+ }else if(change&&change.mode==="setBalance"&&change.afterMovement){
+  if(entries.some(([key])=>String(key)===String(change.movementId)))throw new Error("رقم حركة التسوية مستخدم بالفعل.");
+  entries=entries.concat([[String(change.movementId),change.afterMovement]]);
+ }
+ entries=entries.filter(([,movement])=>inventoryMovementIsActive(movement)).sort((a,b)=>String(a[1].date||"").localeCompare(String(b[1].date||""))||Number(a[1].createdAt||0)-Number(b[1].createdAt||0)||String(a[0]).localeCompare(String(b[0])));
+ let quantity=0,value=0;
+ for(const [movementId,movement] of entries){
+  const movementQuantity=Number(movement.quantity||0),movementValue=Number(movement.value||0);
+  if(!Number.isFinite(movementQuantity)||!Number.isFinite(movementValue))throw new Error("توجد حركة مخزون بقيمة أو كمية غير صالحة للصنف "+itemCode+".");
+  quantity=rnd(quantity+movementQuantity);value=rnd(value+movementValue);
+  if(quantity< -0.005)throw new Error("التعديل سيؤدي إلى رصيد كمية سالب للصنف "+itemCode+" في المخزن "+warehouseCode+" عند تاريخ "+(movement.date||"غير محدد")+". راجع الحركات اللاحقة أولًا.");
+  if(value< -0.01)throw new Error("التعديل سيؤدي إلى قيمة مخزون سالبة للصنف "+itemCode+" في المخزن "+warehouseCode+".");
+  if(quantity<=0.005&&Math.abs(value)>0.01)throw new Error("كمية الصنف "+itemCode+" ستصبح صفرًا مع بقاء قيمة مخزون غير موزعة. راجع تسوية القيمة.");
+ }
+ return {entries,signature,balance:{quantity:rnd(Math.max(0,quantity)),value:rnd(Math.max(0,value)),averageCost:quantity>0.005?rnd(value/quantity):0}};
+}
+function inventorySubledgerTotal(balances){
+ let value=0,quantity=0;
+ Object.values(balances||{}).forEach(rows=>Object.values(rows||{}).forEach(stock=>{value+=Number(stock&&stock.value||0);quantity+=Number(stock&&stock.quantity||0);}));
+ return {value:rnd(value),quantity:rnd(quantity)};
+}
+function inventoryLedgerControlValue(journals){
+ let value=0;
+ Object.values(journals||{}).forEach(journal=>{if(journal&&journal.status==="posted")(journal.lines||[]).forEach(line=>{if(String(line.accountCode)==="1300")value+=Number(line.debit||0)-Number(line.credit||0);});});
+ return rnd(value);
+}
+
 function normalizeJournalAnalyticLines(lines,chart){
  return (Array.isArray(lines)?lines:[]).map(line=>{
   const account=chart[txt(line&&line.accountCode||"",32)];
@@ -1439,6 +1486,7 @@ export async function handleFinancialRequest(ctx){
   requireFinanceArea("review","edit");
   const docId=id(body.id),previous=await adminRead("documents/"+docId);
   if(!previous||previous.type!=="journal"||!["pending_review","needs_correction"].includes(previous.status))throw new Error("القيد غير متاح للتعديل داخل قائمة المراجعة.");
+  if(previous.inventoryMovementChange&&Array.isArray(body.lines))throw new Error("قيد تسوية المخزون مرتبط بتعديل حركة محدد؛ لا يمكن تغيير سطوره المحاسبية يدويًا.");
   const editable=body.journal&&typeof body.journal==="object"&&!Array.isArray(body.journal)?body.journal:{};
   const next={...previous};
   if(Object.prototype.hasOwnProperty.call(editable,"date"))next.date=date(editable.date);
@@ -1518,6 +1566,78 @@ export async function handleFinancialRequest(ctx){
   updates["audit/"+uid("AUD")]={action:"submit_opening_balances",documentId:journalId,sourceType:"manual",openingBalance:true,lineCount:journal.lines.length,uid:claims.sub,createdAt:now};
   await adminPatch(updates);
   return {success:true,id:journalId,number:journal.number,status:journal.status,balance:journal.balance,openingBalance:true};
+ }
+ if(action==="changeInventoryMovement"){
+  const mode=txt(body.mode,24);
+  if(!["editMovement","deleteMovement","setBalance"].includes(mode))throw new Error("نوع تعديل حركة المخزون غير صحيح.");
+  requireFinanceArea("inventory",mode==="deleteMovement"?"delete":"edit");
+  const warehouseCode=id(body.warehouseCode||"default"),itemCode=id(body.itemCode||"");
+  const items=(await adminRead("items"))||{};
+  if(!items[itemCode])throw new Error("الصنف المطلوب غير موجود في دليل الأصناف.");
+  const allMovements=(await adminRead("inventory/movements"))||{},balances=(await adminRead("inventory/balances"))||{},allJournals=(await adminRead("journals"))||{};
+  const movementId=mode==="setBalance"?uid("MOVADJ"):id(body.movementId||"");
+  const beforeMovement=mode==="setBalance"?null:allMovements[movementId];
+  if(mode!=="setBalance"&&(!beforeMovement||String(beforeMovement.itemCode||"")!==itemCode||String(beforeMovement.warehouseCode||"default")!==warehouseCode))throw new Error("حركة المخزون غير موجودة أو لا تتبع الصنف والمخزن المحددين.");
+  if(beforeMovement){
+   if(beforeMovement.journalId){
+    const linkedJournal=allJournals[String(beforeMovement.journalId)]||await adminRead("documents/"+id(beforeMovement.journalId));
+    if(linkedJournal&&linkedJournal.status==="posted"&&!beforeMovement.cancelledByJournalDeletion&&!beforeMovement.cancelledByJournalUnpost&&!beforeMovement.reversedByJournalId)throw new Error("هذه الحركة مرتبطة بقيد مرحّل. لا تعدّلها من سجل المخزون مباشرة؛ عدّل الفاتورة المصدر أو عالج القيد المرتبط أولًا.");
+   }
+   if(beforeMovement.invoiceId){
+    const invoice=await adminRead("documents/"+id(beforeMovement.invoiceId));
+    if(invoice&&invoice.status==="posted"&&!beforeMovement.cancelledByJournalDeletion&&!beforeMovement.cancelledByJournalUnpost&&!beforeMovement.reversedByJournalId)throw new Error("حركة الفاتورة ما زالت مرتبطة بفاتورة مرحّلة. لا يمكن تعديلها منفردة حتى لا تختلف الفاتورة عن المخزون.");
+   }
+  }
+  const oldStoredBalance=(balances[warehouseCode]&&balances[warehouseCode][itemCode])||{quantity:0,value:0,averageCost:0};
+  const signature=inventoryMovementSignature(inventoryMovementEntries(allMovements,warehouseCode,itemCode));
+  let afterMovement=null;
+  if(mode==="editMovement"){
+   const movementDate=date(body.date),kind=txt(body.kind,16),quantity=num(body.quantity),value=num(body.value);
+   if(!["purchase","sale"].includes(kind))throw new Error("نوع الحركة يجب أن يكون إضافة / وارد أو صرف / صادر.");
+   if(quantity<=0)throw new Error("الكمية يجب أن تكون أكبر من صفر.");
+   afterMovement={...beforeMovement,date:movementDate,kind,quantity:kind==="purchase"?quantity:-quantity,value:kind==="purchase"?value:-value,unitCost:rnd(value/quantity),updatedAt:now,updatedBy:claims.sub};
+  }else if(mode==="setBalance"){
+   const targetQuantity=num(body.quantity),targetValue=num(body.value),movementDate=date(body.date||new Date(now).toISOString().slice(0,10));
+   const currentReplay=replayInventoryMovements(allMovements,warehouseCode,itemCode,null);
+   const quantityDelta=rnd(targetQuantity-currentReplay.balance.quantity),valueDelta=rnd(targetValue-currentReplay.balance.value);
+   if(Math.abs(quantityDelta)>0.005||Math.abs(valueDelta)>0.01)afterMovement={id:movementId,date:movementDate,itemCode,warehouseCode,kind:"adjustment",quantity:quantityDelta,value:valueDelta,
+    unitCost:Math.abs(quantityDelta)>0.005?rnd(Math.abs(valueDelta/quantityDelta)):0,description:txt(body.description||"تسوية رصيد مخزون",250),
+    manualAdjustment:true,createdAt:now,createdBy:claims.sub,updatedAt:now,updatedBy:claims.sub};
+  }
+  const replay=replayInventoryMovements(allMovements,warehouseCode,itemCode,{mode,movementId,afterMovement});
+  const currentTotal=inventorySubledgerTotal(balances);
+  const proposedTotal=rnd(currentTotal.value-Number(oldStoredBalance.value||0)+Number(replay.balance.value||0));
+  const ledgerValue=inventoryLedgerControlValue(allJournals),deltaValue=rnd(proposedTotal-ledgerValue),journalDate=new Date(now).toISOString().slice(0,10);
+  const changeRecord={mode,movementId,itemCode,warehouseCode,beforeMovement:beforeMovement?{...beforeMovement}:null,afterMovement:afterMovement?{...afterMovement}:null,
+   movementSignature:signature,balanceSnapshot:{quantity:Number(oldStoredBalance.quantity||0),value:Number(oldStoredBalance.value||0),averageCost:Number(oldStoredBalance.averageCost||0)},
+   totalStockValueSnapshot:currentTotal.value,inventoryLedgerValueSnapshot:ledgerValue,resultBalance:replay.balance,createdAt:now,createdBy:claims.sub};
+  if(Math.abs(deltaValue)>0.01){
+   const journalId=uid("JRN"),description=mode==="deleteMovement"?"حذف حركة مخزون":mode==="setBalance"?"تسوية رصيد مخزون":"تعديل حركة مخزون";
+   const lines=deltaValue>0?[
+    {accountCode:"1300",description:"تسوية قيمة المخزون — "+itemCode,debit:deltaValue,credit:0,itemCode,warehouseCode},
+    {accountCode:"3100",description:"مقابل تسوية قيمة المخزون",debit:0,credit:deltaValue}
+   ]:[
+    {accountCode:"3100",description:"مقابل تسوية قيمة المخزون",debit:Math.abs(deltaValue),credit:0},
+    {accountCode:"1300",description:"تسوية قيمة المخزون — "+itemCode,debit:0,credit:Math.abs(deltaValue),itemCode,warehouseCode}
+   ];
+   const journal={id:journalId,number:journalNumberFor(journalDate,journalId),type:"journal",sourceType:"manual",date:journalDate,
+    description:description+" — "+itemCode+" / "+warehouseCode,reference:"INV-ADJ-"+movementId,currency:"EGP",
+    lines,status:"pending_review",inventoryMovementChange:changeRecord,createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120)};
+   const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{},validation=validateJournal(journal,chart,centers);
+   if(validation.errors.length)throw new Error(validation.errors.join("؛ "));
+   journal.balance=validation.balance;journal.errors=[];
+   const updates={};updates["documents/"+journalId]=journal;updates["reviewQueue/"+journalId]=reviewRecord(journal);
+   updates["audit/"+uid("AUD")]={action:"request_inventory_movement_change",documentId:journalId,movementId,mode,itemCode,warehouseCode,deltaValue,uid:claims.sub,createdAt:now};
+   await adminPatch(updates);
+   return {success:true,pendingReview:true,id:journalId,number:journal.number,status:"pending_review",deltaValue,resultBalance:replay.balance};
+  }
+  const updates={};
+  if(mode==="deleteMovement")updates["inventory/movements/"+movementId]=null;
+  else if(afterMovement)updates["inventory/movements/"+movementId]=afterMovement;
+  updates["inventory/balances/"+warehouseCode+"/"+itemCode]={...replay.balance,updatedAt:now,updatedBy:claims.sub};
+  updates["audit/"+uid("AUD")]={action:"apply_inventory_movement_change_without_value_impact",movementId,mode,itemCode,warehouseCode,uid:claims.sub,createdAt:now,before:beforeMovement||null,after:afterMovement||null};
+  await adminPatch(updates);
+  return {success:true,applied:true,pendingReview:false,movementId,resultBalance:replay.balance,deltaValue:0};
  }
  if(action==="submitJournal"){
    const journalId=id(body.id||uid("DOC"));let previous=null,postedRecord=null;
@@ -1662,6 +1782,7 @@ export async function handleFinancialRequest(ctx){
    ]);
    const firstTarget=firstPosted&&typeof firstPosted==="object"?{...firstPosted,type:"journal"}:firstDocument;
    if(!firstTarget||firstTarget.type!=="journal")throw new Error("القيد المطلوب فك ترحيله غير موجود.");
+   if(firstTarget.inventoryMovementChange)throw new Error("هذا القيد مرتبط بتعديل حركة مخزون. عدّل أو صفّر الحركة من شاشة حركة المخزن بدل فك ترحيل القيد مباشرة.");
    const allJournalRecords=new Map();
    Object.entries(allDocuments||{}).forEach(([key,value])=>{if(value&&value.type==="journal")allJournalRecords.set(String(value.id||key),{record:value,posted:false});});
    Object.entries(allPosted||{}).forEach(([key,value])=>{if(value&&typeof value==="object")allJournalRecords.set(String(value.id||key),{record:{...value,type:"journal"},posted:value.status==="posted"});});
@@ -1848,6 +1969,7 @@ export async function handleFinancialRequest(ctx){
     ]);
     const firstTarget=firstPosted&&typeof firstPosted==="object"?{...firstPosted,type:"journal"}:firstDocument;
     if(!firstTarget||firstTarget.type!=="journal")throw new Error("قيد اليومية المطلوب حذفه غير موجود.");
+    if(firstTarget.inventoryMovementChange)throw new Error("هذا القيد مرتبط بتعديل حركة مخزون. عدّل أو صفّر الحركة من شاشة حركة المخزن بدل حذف قيد التسوية مباشرة.");
     const allJournalRecords=new Map();
     Object.entries(allDocuments||{}).forEach(([key,value])=>{if(value&&value.type==="journal")allJournalRecords.set(String(value.id||key),{record:value,posted:false});});
     Object.entries(allPosted||{}).forEach(([key,value])=>{if(value&&typeof value==="object")allJournalRecords.set(String(value.id||key),{record:{...value,type:"journal"},posted:value.status==="posted"});});
@@ -2620,6 +2742,27 @@ await adminPatch(u);
     updates["audit/"+uid("AUD")]={action:"approve_posted_journal_revision",documentId:docId,originalJournalId:originalId,revisionNotes:j.revisionNotes,uid:claims.sub,createdAt:now};
    }else{
     j={...doc,status:"posted",approvedAt:now,approvedBy:claims.sub,postedAt:now};Object.assign(updates,journalUpdates(j));
+    if(doc.inventoryMovementChange){
+     const change=doc.inventoryMovementChange,warehouseCode=id(change.warehouseCode),itemCode=id(change.itemCode),movementId=id(change.movementId);
+     const [allMovements,balances,allJournals]=await Promise.all([adminRead("inventory/movements"),adminRead("inventory/balances"),adminRead("journals")]);
+     const currentSignature=inventoryMovementSignature(inventoryMovementEntries(allMovements||{},warehouseCode,itemCode));
+     if(currentSignature!==String(change.movementSignature||""))throw new Error("حركات الصنف تغيرت بعد إرسال طلب التعديل. أعد فتح حركة المخزن وأرسل التسوية مرة أخرى.");
+     const stored=(balances&&balances[warehouseCode]&&balances[warehouseCode][itemCode])||{quantity:0,value:0,averageCost:0},snapshot=change.balanceSnapshot||{};
+     if(Math.abs(Number(stored.quantity||0)-Number(snapshot.quantity||0))>0.005||Math.abs(Number(stored.value||0)-Number(snapshot.value||0))>0.01)throw new Error("رصيد الصنف تغير بعد إرسال الطلب. حدّث حركة المخزن ثم أعد طلب التسوية.");
+     const totalStock=inventorySubledgerTotal(balances||{});
+     if(Math.abs(totalStock.value-Number(change.totalStockValueSnapshot||0))>0.01)throw new Error("إجمالي قيمة المخزون تغير بعد إرسال الطلب. أعد مطابقة الأرصدة قبل الاعتماد.");
+     const currentLedger=inventoryLedgerControlValue(allJournals||{});
+     if(Math.abs(currentLedger-Number(change.inventoryLedgerValueSnapshot||0))>0.01)throw new Error("حساب المخزون 1300 تغير بعد إرسال الطلب. أعد طلب التسوية حتى لا ينشأ فرق محاسبي.");
+     const replay=replayInventoryMovements(allMovements||{},warehouseCode,itemCode,{mode:change.mode,movementId,afterMovement:change.afterMovement});
+     const proposedTotal=rnd(totalStock.value-Number(stored.value||0)+Number(replay.balance.value||0)),expectedDelta=rnd(proposedTotal-currentLedger);
+     const lineDebit=(doc.lines||[]).filter(line=>String(line.accountCode)==="1300").reduce((sum,line)=>sum+Number(line.debit||0),0);
+     const lineCredit=(doc.lines||[]).filter(line=>String(line.accountCode)==="1300").reduce((sum,line)=>sum+Number(line.credit||0),0);
+     if(Math.abs(lineDebit-Math.max(0,expectedDelta))>0.01||Math.abs(lineCredit-Math.max(0,-expectedDelta))>0.01)throw new Error("قيمة قيد التسوية لا تطابق فرق المخزون الحالي. أعد إنشاء الطلب.");
+     if(change.mode==="deleteMovement")updates["inventory/movements/"+movementId]=null;
+     else if(change.afterMovement)updates["inventory/movements/"+movementId]=change.afterMovement;
+     updates["inventory/balances/"+warehouseCode+"/"+itemCode]={...replay.balance,updatedAt:now,updatedBy:claims.sub,lastInventoryAdjustmentJournalId:docId};
+     updates["audit/"+uid("AUD")]={action:"approve_inventory_movement_change",documentId:docId,movementId,mode:change.mode,itemCode,warehouseCode,deltaValue:expectedDelta,uid:claims.sub,createdAt:now,before:change.beforeMovement||null,after:change.afterMovement||null};
+    }
    }
   }
   else if(doc.type==="cash"){
