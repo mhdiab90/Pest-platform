@@ -114,8 +114,26 @@ test("financial reports and individual tables have Excel and PDF export controls
   assert.match(source, /تصدير الجزء المحدد إلى PDF/);
   assert.match(source, /Excel\.utils\.book_append_sheet/);
   assert.match(source, /printWindow\.print\(\)/);
+  assert.match(source, /تصدير جميع القوائم إلى ملف Excel واحد/);
+  assert.match(source, /data-pest-export-scope':'all-statements'/);
+  assert.match(source, /sheetNameCounts/);
+  assert.match(source, /cleanSheetBase/);
 });
 
 test("all journal rows expose delete or cancel-impact action, including source-generated posted entries", () => {
-  assert.match(source, /button\(posted&&!manual\?'حذف \/ إلغاء أثر القيد':'حذف القيد',\(\)=>void deleteJournalDocument\(draft\)/);
+  assert.match(source, /button\(posted&&!manual\?'حذف القيد ومصدره':'حذف القيد',\(\)=>void deleteJournalDocument\(draft\)/);
+  assert.match(source, /حذف القيد نهائيًا/);
+  assert.match(source, /لن يمنع وجود حركات مخزنية لاحقة تنفيذ الحذف/);
+  assert.doesNotMatch(source, /سيُنشأ قيد عكسي بانتظار المراجعة/);
+});
+
+
+test("journal entry account, cost center and analytic party fields support typing to search, and journals can add extra lines", () => {
+  assert.match(source, /const searchablePicker=/);
+  assert.match(source, /ابحث بالاسم أو الكود/);
+  assert.match(source, /searchablePickerWithAdd\('الحساب'/);
+  assert.match(source, /searchablePickerWithAdd\('مركز التكلفة'/);
+  assert.match(source, /searchablePicker\('الطرف التحليلي/);
+  assert.match(source, /＋ إضافة سطر جديد/);
+  assert.match(source, /journal\.lines\.length<=2/);
 });
