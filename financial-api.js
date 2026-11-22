@@ -1719,6 +1719,10 @@ export async function handleFinancialRequest(ctx){
     createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120),
     title:"قيد أرشيف "+txt(input.sourceJournalNumber||docId,80)+" — "+journalDate
    };
+   if(Number(input.sourceLineCount)!==lines.length)throw new Error("عدد سطور المصدر لا يطابق السطور المرسلة للقيد "+docId);
+   const declaredTotals=input.sourceTotals&&typeof input.sourceTotals==="object"?input.sourceTotals:{};
+   const actualDebit=lines.reduce((sum,line)=>sum+Number(line.debit||0),0),actualCredit=lines.reduce((sum,line)=>sum+Number(line.credit||0),0);
+   if(!Number.isFinite(Number(declaredTotals.debit))||!Number.isFinite(Number(declaredTotals.credit))||Math.abs(actualDebit-Number(declaredTotals.debit))>0.000001||Math.abs(actualCredit-Number(declaredTotals.credit))>0.000001)throw new Error("إجمالي المدين أو الدائن لا يطابق تفاصيل المصدر للقيد "+docId);
    const normalizedLines=normalizeJournalAnalyticLines(journal.lines,chart);
    journal.lines=normalizedLines;
    const validation=validateJournal(journal,chart,centers);
