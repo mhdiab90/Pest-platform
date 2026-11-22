@@ -1818,8 +1818,9 @@ test("period reports recover posted journals missing from period, GL, party and 
   assert.equal(read("ledger/281/2026-11/"+journalId+"_3").credit,5700,"supplier control ledger line is rebuilt");
   assert.equal(read("partyLedger/vendor/VENDOR-INDEX/2026-11/"+journalId+"_3").credit,5700,"supplier subledger line is rebuilt");
   assert.equal(read("costLedger/CC-INDEX/2026-11/"+journalId+"_1").debit,5000,"cost-center ledger line is rebuilt");
-  const debit=selected.reduce((sum,item)=>sum+(item.lines||[]).reduce((part,line)=>part+Number(line.debit||0),0),0);
-  const credit=selected.reduce((sum,item)=>sum+(item.lines||[]).reduce((part,line)=>part+Number(line.credit||0),0),0);
+  const recovered=selected.find(item=>item.id===journalId);
+  const debit=(recovered.lines||[]).reduce((sum,line)=>sum+Number(line.debit||0),0);
+  const credit=(recovered.lines||[]).reduce((sum,line)=>sum+Number(line.credit||0),0);
   assert.equal(debit,credit,"recovered posting remains balanced");
 });
 
