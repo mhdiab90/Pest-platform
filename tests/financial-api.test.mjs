@@ -1413,6 +1413,72 @@ test("daily journals can be reversed through review and unposted entries can be 
   assert.equal(read("documents/"+draft.id+"/status"),"cancelled");
 });
 
+test("unposting a manual journal returns its full posted reversal family to review and removes all ledger impacts", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const originalId="UNPOST-MANUAL-ORIGINAL-01",reversalId="UNPOST-MANUAL-REVERSAL-01";
+  const originalLines=[{accountCode:"6100",debit:125,credit:0,description:"Test expense"},{accountCode:"1110",debit:0,credit:125,description:"Cash"}];
+  const reversalLines=[{accountCode:"6100",debit:0,credit:125,description:"Reverse test expense"},{accountCode:"1110",debit:125,credit:0,description:"Reverse cash"}];
+  write("journals/"+originalId,{id:originalId,type:"journal",status:"posted",date:"2026-11-18",sourceType:"manual",reversalJournalId:reversalId,reversedByJournalId:reversalId,lines:originalLines});
+  write("documents/"+originalId,{id:originalId,type:"journal",status:"posted",date:"2026-11-18",sourceType:"manual",reversalJournalId:reversalId,reversedByJournalId:reversalId,lines:originalLines});
+  write("journals/"+reversalId,{id:reversalId,type:"journal",status:"posted",date:"2026-11-19",sourceType:"manual",reversalOf:originalId,lines:reversalLines});
+  write("documents/"+reversalId,{id:reversalId,type:"journal",status:"posted",date:"2026-11-19",sourceType:"manual",reversalOf:originalId,lines:reversalLines});
+  for(const [id,date,lines] of [[originalId,"2026-11-18",originalLines],[reversalId,"2026-11-19",reversalLines]]){
+    write("periods/2026-11/entries/"+id,{id,status:"posted",date});
+    write("ledger/6100/2026-11/"+id+"_1",{accountCode:"6100",debit:lines[0].debit,credit:lines[0].credit});
+    write("ledger/1110/2026-11/"+id+"_2",{accountCode:"1110",debit:lines[1].debit,credit:lines[1].credit});
+  }
+  const result=await invoke("POST","",{action:"unpostJournal",id:originalId,reason:"Return journal chain to review"});
+  assert.equal(result.unposted,true);
+  assert.deepEqual(new Set(result.unpostedIds),new Set([originalId,reversalId]));
+  assert.ok(result.returnedReviewIds.includes(originalId));
+  assert.ok(result.returnedReviewIds.includes(reversalId));
+  for(const id of [originalId,reversalId]){
+    assert.equal(read("journals/"+id),null);
+    assert.equal(read("documents/"+id+"/status"),"pending_review");
+    assert.equal(read("reviewQueue/"+id+"/status"),"pending_review");
+    assert.equal(read("periods/2026-11/entries/"+id),null);
+  }
+  assert.equal(read("ledger/6100/2026-11/"+originalId+"_1"),null);
+  assert.equal(read("ledger/6100/2026-11/"+reversalId+"_1"),null);
+  const postedAgain=await invoke("POST","",{action:"review",id:originalId,decision:"approve",reason:"Reapprove original after unpost"});
+  assert.equal(postedAgain.status,"posted");
+  const reversalAgain=await invoke("POST","",{action:"review",id:reversalId,decision:"approve",reason:"Reapprove reversal after original"});
+  assert.equal(reversalAgain.status,"posted");
+  assert.equal(read("journals/"+originalId+"/reversedByJournalId"),reversalId);
+});
+
+test("unposting an invoice journal returns its invoice to review and removes stock, supplier and GL posting effects", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const invoiceId="UNPOST-INVOICE-SOURCE-01",journalId="UNPOST-INVOICE-JOURNAL-01";
+  const lines=[{accountCode:"1300",debit:1000,credit:0,description:"Stock"},{accountCode:"1410",debit:140,credit:0,description:"Input VAT"},{accountCode:"281",debit:0,credit:1140,partyType:"vendor",partyId:"UNPOST-VENDOR"}];
+  write("documents/"+invoiceId,{id:invoiceId,type:"invoice",invoiceType:"purchase",status:"posted",date:"2026-11-18",number:"PUR-UNPOST-01",partyId:"UNPOST-VENDOR",partyName:"Supplier",fingerprint:"FP-UNPOST-01",totals:{net:1000,vat:140,total:1140},lines:[{description:"Stock item",kind:"stock",itemCode:"ITEM-UNPOST-01",quantity:2,unitPrice:500}],journalId});
+  write("journals/"+journalId,{id:journalId,type:"journal",status:"posted",date:"2026-11-18",sourceType:"invoice",sourceId:invoiceId,lines});
+  write("documents/"+journalId,{id:journalId,type:"journal",status:"posted",date:"2026-11-18",sourceType:"invoice",sourceId:invoiceId,lines});
+  write("inventory/balances/default/ITEM-UNPOST-01",{quantity:2,value:1000,averageCost:500});
+  write("inventory/movements/MOV-UNPOST-01",{id:"MOV-UNPOST-01",date:"2026-11-18",invoiceId,journalId,itemCode:"ITEM-UNPOST-01",warehouseCode:"default",kind:"purchase",quantity:2,unitCost:500,value:1000,createdAt:100});
+  write("sourceLocks/invoice_"+invoiceId,{journalId});
+  write("periods/2026-11/entries/"+journalId,{id:journalId,status:"posted",date:"2026-11-18"});
+  write("ledger/1300/2026-11/"+journalId+"_1",{accountCode:"1300",debit:1000,credit:0});
+  write("partyLedger/vendor/UNPOST-VENDOR/2026-11/"+journalId+"_3",{accountCode:"281",debit:0,credit:1140});
+  const result=await invoke("POST","",{action:"unpostJournal",id:journalId,reason:"Return invoice to review"});
+  assert.equal(result.unposted,true);
+  assert.deepEqual(result.returnedInvoiceIds,[invoiceId]);
+  assert.equal(read("documents/"+invoiceId+"/status"),"pending_review");
+  assert.equal(read("documents/"+invoiceId+"/journalId"),null);
+  assert.equal(read("documents/"+invoiceId+"/accountingStatus"),"pending_review");
+  assert.equal(read("reviewQueue/"+invoiceId+"/status"),"pending_review");
+  assert.equal(read("sourceLocks/invoice_"+invoiceId),null);
+  assert.equal(read("journals/"+journalId),null);
+  assert.equal(read("documents/"+journalId),null);
+  assert.equal(read("periods/2026-11/entries/"+journalId),null);
+  assert.equal(read("ledger/1300/2026-11/"+journalId+"_1"),null);
+  assert.equal(read("partyLedger/vendor/UNPOST-VENDOR/2026-11/"+journalId+"_3"),null);
+  assert.equal(read("inventory/balances/default/ITEM-UNPOST-01").quantity,0);
+  assert.equal(read("inventory/balances/default/ITEM-UNPOST-01").value,0);
+  assert.equal(read("inventory/movements/MOV-UNPOST-01/cancelledByJournalUnpost"),true);
+  assert.ok(Object.values(read("audit")||{}).some(item=>item&&item.action==="unpost_source_invoice_to_review"&&item.documentId===invoiceId&&item.snapshot));
+});
+
 test("a transferred invoice recipient can cancel the assigned invoice and close its task", async () => {
   await invoke("GET","?resource=bootstrap");
   const invoiceId="INV-ASSIGNED-CANCEL-01",recipientUid="FIN-CANCEL-RECIPIENT";
