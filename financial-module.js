@@ -1480,6 +1480,19 @@ const deleteJournalDocument=async(doc)=>{
     "الحسابات المتأثرة: "+(accountLines||"غير محدد"),
     "سيتم حذف القيد من دفتر الأستاذ والفترة وكشوف الأطراف ومراكز التكلفة، مع الاحتفاظ بنسخة منه في سجل التدقيق."
    ];
+   const linkedRefs=[doc.reversalJournalId,doc.reversedByJournalId,doc.revisedByJournalId,doc.pendingRevisionId,doc.reversalOf,doc.revisionOf].filter(Boolean).map(String);
+   const knownJournals=[...(journalRecords||[]),...(documents||[])],linkedRecords=new Map();
+   knownJournals.forEach(item=>{
+    if(!item||!item.id||String(item.id)===String(doc.id))return;
+    const itemId=String(item.id);
+    if(linkedRefs.includes(itemId)||String(item.reversalOf||"")===String(doc.id)||String(item.revisionOf||"")===String(doc.id))linkedRecords.set(itemId,item);
+   });
+   if(linkedRecords.size){
+    const linkedText=[...linkedRecords.values()].map(item=>String(item.number||item.id)+" ("+(item.status||"غير محدد")+")").join("، ");
+    effect.push("سيتم حذف القيد الأصلي وكل القيود المرتبطة به، بما فيها قيد العكس أو التعديل، وإزالة آثارها المحاسبية وطلبات مراجعتها: "+linkedText+".");
+   }else if(linkedRefs.length){
+    effect.push("هذا القيد مرتبط بقيد أصلي أو عكسي/تعديل؛ سيبحث النظام عن السجلات المرتبطة ويحذفها ضمن نفس العملية.");
+   }
    if(sourceType!=="manual"&&posted)effect.push("سيتم إلغاء الأثر المحاسبي للمستند المصدر مباشرة، ولن يتم إنشاء قيد عكسي بانتظار المراجعة.");
    if(sourceType==="invoice"&&posted){
     const stockLines=(sourceInvoice&&sourceInvoice.lines||[]).filter(line=>line&&line.kind==="stock");
@@ -1492,7 +1505,7 @@ const deleteJournalDocument=async(doc)=>{
    try{
     const result=await api('', 'POST',{action:'deleteJournal',id:doc.id,reason:"حذف مباشر بعد إظهار الأثر المحاسبي"});
     const warningText=Array.isArray(result.inventoryWarnings)&&result.inventoryWarnings.length?" تنبيه المخزون: "+result.inventoryWarnings.join(" | "):"";
-    setNotice((result.deleted?"تم حذف القيد مباشرة وتحديث دفتر الأستاذ والفترة.":"")+(result.sourceCancelled?" تم إلغاء المستند المصدر محاسبيًا.":"")+warningText);
+    setNotice((result.deleted?"تم حذف القيد وكل القيود المرتبطة به ("+(result.deletedIds||[doc.id]).length+" قيد/قيود) وتحديث الأستاذ والفترات.":"")+(result.sourceCancelled?" تم إلغاء المستند المصدر محاسبيًا.":"")+warningText);
     setJournalModal(null);setJournalModalDraft(null);await refresh();await loadPeriod();
    }
    catch(e){setError(e.message||String(e));}
