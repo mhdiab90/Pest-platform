@@ -1812,7 +1812,7 @@ export async function handleFinancialRequest(ctx){
      const [currentDocument,currentPosted]=await Promise.all([
       adminRead("documents/"+currentId),adminRead("journals/"+currentId)
      ]);
-     const current=currentPosted||currentDocument;
+     const current=currentPosted&&typeof currentPosted==="object"?{...currentPosted,type:"journal"}:currentDocument;
      if(!current||current.type!=="journal")continue;
      const indexedRecord=allJournalRecords.get(currentId);
      deleteRecords.set(currentId,{id:currentId,record:current,posted:Boolean(currentPosted&&currentPosted.status==="posted"||indexedRecord&&indexedRecord.posted)});
