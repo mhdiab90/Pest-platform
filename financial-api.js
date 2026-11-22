@@ -1645,7 +1645,7 @@ export async function handleFinancialRequest(ctx){
     const sourceInvoice=await adminRead("documents/"+sourceId);
     const allStockMovements=(await adminRead("inventory/movements"))||{};
     const linkedStockMovements=Object.entries(allStockMovements).filter(([key,movement])=>
-     movement&&String(movement.invoiceId||"")===sourceId&&String(movement.journalId||"")===sourceJournalId&&!movement.reversedByJournalId&&!movement.cancelledByJournalDeletion
+     movement&&String(movement.invoiceId||"")===sourceId&&String(movement.journalId||"")===sourceJournalId&&(!movement.reversedByJournalId||deleteRecords.has(String(movement.reversedByJournalId)))&&!movement.cancelledByJournalDeletion
     );
     const expectedStockLines=sourceInvoice&&Array.isArray(sourceInvoice.lines)?sourceInvoice.lines.filter(line=>line&&line.kind==="stock"):[];
     if(expectedStockLines.length&&!linkedStockMovements.length)inventoryWarnings.push("الفاتورة تحتوي على أصناف مخزنية لكن حركات المخزون المرتبطة غير موجودة؛ راجع مطابقة المخزون بعد الحذف.");
