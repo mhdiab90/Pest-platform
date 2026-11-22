@@ -1634,7 +1634,7 @@ export async function handleFinancialRequest(ctx){
    // Prefer the source/original journal so invoice, custody and other source records are reconciled once.
    const sourceEntry=family.find(item=>!item.record.reversalOf&&!item.record.revisionOf&&
     !["journalReversal","journalRevision"].includes(String(item.record.sourceType||"")))||family.find(item=>!["journalReversal","journalRevision"].includes(String(item.record.sourceType||"")))||family[0];
-   const target=sourceEntry.record;
+   const target=sourceEntry.record,sourceJournalId=sourceEntry.id;
    const isPosted=sourceEntry.posted||target.status==="posted";
    const sourceType=String(target.sourceType||"manual"),sourceId=target.sourceId?id(target.sourceId):"";
    const updates={},stockEffects=[],inventoryWarnings=[];
@@ -1645,7 +1645,7 @@ export async function handleFinancialRequest(ctx){
     const sourceInvoice=await adminRead("documents/"+sourceId);
     const allStockMovements=(await adminRead("inventory/movements"))||{};
     const linkedStockMovements=Object.entries(allStockMovements).filter(([key,movement])=>
-     movement&&String(movement.invoiceId||"")===sourceId&&String(movement.journalId||"")===journalId&&!movement.reversedByJournalId&&!movement.cancelledByJournalDeletion
+     movement&&String(movement.invoiceId||"")===sourceId&&String(movement.journalId||"")===sourceJournalId&&!movement.reversedByJournalId&&!movement.cancelledByJournalDeletion
     );
     const expectedStockLines=sourceInvoice&&Array.isArray(sourceInvoice.lines)?sourceInvoice.lines.filter(line=>line&&line.kind==="stock"):[];
     if(expectedStockLines.length&&!linkedStockMovements.length)inventoryWarnings.push("الفاتورة تحتوي على أصناف مخزنية لكن حركات المخزون المرتبطة غير موجودة؛ راجع مطابقة المخزون بعد الحذف.");
