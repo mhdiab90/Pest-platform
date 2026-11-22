@@ -35,7 +35,7 @@ test("all shared financial sections have individual collapse and expand buttons"
 });
 
 test("unified statements support GL accounts, cost centers, vendors and customers with searchable selection and journal drill-through", () => {
-  assert.match(source, /type:"account"/);
+  assert.match(source, /type:'account'/);
   assert.match(source, /value:"account",label:"حساب من دليل الحسابات"/);
   assert.match(source, /value:"costCenter",label:"مركز تكلفة"/);
   assert.match(source, /value:"vendor",label:"مورد"/);
