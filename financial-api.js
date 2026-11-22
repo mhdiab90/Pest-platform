@@ -1484,6 +1484,7 @@ export async function handleFinancialRequest(ctx){
  }
  if(action==="updateReviewJournal"){
   requireFinanceArea("review","edit");
+  const now=Date.now();
   const docId=id(body.id),previous=await adminRead("documents/"+docId);
   if(!previous||previous.type!=="journal"||!["pending_review","needs_correction"].includes(previous.status))throw new Error("القيد غير متاح للتعديل داخل قائمة المراجعة.");
   if(previous.inventoryMovementChange&&Array.isArray(body.lines))throw new Error("قيد تسوية المخزون مرتبط بتعديل حركة محدد؛ لا يمكن تغيير سطوره المحاسبية يدويًا.");
@@ -2714,6 +2715,7 @@ if(action==="submitCash"){
   }
   if(action==="review"){
   requireFinanceArea("review","approve");
+  const now=Date.now();
   const docId=id(body.id),decision=txt(body.decision,20),doc=await adminRead("documents/"+docId);if(!doc)throw new Error("مستند المراجعة غير موجود");
   const lockType=doc.type==="invoice"?"invoice":doc.type==="cash"?"cash":doc.type==="bankLine"?"bankLine":"";
   if(lockType){
