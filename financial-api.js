@@ -1708,7 +1708,7 @@ export async function handleFinancialRequest(ctx){
    if(input.forceNeedsCorrection===true&&!sourceWarnings.length)sourceWarnings.push("القيد وارد من الأرشيف ويحتاج مراجعة تصنيف المصدر قبل الاعتماد.");
    const journal={
     id:docId,number:txt(input.number||input.sourceJournalNumber||docId,120),type:"journal",
-    sourceType:"legacyImport",sourceId:"EXCEL_EDIT_XLSX",date:journalDate,
+    sourceType:"legacyImport",sourceId:docId,date:journalDate,
     description:txt(input.description||"",500),reference:txt(input.reference||input.sourceJournalNumber||"",120),
     currency:"EGP",lines,sourceJournalNumber:txt(input.sourceJournalNumber||"",80),
     sourceDate:journalDate,sourceFirstExcelRow:Number(input.sourceFirstExcelRow)||0,
