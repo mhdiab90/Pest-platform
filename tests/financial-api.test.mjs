@@ -1947,7 +1947,7 @@ test("deleting a posted invoice-source journal directly cancels its source and r
   assert.equal(read("periods/2026-11/entries/"+journalId),null);
   assert.equal(read("ledger/1300/2026-11/"+journalId+"_1"),null);
   assert.equal(read("partyLedger/vendor/VENDOR-DELETE-SOURCE/2026-11/"+journalId+"_3"),null);
-  assert.ok(Object.values(read("audit")||{}).some(item=>item&&item.action==="delete_source_journal"&&item.documentId===journalId&&item.snapshot));
+  assert.ok(Object.values(read("audit")||{}).some(item=>item&&item.action==="delete_linked_journal_chain"&&item.documentId===journalId&&item.snapshot));
 });
 
 test("deleting an original journal removes its posted reversing journal and both ledger impacts", async () => {
