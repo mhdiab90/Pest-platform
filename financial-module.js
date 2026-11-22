@@ -1488,7 +1488,40 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
   }catch(error){setError(error.message||String(error));}
   finally{setBusy(false);}
  };
-const deleteJournalDocument=async(doc)=>{
+const unpostJournalDocument=async(doc)=>{
+   if(!doc||!canFinance("journal","delete")||!canFinance("review","edit")){setError("فك الترحيل يتطلب صلاحية حذف القيود وصلاحية تعديل المراجعة.");return;}
+   const related=[...(journalRecords||[]),...(documents||[])].filter(item=>item&&item.type==="journal"&&(
+    String(item.id||"")===String(doc.id||"")||
+    String(item.reversalOf||"")===String(doc.id||"")||
+    String(item.revisionOf||"")===String(doc.id||"")||
+    [item.reversalJournalId,item.reversedByJournalId,item.pendingRevisionId,item.revisedByJournalId].some(value=>String(value||"")===String(doc.id||""))
+   ));
+   const sourceType=String(doc.sourceType||"manual");
+   const linkedText=related.length>1?" سيتم فك ترحيل "+related.length+" قيود مرتبطة.":"";
+   const invoiceText=sourceType==="invoice"?" وستعود الفاتورة المصدر إلى قائمة المراجعة بعد إزالة القيد القديم وأثره المحاسبي والمخزني.":"";
+   const note=sourceType==="invoice"?"أي قيد عكسي مرتبط بالفاتورة سيُلغى مع عملية فك الترحيل، ويعاد إنشاء المعالجة بعد مراجعة الفاتورة واعتمادها من جديد.":"ستعود القيود اليدوية والقيود العكسية/التعديلات المرتبطة إلى قائمة المراجعة.";
+   if(!window.confirm("فك ترحيل القيد "+(doc.number||doc.id)+"؟"+linkedText+invoiceText+"\n"+note+"\nسيتم إزالة الأثر من الأستاذ العام وكشوف الأطراف ومراكز التكلفة والفترات مع الاحتفاظ بسجل التدقيق. لن يتم حذف المستند نهائيًا."))return;
+   setStatementJournalId('');
+   setBusy(true);setError('');setNotice('');
+   try{
+    const result=await api('', 'POST',{action:'unpostJournal',id:doc.id,reason:"فك الترحيل من سجل القيود اليومية وإعادة المستند للمراجعة"});
+    setJournalModal(null);setJournalModalDraft(null);
+    await refresh();await loadPeriod();
+    if(result.primaryReviewId&&canFinance("review","view")){
+     setTab("review");
+     const queue=await refreshReviewQueue(true);
+     const item=(queue||[]).find(row=>String(row.id)===String(result.primaryReviewId));
+     if(item)await openReviewItem(item);else await openReviewItem({id:result.primaryReviewId});
+     setNotice("تم فك ترحيل المجموعة المحاسبية وإعادة "+(result.returnedInvoiceIds&&result.returnedInvoiceIds.length?"الفاتورة":"القيد")+" إلى قائمة المراجعة. راجع المستند ثم اعتمده لإعادة الترحيل.");
+    }else{
+     setTab("journal");
+     setNotice("تم فك ترحيل "+(result.unpostedIds||[]).length+" قيد/قيود وإزالة أثرها من الأستاذ وإعادتها لمسار المراجعة.");
+    }
+    if(Array.isArray(result.warnings)&&result.warnings.length)setNotice((result.warnings||[]).join(" · "));
+   }catch(error){setError(error.message||String(error));}
+   finally{setBusy(false);}
+  };
+  const deleteJournalDocument=async(doc)=>{
    if(!canFinance("journal","delete")){setError("ليس لديك صلاحية حذف القيود اليومية.");return;}
    const posted=doc.status==="posted"||journalRecords.some(item=>String(item.id)===String(doc.id)&&item.status==="posted");
    const sourceType=doc.sourceType||"manual",sourceId=String(doc.sourceId||"");
@@ -1967,7 +2000,7 @@ const renderJournal = function() {
      h('td',{className:'p-2'},status(posted?'posted':x.status)),
      h('td',{className:'p-2 text-end'},fmt(debit)),
      h('td',{className:'p-2 text-end'},fmt(credit)),
-     h('td',{className:'p-2'},button('فتح القيد',()=>openJournalModal(x),'muted'))
+     h('td',{className:'p-2'},h('div',{className:'flex flex-wrap gap-1'},button('فتح القيد',()=>openJournalModal(x),'muted'),posted&&canFinance('journal','delete')&&canFinance('review','edit')?h('button',{type:'button',disabled:busy,onClick:event=>{event.stopPropagation();void unpostJournalDocument(x);},className:'rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-800 disabled:opacity-50'},'فك الترحيل'):null))
     );
    });
    const draftsPanel=panel('سجل القيود اليومية الموحد','يعرض القيود اليدوية والقيود المرحّلة الناتجة عن فواتير العملاء والموردين والخزينة والبنوك، إضافة إلى قيود أحداث المشروعات والعهد. اضغط أي صف لفتح تفاصيله. التعديل المباشر متاح للقيود اليدوية ومسودات أحداث المشروع والعهد داخل المراجعة، والقيود المرحّلة من المصادر الأخرى تُعالج من المستند الأصلي أو بقيد عكسي.',table(['رقم القيد','التاريخ','البيان','المصدر','الحالة','مدين','دائن','إجراء'],draftRows,{maxHeight:'min(58dvh, 560px)',minHeight:'180px',overflowY:'auto',overscrollBehavior:'auto',overscrollBehaviorY:'auto',scrollbarGutter:'stable'}));
