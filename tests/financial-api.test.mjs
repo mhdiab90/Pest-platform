@@ -1921,28 +1921,54 @@ test("period reports include older posted journals even if accountingStartMonth 
   assert.equal(read("partyLedger/vendor/OLD-VENDOR/2026-08/OLD-INVOICE-JOURNAL_3").credit,1368,"the historic supplier subledger line is rebuilt");
 });
 
-test("delete action requests a reversing journal for posted invoice-source journals instead of leaving stock and GL out of sync", async () => {
+test("deleting a posted invoice-source journal directly cancels its source and removes linked stock, ledger and audit effects", async () => {
   await invoke("GET","?resource=bootstrap");
   const invoiceId="INVOICE-SOURCE-DELETE-01",journalId="INVOICE-SOURCE-JOURNAL-DELETE-01";
-  write("documents/"+invoiceId,{id:invoiceId,type:"invoice",invoiceType:"purchase",status:"posted",date:"2026-11-18",number:"PUR-DELETE-SOURCE-01",partyId:"VENDOR-DELETE-SOURCE",totals:{net:1000,vat:140,total:1140},lines:[{description:"Stock item",kind:"stock",itemCode:"ITEM-DELETE-SOURCE",quantity:2,unitPrice:500}],journalId});
+  write("documents/"+invoiceId,{id:invoiceId,type:"invoice",invoiceType:"purchase",status:"posted",date:"2026-11-18",number:"PUR-DELETE-SOURCE-01",partyId:"VENDOR-DELETE-SOURCE",fingerprint:"FP-DELETE-SOURCE",totals:{net:1000,vat:140,total:1140},lines:[{description:"Stock item",kind:"stock",itemCode:"ITEM-DELETE-SOURCE",quantity:2,unitPrice:500}],journalId});
   write("journals/"+journalId,{id:journalId,type:"journal",status:"posted",date:"2026-11-18",sourceType:"invoice",sourceId:invoiceId,lines:[{accountCode:"1300",debit:1000,credit:0},{accountCode:"1410",debit:140,credit:0},{accountCode:"281",debit:0,credit:1140,partyType:"vendor",partyId:"VENDOR-DELETE-SOURCE"}]});
+  write("documents/"+journalId,{id:journalId,type:"journal",status:"posted",date:"2026-11-18",sourceType:"invoice",sourceId:invoiceId,lines:[{accountCode:"1300",debit:1000,credit:0},{accountCode:"1410",debit:140,credit:0},{accountCode:"281",debit:0,credit:1140,partyType:"vendor",partyId:"VENDOR-DELETE-SOURCE"}]});
   write("inventory/balances/default/ITEM-DELETE-SOURCE",{quantity:2,value:1000,averageCost:500});
   write("inventory/movements/MOV-DELETE-SOURCE",{id:"MOV-DELETE-SOURCE",date:"2026-11-18",invoiceId,journalId,itemCode:"ITEM-DELETE-SOURCE",warehouseCode:"default",kind:"purchase",quantity:2,unitCost:500,value:1000,createdAt:100});
-  const request=await invoke("POST","",{action:"deleteJournal",id:journalId,reason:"wrong invoice"});
-  assert.equal(request.deleted,false);
-  assert.equal(request.reversalRequested,true);
-  assert.equal(read("journals/"+journalId+"/reversalJournalId"),request.reversalId);
-  assert.equal(read("inventory/balances/default/ITEM-DELETE-SOURCE").quantity,2,"stock is not changed until the reversal is approved");
-  const approved=await invoke("POST","",{action:"review",id:request.reversalId,decision:"approve",reason:"approve source reversal"});
-  assert.equal(approved.status,"posted");
-  assert.equal(read("documents/"+invoiceId+"/status"),"reversed");
-  assert.equal(read("journals/"+journalId+"/reversedByJournalId"),approved.journalId);
+  write("sourceLocks/invoice_"+invoiceId,{journalId});
+  write("documentFingerprints/FP-DELETE-SOURCE",{documentId:invoiceId});
+  const result=await invoke("POST","",{action:"deleteJournal",id:journalId,reason:"wrong invoice"});
+  assert.equal(result.deleted,true);
+  assert.equal(result.reversalRequested,undefined,"source deletion must not queue a reversing journal for review");
+  assert.equal(read("journals/"+journalId),null);
+  assert.equal(read("documents/"+journalId),null);
+  assert.equal(read("documents/"+invoiceId+"/status"),"cancelled");
+  assert.equal(read("documents/"+invoiceId+"/accountingStatus"),"cancelled");
+  assert.equal(read("sourceLocks/invoice_"+invoiceId),null);
+  assert.equal(read("documentFingerprints/FP-DELETE-SOURCE"),null);
   assert.equal(read("inventory/balances/default/ITEM-DELETE-SOURCE").quantity,0);
   assert.equal(read("inventory/balances/default/ITEM-DELETE-SOURCE").value,0);
-  assert.equal(read("inventory/movements/MOV-DELETE-SOURCE/reversedByJournalId"),approved.journalId);
+  assert.equal(read("inventory/movements/MOV-DELETE-SOURCE/cancelledByJournalDeletion"),true);
+  assert.equal(read("inventory/movements/MOV-DELETE-SOURCE/reversedByJournalId"),"DELETED_"+journalId);
+  assert.equal(read("periods/2026-11/entries/"+journalId),null);
+  assert.equal(read("ledger/1300/2026-11/"+journalId+"_1"),null);
+  assert.equal(read("partyLedger/vendor/VENDOR-DELETE-SOURCE/2026-11/"+journalId+"_3"),null);
+  assert.ok(Object.values(read("audit")||{}).some(item=>item&&item.action==="delete_source_journal"&&item.documentId===journalId&&item.snapshot));
 });
 
-
+test("deleting a source invoice journal is not blocked by later stock movements and reports the negative stock impact", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const invoiceId="INVOICE-SOURCE-DELETE-LATER-01",journalId="INVOICE-SOURCE-JOURNAL-DELETE-LATER-01";
+  write("documents/"+invoiceId,{id:invoiceId,type:"invoice",invoiceType:"purchase",status:"posted",date:"2026-11-10",number:"PUR-DELETE-LATER-01",partyId:"VENDOR-DELETE-LATER",lines:[{description:"Stock item",kind:"stock",itemCode:"ITEM-DELETE-LATER",quantity:2,unitPrice:500}],journalId});
+  write("documents/"+journalId,{id:journalId,type:"journal",status:"posted",date:"2026-11-10",sourceType:"invoice",sourceId:invoiceId,lines:[{accountCode:"1300",debit:1000,credit:0},{accountCode:"1410",debit:140,credit:0},{accountCode:"281",debit:0,credit:1140,partyType:"vendor",partyId:"VENDOR-DELETE-LATER"}]});
+  write("journals/"+journalId,{id:journalId,type:"journal",status:"posted",date:"2026-11-10",sourceType:"invoice",sourceId:invoiceId,lines:[{accountCode:"1300",debit:1000,credit:0},{accountCode:"1410",debit:140,credit:0},{accountCode:"281",debit:0,credit:1140,partyType:"vendor",partyId:"VENDOR-DELETE-LATER"}]});
+  write("inventory/balances/default/ITEM-DELETE-LATER",{quantity:1,value:500,averageCost:500});
+  write("inventory/movements/MOV-DELETE-LATER-SOURCE",{id:"MOV-DELETE-LATER-SOURCE",date:"2026-11-10",invoiceId,journalId,itemCode:"ITEM-DELETE-LATER",warehouseCode:"default",kind:"purchase",quantity:2,unitCost:500,value:1000,createdAt:100});
+  write("inventory/movements/MOV-DELETE-LATER-SALE",{id:"MOV-DELETE-LATER-SALE",date:"2026-11-11",invoiceId:"LATER-SALE",journalId:"LATER-SALE-JOURNAL",itemCode:"ITEM-DELETE-LATER",warehouseCode:"default",kind:"sale",quantity:-1,unitCost:500,value:-500,createdAt:200});
+  const result=await invoke("POST","",{action:"deleteJournal",id:journalId,reason:"delete invoice with later stock movements"});
+  assert.equal(result.deleted,true);
+  assert.equal(result.reversalRequested,undefined);
+  assert.ok(result.inventoryWarnings.some(message=>message.includes("رصيد سالب")));
+  assert.equal(read("documents/"+invoiceId+"/status"),"cancelled");
+  assert.equal(read("journals/"+journalId),null);
+  assert.equal(read("inventory/balances/default/ITEM-DELETE-LATER").quantity,-1);
+  assert.equal(read("inventory/balances/default/ITEM-DELETE-LATER").value,-500);
+  assert.equal(read("inventory/movements/MOV-DELETE-LATER-SALE/cancelledByJournalDeletion"),undefined,"later sale movement is preserved");
+});
 test("source invoice reversal refuses to queue when later stock movements depend on the invoice", async () => {
   await invoke("GET","?resource=bootstrap");
   const invoiceId="INVOICE-SOURCE-DELETE-LATER-01",journalId="INVOICE-SOURCE-JOURNAL-DELETE-LATER-01";
