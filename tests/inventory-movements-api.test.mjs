@@ -44,7 +44,7 @@ test("editing an orphan inventory movement queues a balanced stock-control journ
 });
 
 test("deleting an orphan movement clears its quantity and value and queues the matching ledger correction",async()=>{
- const h=makeHarness();
+ const h=makeHarness({journals:{"OPEN-GL":{id:"OPEN-GL",status:"posted",type:"journal",date:"2025-12-01",lines:[{accountCode:"1300",debit:1000,credit:0},{accountCode:"3100",debit:0,credit:1000}]}}});
  const result=await h.invoke({action:"changeInventoryMovement",mode:"deleteMovement",movementId:"MOV-1",itemCode:"ITEM-1",warehouseCode:"MAIN"});
  assert.equal(result.pendingReview,true);
  assert.ok(result.deltaValue<0);
