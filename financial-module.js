@@ -1193,7 +1193,7 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
   clean.querySelectorAll("button").forEach(node=>node.replaceWith(document.createTextNode(String(node.innerText||node.textContent||"").trim())));
   clean.querySelectorAll("input,select,textarea").forEach(node=>node.remove());
   const tables=Array.from(clean.querySelectorAll("table"));
-  const safeName=value=>String(value||"Financial_Report").replace(/[\\\\/:*?"<>|]+/g,"_").replace(/\\s+/g,"_").slice(0,70)||"Financial_Report";
+  const safeName=value=>String(value||"Financial_Report").replaceAll("/","_").replaceAll(":","_").replaceAll(" ","_").slice(0,70)||"Financial_Report";
   if(format==="excel"){
    const Excel=window.XLSX;
    if(!Excel||!Excel.utils||!Excel.utils.book_new||!Excel.utils.aoa_to_sheet||!Excel.writeFile){setError("مكتبة Excel غير متاحة. حدّث الصفحة ثم حاول مرة أخرى.");return;}
@@ -1205,18 +1205,18 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
      const rows=[];
      if(tableNode){
       Array.from(tableNode.querySelectorAll("tr")).forEach(row=>{
-       const cells=Array.from(row.querySelectorAll("th,td")).map(cell=>String(cell.innerText||cell.textContent||"").replace(/\\s+/g," ").trim());
+       const cells=Array.from(row.querySelectorAll("th,td")).map(cell=>String(cell.innerText||cell.textContent||"").replaceAll("\\n"," ").replaceAll("\\r"," ").trim());
        if(cells.length)rows.push(cells);
       });
      }else{
-      const lines=String(clean.innerText||clean.textContent||"").split(/\\n+/).map(line=>line.trim()).filter(Boolean);
+      const lines=String(clean.innerText||clean.textContent||"").split(String.fromCharCode(10)).map(line=>line.trim()).filter(Boolean);
       rows.push([title],...lines.map(line=>[line]));
      }
      const aoa=[[title],[rtl?"تاريخ التصدير":"Exported at",new Date().toLocaleString(rtl?"ar-EG-u-nu-latn":"en-US")],[],...rows];
      const sheet=Excel.utils.aoa_to_sheet(aoa);
      sheet["!views"]=[{RTL:Boolean(rtl)}];
      sheet["!cols"]=Array.from({length:Math.max(1,...aoa.map(row=>row.length))},()=>({wch:22}));
-     const sheetName=(tables.length>1?"تفاصيل "+(index+1):title).replace(/[\\\\/?*\\[\\]:]/g," ").slice(0,31)||"Report";
+     const sheetName=(tables.length>1?"تفاصيل "+(index+1):"بيانات التقرير").slice(0,31)||"Report";
      Excel.utils.book_append_sheet(workbook,sheet,sheetName);
     });
     Excel.writeFile(workbook,safeName(title)+"_"+new Date().toISOString().slice(0,10)+".xlsx");
@@ -1240,8 +1240,8 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
   return h('section',{key:panelKey,'data-pest-export-scope':'panel','data-pest-export-title':String(title),className:'rounded-2xl border bg-white p-4 shadow-sm min-w-0'},
    h('div',{className:'mb-2 flex flex-wrap items-start justify-between gap-2'},
     h('div',{className:'min-w-0 flex-1'},h('h3',{className:'font-bold text-lg'},title),sub?h('p',{className:'text-xs text-slate-500 mt-1'},sub):null),
-    h('div',{className:'flex flex-wrap items-center gap-2'},canExportFinancialReport()?exportToolbar(null,title):null,
-     h('button',{type:'button','aria-expanded':!collapsed,'aria-label':(collapsed?'إظهار القسم: ':'إخفاء القسم: ')+String(title),onClick:()=>setCollapsedPanels(previous=>Object.assign({},previous,{[panelKey]:!previous[panelKey]})),className:'shrink-0 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100'},
+    h('div',{className:'flex flex-wrap items-center gap-2'},!collapsed&&canExportFinancialReport()?exportToolbar(null,title):null,
+     h('button',{type:'button','data-pest-export-actions':'true','aria-expanded':!collapsed,'aria-label':(collapsed?'إظهار القسم: ':'إخفاء القسم: ')+String(title),onClick:()=>setCollapsedPanels(previous=>Object.assign({},previous,{[panelKey]:!previous[panelKey]})),className:'shrink-0 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100'},
       h('span',null,collapsed?t('إظهار القسم','Show section'):t('إخفاء القسم','Hide section')),
       h('span',{className:'text-base leading-none'},collapsed?'⌄':'⌃')
      )
