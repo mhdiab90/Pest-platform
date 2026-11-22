@@ -93,3 +93,29 @@ test("inventory balances and movement rows are both loaded into financial module
   assert.match(source, /tab==='inventory'\|\|tab==='inventoryMovements'\|\|\(tab==='reports'&&report==='balance'\)/);
   assert.match(source, /const warehouseBalances=master\.inventory&&master\.inventory\.balances\|\|\{\}/);
 });
+
+
+test("balance sheet reconciles invoice statuses and posted journals against inventory, supplier and VAT control accounts", () => {
+  assert.match(source, /const invoicePostingReconciliationPanel=\(\)=>\{/);
+  assert.match(source, /const unpostedInvoiceTotal=/);
+  assert.match(source, /حالة الفاتورة مرحّلة لكن القيد المرحّل المرتبط بها غير موجود/);
+  assert.match(source, /لا يوجد طرف دائن على حساب الموردين 281/);
+  assert.match(source, /لا يوجد قيد على 1410/);
+  assert.match(source, /لا يوجد قيد على 2110/);
+  assert.match(source, /invoicePostingReconciliationPanel\(\)/);
+});
+
+
+test("financial reports and individual tables have Excel and PDF export controls for partial-screen export", () => {
+  assert.match(source, /const exportSectionContent=\(sourceNode,format\)=>\{/);
+  assert.match(source, /data-pest-export-scope':'panel'/);
+  assert.match(source, /data-pest-export-scope':'table'/);
+  assert.match(source, /تصدير الجزء المحدد إلى Excel/);
+  assert.match(source, /تصدير الجزء المحدد إلى PDF/);
+  assert.match(source, /Excel\.utils\.book_append_sheet/);
+  assert.match(source, /printWindow\.print\(\)/);
+});
+
+test("all journal rows expose delete or cancel-impact action, including source-generated posted entries", () => {
+  assert.match(source, /button\(posted&&!manual\?'حذف \/ إلغاء أثر القيد':'حذف القيد',\(\)=>void deleteJournalDocument\(draft\)/);
+});
