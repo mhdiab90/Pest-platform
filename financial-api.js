@@ -653,7 +653,16 @@ export async function handleFinancialRequest(ctx){
   if(res==="periods"){if(!hasFinanceArea("reports","view")&&!hasFinanceArea("overview","view")&&!hasFinanceArea("centers","view")&&!hasFinanceArea("tax","view"))throw new Error("ليس لديك صلاحية عرض التقارير المالية.");
    const from=txt(url.searchParams.get("from")||new Date().toISOString().slice(0,7),7),to=txt(url.searchParams.get("to")||from,7);
    if(!/^\d{4}-\d{2}$/.test(from)||!/^\d{4}-\d{2}$/.test(to))throw new Error("Invalid financial period.");
-   const configuredStart=await adminRead("settings/accountingStartMonth"),balanceFrom=String(configuredStart||from);
+   const configuredStart=String(await adminRead("settings/accountingStartMonth")||"");
+   const sourceJournals=(await adminRead("journals"))||{};
+   const postedJournalMonths=Object.entries(sourceJournals).filter(([key,value])=>
+    value&&typeof value==="object"&&value.status==="posted"&&/^\\d{4}-\\d{2}-\\d{2}$/.test(String(value.date||""))
+   ).map(([key,value])=>month(value.date));
+   const earliestPostedMonth=postedJournalMonths.sort()[0]||"";
+   const configuredMonth=/^\\d{4}-\\d{2}$/.test(configuredStart)?configuredStart:"";
+   const balanceFrom=configuredMonth
+    ?(earliestPostedMonth&&earliestPostedMonth<configuredMonth?earliestPostedMonth:configuredMonth)
+    :(earliestPostedMonth||from);
    if(!/^\d{4}-\d{2}$/.test(balanceFrom))throw new Error("تاريخ بداية الدفاتر المحاسبية غير مضبوط. راجع إعدادات النظام المالي.");
    const startDate=new Date(balanceFrom+"-01T00:00:00Z"),fromDate=new Date(from+"-01T00:00:00Z"),toDate=new Date(to+"-01T00:00:00Z");
    const diff=(toDate.getUTCFullYear()-startDate.getUTCFullYear())*12+toDate.getUTCMonth()-startDate.getUTCMonth();
@@ -662,7 +671,7 @@ export async function handleFinancialRequest(ctx){
 
    // journals is the authoritative posting record. Period, GL, party and cost-center
    // trees are derived indexes and may be incomplete for older posted entries.
-   const sourceJournals=(await adminRead("journals"))||{},canonicalByMonth=new Map();
+   const canonicalByMonth=new Map();
    Object.entries(sourceJournals).forEach(([key,value])=>{
     if(!value||typeof value!=="object"||value.status!=="posted"||!/^\d{4}-\d{2}-\d{2}$/.test(String(value.date||"")))return;
     const journalId=String(value.id||key),monthKey=month(value.date);
@@ -1604,9 +1613,42 @@ export async function handleFinancialRequest(ctx){
    const journalId=id(body.id),document=await adminRead("documents/"+journalId),posted=await adminRead("journals/"+journalId),target=posted||document;
    if(!target||target.type!=="journal")throw new Error("قيد اليومية المطلوب حذفه غير موجود.");
    if(target.pendingRevisionId||target.revisedByJournalId)throw new Error("لا يمكن حذف هذا القيد لوجود إصدار تعديل معلّق أو معتمد مرتبط به. احتفظ بالتسلسل المحاسبي.");
-    if(target.sourceType&&target.sourceType!=="manual")throw new Error("لا يمكن حذف قيد ناتج عن فاتورة أو سند؛ صحح المستند المصدر حتى لا تختل حركة المخزون والأرصدة.");
+   if(target.reversalJournalId||target.reversedByJournalId)throw new Error("هذا القيد مرتبط بطلب عكس سابق أو تم عكسه بالفعل.");
+   const isPosted=target.status==="posted"||Boolean(posted&&posted.status==="posted");
+   if(isPosted&&target.sourceType&&target.sourceType!=="manual"){
+    const reversalId=uid("REV-JRN"),reversalDate=date(body.reversalDate||new Date().toISOString().slice(0,10));
+    const lines=(target.lines||[]).map(line=>({...line,debit:Number(line.credit||0),credit:Number(line.debit||0),description:txt(line.description||target.description||"",250)+" — عكس بطلب حذف القيد"}));
+    const reversal={id:reversalId,type:"journal",date:reversalDate,description:"عكس القيد "+(target.number||journalId)+" بطلب حذف القيد المرتبط بالمصدر",reference:txt(target.reference||target.number||journalId,120),currency:target.currency||"EGP",lines,sourceType:"journalReversal",sourceId:journalId,reversalOf:journalId,originalSourceType:target.sourceType||"",originalSourceId:target.sourceId||"",createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120),title:"عكس القيد "+(target.number||journalId),status:"pending_review"};
+    if(reversal.currency!=="EGP")throw new Error("لا يمكن عكس القيد قبل تفعيل أسعار الصرف.");
+    const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{};
+    reversal.lines=normalizeJournalAnalyticLines(reversal.lines,chart);
+    const validation=validateJournal(reversal,chart,centers);
+    if(validation.errors.length)throw new Error("تعذر إنشاء قيد الإلغاء: "+validation.errors.join("؛ "));
+    reversal.balance=validation.balance;reversal.errors=[];
+    const updates={};
+    updates["documents/"+reversalId]=reversal;
+    updates["reviewQueue/"+reversalId]=reviewRecord(reversal);
+    updates["journals/"+journalId+"/reversalJournalId"]=reversalId;
+    updates["journals/"+journalId+"/reversalRequestedAt"]=now;
+    updates["journals/"+journalId+"/reversalRequestedBy"]=claims.sub;
+    updates["journals/"+journalId+"/reversalRequestedReason"]=txt(body.reason||"إلغاء القيد من سجل القيود",500);
+    updates["audit/"+uid("AUD")]={action:"request_source_journal_reversal",documentId:journalId,reversalId,sourceType:target.sourceType||"",sourceId:target.sourceId||"",uid:claims.sub,createdAt:now};
+    await adminPatch(updates);
+    return {success:true,id:journalId,deleted:false,reversalRequested:true,reversalId,status:"pending_review"};
+   }
+   if(!isPosted&&target.sourceType&&target.sourceType!=="manual"){
+    const updates={};
+    updates["documents/"+journalId+"/status"]="cancelled";
+    updates["documents/"+journalId+"/cancelledAt"]=now;
+    updates["documents/"+journalId+"/cancelledBy"]=claims.sub;
+    updates["documents/"+journalId+"/cancellationReason"]=txt(body.reason||"إلغاء القيد بطلب المستخدم",500);
+    updates["reviewQueue/"+journalId]=null;
+    updates["audit/"+uid("AUD")]={action:"cancel_source_journal",documentId:journalId,sourceType:target.sourceType||"",uid:claims.sub,createdAt:now};
+    await adminPatch(updates);
+    return {success:true,id:journalId,deleted:false,cancelled:true,status:"cancelled"};
+   }
    const updates={};updates["documents/"+journalId]=null;updates["reviewQueue/"+journalId]=null;updates["journals/"+journalId]=null;
-   if(target.status==="posted"||posted){
+   if(isPosted){
     const period=month(target.date);updates["periods/"+period+"/entries/"+journalId]=null;
     (target.lines||[]).forEach((line,index)=>{const suffix=journalId+"_"+(index+1),account=String(line.accountCode||"");if(account)updates["ledger/"+id(account)+"/"+period+"/"+suffix]=null;if(line.partyType&&line.partyId)updates["partyLedger/"+id(line.partyType)+"/"+id(line.partyId)+"/"+period+"/"+suffix]=null;if(line.costCenterId)updates["costLedger/"+id(line.costCenterId)+"/"+period+"/"+suffix]=null;});
    }
@@ -2332,7 +2374,60 @@ await adminPatch(u);
   if(j){if(!j.number)j.number=journalNumberFor(j.date,j.id);updates["documents/"+docId+"/journalNumber"]=j.number;if(String(j.id)===String(docId))updates["documents/"+docId+"/number"]=j.number;}
   updates["documents/"+docId+"/status"]="posted";updates["documents/"+docId+"/journalId"]=j.id;updates["documents/"+docId+"/approvedAt"]=now;updates["documents/"+docId+"/approvedBy"]=claims.sub;updates["documents/"+docId+"/postedAt"]=now;updates["reviewQueue/"+docId]=null;
   updates["audit/"+uid("AUD")]={action:"approve_and_post",documentId:docId,journalId:j.id,uid:claims.sub,createdAt:now};
-  if(doc.type==="journal"&&doc.reversalOf)updates["journals/"+id(doc.reversalOf)+"/reversedByJournalId"]=j.id;
+  if(doc.type==="journal"&&doc.reversalOf){
+   const originalId=id(doc.reversalOf),original=await adminRead("journals/"+originalId);
+   if(!original||original.status!=="posted"||String(original.reversalJournalId||"")!==String(doc.id))throw new Error("القيد الأصلي غير مرحّل أو لم يعد مرتبطًا بطلب العكس الحالي.");
+   updates["journals/"+originalId+"/reversedByJournalId"]=j.id;
+   updates["journals/"+originalId+"/reversedAt"]=now;
+   updates["journals/"+originalId+"/reversedBy"]=claims.sub;
+   if(original.sourceType==="invoice"&&original.sourceId){
+    const invoiceId=id(original.sourceId),invoice=await adminRead("documents/"+invoiceId);
+    if(!invoice||invoice.type!=="invoice"||invoice.status!=="posted")throw new Error("فاتورة المصدر غير موجودة أو ليست مرحّلة؛ لم يتم عكس المخزون.");
+    const allMovements=(await adminRead("inventory/movements"))||{};
+    const originalMovements=Object.entries(allMovements).filter(([key,movement])=>
+     movement&&String(movement.invoiceId||"")===invoiceId&&String(movement.journalId||"")===originalId&&!movement.reversedByJournalId
+    );
+    const groups=new Map();
+    originalMovements.forEach(([key,movement])=>{
+     const warehouse=id(movement.warehouseCode||"default"),item=id(movement.itemCode||"");
+     if(!item)throw new Error("حركة المخزون المرتبطة بالفاتورة لا تحتوي على كود صنف؛ يلزم فحصها يدويًا.");
+     const keyValue=warehouse+"|"+item,group=groups.get(keyValue)||{warehouse,item,quantity:0,value:0,movements:[]};
+     group.quantity+=Number(movement.quantity||0);group.value+=Number(movement.value||0);group.movements.push({key,movement});
+     groups.set(keyValue,group);
+    });
+    for(const group of groups.values()){
+     const laterMovement=Object.entries(allMovements).some(([key,movement])=>
+      movement&&String(movement.warehouseCode||"default")===group.warehouse&&String(movement.itemCode||"")===group.item&&
+      String(movement.invoiceId||"")!==invoiceId&&!movement.reversedByJournalId&&
+      (String(movement.date||"")>String(invoice.date||original.date||"")||
+       (String(movement.date||"")===String(invoice.date||original.date||"")&&Number(movement.createdAt||0)>Math.max(0,...group.movements.map(item=>Number(item.movement.createdAt||0)))))
+     );
+     if(laterMovement)throw new Error("لا يمكن عكس هذه الفاتورة المخزنية بأمان لأن الصنف "+group.item+" له حركات لاحقة. عالج الحركات اللاحقة أو استخدم تسوية مخزون معتمدة أولاً.");
+     const stock=(await adminRead("inventory/balances/"+group.warehouse+"/"+group.item))||{quantity:0,value:0,averageCost:0};
+     const nextQuantity=Number(stock.quantity||0)-group.quantity,nextValue=Number(stock.value||0)-group.value;
+     if(nextQuantity< -0.01||nextValue< -0.01)throw new Error("عكس الفاتورة سيؤدي إلى رصيد مخزون سالب للصنف "+group.item+"؛ لم يتم تغيير أي رصيد.");
+     if(nextQuantity<=0.005&&Math.abs(nextValue)>0.01)throw new Error("كمية المخزون ستصبح صفرًا مع بقاء قيمة غير موزعة للصنف "+group.item+"؛ يلزم فحص يدوي.");
+     updates["inventory/balances/"+group.warehouse+"/"+group.item]={quantity:rnd(Math.max(0,nextQuantity)),value:rnd(Math.max(0,nextValue)),averageCost:nextQuantity>0.005?rnd(nextValue/nextQuantity):0,updatedAt:now};
+     group.movements.forEach(item=>{
+      updates["inventory/movements/"+id(item.key)+"/reversedByJournalId"]=j.id;
+      updates["inventory/movements/"+id(item.key)+"/reversedAt"]=now;
+     });
+    }
+    updates["documents/"+invoiceId+"/status"]="reversed";
+    updates["documents/"+invoiceId+"/reversedByJournalId"]=j.id;
+    updates["documents/"+invoiceId+"/reversedAt"]=now;
+    updates["documents/"+invoiceId+"/reversedBy"]=claims.sub;
+    updates["sourceLocks/invoice_"+invoiceId]=null;
+   }else if(original.sourceId){
+    const sourceDocument=await adminRead("documents/"+id(original.sourceId));
+    if(sourceDocument&&sourceDocument.type!=="journal"){
+     updates["documents/"+id(original.sourceId)+"/status"]="reversed";
+     updates["documents/"+id(original.sourceId)+"/reversedByJournalId"]=j.id;
+     updates["documents/"+id(original.sourceId)+"/reversedAt"]=now;
+    }
+    updates["sourceLocks/"+String(original.sourceType||"")+"_"+id(original.sourceId)]=null;
+   }
+  }
   if(doc.type==="journal"&&doc.sourceType==="projectEvent"&&doc.sourceId&&adminPatchRootAt){
    const separator=String(doc.sourceId).lastIndexOf("--");
    if(separator>0)sourceRootUpdate={path:"projects/"+id(doc.sourceId.slice(0,separator))+"/events/"+id(doc.sourceId.slice(separator+2)),value:{accountingStatus:"posted",accountingImpact:true,accountingJournalId:j.id,accountingApprovedAt:now,accountingApprovedBy:claims.sub,accountingErrors:null}};
