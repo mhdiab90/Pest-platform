@@ -3005,7 +3005,29 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
    button("فتح كشف حساب المخزون 1300",()=>{setPartyStatement({type:"account",id:"1300"});setStatementPartySearch("");setPartyRows([]);setTab("partyStatements");},"muted")
   ));
  };
-const balanceSheetContent=()=>h('div',{className:'space-y-3'},
+const controlSubledgerAuditRows=accounts.filter(account=>account.subledgerType&&!account.isGroup).map(account=>{
+  const gl=balanceBalances[String(account.code)]||{debit:0,credit:0};
+  const analytic=balanceFlat.filter(line=>String(line.accountCode)===String(account.code)&&String(line.partyType||"")===String(account.subledgerType)&&String(line.partyId||""));
+  const subDebit=analytic.reduce((sum,line)=>sum+n(line.debit),0),subCredit=analytic.reduce((sum,line)=>sum+n(line.credit),0);
+  return {account,glDebit:n(gl.debit),glCredit:n(gl.credit),subDebit,subCredit,debitDifference:n(gl.debit)-subDebit,creditDifference:n(gl.credit)-subCredit,count:analytic.length};
+ });
+ const controlSubledgerMismatchCount=controlSubledgerAuditRows.filter(row=>Math.abs(row.debitDifference)>0.01||Math.abs(row.creditDifference)>0.01).length;
+ const controlSubledgerIntegrityPanel=()=>panel('مطابقة الحسابات الرقابية مع الأستاذ المساعد','يجب أن يساوي إجمالي حركة كل حساب رقابي مجموع حركات الأطراف التحليلية المسجلة عليه. الفرق يشير إلى قيد بلا طرف تحليلي أو إلى نقص في ترحيل الأستاذ المساعد.',h('div',{className:'space-y-2'},
+  controlSubledgerMismatchCount?h('div',{className:'rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900'},'توجد '+controlSubledgerMismatchCount+' حسابات رقابية تحتاج إلى مراجعة. لا تعتمد أرصدة الموردين أو العملاء أو العاملين قبل فحص الفروق.'):h('div',{className:'rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800'},'حركة الحسابات الرقابية متطابقة مع مجموع الأطراف التحليلية المسجلة على القيود المرحلة.'),
+  table(['كود الحساب','الحساب الرقابي','نوع الأستاذ المساعد','مدين الأستاذ العام','مدين الأطراف','فرق المدين','دائن الأستاذ العام','دائن الأطراف','فرق الدائن','عدد السطور'],controlSubledgerAuditRows.map(row=>h('tr',{key:row.account.code,className:'border-t'},
+   h('td',{className:'p-2'},row.account.code),
+   h('td',{className:'p-2'},h('button',{type:'button',className:'text-blue-700 underline font-semibold',onClick:()=>openStatementAccount(row.account.code)},row.account.name)),
+   h('td',{className:'p-2'},row.account.subledgerType),
+   h('td',{className:'p-2 text-end'},fmt(row.glDebit)),
+   h('td',{className:'p-2 text-end'},fmt(row.subDebit)),
+   h('td',{className:'p-2 text-end font-bold '+(Math.abs(row.debitDifference)>0.01?'text-rose-700':'')},fmt(row.debitDifference)),
+   h('td',{className:'p-2 text-end'},fmt(row.glCredit)),
+   h('td',{className:'p-2 text-end'},fmt(row.subCredit)),
+   h('td',{className:'p-2 text-end font-bold '+(Math.abs(row.creditDifference)>0.01?'text-rose-700':'')},fmt(row.creditDifference)),
+   h('td',{className:'p-2 text-center'},String(row.count))
+  )))
+ ));
+ const balanceSheetContent=()=>h('div',{className:'space-y-3'},
   h('div',{className:'grid grid-cols-2 md:grid-cols-4 gap-2'},
    metric('إجمالي الأصول',fmt(assets)),
    metric('إجمالي الالتزامات',fmt(liabilities)),
@@ -3079,6 +3101,7 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
    h('div',{className:'grid md:grid-cols-4 gap-3'},field('من شهر',period.from,v=>setPeriod(o=>Object.assign({},o,{from:v})),'month'),field('إلى شهر',period.to,v=>setPeriod(o=>Object.assign({},o,{to:v})),'month'),select('القائمة المالية',report,v=>setReport(v),[{value:'trial',label:'ميزان المراجعة التفصيلي'},{value:'income',label:'قائمة الدخل التفصيلية'},{value:'balance',label:'قائمة المركز المالي التفصيلية'},{value:'cashflow',label:'قائمة التدفقات النقدية'},{value:'ledger',label:'دفتر الأستاذ العام'}]),button('تحديث البيانات',loadPeriod,'primary')),
    h('p',{className:'text-xs text-slate-500'},'عملة العرض: جنيه مصري · الفترة: '+period.from+' إلى '+period.to+' · بداية الدفاتر: '+(accountingStartMonth||'غير محددة'))
   ),
+  controlSubledgerIntegrityPanel(),
   report==='trial'?h('div',{className:'space-y-3'},trialIntegrityNote,panel('ميزان المراجعة — حسابات تفصيلية وتجميعية','الافتتاحي + حركة الفترة = الختامي. الأرصدة التجميعية تتضمن الأرصدة التابعة ولا تدخل مرتين في الإجماليات.',table(['كود','الحساب (اضغط لفتح الكشف)','افتتاحي مدين','افتتاحي دائن','حركة مدين','حركة دائن','ختامي مدين','ختامي دائن'],trialBalanceRows)),trialBalanceTotals):null,
   report==='income'?incomeStatementContent():null,
   report==='balance'?balanceSheetContent():null,
@@ -3355,5 +3378,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261122-unified-account-statements-inventory-reconciliation-v1";
+ window.PEST_FINANCE_MODULE_VERSION="20261122-ledger-subledger-audit-v2";
 })();
