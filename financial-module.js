@@ -1184,14 +1184,67 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
   finally{setBusy(false);}
  };
  const area=(label,value,onChange)=>h('label',{className:'block text-sm font-bold'},label,h('textarea',{value,onChange:e=>onChange(e.target.value),rows:2,className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal'}));
+ const canExportFinancialReport=()=>Boolean(currentUser&&currentUser.role==="admin")||["reports","overview","partyStatements","journal","inventory","tax"].some(area=>canFinance(area,"export"));
+ const exportSectionContent=(sourceNode,format)=>{
+  if(!sourceNode)return;
+  const title=String(sourceNode.getAttribute("data-pest-export-title")||"تقرير مالي");
+  const clean=sourceNode.cloneNode(true);
+  clean.querySelectorAll("[data-pest-export-actions]").forEach(node=>node.remove());
+  clean.querySelectorAll("button").forEach(node=>node.replaceWith(document.createTextNode(String(node.innerText||node.textContent||"").trim())));
+  clean.querySelectorAll("input,select,textarea").forEach(node=>node.remove());
+  const tables=Array.from(clean.querySelectorAll("table"));
+  const safeName=value=>String(value||"Financial_Report").replace(/[\\\\/:*?"<>|]+/g,"_").replace(/\\s+/g,"_").slice(0,70)||"Financial_Report";
+  if(format==="excel"){
+   const Excel=window.XLSX;
+   if(!Excel||!Excel.utils||!Excel.utils.book_new||!Excel.utils.aoa_to_sheet||!Excel.writeFile){setError("مكتبة Excel غير متاحة. حدّث الصفحة ثم حاول مرة أخرى.");return;}
+   try{
+    const workbook=Excel.utils.book_new();
+    workbook.Props={Title:title,Subject:"Pest Platform financial report",Author:currentUser&&(currentUser.fullName||currentUser.username||currentUser.email)||"Pest Platform",CreatedDate:new Date()};
+    const datasets=tables.length?tables:[null];
+    datasets.forEach((tableNode,index)=>{
+     const rows=[];
+     if(tableNode){
+      Array.from(tableNode.querySelectorAll("tr")).forEach(row=>{
+       const cells=Array.from(row.querySelectorAll("th,td")).map(cell=>String(cell.innerText||cell.textContent||"").replace(/\\s+/g," ").trim());
+       if(cells.length)rows.push(cells);
+      });
+     }else{
+      const lines=String(clean.innerText||clean.textContent||"").split(/\\n+/).map(line=>line.trim()).filter(Boolean);
+      rows.push([title],...lines.map(line=>[line]));
+     }
+     const aoa=[[title],[rtl?"تاريخ التصدير":"Exported at",new Date().toLocaleString(rtl?"ar-EG-u-nu-latn":"en-US")],[],...rows];
+     const sheet=Excel.utils.aoa_to_sheet(aoa);
+     sheet["!views"]=[{RTL:Boolean(rtl)}];
+     sheet["!cols"]=Array.from({length:Math.max(1,...aoa.map(row=>row.length))},()=>({wch:22}));
+     const sheetName=(tables.length>1?"تفاصيل "+(index+1):title).replace(/[\\\\/?*\\[\\]:]/g," ").slice(0,31)||"Report";
+     Excel.utils.book_append_sheet(workbook,sheet,sheetName);
+    });
+    Excel.writeFile(workbook,safeName(title)+"_"+new Date().toISOString().slice(0,10)+".xlsx");
+    setNotice("تم تصدير "+title+" إلى Excel بنجاح.");
+   }catch(error){setError("تعذر تصدير Excel: "+String(error.message||error));}
+   return;
+  }
+  const printWindow=window.open("","_blank");
+  if(!printWindow){setError("المتصفح منع فتح نافذة PDF. اسمح بالنوافذ المنبثقة ثم حاول مرة أخرى.");return;}
+  const html='<!doctype html><html lang="'+(rtl?"ar":"en")+'" dir="'+(rtl?"rtl":"ltr")+'"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+title.replace(/&/g,"&amp;").replace(/</g,"&lt;")+'</title><link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet"><style>@page{size:A4 landscape;margin:12mm}*{box-sizing:border-box}body{font-family:Cairo,Tahoma,Arial,sans-serif;color:#1f2937;direction:'+(rtl?"rtl":"ltr")+';font-size:10pt;margin:0}h1{font-size:18pt;color:#17365d;border-bottom:2px solid #17365d;padding-bottom:8px;margin:0 0 12px}.report-meta{font-size:8pt;color:#64748b;margin-bottom:14px}section{break-inside:auto}.overflow-auto{overflow:visible!important;max-height:none!important}table{width:100%;border-collapse:collapse;direction:'+(rtl?"rtl":"ltr")+';font-size:9pt;margin:8px 0 16px}thead{display:table-header-group}tr{break-inside:avoid}th,td{border:1px solid #cbd5e1;padding:6px;text-align:right;vertical-align:top}th{background:#eaf0f6;font-weight:800}.pest-finance-export-tools{display:none!important}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body><h1>'+title.replace(/&/g,"&amp;").replace(/</g,"&lt;")+'</h1><div class="report-meta">'+(rtl?"تاريخ التصدير: ":"Exported at: ")+new Date().toLocaleString(rtl?"ar-EG-u-nu-latn":"en-US")+'</div>'+clean.innerHTML+'</body></html>';
+  printWindow.document.open();printWindow.document.write(html);printWindow.document.close();
+  const startPrint=async()=>{try{if(printWindow.document.fonts&&printWindow.document.fonts.ready)await printWindow.document.fonts.ready;printWindow.focus();window.setTimeout(()=>{try{printWindow.print();}catch(error){setError("تعذرت طباعة التقرير PDF: "+String(error.message||error));}},160);}catch(error){printWindow.focus();printWindow.print();}};
+  if(printWindow.document.readyState==="complete")void startPrint();else printWindow.addEventListener("load",()=>void startPrint(),{once:true});
+ };
+ const exportToolbar=(target,title)=>h("div",{"data-pest-export-actions":"true",className:"pest-finance-export-tools print:hidden flex flex-wrap items-center gap-1 shrink-0"},
+  h("button",{type:"button",title:"تصدير الجزء المحدد إلى Excel",onClick:event=>{const node=event.currentTarget.closest("[data-pest-export-scope]");exportSectionContent(node,"excel");},className:"rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-100"},"Excel"),
+  h("button",{type:"button",title:"تصدير الجزء المحدد إلى PDF",onClick:event=>{const node=event.currentTarget.closest("[data-pest-export-scope]");exportSectionContent(node,"pdf");},className:"rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-800 hover:bg-rose-100"},"PDF")
+ );
  const panel=(title,sub,child)=>{
   const panelKey=String(tab)+'::'+String(title),collapsed=Boolean(collapsedPanels[panelKey]);
-  return h('section',{key:panelKey,className:'rounded-2xl border bg-white p-4 shadow-sm min-w-0'},
+  return h('section',{key:panelKey,'data-pest-export-scope':'panel','data-pest-export-title':String(title),className:'rounded-2xl border bg-white p-4 shadow-sm min-w-0'},
    h('div',{className:'mb-2 flex flex-wrap items-start justify-between gap-2'},
     h('div',{className:'min-w-0 flex-1'},h('h3',{className:'font-bold text-lg'},title),sub?h('p',{className:'text-xs text-slate-500 mt-1'},sub):null),
-    h('button',{type:'button','aria-expanded':!collapsed,'aria-label':(collapsed?'إظهار القسم: ':'إخفاء القسم: ')+String(title),onClick:()=>setCollapsedPanels(previous=>Object.assign({},previous,{[panelKey]:!previous[panelKey]})),className:'shrink-0 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100'},
-     h('span',null,collapsed?t('إظهار القسم','Show section'):t('إخفاء القسم','Hide section')),
-     h('span',{className:'text-base leading-none'},collapsed?'⌄':'⌃')
+    h('div',{className:'flex flex-wrap items-center gap-2'},canExportFinancialReport()?exportToolbar(null,title):null,
+     h('button',{type:'button','aria-expanded':!collapsed,'aria-label':(collapsed?'إظهار القسم: ':'إخفاء القسم: ')+String(title),onClick:()=>setCollapsedPanels(previous=>Object.assign({},previous,{[panelKey]:!previous[panelKey]})),className:'shrink-0 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100'},
+      h('span',null,collapsed?t('إظهار القسم','Show section'):t('إخفاء القسم','Hide section')),
+      h('span',{className:'text-base leading-none'},collapsed?'⌄':'⌃')
+     )
     )
    ),
    collapsed?null:h('div',{className:'mt-3 min-w-0'},child)
@@ -1209,10 +1262,14 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
   const query=String(screenTableSearch||'').trim().toLowerCase();
   const source=Array.isArray(data)?data:[];
   const filtered=query?source.filter(row=>screenSearchText(row).toLowerCase().includes(query)):source;
-  return h('div',{className:'overflow-auto border rounded-xl',style:scrollStyle||undefined},
-   h('table',{dir:rtl?'rtl':'ltr',className:'w-full text-sm text-right'},
-    h('thead',{className:'bg-slate-100'},h('tr',null,headers.map(x=>h('th',{key:x,className:'p-3 whitespace-nowrap text-right align-middle'},x)))),
-    h('tbody',null,filtered.length?filtered:h('tr',null,h('td',{colSpan:headers.length,className:'p-4 text-center text-slate-400'},query?'لا توجد نتائج مطابقة للبحث':'لا توجد بيانات')))
+  const exportTitle=Array.isArray(headers)?headers.slice(0,3).join(" - "):"جدول التقرير";
+  return h('div',{'data-pest-export-scope':'table','data-pest-export-title':exportTitle,className:'min-w-0'},
+   canExportFinancialReport()?h('div',{className:'flex justify-end mb-1'},exportToolbar(null,exportTitle)):null,
+   h('div',{className:'overflow-auto border rounded-xl',style:scrollStyle||undefined},
+    h('table',{dir:rtl?'rtl':'ltr',className:'w-full text-sm text-right'},
+     h('thead',{className:'bg-slate-100'},h('tr',null,headers.map(x=>h('th',{key:x,className:'p-3 whitespace-nowrap text-right align-middle'},x)))),
+     h('tbody',null,filtered.length?filtered:h('tr',null,h('td',{colSpan:headers.length,className:'p-4 text-center text-slate-400'},query?'لا توجد نتائج مطابقة للبحث':'لا توجد بيانات')))
+    )
    )
   );
  };
@@ -1384,9 +1441,20 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
  };
 const deleteJournalDocument=async(doc)=>{
    if(!canFinance("journal","delete")){setError("ليس لديك صلاحية حذف القيود اليومية.");return;}
-   if(!window.confirm("تأكيد حذف القيد "+(doc.id||"")+"؟ سيتم حذف أثره من الأستاذ والفترة إذا كان قيدًا مرحلًا يدويًا."))return;
+   const posted=doc.status==="posted"||journalRecords.some(item=>String(item.id)===String(doc.id)&&item.status==="posted");
+   const sourceType=doc.sourceType||"manual";
+   const confirmation=posted&&sourceType!=="manual"
+    ?"هذا القيد مرتبط بمستند مصدر. سيُنشأ قيد عكسي بانتظار المراجعة، ولن يتغير الأثر المحاسبي أو المخزون قبل اعتماد العكس. إذا كانت فاتورة مخزنية ولها حركات لاحقة على نفس الصنف، سيرفض النظام العكس لحماية تقييم المخزون. متابعة؟"
+    :"تأكيد حذف القيد "+(doc.id||"")+"؟ سيتم حذف أثره من الأستاذ والفترة مع الاحتفاظ بسجل العملية.";
+   if(!window.confirm(confirmation))return;
    setBusy(true);setError('');
-   try{await api('', 'POST',{action:'deleteJournal',id:doc.id});setNotice("تم حذف القيد وتحديث سجلات الأستاذ والفترة.");await refresh();await loadPeriod();}
+   try{
+    const result=await api('', 'POST',{action:'deleteJournal',id:doc.id,reason:"حذف/إلغاء من سجل القيود اليومية"});
+    if(result.reversalRequested)setNotice("تم إنشاء القيد العكسي "+result.reversalId+" وإرساله للمراجعة. يعتمد إلغاء الأثر بعد موافقة المراجع.");
+    else if(result.cancelled)setNotice("تم إلغاء القيد غير المرحّل وإزالته من قائمة المراجعة مع الاحتفاظ بسجل العملية.");
+    else setNotice("تم حذف القيد وتحديث سجلات الأستاذ والفترة.");
+    setJournalModal(null);setJournalModalDraft(null);await refresh();await loadPeriod();
+   }
    catch(e){setError(e.message||String(e));}
    finally{setBusy(false);}
   };
@@ -1831,7 +1899,7 @@ const renderJournal = function() {
        posted&&!manual?h('p',{className:'w-full text-xs text-amber-700'},'هذا القيد ناتج عن مستند مصدر؛ يتم تعديله من الفاتورة أو السند أو حركة العهدة الأصلية حتى تظل الأرصدة الفرعية والمخزون متطابقة.'):null,
        posted&&canFinance('journal','add')?button('إنشاء قيد عكسي',()=>void reverseJournal(draft),'success',busy||!!draft.reversalJournalId||!!draft.pendingRevisionId||!!draft.revisedByJournalId):null,
        !posted?button('إلغاء القيد',()=>void cancelJournal(draft),'muted',busy||!canFinance('journal','edit')):null,
-       manual?button('حذف القيد',()=>void deleteJournalDocument(draft),'danger',busy||!canFinance('journal','delete')):null
+       canFinance('journal','delete')?button(posted&&!manual?'حذف / إلغاء أثر القيد':'حذف القيد',()=>void deleteJournalDocument(draft),'danger',busy):null
       )
      )
     );
@@ -3001,7 +3069,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
     posted:"مرحّلة",pending_review:"بانتظار المراجعة",duplicate_review:"تكرار محتمل",
     needs_correction:"تحتاج تصحيح",returned_to_creator:"معادة للمنشئ",
     assigned:"محولة للاستكمال",draft:"مسودة",rejected:"مرفوضة",
-    cancelled:"ملغاة",deleted:"محذوفة"
+    cancelled:"ملغاة",deleted:"محذوفة",reversed:"معكوسة محاسبيًا"
    })[String(doc.status||"")]||String(doc.status||"غير محددة");
    const outsideBalanceRange=Boolean(posted&&journal&&!balanceJournalIds.has(String(journal.id||"")));
    const observation=!posted
@@ -3011,7 +3079,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
     :"القيد وحساباته الأساسية سليمة.";
    return {doc,posted,journal,issues,total,statusLabel,outsideBalanceRange,observation};
   });
-  const excludedStatuses=new Set(["rejected","cancelled","deleted"]);
+  const excludedStatuses=new Set(["rejected","cancelled","deleted","reversed"]);
   const unpostedInvoices=invoiceDiagnostics.filter(row=>!row.posted&&!excludedStatuses.has(String(row.doc.status||"")));
   const postedInvoices=invoiceDiagnostics.filter(row=>row.posted);
   const postingIssueRows=invoiceDiagnostics.filter(row=>row.posted&&row.issues.length>0);
@@ -3066,7 +3134,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
   },0);
   const reconciliationDifference=inventoryStockValue-inventoryGeneralLedgerValue;
   const itemNameByCode=new Map(items.map(item=>[String(item.code),item.name]));
-  const purchaseMovementRows=inventoryMovements.filter(item=>item.kind==="purchase").slice(0,20).map(item=>{
+  const purchaseMovementRows=inventoryMovements.filter(item=>item.kind==="purchase"&&!item.reversedByJournalId).slice(0,20).map(item=>{
    const linkedValue=balanceFlat.filter(line=>
     String(line.journalId||"")===String(item.journalId||"")&&
     inventoryAccountCodes.includes(String(line.accountCode))&&
@@ -3517,5 +3585,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261122-invoice-posting-reconciliation-v1";
+ window.PEST_FINANCE_MODULE_VERSION="20261122-financial-history-delete-export-v1";
 })();
