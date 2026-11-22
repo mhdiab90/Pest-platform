@@ -3344,7 +3344,7 @@ const criticalAccountConfiguration=[
  );
 const fullStatementsExportNode=()=>{
   forceExpandAllFinancialPanels=true;
-  const node=h('div',{'data-pest-export-scope':'all-statements','data-pest-export-title':'القوائم المالية كاملة','aria-hidden':'true',style:{position:'fixed',left:'-10000px',top:'0',width:'1600px',visibility:'hidden',pointerEvents:'none',zIndex:-1}},
+  const node=h('div',{'data-pest-export-scope':'all-statements','data-pest-export-title':'القوائم المالية كاملة','aria-hidden':'true',style:{position:'fixed',left:'-10000px',top:'0',width:'1600px',opacity:0,pointerEvents:'none',zIndex:-1}},
    h('div',{className:'p-3'},h('h2',{className:'text-xl font-extrabold'},'القوائم المالية كاملة'),h('p',{className:'text-xs'},'الفترة: '+period.from+' إلى '+period.to+' — عملة العرض: جنيه مصري')),
    h('section',{'data-pest-export-scope':'panel','data-pest-export-title':'ميزان المراجعة'},h('h3',{className:'font-bold'},'ميزان المراجعة'),trialIntegrityNote,table(['كود','الحساب','افتتاحي مدين','افتتاحي دائن','حركة مدين','حركة دائنة','ختامي مدين','ختامي دائن'],trialBalanceRows),trialBalanceTotals),
    incomeStatementContent(),
