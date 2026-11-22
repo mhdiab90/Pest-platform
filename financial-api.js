@@ -1611,65 +1611,136 @@ export async function handleFinancialRequest(ctx){
    requireFinanceArea("journal","delete");
    const journalId=id(body.id),document=await adminRead("documents/"+journalId),posted=await adminRead("journals/"+journalId),target=posted||document;
    if(!target||target.type!=="journal")throw new Error("قيد اليومية المطلوب حذفه غير موجود.");
-   if(target.pendingRevisionId||target.revisedByJournalId)throw new Error("لا يمكن حذف هذا القيد لوجود إصدار تعديل معلّق أو معتمد مرتبط به. احتفظ بالتسلسل المحاسبي.");
-   if(target.reversalJournalId||target.reversedByJournalId)throw new Error("هذا القيد مرتبط بطلب عكس سابق أو تم عكسه بالفعل.");
+   if(target.pendingRevisionId||target.revisedByJournalId)throw new Error("لا يمكن حذف هذا القيد لوجود إصدار تعديل معلّق أو معتمد مرتبط به. احذف/عالج إصدار التعديل المرتبط أولاً.");
+   if(target.reversalJournalId||target.reversedByJournalId)throw new Error("هذا القيد مرتبط بطلب عكس سابق أو تم عكسه بالفعل. راجع القيد المرتبط قبل الحذف.");
    const isPosted=target.status==="posted"||Boolean(posted&&posted.status==="posted");
-   if(isPosted&&target.sourceType&&target.sourceType!=="manual"){
-    if(target.sourceType==="invoice"&&target.sourceId){
-     const sourceInvoice=await adminRead("documents/"+id(target.sourceId));
-     if(!sourceInvoice||sourceInvoice.type!=="invoice"||sourceInvoice.status!=="posted")throw new Error("فاتورة المصدر غير موجودة أو ليست مرحّلة.");
-     const allStockMovements=(await adminRead("inventory/movements"))||{};
-     const linkedStockMovements=Object.entries(allStockMovements).filter(([key,movement])=>movement&&String(movement.invoiceId||"")===String(sourceInvoice.id)&&String(movement.journalId||"")===String(target.id||journalId)&&!movement.reversedByJournalId);
-     const expectedStockLines=(sourceInvoice.lines||[]).filter(line=>line&&line.kind==="stock");
-     if(expectedStockLines.length&&!linkedStockMovements.length)throw new Error("الفاتورة تحتوي على أصناف مخزنية لكن حركة المخزن المرتبطة غير موجودة؛ لا يمكن حذف القيد قبل إصلاح مطابقة المخزون.");
-     for(const [movementKey,movement] of linkedStockMovements){
-      const laterMovement=Object.entries(allStockMovements).some(([otherKey,other])=>
-       other&&String(otherKey)!==String(movementKey)&&String(other.warehouseCode||"default")===String(movement.warehouseCode||"default")&&String(other.itemCode||"")===String(movement.itemCode||"")&&
-       String(other.invoiceId||"")!==String(sourceInvoice.id)&&!other.reversedByJournalId&&
-       (String(other.date||"")>String(movement.date||sourceInvoice.date||"")||
-        (String(other.date||"")===String(movement.date||sourceInvoice.date||"")&&Number(other.createdAt||0)>Number(movement.createdAt||0)))
-      );
-      if(laterMovement)throw new Error("لا يمكن إلغاء القيد المخزني بأمان لأن الصنف "+String(movement.itemCode||"")+" له حركات لاحقة. يلزم معالجة الحركات اللاحقة أو تسوية المخزون أولاً.");
+   const sourceType=String(target.sourceType||"manual"),sourceId=id(target.sourceId||"");
+   const reason=txt(body.reason||"حذف القيد من شاشة القيود اليومية",500);
+   const updates={},stockEffects=[],inventoryWarnings=[];
+   if(isPosted&&sourceType==="invoice"&&sourceId){
+    const sourceInvoice=await adminRead("documents/"+sourceId);
+    const allStockMovements=(await adminRead("inventory/movements"))||{};
+    const linkedStockMovements=Object.entries(allStockMovements).filter(([key,movement])=>
+     movement&&String(movement.invoiceId||"")===sourceId&&String(movement.journalId||"")===journalId&&!movement.reversedByJournalId&&!movement.cancelledByJournalDeletion
+    );
+    const expectedStockLines=sourceInvoice&&Array.isArray(sourceInvoice.lines)?sourceInvoice.lines.filter(line=>line&&line.kind==="stock"):[];
+    if(expectedStockLines.length&&!linkedStockMovements.length)inventoryWarnings.push("الفاتورة تحتوي على أصناف مخزنية لكن حركات المخزون المرتبطة غير موجودة؛ راجع مطابقة المخزون بعد الحذف.");
+    const groups=new Map();
+    linkedStockMovements.forEach(([movementKey,movement])=>{
+     const warehouse=id(movement.warehouseCode||"default"),item=id(movement.itemCode||"");
+     if(!item){inventoryWarnings.push("توجد حركة مخزون بلا كود صنف، ولم يتم تعديل رصيدها آليًا.");return;}
+     const groupKey=warehouse+"|"+item,group=groups.get(groupKey)||{warehouse,item,quantity:0,value:0,movements:[]};
+     group.quantity+=Number(movement.quantity||0);
+     group.value+=Number(movement.value||0);
+     group.movements.push({key:movementKey,movement});
+     groups.set(groupKey,group);
+    });
+    for(const group of groups.values()){
+     const stock=(await adminRead("inventory/balances/"+group.warehouse+"/"+group.item))||{quantity:0,value:0,averageCost:0};
+     const nextQuantity=rnd(Number(stock.quantity||0)-group.quantity);
+     const nextValue=rnd(Number(stock.value||0)-group.value);
+     const nextAverageCost=Math.abs(nextQuantity)>0.005?rnd(nextValue/nextQuantity):0;
+     updates["inventory/balances/"+group.warehouse+"/"+group.item]={
+      quantity:nextQuantity,value:nextValue,averageCost:nextAverageCost,updatedAt:now,
+      lastJournalDeletionId:journalId,
+      ...(nextQuantity< -0.005||nextValue< -0.01?{deletionInventoryWarning:true}: {})
+     };
+     group.movements.forEach(item=>{
+      updates["inventory/movements/"+id(item.key)+"/reversedByJournalId"]="DELETED_"+journalId;
+      updates["inventory/movements/"+id(item.key)+"/reversedAt"]=now;
+      updates["inventory/movements/"+id(item.key)+"/cancelledByJournalDeletion"]=true;
+      updates["inventory/movements/"+id(item.key)+"/cancellationReason"]=reason;
+     });
+     stockEffects.push({warehouseCode:group.warehouse,itemCode:group.item,removedQuantity:rnd(group.quantity),removedValue:rnd(group.value),newQuantity:nextQuantity,newValue:nextValue,averageCost:nextAverageCost});
+     if(nextQuantity< -0.005||nextValue< -0.01)inventoryWarnings.push("الصنف "+group.item+" في المخزن "+group.warehouse+" أصبح له رصيد سالب بعد حذف الفاتورة؛ راجع الحركات اللاحقة وتسوية المخزون.");
+    }
+    if(sourceInvoice){
+     updates["documents/"+sourceId+"/status"]="cancelled";
+     updates["documents/"+sourceId+"/accountingStatus"]="cancelled";
+     updates["documents/"+sourceId+"/accountingCancelledAt"]=now;
+     updates["documents/"+sourceId+"/accountingCancelledBy"]=claims.sub;
+     updates["documents/"+sourceId+"/accountingCancellationReason"]=reason;
+     updates["sourceLocks/invoice_"+sourceId]=null;
+     if(sourceInvoice.fingerprint){
+      const fingerprintRecord=await adminRead("documentFingerprints/"+id(sourceInvoice.fingerprint));
+      if(fingerprintRecord&&String(fingerprintRecord.documentId||"")===sourceId)updates["documentFingerprints/"+id(sourceInvoice.fingerprint)]=null;
+     }
+    }else inventoryWarnings.push("مستند الفاتورة المصدر غير موجود؛ تم حذف القيد وتسجيل التنبيه للمراجعة.");
+   }else if(isPosted&&(sourceType==="cash"||sourceType==="bankLine")&&sourceId){
+    const sourceDocument=await adminRead("documents/"+sourceId);
+    if(sourceDocument){
+     updates["documents/"+sourceId+"/accountingStatus"]="cancelled";
+     updates["documents/"+sourceId+"/accountingCancelledAt"]=now;
+     updates["documents/"+sourceId+"/accountingCancelledBy"]=claims.sub;
+     updates["documents/"+sourceId+"/accountingCancellationReason"]=reason;
+    }
+    updates["sourceLocks/"+(sourceType==="cash"?"cash_":"bankLine_")+sourceId]=null;
+   }else if(isPosted&&sourceType==="projectEvent"&&sourceId&&adminPatchRootAt){
+    const separator=sourceId.lastIndexOf("--");
+    if(separator>0)await adminPatchRootAt("projects/"+id(sourceId.slice(0,separator))+"/events/"+id(sourceId.slice(separator+2)),{
+     accountingStatus:"cancelled",accountingCancelledAt:now,accountingCancelledBy:claims.sub,accountingCancellationReason:reason
+    });
+   }else if(isPosted&&sourceType==="cashCustody"&&sourceId&&adminPatchRootAt){
+    const separator=sourceId.indexOf("--");
+    if(separator>0)await adminPatchRootAt("cashCustodies/"+id(sourceId.slice(0,separator))+"/transactions/"+id(sourceId.slice(separator+2)),{
+     financialReviewStatus:"cancelled",financialReviewCancelledAt:now,financialReviewCancelledBy:claims.sub,financialReviewCancellationReason:reason
+    });
+   }else if(isPosted&&sourceType==="cashCustodyTransfer"&&target.ownerUid&&target.custodyTransactionId&&adminPatchRootAt){
+    const ownerUid=id(target.ownerUid),transactionId=id(target.custodyTransactionId),transferId=id(target.custodyTransferId||"");
+    await adminPatchRootAt("cashCustodies/"+ownerUid+"/transactions/"+transactionId,{
+     "cashCustodyTransfer/pending":false,"cashCustodyTransfer/pendingJournalId":null,
+     "cashCustodyTransfer/lastReviewStatus":"cancelled","cashCustodyTransfer/lastReviewReason":reason,
+     ...(transferId?{["cashCustodyTransferHistory/"+transferId+"/status"]:"cancelled",["cashCustodyTransferHistory/"+transferId+"/cancelledAt"]:now}: {})
+    });
+   }else if(isPosted&&(sourceType==="partnerCurrentAccountTransfer"||sourceType==="partnerCurrentAccountExpenseCorrection")&&sourceId&&adminPatchRootAt){
+    const first=sourceId.indexOf("--"),last=sourceId.lastIndexOf("--");
+    if(first>0&&last>first+2){
+     const ownerUid=id(sourceId.slice(0,first)),transactionId=id(sourceId.slice(first+2,last)),operationId=id(sourceId.slice(last+2));
+     const transferPath="cashCustodies/"+ownerUid+"/transactions/"+transactionId;
+     if(sourceType==="partnerCurrentAccountTransfer"){
+      await adminPatchRootAt(transferPath,{
+       "partnerCurrentAccountTransfer/pending":false,
+       "partnerCurrentAccountTransfer/pendingJournalId":null,
+       "partnerCurrentAccountTransfer/pendingTransferId":null,
+       "partnerCurrentAccountTransfer/lastReviewStatus":"cancelled",
+       "partnerCurrentAccountTransfer/lastReviewReason":reason,
+       ["partnerCurrentAccountTransferHistory/"+operationId+"/status"]:"cancelled",
+       ["partnerCurrentAccountTransferHistory/"+operationId+"/cancelledAt"]:now
+      });
+     }else{
+      await adminPatchRootAt(transferPath,{
+       "partnerCurrentAccountTransfer/expenseCorrectionPendingJournalId":null,
+       "partnerCurrentAccountTransfer/expenseCorrectionStatus":"cancelled",
+       "partnerCurrentAccountTransfer/expenseCorrectionReason":reason,
+       ["partnerCurrentAccountTransferHistory/"+operationId+"/status"]:"cancelled",
+       ["partnerCurrentAccountTransferHistory/"+operationId+"/cancelledAt"]:now
+      });
      }
     }
-    const reversalId=uid("REV-JRN"),reversalDate=date(body.reversalDate||new Date().toISOString().slice(0,10));
-    const lines=(target.lines||[]).map(line=>({...line,debit:Number(line.credit||0),credit:Number(line.debit||0),description:txt(line.description||target.description||"",250)+" — عكس بطلب حذف القيد"}));
-    const reversal={id:reversalId,type:"journal",date:reversalDate,description:"عكس القيد "+(target.number||journalId)+" بطلب حذف القيد المرتبط بالمصدر",reference:txt(target.reference||target.number||journalId,120),currency:target.currency||"EGP",lines,sourceType:"journalReversal",sourceId:journalId,reversalOf:journalId,originalSourceType:target.sourceType||"",originalSourceId:target.sourceId||"",createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120),title:"عكس القيد "+(target.number||journalId),status:"pending_review"};
-    if(reversal.currency!=="EGP")throw new Error("لا يمكن عكس القيد قبل تفعيل أسعار الصرف.");
-    const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{};
-    reversal.lines=normalizeJournalAnalyticLines(reversal.lines,chart);
-    const validation=validateJournal(reversal,chart,centers);
-    if(validation.errors.length)throw new Error("تعذر إنشاء قيد الإلغاء: "+validation.errors.join("؛ "));
-    reversal.balance=validation.balance;reversal.errors=[];
-    const updates={};
-    updates["documents/"+reversalId]=reversal;
-    updates["reviewQueue/"+reversalId]=reviewRecord(reversal);
-    updates["journals/"+journalId+"/reversalJournalId"]=reversalId;
-    updates["journals/"+journalId+"/reversalRequestedAt"]=now;
-    updates["journals/"+journalId+"/reversalRequestedBy"]=claims.sub;
-    updates["journals/"+journalId+"/reversalRequestedReason"]=txt(body.reason||"إلغاء القيد من سجل القيود",500);
-    updates["audit/"+uid("AUD")]={action:"request_source_journal_reversal",documentId:journalId,reversalId,sourceType:target.sourceType||"",sourceId:target.sourceId||"",uid:claims.sub,createdAt:now};
-    await adminPatch(updates);
-    return {success:true,id:journalId,deleted:false,reversalRequested:true,reversalId,status:"pending_review"};
    }
-   if(!isPosted&&target.sourceType&&target.sourceType!=="manual"){
-    const updates={};
-    updates["documents/"+journalId+"/status"]="cancelled";
-    updates["documents/"+journalId+"/cancelledAt"]=now;
-    updates["documents/"+journalId+"/cancelledBy"]=claims.sub;
-    updates["documents/"+journalId+"/cancellationReason"]=txt(body.reason||"إلغاء القيد بطلب المستخدم",500);
-    updates["reviewQueue/"+journalId]=null;
-    updates["audit/"+uid("AUD")]={action:"cancel_source_journal",documentId:journalId,sourceType:target.sourceType||"",uid:claims.sub,createdAt:now};
-    await adminPatch(updates);
-    return {success:true,id:journalId,deleted:false,cancelled:true,status:"cancelled"};
-   }
-   const updates={};updates["documents/"+journalId]=null;updates["reviewQueue/"+journalId]=null;updates["journals/"+journalId]=null;
+   updates["documents/"+journalId]=null;
+   updates["reviewQueue/"+journalId]=null;
+   updates["journals/"+journalId]=null;
    if(isPosted){
-    const period=month(target.date);updates["periods/"+period+"/entries/"+journalId]=null;
-    (target.lines||[]).forEach((line,index)=>{const suffix=journalId+"_"+(index+1),account=String(line.accountCode||"");if(account)updates["ledger/"+id(account)+"/"+period+"/"+suffix]=null;if(line.partyType&&line.partyId)updates["partyLedger/"+id(line.partyType)+"/"+id(line.partyId)+"/"+period+"/"+suffix]=null;if(line.costCenterId)updates["costLedger/"+id(line.costCenterId)+"/"+period+"/"+suffix]=null;});
+    const period=month(target.date);
+    updates["periods/"+period+"/entries/"+journalId]=null;
+    (target.lines||[]).forEach((line,index)=>{
+     const suffix=journalId+"_"+(index+1),account=id(line.accountCode||"");
+     if(account)updates["ledger/"+account+"/"+period+"/"+suffix]=null;
+     if(line.partyType&&line.partyId)updates["partyLedger/"+id(line.partyType)+"/"+id(line.partyId)+"/"+period+"/"+suffix]=null;
+     if(line.costCenterId)updates["costLedger/"+id(line.costCenterId)+"/"+period+"/"+suffix]=null;
+    });
    }
-   updates["audit/"+uid("AUD")]={action:"delete_manual_journal",documentId:journalId,previousStatus:target.status||"",uid:claims.sub,createdAt:now};
-   await adminPatch(updates);return {success:true,id:journalId,deleted:true};
+   const auditId=uid("AUD");
+   updates["audit/"+auditId]={
+    action:sourceType==="manual"?"delete_manual_journal":"delete_source_journal",
+    documentId:journalId,previousStatus:target.status||"",sourceType,sourceId,
+    deletedAt:now,uid:claims.sub,reason,
+    snapshot:target,
+    stockEffects,inventoryWarnings
+   };
+   await adminPatch(updates);
+   return {success:true,id:journalId,deleted:true,sourceCancelled:Boolean(isPosted&&sourceType!=="manual"),sourceType,sourceId,stockEffects,inventoryWarnings,auditId};
   }
   if(action==="saveInvoiceDraft"){
   const direction=body.type;
