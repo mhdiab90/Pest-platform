@@ -1695,6 +1695,7 @@ export async function handleFinancialRequest(ctx){
     updates["documents/"+invoiceId]=pendingInvoice;
     updates["reviewQueue/"+invoiceId]=reviewRecord(pendingInvoice);
     updates["sourceLocks/invoice_"+invoiceId]=null;
+    updates["audit/"+uid("AUD")]={action:"unpost_source_invoice_to_review",documentId:invoiceId,previousStatus:invoice.status,journalId:invoiceEntry.id,uid:claims.sub,createdAt:now,reason,snapshot:invoice};
     returnedInvoiceIds.push(invoiceId);returnedReviewIds.push(invoiceId);
    }
    // Cash and bank statements are separate source documents; send those documents back to review too.
@@ -1744,7 +1745,7 @@ export async function handleFinancialRequest(ctx){
    for(const item of family){
     const linkedId=item.id,record=item.record,wasPosted=item.posted||record.status==="posted";
     updates["journals/"+linkedId]=null;
-    updates["sourceLocks/"+String(record.sourceType||"manual")+"_"+id(record.sourceId||"")]=null;
+    if(record.sourceType&&record.sourceId)updates["sourceLocks/"+String(record.sourceType)+"_"+id(record.sourceId)]=null;
     if(wasPosted){
      const period=month(record.date),lines=Array.isArray(record.lines)?record.lines:[];
      updates["periods/"+period+"/entries/"+linkedId]=null;
