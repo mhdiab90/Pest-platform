@@ -2503,7 +2503,7 @@ const renderCostCenterAnalysis = function() {
      reviewDetailItem(t('تاريخ القيد','Journal Date'),selected.date),
      reviewDetailItem(t('المرجع','Reference'),selected.reference),
      reviewDetailItem(t('العملة','Currency'),selected.currency||'EGP'),
-     reviewDetailItem(t('مصدر القيد','Journal Source'),selected.sourceType==='cashCustody'?t('عهدة موظف','Employee Custody'):selected.sourceType==='projectEvent'?t('حدث مشروع','Project Event'):t('قيد يدوي','Manual Journal')),
+     reviewDetailItem(t('مصدر القيد','Journal Source'),selected.sourceType==='legacyImport'?t('استيراد أرشيف القيود','Legacy Journal Import'):selected.sourceType==='cashCustody'?t('عهدة موظف','Employee Custody'):selected.sourceType==='projectEvent'?t('حدث مشروع','Project Event'):t('قيد يدوي','Manual Journal')),
      reviewDetailItem(t('أنشأه','Created By'),selected.createdByName||selected.createdBy),
      reviewDetailItem(t('تاريخ الإنشاء','Created At'),selected.createdAt?new Date(Number(selected.createdAt)).toLocaleString(rtl?'ar-EG':'en-GB'):'—'),
      reviewDetailItem(t('كود المشروع','Project Code'),selected.projectCode),
