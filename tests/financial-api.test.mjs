@@ -1866,3 +1866,26 @@ test("initial accounting month also discovers older posted entries stored only i
   await invoke("GET","?resource=bootstrap");
   assert.equal(read("settings/accountingStartMonth"),"2020-02","legacy period-only history must not be excluded from cumulative financial statements");
 });
+
+
+test("supplier payment settles canonical posted payable even when partyLedger index is missing", async () => {
+  await invoke("GET","?resource=bootstrap");
+  write("journals/VENDOR-OPEN-PAYABLE-NO-SUBLEDGER",{
+    id:"VENDOR-OPEN-PAYABLE-NO-SUBLEDGER",number:"JE-202611-VENDOR-OPEN",type:"journal",
+    date:"2026-11-18",description:"Existing supplier payable",status:"posted",
+    lines:[
+      {accountCode:"281",debit:0,credit:900,partyType:"vendor",partyId:"VENDOR-NO-SUBLEDGER"},
+      {accountCode:"1300",debit:900,credit:0}
+    ]
+  });
+  const payment=await invoke("POST","",{
+    action:"submitCash",movementType:"supplier_payment",date:"2026-11-19",amount:500,
+    currency:"EGP",partyId:"VENDOR-NO-SUBLEDGER",partyName:"Supplier without index",
+    cashAccountCode:"1110",description:"Settle supplier payable"
+  });
+  const posted=await invoke("POST","",{action:"review",id:payment.id,decision:"approve",reason:"test settlement"});
+  assert.equal(posted.status,"posted");
+  const journal=read("journals/"+posted.journalId);
+  assert.ok(journal.lines.some(line=>line.accountCode==="281"&&line.debit===500&&line.partyId==="VENDOR-NO-SUBLEDGER"),"payment must settle the canonical vendor payable");
+  assert.equal(journal.lines.some(line=>line.accountCode==="1240"&&line.debit>0),false,"payment must not be misclassified as an advance when the stored subledger index is missing");
+});
