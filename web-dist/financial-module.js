@@ -2932,7 +2932,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
     h("div",{className:"rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"},"تنبيه سلامة: لا يتم استبدال حساب موجود إذا اختلف اسمه أو طبيعته، ولا يتم ربط التحليل بعميل أو موظف غير معروف. تكرار تشغيل الحزمة آمن؛ القيود المستوردة سابقًا سيتم تجاوزها بالمعرّف المرجعي نفسه."),
     h("div",{className:"flex flex-wrap items-end gap-3"},
      h("label",{className:"block text-sm font-bold"},"ملف حزمة الاستيراد JSON",h("input",{type:"file",accept:".json,application/json",onChange:readLegacyImportFile,className:"block mt-1 w-full rounded-lg border p-2 font-normal bg-white"})),
-     button("تنفيذ التكويد ورفع القيود",importLegacyArchive,"primary",busy||!legacyImportPackage||currentUser.role!=="admin"),
+     button("تنفيذ التكويد ورفع القيود",importLegacyArchive,"primary",busy||!legacyImportPackage||!currentUser||currentUser.role!=="admin"),
      button("تحديث السجلات المستوردة",refresh,"muted",busy)
     ),
     legacyImportFileName?h("div",{className:"text-xs text-slate-500"},"الملف المحدد: "+legacyImportFileName):null,
