@@ -56,3 +56,13 @@ test("balance sheet reconciles warehouse stock values to inventory GL account 13
   assert.match(source, /قيمة 1300 بالقيد/);
   assert.match(source, /openStatementJournal\(item\.journalId\)/);
 });
+
+
+test("application loader requests the exact financial module build declared by the module", () => {
+  const appHtml = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const version = source.match(/window\.PEST_FINANCE_MODULE_VERSION="([^"]+)"/);
+  const expected = appHtml.match(/const FINANCE_MODULE_BUILD='([^']+)'/);
+  assert.ok(version, "financial module must declare its build version");
+  assert.ok(expected, "application shell must declare the required financial module version");
+  assert.equal(expected[1], version[1], "application shell and financial module version must match");
+});
