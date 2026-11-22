@@ -343,6 +343,59 @@ export async function handleFinancialRequest(ctx){
   const updates={};(keys||[]).forEach(key=>{updates[key]=null;});
   if(Object.keys(updates).length)await adminPatchRootAt(path,updates);
  };
+ const readAnalyticPartyLedger=async(partyType,partyId)=>{
+  const normalizedPartyId=id(partyId);
+  const stored=(await adminRead("partyLedger/"+partyType+"/"+normalizedPartyId))||{};
+  const byLine=new Map();
+  Object.entries(stored).forEach(([monthKey,periodRows])=>{
+   Object.entries(periodRows||{}).forEach(([entryKey,row])=>{
+    if(!row||typeof row!=="object")return;
+    const identity=row.journalId&&row.lineNo
+     ?String(row.journalId)+"_"+String(row.lineNo)
+     :"legacy|"+monthKey+"|"+entryKey;
+    byLine.set(identity,{monthKey,key:entryKey,row});
+   });
+  });
+  const [sourceJournals,documents,chart]=await Promise.all([
+   adminRead("journals"),adminRead("documents"),adminRead("chartOfAccounts")
+  ]);
+  Object.entries(sourceJournals||{}).forEach(([journalKey,journal])=>{
+   if(!journal||typeof journal!=="object"||journal.status!=="posted"||!/^\d{4}-\d{2}-\d{2}$/.test(String(journal.date||"")))return;
+   const journalId=String(journal.id||journalKey);
+   const sourceDocument=(documents||{})[String(journal.sourceId||"")];
+   const documentPartyType=sourceDocument&&sourceDocument.type==="invoice"
+    ?(sourceDocument.invoiceType==="purchase"?"vendor":sourceDocument.invoiceType==="sales"?"customer":"")
+    :sourceDocument&&sourceDocument.type==="cash"
+     ?({customer_receipt:"customer",supplier_payment:"vendor"}[sourceDocument.movementType]||"")
+     :"";
+   (Array.isArray(journal.lines)?journal.lines:[]).forEach((line,index)=>{
+    const account=(chart||{})[String(line.accountCode||"")];
+    const resolvedType=String(line.partyType||account&&account.subledgerType||documentPartyType||"");
+    const sourcePartyId=sourceDocument&&(sourceDocument.partyId||sourceDocument.employeeUid||"");
+    const canUseDocumentParty=resolvedType===documentPartyType||["employeeCustody","employeeAdvance"].includes(resolvedType);
+    const resolvedId=String(line.partyId||(canUseDocumentParty?sourcePartyId:"")||"");
+    if(resolvedType!==partyType||resolvedId!==normalizedPartyId)return;
+    const suffix=journalId+"_"+(index+1);
+    const row={
+     journalId,journalNumber:journal.number||journalNumberFor(journal.date,journalId),lineNo:index+1,
+     date:journal.date,description:line.description||journal.description||"",
+     accountCode:line.accountCode,debit:Number(line.debit||0),credit:Number(line.credit||0),
+     currency:line.currency||journal.currency||"EGP",costCenterId:line.costCenterId||"",
+     projectCode:line.projectCode||"",partyType:resolvedType,partyId:resolvedId,
+     sourceType:journal.sourceType||"manual",sourceId:journal.sourceId||"",
+     reference:journal.reference||"",taxCode:line.taxCode||"",taxType:line.taxType||""
+    };
+    byLine.set(suffix,{monthKey:month(journal.date),key:suffix,row});
+   });
+  });
+  const result={};
+  byLine.forEach(({monthKey,key,row})=>{
+   if(!result[monthKey])result[monthKey]={};
+   result[monthKey][key]=row;
+  });
+  return result;
+ };
+
  const financeAreaForMaster=kind=>({
   parties:"masters",chartOfAccounts:"accounts",costCenters:"centers",
   items:"inventory",itemGroups:"inventory",warehouses:"inventory",
@@ -670,7 +723,7 @@ export async function handleFinancialRequest(ctx){
     const partnerUid=matched?matched[0]:"";
     if(profile.role!=="admin"&&partnerUid!==claims.sub)continue;
     const partnerProfile=matched?matched[1]:null;
-    const ledger=partnerUid?(await adminRead("partyLedger/partnerCurrentAccount/"+id(partnerUid)))||{}:{};
+    const ledger=partnerUid?await readAnalyticPartyLedger("partnerCurrentAccount",partnerUid):{};
     const custodyRows=partnerUid&&adminReadRoot?(await adminReadRoot("cashCustodies/"+id(partnerUid)+"/transactions"))||{}:{};
     const transactions=Object.entries(custodyRows).filter(([,item])=>item&&String(item.bookScope||"personal")==="personal"&&item.pairRole!=="counterparty"&&item.partnerCurrentAccountTransfer&&item.partnerCurrentAccountTransfer.active===true).map(([transactionId,item])=>({id:item.id||transactionId,...item})).sort((a,b)=>String(b.date||"").localeCompare(String(a.date||""))||Number(b.createdAt||0)-Number(a.createdAt||0));
     const entries=[];
@@ -686,23 +739,7 @@ export async function handleFinancialRequest(ctx){
    const allowed=["customer","vendor","employeeCustody","employeeAdvance","partnerCurrentAccount"];
    if(!allowed.includes(requested))throw new Error("Invalid analytic party type.");
    const partyId=id(url.searchParams.get("id"));
-   const stored=(await adminRead("partyLedger/"+requested+"/"+partyId))||{},merged={};
-   // Keep legacy subledger rows, then overlay the canonical posted journal lines.
-   // An empty/incomplete partyLedger index must not hide a real supplier/customer balance.
-   Object.entries(stored).forEach(([monthKey,periodRows])=>{merged[monthKey]=Object.assign({},periodRows||{});});
-   const sourceJournals=(await adminRead("journals"))||{};
-   Object.entries(sourceJournals).forEach(([journalKey,journal])=>{
-    if(!journal||typeof journal!=="object"||journal.status!=="posted"||!/^\d{4}-\d{2}-\d{2}$/.test(String(journal.date||"")))return;
-    const journalId=String(journal.id||journalKey),monthKey=month(journal.date);
-    (Array.isArray(journal.lines)?journal.lines:[]).forEach((line,index)=>{
-     if(String(line.partyType||"")!==requested||String(line.partyId||"")!==partyId)return;
-     const suffix=journalId+"_"+(index+1),number=journal.number||journalNumberFor(journal.date,journalId);
-     const row={journalId,journalNumber:number,lineNo:index+1,date:journal.date,description:line.description||journal.description||"",accountCode:line.accountCode,debit:Number(line.debit||0),credit:Number(line.credit||0),currency:line.currency||journal.currency||"EGP",costCenterId:line.costCenterId||"",projectCode:line.projectCode||"",partyType:requested,partyId,sourceType:journal.sourceType||"manual",sourceId:journal.sourceId||"",reference:journal.reference||"",taxCode:line.taxCode||"",taxType:line.taxType||""};
-     if(!merged[monthKey])merged[monthKey]={};
-     merged[monthKey][suffix]=row;
-    });
-   });
-   return {entries:merged};
+   return {entries:await readAnalyticPartyLedger(requested,partyId)};
   }
   if(res==="assignments"){
    requireFinanceArea("assignments","view");
@@ -1306,10 +1343,10 @@ export async function handleFinancialRequest(ctx){
    }
    let outstandingPayable=0,outstandingReceivable=0;
    if(partyCode&&partyType==="vendor"){
-    const ledger=(await adminRead("partyLedger/vendor/"+partyCode))||{};
+    const ledger=await readAnalyticPartyLedger("vendor",partyCode);
     outstandingPayable=Object.values(ledger).reduce((sum,periodRows)=>sum+Object.values(periodRows||{}).reduce((part,row)=>part+(row.accountCode==="281"?Number(row.credit||0)-Number(row.debit||0):0),0),0);
    }else if(partyCode&&partyType==="client"){
-    const ledger=(await adminRead("partyLedger/customer/"+partyCode))||{};
+    const ledger=await readAnalyticPartyLedger("customer",partyCode);
     outstandingReceivable=Object.values(ledger).reduce((sum,periodRows)=>sum+Object.values(periodRows||{}).reduce((part,row)=>part+(row.accountCode==="1210"?Number(row.debit||0)-Number(row.credit||0):0),0),0);
    }
    const lines=[];
@@ -2158,7 +2195,7 @@ await adminPatch(u);
    let lines=[],custodyMirror=null,advanceRecord=null;
    if(movement==="customer_receipt"){
     if(!doc.partyId)throw new Error("اختر العميل قبل اعتماد التحصيل.");
-    const ledger=(await adminRead("partyLedger/customer/"+doc.partyId))||{};
+    const ledger=await readAnalyticPartyLedger("customer",doc.partyId);
     const receivable=Object.values(ledger).reduce((sum,periodRows)=>sum+Object.values(periodRows||{}).reduce((part,row)=>part+(row.accountCode==="1210"?Number(row.debit||0)-Number(row.credit||0):0),0),0);
     const settled=rnd(Math.min(amount,Math.max(0,receivable))),advance=rnd(amount-settled);
     lines=[{accountCode:cash,debit:amount,credit:0,description:doc.description}];
@@ -2166,7 +2203,7 @@ await adminPatch(u);
     if(advance)lines.push({accountCode:"2130",debit:0,credit:advance,description:"دفعة مقدمة من العميل — "+doc.description,partyType:"customer",partyId:doc.partyId});
    }else if(movement==="supplier_payment"){
     if(!doc.partyId)throw new Error("اختر المورد قبل اعتماد السداد.");
-    const ledger=(await adminRead("partyLedger/vendor/"+doc.partyId))||{};
+    const ledger=await readAnalyticPartyLedger("vendor",doc.partyId);
     const payable=Object.values(ledger).reduce((sum,periodRows)=>sum+Object.values(periodRows||{}).reduce((part,row)=>part+(row.accountCode==="281"?Number(row.credit||0)-Number(row.debit||0):0),0),0);
     const settled=rnd(Math.min(amount,Math.max(0,payable))),advance=rnd(amount-settled);
     lines=[];
@@ -2274,13 +2311,13 @@ await adminPatch(u);
    });
    if(purchase){
     lines.push({accountCode:"281",debit:0,credit:tot.total,description:"فاتورة مشتريات",partyType:"vendor",partyId});
-    const supplierLedger=(await adminRead("partyLedger/vendor/"+partyId))||{};
+    const supplierLedger=await readAnalyticPartyLedger("vendor",partyId);
     const supplierAdvance=Object.values(supplierLedger).reduce((sum,periodRows)=>sum+Object.values(periodRows||{}).reduce((part,row)=>part+(row.accountCode==="1240"?Number(row.debit||0)-Number(row.credit||0):0),0),0);
     const applied=rnd(Math.min(tot.total,Math.max(0,supplierAdvance)));
     if(applied)lines.push({accountCode:"281",debit:applied,credit:0,description:"تسوية دفعة مقدمة للمورد",partyType:"vendor",partyId},{accountCode:"1240",debit:0,credit:applied,description:"تسوية دفعة مقدمة للمورد",partyType:"vendor",partyId});
    }else{
     lines.push({accountCode:"1210",debit:tot.total,credit:0,description:"فاتورة مبيعات",partyType:"customer",partyId});
-    const customerLedger=(await adminRead("partyLedger/customer/"+partyId))||{};
+    const customerLedger=await readAnalyticPartyLedger("customer",partyId);
     const customerAdvance=Object.values(customerLedger).reduce((sum,periodRows)=>sum+Object.values(periodRows||{}).reduce((part,row)=>part+(row.accountCode==="2130"?Number(row.credit||0)-Number(row.debit||0):0),0),0);
     const applied=rnd(Math.min(tot.total,Math.max(0,customerAdvance)));
     if(applied)lines.push({accountCode:"2130",debit:applied,credit:0,description:"تسوية دفعة مقدمة من العميل",partyType:"customer",partyId},{accountCode:"1210",debit:0,credit:applied,description:"تسوية دفعة مقدمة من العميل",partyType:"customer",partyId});
