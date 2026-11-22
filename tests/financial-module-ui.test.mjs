@@ -3195,3 +3195,27 @@ test("all shared financial sections have individual collapse and expand buttons"
   assert.match(source, /collapsed\?null:h\('div',\{className:'mt-3 min-w-0'\},child\)/);
   assert.match(source, /collapsed\?t\('إظهار القسم','Show section'\):t\('إخفاء القسم','Hide section'\)/);
 });
+
+
+test("unified statements support GL accounts, cost centers, vendors and customers with searchable selection and journal drill-through", () => {
+  assert.match(source, /type:"account"/);
+  assert.match(source, /value:"account",label:"حساب من دليل الحسابات"/);
+  assert.match(source, /value:"costCenter",label:"مركز تكلفة"/);
+  assert.match(source, /value:"vendor",label:"مورد"/);
+  assert.match(source, /value:"customer",label:"عميل"/);
+  assert.match(source, /ابحث عن الحساب بالاسم أو الرقم أو أي بيان/);
+  assert.match(source, /normalizeMatch\(Object\.entries\(item\|\|\{\}\)/);
+  assert.match(source, /openStatementJournal\(line\.journalId\)/);
+  assert.match(source, /statementAttachmentAction\(line\)/);
+  assert.match(source, /الرصيد الافتتاحي/);
+  assert.match(source, /الرصيد الختامي/);
+});
+
+test("balance sheet reconciles warehouse stock values to inventory GL account 1300 and purchase journals", () => {
+  assert.match(source, /const inventoryReconciliationPanel=\(\)=>\{/);
+  assert.match(source, /const inventoryStockValue=Object\.values\(warehouseBalances\)/);
+  assert.match(source, /const inventoryGeneralLedgerValue=inventoryAccountCodes\.reduce/);
+  assert.match(source, /inventoryReconciliationPanel\(\)/);
+  assert.match(source, /قيمة 1300 بالقيد/);
+  assert.match(source, /openStatementJournal\(item\.journalId\)/);
+});
