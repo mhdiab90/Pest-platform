@@ -1504,7 +1504,7 @@ const unpostJournalDocument=async(doc)=>{
    setStatementJournalId('');
    setBusy(true);setError('');setNotice('');
    try{
-    const result=await api('', 'POST',{action:'unpostJournal',id:doc.id,reason:"فك الترحيل من سجل القيود اليومية وإعادة المستند للمراجعة"});
+    const result=await api('', 'POST',{action:'unpostJournal',id:doc.id,reason:"فك الترحيل من سجل القيود اليومية وإعادة المستند إلى المراجعة"});
     setJournalModal(null);setJournalModalDraft(null);
     await refresh();await loadPeriod();
     if(result.primaryReviewId&&canFinance("review","view")){
@@ -3699,5 +3699,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261122-financial-accounting-reset-actions-v1";
+ window.PEST_FINANCE_MODULE_VERSION="20261122-financial-unpost-review-v2";
 })();
