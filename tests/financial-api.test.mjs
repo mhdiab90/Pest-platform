@@ -1984,6 +1984,30 @@ test("deleting an original journal removes its posted reversing journal and both
   assert.ok(auditRows.some(row=>row.documentId===reversalId&&row.snapshot));
 });
 
+test("deleting an invoice and its already-posted reversing journal does not change stock twice", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const invoiceId="INVOICE-ALREADY-REVERSED-DELETE",originalId="INVOICE-ORIGINAL-ALREADY-REVERSED",reversalId="INVOICE-REVERSAL-ALREADY-REVERSED";
+  const originalLines=[{accountCode:"1300",debit:1000,credit:0},{accountCode:"281",debit:0,credit:1000,partyType:"vendor",partyId:"VENDOR-ALREADY-REVERSED"}];
+  const reversalLines=[{accountCode:"1300",debit:0,credit:1000},{accountCode:"281",debit:1000,credit:0,partyType:"vendor",partyId:"VENDOR-ALREADY-REVERSED"}];
+  write("documents/"+invoiceId,{id:invoiceId,type:"invoice",invoiceType:"purchase",status:"reversed",date:"2026-11-12",number:"PUR-ALREADY-REVERSED",partyId:"VENDOR-ALREADY-REVERSED",lines:[{description:"Stock",kind:"stock",itemCode:"ITEM-ALREADY-REVERSED",quantity:2,unitPrice:500}],journalId:originalId,reversedByJournalId:reversalId});
+  write("journals/"+originalId,{id:originalId,type:"journal",status:"posted",date:"2026-11-12",sourceType:"invoice",sourceId:invoiceId,reversalJournalId:reversalId,reversedByJournalId:reversalId,lines:originalLines});
+  write("documents/"+originalId,{id:originalId,type:"journal",status:"posted",date:"2026-11-12",sourceType:"invoice",sourceId:invoiceId,reversalJournalId:reversalId,reversedByJournalId:reversalId,lines:originalLines});
+  write("journals/"+reversalId,{id:reversalId,type:"journal",status:"posted",date:"2026-11-13",sourceType:"manual",reversalOf:originalId,lines:reversalLines});
+  write("documents/"+reversalId,{id:reversalId,type:"journal",status:"posted",date:"2026-11-13",sourceType:"manual",reversalOf:originalId,lines:reversalLines});
+  write("inventory/balances/default/ITEM-ALREADY-REVERSED",{quantity:3,value:1500,averageCost:500});
+  write("inventory/movements/MOV-ALREADY-REVERSED",{id:"MOV-ALREADY-REVERSED",date:"2026-11-12",invoiceId,journalId:originalId,itemCode:"ITEM-ALREADY-REVERSED",warehouseCode:"default",kind:"purchase",quantity:2,unitCost:500,value:1000,reversedByJournalId:reversalId,createdAt:100});
+  const result=await invoke("POST","",{action:"deleteJournal",id:originalId,reason:"remove invoice and its posted reversal"});
+  assert.equal(result.deleted,true);
+  assert.deepEqual(new Set(result.deletedIds),new Set([originalId,reversalId]));
+  assert.equal(read("documents/"+invoiceId+"/status"),"cancelled");
+  assert.equal(read("journals/"+originalId),null);
+  assert.equal(read("journals/"+reversalId),null);
+  assert.equal(read("inventory/balances/default/ITEM-ALREADY-REVERSED").quantity,3,"stock should stay at the pre-invoice quantity after both entries are removed");
+  assert.equal(read("inventory/balances/default/ITEM-ALREADY-REVERSED").value,1500,"stock value should not be reduced twice");
+  assert.equal(read("inventory/movements/MOV-ALREADY-REVERSED/cancelledByJournalDeletion"),true);
+  assert.ok(result.inventoryWarnings.some(message=>message.includes("دون إعادة تعديل رصيد المخزون")));
+});
+
 test("deleting a reversing journal from its own row also deletes the original journal", async () => {
   await invoke("GET","?resource=bootstrap");
   const originalId="CHAIN-ORIGINAL-DELETE-02",reversalId="CHAIN-REVERSAL-DELETE-02";
