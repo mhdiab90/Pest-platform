@@ -2684,7 +2684,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
  };
  const openInventoryMovementEditor=movement=>{
   setInventoryMovementModal({mode:"editMovement",movementId:movement.id,itemCode:movement.itemCode,warehouseCode:movement.warehouseCode||"default",
-   date:movement.date||today(),kind:movement.kind==="sale"?"sale":"purchase",quantity:String(Math.abs(n(movement.quantity))),value:String(Math.abs(n(movement.value))});
+   date:movement.date||today(),kind:movement.kind==="sale"?"sale":"purchase",quantity:String(Math.abs(n(movement.quantity))),value:String(Math.abs(n(movement.value)))});
  };
  const openInventoryBalanceEditor=(itemCode,warehouseCode,stock)=>{
   setInventoryMovementModal({mode:"setBalance",itemCode,warehouseCode:warehouseCode||"default",date:today(),quantity:String(n(stock&&stock.quantity)),value:String(n(stock&&stock.value))});
