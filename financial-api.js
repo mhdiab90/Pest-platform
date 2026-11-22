@@ -1616,6 +1616,23 @@ export async function handleFinancialRequest(ctx){
    if(target.reversalJournalId||target.reversedByJournalId)throw new Error("هذا القيد مرتبط بطلب عكس سابق أو تم عكسه بالفعل.");
    const isPosted=target.status==="posted"||Boolean(posted&&posted.status==="posted");
    if(isPosted&&target.sourceType&&target.sourceType!=="manual"){
+    if(target.sourceType==="invoice"&&target.sourceId){
+     const sourceInvoice=await adminRead("documents/"+id(target.sourceId));
+     if(!sourceInvoice||sourceInvoice.type!=="invoice"||sourceInvoice.status!=="posted")throw new Error("فاتورة المصدر غير موجودة أو ليست مرحّلة.");
+     const allStockMovements=(await adminRead("inventory/movements"))||{};
+     const linkedStockMovements=Object.entries(allStockMovements).filter(([key,movement])=>movement&&String(movement.invoiceId||"")===String(sourceInvoice.id)&&String(movement.journalId||"")===String(target.id||journalId)&&!movement.reversedByJournalId);
+     const expectedStockLines=(sourceInvoice.lines||[]).filter(line=>line&&line.kind==="stock");
+     if(expectedStockLines.length&&!linkedStockMovements.length)throw new Error("الفاتورة تحتوي على أصناف مخزنية لكن حركة المخزن المرتبطة غير موجودة؛ لا يمكن حذف القيد قبل إصلاح مطابقة المخزون.");
+     for(const [movementKey,movement] of linkedStockMovements){
+      const laterMovement=Object.entries(allStockMovements).some(([otherKey,other])=>
+       other&&String(otherKey)!==String(movementKey)&&String(other.warehouseCode||"default")===String(movement.warehouseCode||"default")&&String(other.itemCode||"")===String(movement.itemCode||"")&&
+       String(other.invoiceId||"")!==String(sourceInvoice.id)&&!other.reversedByJournalId&&
+       (String(other.date||"")>String(movement.date||sourceInvoice.date||"")||
+        (String(other.date||"")===String(movement.date||sourceInvoice.date||"")&&Number(other.createdAt||0)>Number(movement.createdAt||0)))
+      );
+      if(laterMovement)throw new Error("لا يمكن إلغاء القيد المخزني بأمان لأن الصنف "+String(movement.itemCode||"")+" له حركات لاحقة. يلزم معالجة الحركات اللاحقة أو تسوية المخزون أولاً.");
+     }
+    }
     const reversalId=uid("REV-JRN"),reversalDate=date(body.reversalDate||new Date().toISOString().slice(0,10));
     const lines=(target.lines||[]).map(line=>({...line,debit:Number(line.credit||0),credit:Number(line.debit||0),description:txt(line.description||target.description||"",250)+" — عكس بطلب حذف القيد"}));
     const reversal={id:reversalId,type:"journal",date:reversalDate,description:"عكس القيد "+(target.number||journalId)+" بطلب حذف القيد المرتبط بالمصدر",reference:txt(target.reference||target.number||journalId,120),currency:target.currency||"EGP",lines,sourceType:"journalReversal",sourceId:journalId,reversalOf:journalId,originalSourceType:target.sourceType||"",originalSourceId:target.sourceId||"",createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120),title:"عكس القيد "+(target.number||journalId),status:"pending_review"};
@@ -2418,6 +2435,20 @@ await adminPatch(u);
     updates["documents/"+invoiceId+"/reversedAt"]=now;
     updates["documents/"+invoiceId+"/reversedBy"]=claims.sub;
     updates["sourceLocks/invoice_"+invoiceId]=null;
+   }else if(original.sourceType==="cashCustody"&&original.sourceId&&adminPatchRootAt){
+    const separator=String(original.sourceId).indexOf("--");
+    if(separator<=0)throw new Error("مرجع حركة العهدة المصدرية غير صالح؛ لم يتم عكس الأثر الخارجي.");
+    const ownerUid=id(String(original.sourceId).slice(0,separator)),transactionId=id(String(original.sourceId).slice(separator+2));
+    const custody=adminReadRoot?await adminReadRoot("cashCustodies/"+ownerUid+"/transactions/"+transactionId):null;
+    if(!custody)throw new Error("حركة العهدة الأصلية غير موجودة؛ راجع سجل العهدة قبل اعتماد العكس.");
+    sourceRootUpdate={path:"cashCustodies/"+ownerUid+"/transactions/"+transactionId,value:{status:"reversed",financialReviewStatus:"reversed",financialJournalId:j.id,financialReversedAt:now,financialReversedBy:claims.sub}};
+    if(custody.linkedOwnerUid&&custody.linkedTransactionId)secondaryRootUpdate={path:"cashCustodies/"+id(custody.linkedOwnerUid)+"/transactions/"+id(custody.linkedTransactionId),value:{status:"reversed",financialReviewStatus:"reversed",financialJournalId:j.id,financialReversedAt:now,financialReversedBy:claims.sub}};
+    updates["sourceLocks/"+String(original.sourceType)+"_"+id(original.sourceId)]=null;
+   }else if(original.sourceType==="projectEvent"&&original.sourceId&&adminPatchRootAt){
+    const separator=String(original.sourceId).lastIndexOf("--");
+    if(separator<=0)throw new Error("مرجع حدث المشروع المصدر غير صالح.");
+    sourceRootUpdate={path:"projects/"+id(String(original.sourceId).slice(0,separator))+"/events/"+id(String(original.sourceId).slice(separator+2)),value:{accountingStatus:"reversed",accountingImpact:false,accountingJournalId:j.id,accountingReversedAt:now,accountingReversedBy:claims.sub}};
+    updates["sourceLocks/"+String(original.sourceType)+"_"+id(original.sourceId)]=null;
    }else if(original.sourceId){
     const sourceDocument=await adminRead("documents/"+id(original.sourceId));
     if(sourceDocument&&sourceDocument.type!=="journal"){
