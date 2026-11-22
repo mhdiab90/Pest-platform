@@ -54,6 +54,26 @@ test("deleting an orphan movement clears its quantity and value and queues the m
  assert.equal(h.read("inventory/balances/MAIN/ITEM-1").value,0);
 });
 
+
+test("a movement cancelled by journal deletion can be permanently removed without changing the already-reversed stock balance",async()=>{
+ const movement={id:"MOV-CANCELLED",date:"2025-12-01",itemCode:"ITEM-1",warehouseCode:"MAIN",kind:"purchase",quantity:10,value:1000,unitCost:100,createdAt:1,invoiceId:"INV-CANCELLED",journalId:"JRN-DELETED",cancelledByJournalDeletion:true,reversedByJournalId:"DELETED_JRN-DELETED"};
+ const h=makeHarness({movement,stock:{quantity:0,value:0,averageCost:0}});
+ h.database.documents["INV-CANCELLED"]={id:"INV-CANCELLED",type:"invoice",status:"cancelled"};
+ const result=await h.invoke({action:"changeInventoryMovement",mode:"deleteMovement",movementId:"MOV-CANCELLED",itemCode:"ITEM-1",warehouseCode:"MAIN"});
+ assert.equal(result.applied,true);
+ assert.equal(result.pendingReview,false);
+ assert.equal(result.deltaValue,0);
+ assert.equal(h.read("inventory/movements/MOV-CANCELLED"),null);
+ assert.deepEqual(h.read("inventory/balances/MAIN/ITEM-1"),{quantity:0,value:0,averageCost:0,updatedAt:h.read("inventory/balances/MAIN/ITEM-1").updatedAt,updatedBy:"inventory-admin"});
+ assert.equal(Object.keys(h.read("reviewQueue")||{}).length,0);
+});
+
+test("a movement cancelled by journal deletion can be cleaned up but cannot be edited",async()=>{
+ const movement={id:"MOV-CANCELLED-EDIT",date:"2025-12-01",itemCode:"ITEM-1",warehouseCode:"MAIN",kind:"purchase",quantity:10,value:1000,unitCost:100,createdAt:1,cancelledByJournalDeletion:true};
+ const h=makeHarness({movement});
+ await assert.rejects(()=>h.invoke({action:"changeInventoryMovement",mode:"editMovement",movementId:"MOV-CANCELLED-EDIT",itemCode:"ITEM-1",warehouseCode:"MAIN",date:"2025-12-01",kind:"purchase",quantity:9,value:900}),/ملغاة بحذف القيد/);
+});
+
 test("setting a stock balance to zero can repair an orphan balance even when its movement record is missing",async()=>{
  const movement={id:"OLD",date:"2025-12-01",itemCode:"ITEM-1",warehouseCode:"MAIN",kind:"purchase",quantity:0,value:0,createdAt:1,cancelledByJournalDeletion:true};
  const h=makeHarness({movement,stock:{quantity:8,value:640,averageCost:80}});

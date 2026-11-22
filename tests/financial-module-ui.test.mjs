@@ -196,11 +196,12 @@ test("daily journal rows show green posted and red cancelled status badges", () 
   assert.match(source, /border-rose-200 bg-rose-50 text-rose-700/);
 });
 
-test("inventory movement screen supports edit/delete and direct stock balance correction", () => {
+test("inventory movement screen supports edit/delete, cancelled-row cleanup and direct stock balance correction", () => {
   assert.match(source, /const openInventoryMovementEditor=movement=>/);
   assert.match(source, /action:"changeInventoryMovement"/);
   assert.match(source, /button\("تعديل",\(\)=>openInventoryMovementEditor\(item\)/);
   assert.match(source, /button\("حذف",\(\)=>void deleteInventoryMovement\(item\)/);
+  assert.match(source, /busy\|\|\(inactive&&!item\.cancelledByJournalDeletion\)/);
   assert.match(source, /button\("تعديل الرصيد"/);
   assert.match(source, /button\("تصفير الرصيد"/);
 });

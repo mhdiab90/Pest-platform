@@ -1579,13 +1579,19 @@ export async function handleFinancialRequest(ctx){
   const beforeMovement=mode==="setBalance"?null:allMovements[movementId];
   if(mode!=="setBalance"&&(!beforeMovement||String(beforeMovement.itemCode||"")!==itemCode||String(beforeMovement.warehouseCode||"default")!==warehouseCode))throw new Error("حركة المخزون غير موجودة أو لا تتبع الصنف والمخزن المحددين.");
   if(beforeMovement){
-   if(beforeMovement.journalId){
-    const linkedJournal=allJournals[String(beforeMovement.journalId)]||await adminRead("documents/"+id(beforeMovement.journalId));
-    if(linkedJournal&&linkedJournal.status==="posted"&&!beforeMovement.cancelledByJournalDeletion&&!beforeMovement.cancelledByJournalUnpost&&!beforeMovement.reversedByJournalId)throw new Error("هذه الحركة مرتبطة بقيد مرحّل. لا تعدّلها من سجل المخزون مباشرة؛ عدّل الفاتورة المصدر أو عالج القيد المرتبط أولًا.");
-   }
-   if(beforeMovement.invoiceId){
-    const invoice=await adminRead("documents/"+id(beforeMovement.invoiceId));
-    if(invoice&&invoice.status==="posted"&&!beforeMovement.cancelledByJournalDeletion&&!beforeMovement.cancelledByJournalUnpost&&!beforeMovement.reversedByJournalId)throw new Error("حركة الفاتورة ما زالت مرتبطة بفاتورة مرحّلة. لا يمكن تعديلها منفردة حتى لا تختلف الفاتورة عن المخزون.");
+   if(beforeMovement.cancelledByJournalDeletion){
+    if(mode!=="deleteMovement")throw new Error("هذه الحركة ملغاة بحذف القيد. يمكن حذف سجلها نهائيًا من شاشة المخزون، لكن لا يمكن تعديلها.");
+   }else if(beforeMovement.cancelledByJournalUnpost||beforeMovement.reversedByJournalId){
+    throw new Error("هذه الحركة مفكوكة الترحيل أو معكوسة؛ لا يمكن تعديلها أو حذف سجلها من شاشة المخزون.");
+   }else{
+    if(beforeMovement.journalId){
+     const linkedJournal=allJournals[String(beforeMovement.journalId)]||await adminRead("documents/"+id(beforeMovement.journalId));
+     if(linkedJournal&&linkedJournal.status==="posted")throw new Error("هذه الحركة مرتبطة بقيد مرحّل. لا تعدّلها من سجل المخزون مباشرة؛ عدّل الفاتورة المصدر أو عالج القيد المرتبط أولًا.");
+    }
+    if(beforeMovement.invoiceId){
+     const invoice=await adminRead("documents/"+id(beforeMovement.invoiceId));
+     if(invoice&&invoice.status==="posted")throw new Error("حركة الفاتورة ما زالت مرتبطة بفاتورة مرحّلة. لا يمكن تعديلها منفردة حتى لا تختلف الفاتورة عن المخزون.");
+    }
    }
   }
   const oldStoredBalance=(balances[warehouseCode]&&balances[warehouseCode][itemCode])||{quantity:0,value:0,averageCost:0};

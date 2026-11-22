@@ -2738,7 +2738,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
     h("td",{className:"p-2"},h("span",{className:"text-xs "+(inactive?"text-slate-400":"text-slate-600")},stateLabel)),
     h("td",{className:"p-2"},h("div",{className:"flex flex-wrap gap-1"},
      canFinance("inventory","edit")?button("تعديل",()=>openInventoryMovementEditor(item),"muted",busy||inactive):null,
-     canFinance("inventory","delete")?button("حذف",()=>void deleteInventoryMovement(item),"danger",busy||inactive):null
+     canFinance("inventory","delete")?button("حذف",()=>void deleteInventoryMovement(item),"danger",busy||(inactive&&!item.cancelledByJournalDeletion)):null
     ))
    );
   });
@@ -2784,7 +2784,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
     metric("عدد حركات المخزن",String(activeMovements.length)),metric("كمية الوارد",fmt(inboundQty)),metric("كمية الصادر",fmt(outboundQty)),metric("صافي قيمة الحركات",fmt(netValue))
    ),
    h("div",{className:"flex flex-wrap gap-2"},button("تحديث حركات المخزن",loadInventoryMovements,"muted",busy)),
-   panel("سجل حركة المخزن","يمكن تعديل أو حذف الحركة غير المرتبطة بقيد مرحّل. إذا أثّر التعديل على قيمة المخزون، يُرسل قيد تسوية إلى المراجعة قبل تحديث الرصيد.",table(["التاريخ","نوع الحركة","كود الصنف","اسم الصنف","المخزن","الكمية","تكلفة الوحدة","القيمة","رقم الفاتورة","رقم القيد","الحالة","إجراء"],movementRows)),
+   panel("سجل حركة المخزن","يمكن تعديل أو حذف الحركة غير المرتبطة بقيد مرحّل. الحركة الملغاة بحذف القيد يمكن حذف سجلها نهائيًا دون إعادة التأثير على الرصيد، ولا يمكن تعديلها. إذا أثّر التعديل على قيمة المخزون، يُرسل قيد تسوية إلى المراجعة قبل تحديث الرصيد.",table(["التاريخ","نوع الحركة","كود الصنف","اسم الصنف","المخزن","الكمية","تكلفة الوحدة","القيمة","رقم الفاتورة","رقم القيد","الحالة","إجراء"],movementRows)),
    panel("الأرصدة الحالية بالمخازن","يمكن تعديل الرصيد النهائي أو تصفيره حتى عندما لا توجد حركة أصلية. التغيير ذو الأثر المالي يُرسل إلى المراجعة أولًا.",table(["كود الصنف","الصنف","المخزن","الكمية","متوسط التكلفة","القيمة","تسوية"],balanceRows)),
    modal
   );
@@ -3968,5 +3968,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261122-inventory-movement-controls-v1";
+ window.PEST_FINANCE_MODULE_VERSION="20261122-inventory-deleted-row-cleanup-v2";
 })();
