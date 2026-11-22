@@ -2152,7 +2152,7 @@ if(action==="submitCash"){
     u["journals/"+id(doc.revisionOf)+"/revisionRejectedAt"]=now;
     u["journals/"+id(doc.revisionOf)+"/revisionRejectedBy"]=claims.sub;
    }
-   if(doc.type==="journal"&&doc.sourceType==="journalReversal"&&doc.reversalOf&&decision==="reject"){
+   if(doc.type==="journal"&&doc.reversalOf&&decision==="reject"){
     const originalId=id(doc.reversalOf);
     if(String(await adminRead("journals/"+originalId+"/reversalJournalId")||"")===String(docId)){
      u["journals/"+originalId+"/reversalJournalId"]=null;
