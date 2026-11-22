@@ -137,6 +137,14 @@ test("financial reports and individual tables have Excel and PDF export controls
   assert.match(source, /cleanSheetBase/);
 });
 
+test("daily journal rows show a permission-gated unpost button beside Open Journal", () => {
+  assert.match(source, /button\('فتح القيد',\(\)=>openJournalModal\(x\),'muted'\)/);
+  assert.match(source, /posted&&canFinance\('journal','delete'\)&&canFinance\('review','edit'\)/);
+  assert.match(source, /void unpostJournalDocument\(x\)/);
+  assert.match(source, /action:'unpostJournal'/);
+  assert.match(source, /إعادة المستند إلى المراجعة/);
+});
+
 test("all journal rows expose delete or cancel-impact action, including source-generated posted entries", () => {
   assert.match(source, /button\(posted&&!manual\?'حذف القيد ومصدره':'حذف القيد',\(\)=>void deleteJournalDocument\(draft\)/);
   assert.match(source, /حذف القيد نهائيًا/);
