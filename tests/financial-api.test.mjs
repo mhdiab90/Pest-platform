@@ -2144,3 +2144,49 @@ test("deleting a source invoice journal is not blocked by later stock movements 
   assert.equal(read("inventory/balances/default/ITEM-DELETE-LATER").value,-500);
   assert.equal(read("inventory/movements/MOV-DELETE-LATER-SALE/cancelledByJournalDeletion"),null,"later sale movement is preserved");
 });
+
+
+test("bulk legacy journal import preserves long entries, source metadata, idempotence, and review-only posting", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const batchId="PEST-LEGACY-TEST-V1";
+  const longId="LEGACY_TEST_LONG_208";
+  const correctionId="LEGACY_TEST_CORRECTION";
+  const longLines=[];
+  for(let index=0;index<104;index++){
+    longLines.push({accountCode:"6100",description:index===0?"":"",debit:1,credit:0,costCenterId:"",projectCode:"",sourceLineNo:index*2+1,sourceAccountCode:"TEST-EXP",sourceAccountName:"مصروف تجريبي",sourceAnalyticCode:"",sourceAnalyticName:"",sourceAdditionalDescription:index===0?"Link":""});
+    longLines.push({accountCode:"1110",description:"",debit:0,credit:1,costCenterId:"",projectCode:"",sourceLineNo:index*2+2,sourceAccountCode:"TEST-CASH",sourceAccountName:"نقدية",sourceAnalyticCode:"",sourceAnalyticName:"",sourceAdditionalDescription:""});
+  }
+  const correctionLines=[
+    {accountCode:"6100",description:"",debit:25,credit:0,costCenterId:"",projectCode:"",sourceLineNo:9001,sourceAccountCode:"TEST-EXP",sourceAccountName:"مصروف تجريبي",sourceAnalyticCode:"",sourceAnalyticName:"",sourceAdditionalDescription:""},
+    {accountCode:"1110",description:"",debit:0,credit:25,costCenterId:"",projectCode:"",sourceLineNo:9002,sourceAccountCode:"TEST-CASH",sourceAccountName:"نقدية",sourceAnalyticCode:"",sourceAnalyticName:"",sourceAdditionalDescription:""}
+  ];
+  const records=[
+    {id:longId,number:"TEST-208 / 20261122",date:"2026-11-22",description:"",reference:"TEST-208",currency:"EGP",type:"journal",sourceType:"legacyImport",sourceJournalNumber:"TEST-208",sourceLineCount:208,sourceGroupKey:"TEST-208|2026-11-22",importBatchId:batchId,importSourceDigest:"test-long",sourceTotals:{debit:104,credit:104,difference:0},lines:longLines,needsCorrectionReasons:[],forceNeedsCorrection:false},
+    {id:correctionId,number:"TEST-CORR / 20261122",date:"2026-11-22",description:"",reference:"TEST-CORR",currency:"EGP",type:"journal",sourceType:"legacyImport",sourceJournalNumber:"TEST-CORR",sourceLineCount:2,sourceGroupKey:"TEST-CORR|2026-11-22",importBatchId:batchId,importSourceDigest:"test-correction",sourceTotals:{debit:25,credit:25,difference:0},lines:correctionLines,needsCorrectionReasons:["ملاحظة مصدرية يجب تأكيدها قبل الاعتماد."],forceNeedsCorrection:true}
+  ];
+  const imported=await invoke("POST","",{action:"bulkImportJournals",batchId,journals:records});
+  assert.equal(imported.created,2);
+  assert.equal(imported.totalLines,210);
+  assert.equal(read("documents/"+longId+"/lines").length,208,"all 208 source lines must be stored without the ordinary 100-line limit");
+  assert.equal(read("documents/"+longId+"/status"),"pending_review");
+  assert.equal(read("documents/"+correctionId+"/status"),"needs_correction");
+  assert.equal(read("reviewQueue/"+correctionId),null,"a source-warning journal must not enter approval before acknowledgment");
+  assert.equal(read("ledger/6100/2026-11/"+longId+"_1"),null,"importing a journal must not post to the General Ledger");
+  assert.equal(read("documents/"+longId+"/lines/0/description"),"","blank primary descriptions remain blank");
+  assert.equal(read("documents/"+longId+"/lines/0/sourceAdditionalDescription"),"Link","source metadata is preserved");
+  const retry=await invoke("POST","",{action:"bulkImportJournals",batchId,journals:records});
+  assert.equal(retry.created,0);
+  assert.equal(retry.skipped,2,"re-running the same package must not create duplicates");
+
+  const edited=await invoke("POST","",{action:"updateReviewJournal",id:correctionId,acknowledgeSourceWarnings:true,journal:{date:"2026-11-22",description:"",reference:"TEST-CORR"},lines:correctionLines});
+  assert.equal(edited.status,"pending_review","the source warning must be explicitly acknowledged before the record joins approval");
+  assert.equal(read("documents/"+correctionId+"/warnings").length,1,"source warning remains visible after acknowledgment");
+  const approved=await invoke("POST","",{action:"review",id:correctionId,decision:"approve",reason:"reviewed test entry"});
+  assert.equal(approved.status,"posted");
+  assert.equal(read("ledger/6100/2026-11/"+correctionId+"_1").sourceLineNo,9001,"source row metadata must reach the ledger after approval");
+
+  const approvedLong=await invoke("POST","",{action:"review",id:longId,decision:"approve",reason:"reviewed long test entry"});
+  assert.equal(approvedLong.status,"posted");
+  assert.equal(read("journals/"+longId+"/lines").length,208);
+  assert.equal(read("ledger/1110/2026-11/"+longId+"_208").credit,1);
+});
