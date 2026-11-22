@@ -2230,7 +2230,7 @@ await adminPatch(u);
     validate(accountCode,"asset");
     const incoming=["employee_custody_return","employee_advance_recovery"].includes(movement);
     if(incoming){
-     const ledger=(await adminRead("partyLedger/"+partyType+"/"+employeeUid))||{};
+     const ledger=await readAnalyticPartyLedger(partyType,employeeUid);
      let outstanding=0;
      Object.values(ledger).forEach(periodRows=>Object.values(periodRows||{}).forEach(entry=>{outstanding+=Number(entry.debit||0)-Number(entry.credit||0);}));
      if(amount>outstanding+0.01)throw new Error((custody?"قيمة الاسترداد أكبر من رصيد العهدة المستحق للموظف.":"قيمة تحصيل السلفة أكبر من رصيد السلفة المستحق على الموظف.")+" الرصيد الحالي: "+Math.max(0,outstanding).toFixed(2));
