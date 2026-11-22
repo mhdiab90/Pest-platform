@@ -1504,7 +1504,7 @@ const unpostJournalDocument=async(doc)=>{
    setStatementJournalId('');
    setBusy(true);setError('');setNotice('');
    try{
-    const result=await api('', 'POST',{action:'unpostJournal',id:doc.id,reason:"فك الترحيل من سجل القيود اليومية وإعادة المستند للمراجعة"});
+    const result=await api('', 'POST',{action:'unpostJournal',id:doc.id,reason:"فك الترحيل من سجل القيود اليومية وإعادة المستند إلى المراجعة"});
     setJournalModal(null);setJournalModalDraft(null);
     await refresh();await loadPeriod();
     if(result.primaryReviewId&&canFinance("review","view")){
