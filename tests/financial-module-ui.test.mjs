@@ -66,3 +66,12 @@ test("application loader requests the exact financial module build declared by t
   assert.ok(expected, "application shell must declare the required financial module version");
   assert.equal(expected[1], version[1], "application shell and financial module version must match");
 });
+
+
+test("financial reports compare control-account debit and credit movements to analytical subledger lines", () => {
+  assert.match(source, /const controlSubledgerAuditRows=accounts\.filter\(account=>account\.subledgerType/);
+  assert.match(source, /const controlSubledgerMismatchCount=controlSubledgerAuditRows\.filter/);
+  assert.match(source, /مطابقة الحسابات الرقابية مع الأستاذ المساعد/);
+  assert.match(source, /controlSubledgerIntegrityPanel\(\)/);
+  assert.match(source, /row\.account\.subledgerType/);
+});
