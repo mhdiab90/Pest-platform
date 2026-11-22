@@ -144,11 +144,11 @@ test("journal entry account, cost center and analytic party fields support typin
 
 
 test("journal deletion cascades to linked posted and pending reversal or revision records", () => {
-  assert.match(source, /const deleteRecords=new Map\\(\\),pendingIds=\\[journalId\\]/);
-  assert.match(source, /current\\.reversalJournalId,current\\.reversedByJournalId,current\\.revisedByJournalId,current\\.pendingRevisionId/);
-  assert.match(source, /current\\.reversalOf,current\\.revisionOf/);
-  assert.match(source, /updates\\["reviewQueue\/"\+linkedId\]=null/);
-  assert.match(source, /updates\\["journals\/"\+linkedId\]=null/);
-  assert.match(source, /deletedIds:family\\.map/);
-  assert.match(source, /stockAlreadyReversed/);
+  assert.ok(source.includes("const deleteRecords=new Map(),pendingIds=[journalId]"));
+  assert.ok(source.includes("current.reversalJournalId,current.reversedByJournalId,current.revisedByJournalId,current.pendingRevisionId"));
+  assert.ok(source.includes("current.reversalOf,current.revisionOf"));
+  assert.ok(source.includes('updates["reviewQueue/"+linkedId]=null'));
+  assert.ok(source.includes('updates["journals/"+linkedId]=null'));
+  assert.ok(source.includes("deletedIds:family.map"));
+  assert.ok(source.includes("stockAlreadyReversed"));
 });
