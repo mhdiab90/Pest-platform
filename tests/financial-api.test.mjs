@@ -1790,3 +1790,67 @@ test("approved custody movement can be reassigned to another employee custody th
   assert.equal(read("journals/"+submitted.journalId).status,"posted");
   assert.deepEqual(read("cashCustodies/"+sourceUid+"/transactions/"+transactionId+"/attachmentsManifest"),{fileIds:["custody-file-01"]});
 });
+
+
+test("period reports recover posted journals missing from period, GL, party and cost-center indexes", async () => {
+  write("settings/accountingStartMonth","2026-10");
+  const journalId="POSTED-WITH-MISSING-INDEXES";
+  const journal={
+    id:journalId,number:"JE-202611-INDEX-REPAIR",type:"journal",date:"2026-11-18",
+    description:"Purchase stock with VAT and supplier payable",reference:"PUR-INDEX-REPAIR",
+    sourceType:"invoice",sourceId:"PURCHASE-DOC-INDEX-REPAIR",status:"posted",
+    lines:[
+      {accountCode:"1300",debit:5000,credit:0,description:"Stock purchase",itemCode:"ITEM-INDEX",quantity:5,warehouseCode:"default",costCenterId:"CC-INDEX"},
+      {accountCode:"1410",debit:700,credit:0,description:"Input VAT"},
+      {accountCode:"281",debit:0,credit:5700,description:"Supplier payable",partyType:"vendor",partyId:"VENDOR-INDEX",costCenterId:"CC-INDEX"}
+    ]
+  };
+  write("journals/"+journalId,journal);
+
+  const report=await invoke("GET","?resource=periods&from=2026-11&to=2026-11");
+  const selected=Object.values(report.entries["2026-11"]||{});
+  const cumulative=Object.values(report.balanceEntries["2026-11"]||{});
+  assert.equal(selected.filter(item=>item.id===journalId).length,1,"canonical posted journal appears once in period activity");
+  assert.equal(cumulative.filter(item=>item.id===journalId).length,1,"canonical posted journal appears once in cumulative balances");
+  assert.equal(read("periods/2026-11/entries/"+journalId).status,"posted","missing monthly index is restored");
+  assert.equal(read("ledger/1300/2026-11/"+journalId+"_1").debit,5000,"inventory GL ledger line is rebuilt");
+  assert.equal(read("ledger/1410/2026-11/"+journalId+"_2").debit,700,"input VAT GL ledger line is rebuilt");
+  assert.equal(read("ledger/281/2026-11/"+journalId+"_3").credit,5700,"supplier control ledger line is rebuilt");
+  assert.equal(read("partyLedger/vendor/VENDOR-INDEX/2026-11/"+journalId+"_3").credit,5700,"supplier subledger line is rebuilt");
+  assert.equal(read("costLedger/CC-INDEX/2026-11/"+journalId+"_1").debit,5000,"cost-center ledger line is rebuilt");
+  const debit=selected.reduce((sum,item)=>sum+(item.lines||[]).reduce((part,line)=>part+Number(line.debit||0),0),0);
+  const credit=selected.reduce((sum,item)=>sum+(item.lines||[]).reduce((part,line)=>part+Number(line.credit||0),0),0);
+  assert.equal(debit,credit,"recovered posting remains balanced");
+});
+
+test("supplier and customer statements fall back to posted journal lines when subledger index is missing", async () => {
+  const vendorJournalId="VENDOR-STATEMENT-FALLBACK";
+  write("journals/"+vendorJournalId,{
+    id:vendorJournalId,number:"JE-202611-VENDOR-FALLBACK",type:"journal",date:"2026-11-19",
+    description:"Supplier invoice",status:"posted",
+    lines:[
+      {accountCode:"281",debit:0,credit:8600,partyType:"vendor",partyId:"VENDOR-FALLBACK",description:"Supplier payable"},
+      {accountCode:"1300",debit:8600,credit:0,description:"Stock"}
+    ]
+  });
+  const vendor=await invoke("GET","?resource=party&type=vendor&id=VENDOR-FALLBACK");
+  const vendorRows=Object.values(vendor.entries["2026-11"]||{});
+  assert.equal(vendorRows.length,1);
+  assert.equal(vendorRows[0].accountCode,"281");
+  assert.equal(vendorRows[0].credit,8600);
+
+  const customerJournalId="CUSTOMER-STATEMENT-FALLBACK";
+  write("journals/"+customerJournalId,{
+    id:customerJournalId,number:"JE-202611-CUSTOMER-FALLBACK",type:"journal",date:"2026-11-20",
+    description:"Customer invoice",status:"posted",
+    lines:[
+      {accountCode:"1210",debit:4200,credit:0,partyType:"customer",partyId:"CUSTOMER-FALLBACK",description:"Customer receivable"},
+      {accountCode:"4100",debit:0,credit:4200,description:"Sales"}
+    ]
+  });
+  const customer=await invoke("GET","?resource=party&type=customer&id=CUSTOMER-FALLBACK");
+  const customerRows=Object.values(customer.entries["2026-11"]||{});
+  assert.equal(customerRows.length,1);
+  assert.equal(customerRows[0].accountCode,"1210");
+  assert.equal(customerRows[0].debit,4200);
+});
