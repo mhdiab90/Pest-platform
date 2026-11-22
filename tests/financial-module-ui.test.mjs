@@ -125,6 +125,10 @@ test("all journal rows expose delete or cancel-impact action, including source-g
   assert.match(source, /حذف القيد نهائيًا/);
   assert.match(source, /لن يمنع وجود حركات مخزنية لاحقة تنفيذ الحذف/);
   assert.doesNotMatch(source, /سيُنشأ قيد عكسي بانتظار المراجعة/);
+  assert.match(source, /linkedRefs=/);
+  assert.match(source, /سيتم حذف القيد الأصلي وكل القيود المرتبطة به/);
+  assert.match(source, /linkedJournalsDeleted/);
+
 });
 
 
@@ -136,4 +140,15 @@ test("journal entry account, cost center and analytic party fields support typin
   assert.match(source, /searchablePicker\('الطرف التحليلي/);
   assert.match(source, /＋ إضافة سطر جديد/);
   assert.match(source, /journal\.lines\.length<=2/);
+});
+
+
+test("journal deletion cascades to linked posted and pending reversal or revision records", () => {
+  assert.match(source, /const deleteRecords=new Map\\(\\),pendingIds=\\[journalId\\]/);
+  assert.match(source, /current\\.reversalJournalId,current\\.reversedByJournalId,current\\.revisedByJournalId,current\\.pendingRevisionId/);
+  assert.match(source, /current\\.reversalOf,current\\.revisionOf/);
+  assert.match(source, /updates\\["reviewQueue\/"\+linkedId\]=null/);
+  assert.match(source, /updates\\["journals\/"\+linkedId\]=null/);
+  assert.match(source, /deletedIds:family\\.map/);
+  assert.match(source, /stockAlreadyReversed/);
 });
