@@ -75,3 +75,14 @@ test("financial reports compare control-account debit and credit movements to an
   assert.match(source, /controlSubledgerIntegrityPanel\(\)/);
   assert.match(source, /row\.account\.subledgerType/);
 });
+
+
+test("financial reports validate critical balance-sheet and tax control account classifications", () => {
+  assert.match(source, /const criticalAccountConfiguration=\[/);
+  assert.match(source, /\{code:"1300",type:"asset",nature:"debit",label:"المخزون"\}/);
+  assert.match(source, /\{code:"1410",type:"asset",nature:"debit",label:"ضريبة القيمة المضافة - مدخلات"\}/);
+  assert.match(source, /\{code:"2110",type:"liability",nature:"credit",label:"ضريبة القيمة المضافة - مخرجات"\}/);
+  assert.match(source, /\{code:"281",type:"liability",nature:"credit",subledgerType:"vendor",label:"الموردون"\}/);
+  assert.match(source, /const criticalAccountMismatchCount=/);
+  assert.match(source, /criticalAccountIntegrityPanel\(\)/);
+});
