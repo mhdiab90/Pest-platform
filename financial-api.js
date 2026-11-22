@@ -468,8 +468,15 @@ export async function handleFinancialRequest(ctx){
     if(Object.keys(taxUpdates).length)await adminPatch(taxUpdates);
     const accountingStartMonth=await adminRead("settings/accountingStartMonth");
     if(!accountingStartMonth){
-     const postedJournals=Object.values((await adminRead("journals"))||{}).filter(j=>j&&j.status==="posted"&&/^\d{4}-\d{2}-\d{2}$/.test(String(j.date||"")));
-     const earliestMonth=postedJournals.map(j=>String(j.date).slice(0,7)).sort()[0]||new Date().toISOString().slice(0,7);
+     const postedJournals=Object.values((await adminRead("journals"))||{}).filter(j=>j&&j.status==="posted"&&/^\\d{4}-\\d{2}-\\d{2}$/.test(String(j.date||"")));
+     // Older installations may hold posted entries only in periods/{YYYY-MM}/entries.
+     // Include those periods when initializing the accounting start month.
+     const existingPeriodTree=(await adminRead("periods"))||{};
+     const legacyPeriodMonths=Object.entries(existingPeriodTree).flatMap(([monthKey,period])=>{
+      if(!/^\\d{4}-\\d{2}$/.test(monthKey)||!period||typeof period!=="object")return [];
+      return Object.values(period.entries||{}).some(entry=>entry&&entry.status==="posted")?[monthKey]:[];
+     });
+     const earliestMonth=[...postedJournals.map(j=>String(j.date).slice(0,7)),...legacyPeriodMonths].sort()[0]||new Date().toISOString().slice(0,7);
      await adminPatch({"settings/accountingStartMonth":earliestMonth});
     }
    }
@@ -617,8 +624,13 @@ export async function handleFinancialRequest(ctx){
     const d=new Date(Date.UTC(startDate.getUTCFullYear(),startDate.getUTCMonth()+i,1)),m=d.toISOString().slice(0,7);
     const stored=(await adminRead("periods/"+m+"/entries"))||{},merged=new Map();
     Object.entries(stored).forEach(([key,value])=>{
+     const entryPath="periods/"+m+"/entries/"+key;
      if(!value||typeof value!=="object"||value.status!=="posted"||!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(value.date||"")))return;
-     const journalId=String(value.id||key),number=value.number||journalNumberFor(value.date,journalId);
+     const journalId=String(value.id||key);
+     if(month(value.date)!==m){repairUpdates[entryPath]=null;return;}
+     const previous=merged.get(journalId);
+     if(previous&&previous.key!==key)repairUpdates["periods/"+m+"/entries/"+previous.key]=null;
+     const number=value.number||journalNumberFor(value.date,journalId);
      merged.set(journalId,{key,journal:{...value,id:journalId,number}});
     });
     (canonicalByMonth.get(m)||new Map()).forEach((entry,journalId)=>{
