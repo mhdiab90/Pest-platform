@@ -69,7 +69,7 @@ jobs:
             echo "::warning::Cloudflare deployment skipped: add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID as repository Actions secrets."
             {
               echo "### Cloudflare Worker deployment skipped"
-              echo "Add repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, then rerun this workflow."
+              echo "Add repository Actions secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID, then rerun this workflow."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
