@@ -48,15 +48,32 @@ test("unified statements support GL accounts, cost centers, vendors and customer
   assert.match(source, /الرصيد الختامي/);
 });
 
-test("balance sheet reconciles warehouse stock values to inventory GL account 1300 and purchase journals", () => {
-  assert.match(source, /const inventoryReconciliationPanel=\(\)=>\{/);
-  assert.match(source, /const inventoryStockValue=Object\.values\(warehouseBalances\)/);
-  assert.match(source, /const inventoryGeneralLedgerValue=inventoryAccountCodes\.reduce/);
-  assert.match(source, /inventoryReconciliationPanel\(\)/);
-  assert.match(source, /قيمة 1300 بالقيد/);
-  assert.match(source, /openStatementJournal\(item\.journalId\)/);
+test("balance sheet retains invoice diagnostics and hides warehouse-to-GL reconciliation", () => {
+  assert.match(source, /invoicePostingReconciliationPanel\(\)/);
+  assert.doesNotMatch(source, /const inventoryReconciliationPanel=\(\)=>\{/);
+  assert.doesNotMatch(source, /inventoryReconciliationPanel\(\)/);
 });
 
+test("invoice diagnostics link to status-appropriate decision screens", () => {
+  assert.match(source, /onClick:\(\)=>void openInvoiceDiagnostic\(row\)/);
+  assert.match(source, /const openInvoiceDiagnostic=async diagnostic=>\{/);
+  assert.match(source, /setTab\('review'\);await openReviewItem\(doc\)/);
+  assert.match(source, /setInvoiceDecisionDoc\(doc\);setTab\('invoices'\)/);
+  assert.match(source, /openJournalModal\(diagnostic\.journal\)/);
+});
+
+test("financial Excel exports use a consistent formatted RTL report sheet", () => {
+  assert.match(source, /fgColor:\{rgb:"17365D"\}/);
+  assert.match(source, /fgColor:\{rgb:"1F4E78"\}/);
+  assert.match(source, /sheet\["!autofilter"\]/);
+  assert.match(source, /sheet\["!views"\]=\[\{RTL:Boolean\(rtl\),state:"frozen"/);
+});
+
+test("invoice-source journals support reversal and deletion from journal detail", () => {
+  assert.match(source, /posted&&\(manual\|\|draft\.sourceType==='invoice'\)&&canFinance\('journal','add'\)/);
+  assert.match(source, /statementJournalReversible=Boolean\(statementJournalManual\|\|statementJournal&&statementJournal\.sourceType==='invoice'\)/);
+  assert.match(source, /حذف القيد ومصدره/);
+});
 
 test("application loader requests the exact financial module build declared by the module", () => {
   const appHtml = readFileSync(new URL("../index.html", import.meta.url), "utf8");
@@ -91,7 +108,7 @@ test("financial reports validate critical balance-sheet and tax control account 
 test("inventory balances and movement rows are both loaded into financial module state", () => {
   assert.match(source, /setMaster\(previous=>Object\.assign\(\{\},previous,\{inventory:Object\.assign\(\{\},previous\.inventory\|\|\{\},\{\.\.\.inventory,balances:inventory\.balances\|\|previous\.inventory&&previous\.inventory\.balances\|\|\{\},movements:inventory\.movements\|\|\{\}\}\)\}\)\)/);
   assert.match(source, /tab==='inventory'\|\|tab==='inventoryMovements'\|\|\(tab==='reports'&&report==='balance'\)/);
-  assert.match(source, /const warehouseBalances=master\.inventory&&master\.inventory\.balances\|\|\{\}/);
+  assert.match(source, /tab==='inventory'\|\|tab==='inventoryMovements'/);
 });
 
 
