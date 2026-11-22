@@ -1941,3 +1941,20 @@ test("delete action requests a reversing journal for posted invoice-source journ
   assert.equal(read("inventory/balances/default/ITEM-DELETE-SOURCE").value,0);
   assert.equal(read("inventory/movements/MOV-DELETE-SOURCE/reversedByJournalId"),approved.journalId);
 });
+
+
+test("source invoice reversal refuses to queue when later stock movements depend on the invoice", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const invoiceId="INVOICE-SOURCE-DELETE-LATER-01",journalId="INVOICE-SOURCE-JOURNAL-DELETE-LATER-01";
+  write("documents/"+invoiceId,{id:invoiceId,type:"invoice",invoiceType:"purchase",status:"posted",date:"2026-11-10",number:"PUR-DELETE-LATER-01",partyId:"VENDOR-DELETE-LATER",lines:[{description:"Stock item",kind:"stock",itemCode:"ITEM-DELETE-LATER",quantity:2,unitPrice:500}],journalId});
+  write("journals/"+journalId,{id:journalId,type:"journal",status:"posted",date:"2026-11-10",sourceType:"invoice",sourceId:invoiceId,lines:[{accountCode:"1300",debit:1000,credit:0},{accountCode:"1410",debit:140,credit:0},{accountCode:"281",debit:0,credit:1140,partyType:"vendor",partyId:"VENDOR-DELETE-LATER"}]});
+  write("inventory/balances/default/ITEM-DELETE-LATER",{quantity:1,value:500,averageCost:500});
+  write("inventory/movements/MOV-DELETE-LATER-SOURCE",{id:"MOV-DELETE-LATER-SOURCE",date:"2026-11-10",invoiceId,journalId,itemCode:"ITEM-DELETE-LATER",warehouseCode:"default",kind:"purchase",quantity:2,unitCost:500,value:1000,createdAt:100});
+  write("inventory/movements/MOV-DELETE-LATER-SALE",{id:"MOV-DELETE-LATER-SALE",date:"2026-11-11",invoiceId:"LATER-SALE",journalId:"LATER-SALE-JOURNAL",itemCode:"ITEM-DELETE-LATER",warehouseCode:"default",kind:"sale",quantity:-1,unitCost:500,value:-500,createdAt:200});
+  await assert.rejects(
+    invoke("POST","",{action:"deleteJournal",id:journalId,reason:"cannot remove consumed stock"}),
+    /حركات لاحقة/
+  );
+  assert.equal(read("journals/"+journalId+"/reversalJournalId"),null,"no unusable reversal is queued");
+  assert.equal(read("inventory/balances/default/ITEM-DELETE-LATER").quantity,1,"inventory remains unchanged");
+});
