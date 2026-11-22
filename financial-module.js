@@ -3027,7 +3027,45 @@ const controlSubledgerAuditRows=accounts.filter(account=>account.subledgerType&&
    h('td',{className:'p-2 text-center'},String(row.count))
   )))
  ));
- const balanceSheetContent=()=>h('div',{className:'space-y-3'},
+const criticalAccountConfiguration=[
+  {code:"1210",type:"asset",nature:"debit",subledgerType:"customer",label:"العملاء"},
+  {code:"1240",type:"asset",nature:"debit",subledgerType:"vendor",label:"دفعات مقدمة للموردين"},
+  {code:"1300",type:"asset",nature:"debit",label:"المخزون"},
+  {code:"1410",type:"asset",nature:"debit",label:"ضريبة القيمة المضافة - مدخلات"},
+  {code:"2110",type:"liability",nature:"credit",label:"ضريبة القيمة المضافة - مخرجات"},
+  {code:"2120",type:"liability",nature:"credit",label:"ضرائب الخصم والإضافة المستحقة"},
+  {code:"2130",type:"liability",nature:"credit",subledgerType:"customer",label:"دفعات مقدمة من العملاء"},
+  {code:"281",type:"liability",nature:"credit",subledgerType:"vendor",label:"الموردون"}
+ ];
+ const criticalAccountAuditRows=criticalAccountConfiguration.map(expected=>{
+  const actual=accounts.find(account=>String(account.code)===expected.code);
+  const issues=[];
+  if(!actual)issues.push("الحساب غير موجود");
+  else{
+   if(String(actual.type||"")!==expected.type)issues.push("نوع الحساب يجب أن يكون "+expected.type);
+   if(String(actual.nature||"")!==expected.nature)issues.push("طبيعة الحساب يجب أن تكون "+expected.nature);
+   if(expected.subledgerType&&String(actual.subledgerType||"")!==expected.subledgerType)issues.push("نوع الأستاذ المساعد يجب أن يكون "+expected.subledgerType);
+   if(actual.isGroup)issues.push("الحساب لا يجوز أن يكون تجميعيًا");
+  }
+  return {expected,actual,issues,status:issues.length?"mismatch":"ok"};
+ });
+ const criticalAccountMismatchCount=criticalAccountAuditRows.filter(row=>row.status!=="ok").length;
+ const criticalAccountIntegrityPanel=()=>panel("فحص تصنيف الحسابات الرئيسية","هذه الحسابات تؤثر مباشرة في ظهور أرصدة المخزون والضرائب والموردين والعملاء ضمن بنود القوائم. الفحص لا يغيّر دليل الحسابات تلقائيًا؛ بل يحدد الحسابات المفقودة أو ذات التصنيف غير الصحيح.",h("div",{className:"space-y-2"},
+  criticalAccountMismatchCount
+   ?h("div",{className:"rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"},"يوجد "+criticalAccountMismatchCount+" حسابات رئيسية تحتاج مراجعة قبل اعتماد القوائم المالية.")
+   :h("div",{className:"rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800"},"تصنيف الحسابات الرئيسية مطابق لطبيعة كل حساب."),
+  table(["الكود","الحساب المتوقع","نوع القائمة","الطبيعة","الأستاذ المساعد المطلوب","الحساب الحالي","نتيجة الفحص"],criticalAccountAuditRows.map(row=>h("tr",{key:row.expected.code,className:"border-t"},
+   h("td",{className:"p-2 font-bold"},row.expected.code),
+   h("td",{className:"p-2"},row.expected.label),
+   h("td",{className:"p-2"},row.expected.type),
+   h("td",{className:"p-2"},row.expected.nature),
+   h("td",{className:"p-2"},row.expected.subledgerType||"—"),
+   h("td",{className:"p-2"},row.actual?String(row.actual.type||"—")+" / "+String(row.actual.nature||"—")+" / "+String(row.actual.subledgerType||"—"):"غير موجود"),
+   h("td",{className:"p-2"},row.issues.length?h("span",{className:"font-bold text-rose-700"},row.issues.join("؛ ")):h("span",{className:"font-bold text-emerald-700"},"مطابق"))
+  )))
+ ));
+
+  const balanceSheetContent=()=>h('div',{className:'space-y-3'},
   h('div',{className:'grid grid-cols-2 md:grid-cols-4 gap-2'},
    metric('إجمالي الأصول',fmt(assets)),
    metric('إجمالي الالتزامات',fmt(liabilities)),
@@ -3101,6 +3139,7 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
    h('div',{className:'grid md:grid-cols-4 gap-3'},field('من شهر',period.from,v=>setPeriod(o=>Object.assign({},o,{from:v})),'month'),field('إلى شهر',period.to,v=>setPeriod(o=>Object.assign({},o,{to:v})),'month'),select('القائمة المالية',report,v=>setReport(v),[{value:'trial',label:'ميزان المراجعة التفصيلي'},{value:'income',label:'قائمة الدخل التفصيلية'},{value:'balance',label:'قائمة المركز المالي التفصيلية'},{value:'cashflow',label:'قائمة التدفقات النقدية'},{value:'ledger',label:'دفتر الأستاذ العام'}]),button('تحديث البيانات',loadPeriod,'primary')),
    h('p',{className:'text-xs text-slate-500'},'عملة العرض: جنيه مصري · الفترة: '+period.from+' إلى '+period.to+' · بداية الدفاتر: '+(accountingStartMonth||'غير محددة'))
   ),
+  criticalAccountIntegrityPanel(),
   controlSubledgerIntegrityPanel(),
   report==='trial'?h('div',{className:'space-y-3'},trialIntegrityNote,panel('ميزان المراجعة — حسابات تفصيلية وتجميعية','الافتتاحي + حركة الفترة = الختامي. الأرصدة التجميعية تتضمن الأرصدة التابعة ولا تدخل مرتين في الإجماليات.',table(['كود','الحساب (اضغط لفتح الكشف)','افتتاحي مدين','افتتاحي دائن','حركة مدين','حركة دائن','ختامي مدين','ختامي دائن'],trialBalanceRows)),trialBalanceTotals):null,
   report==='income'?incomeStatementContent():null,
@@ -3378,5 +3417,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261122-ledger-subledger-audit-v2";
+ window.PEST_FINANCE_MODULE_VERSION="20261122-ledger-subledger-audit-v3";
 })();
