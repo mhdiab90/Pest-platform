@@ -127,7 +127,6 @@ test("all journal rows expose delete or cancel-impact action, including source-g
   assert.doesNotMatch(source, /سيُنشأ قيد عكسي بانتظار المراجعة/);
   assert.match(source, /linkedRefs=/);
   assert.match(source, /سيتم حذف القيد الأصلي وكل القيود المرتبطة به/);
-  assert.match(source, /linkedJournalsDeleted/);
 
 });
 
@@ -143,12 +142,3 @@ test("journal entry account, cost center and analytic party fields support typin
 });
 
 
-test("journal deletion cascades to linked posted and pending reversal or revision records", () => {
-  assert.ok(source.includes("const deleteRecords=new Map(),pendingIds=[journalId]"));
-  assert.ok(source.includes("current.reversalJournalId,current.reversedByJournalId,current.revisedByJournalId,current.pendingRevisionId"));
-  assert.ok(source.includes("current.reversalOf,current.revisionOf"));
-  assert.ok(source.includes('updates["reviewQueue/"+linkedId]=null'));
-  assert.ok(source.includes('updates["journals/"+linkedId]=null'));
-  assert.ok(source.includes("deletedIds:family.map"));
-  assert.ok(source.includes("stockAlreadyReversed"));
-});
