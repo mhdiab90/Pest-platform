@@ -166,7 +166,7 @@ function journalUpdates(j){
  if(!j.type)j.type="journal";
  if(!j.number)j.number=journalNumberFor(j.date,j.id);
  const u={},m=month(j.date);u["journals/"+j.id]=j;u["periods/"+m+"/entries/"+j.id]=j;
- (j.lines||[]).forEach((l,i)=>{const row={journalId:j.id,journalNumber:j.number,lineNo:i+1,date:j.date,description:l.description||j.description||"",accountCode:l.accountCode,debit:Number(l.debit||0),credit:Number(l.credit||0),currency:l.currency||j.currency||"EGP",costCenterId:l.costCenterId||"",projectCode:l.projectCode||"",partyType:l.partyType||"",partyId:l.partyId||"",sourceType:j.sourceType||"manual",sourceId:j.sourceId||"",reference:j.reference||"",taxCode:l.taxCode||"",taxType:l.taxType||""};u["ledger/"+l.accountCode+"/"+m+"/"+j.id+"_"+(i+1)]=row;if(l.partyType&&l.partyId)u["partyLedger/"+l.partyType+"/"+l.partyId+"/"+m+"/"+j.id+"_"+(i+1)]=row;if(l.costCenterId)u["costLedger/"+l.costCenterId+"/"+m+"/"+j.id+"_"+(i+1)]=row;});
+ (j.lines||[]).forEach((l,i)=>{const row={journalId:j.id,journalNumber:j.number,lineNo:i+1,date:j.date,description:l.description||j.description||"",accountCode:l.accountCode,debit:Number(l.debit||0),credit:Number(l.credit||0),currency:l.currency||j.currency||"EGP",costCenterId:l.costCenterId||"",projectCode:l.projectCode||"",partyType:l.partyType||"",partyId:l.partyId||"",sourceType:j.sourceType||"manual",sourceId:j.sourceId||"",reference:j.reference||"",taxCode:l.taxCode||"",taxType:l.taxType||"",sourceLineNo:l.sourceLineNo||"",sourceAccountCode:l.sourceAccountCode||"",sourceAccountName:l.sourceAccountName||"",sourceAnalyticCode:l.sourceAnalyticCode||"",sourceAnalyticName:l.sourceAnalyticName||"",sourceAdditionalDescription:l.sourceAdditionalDescription||"",sourceEndorsement:l.sourceEndorsement||"",sourceProjectOrChequeRef:l.sourceProjectOrChequeRef||"",sourceInvoiceNumber:l.sourceInvoiceNumber||"",sourceDateOriginal:l.sourceDateOriginal||""};u["ledger/"+l.accountCode+"/"+m+"/"+j.id+"_"+(i+1)]=row;if(l.partyType&&l.partyId)u["partyLedger/"+l.partyType+"/"+l.partyId+"/"+m+"/"+j.id+"_"+(i+1)]=row;if(l.costCenterId)u["costLedger/"+l.costCenterId+"/"+m+"/"+j.id+"_"+(i+1)]=row;});
  if(j.sourceType&&j.sourceId)u["sourceLocks/"+j.sourceType+"_"+j.sourceId]={journalId:j.id,postedAt:Number(j.postedAt||j.approvedAt||j.createdAt||Date.now())};return u;
 }
 function journalMaintenanceUpdates(previous,next){
@@ -1495,7 +1495,7 @@ export async function handleFinancialRequest(ctx){
   if(Object.prototype.hasOwnProperty.call(editable,"revisionNotes"))next.revisionNotes=txt(editable.revisionNotes,2000);
   next.currency="EGP";
   if(Array.isArray(body.lines)){
-   const maxLines=previous.openingBalance===true?2000:100;
+   const maxLines=previous.sourceType==="legacyImport"?500:previous.openingBalance===true?2000:100;
    if(body.lines.length>maxLines)throw new Error("لا يمكن أن يحتوي هذا القيد على أكثر من "+maxLines+" سطر.");
    next.lines=body.lines.map((line,index)=>{
     if(!line||typeof line!=="object"||Array.isArray(line))throw new Error("بيانات السطر "+(index+1)+" غير صحيحة.");
@@ -1510,6 +1510,10 @@ export async function handleFinancialRequest(ctx){
     if(sameAccount&&!Object.prototype.hasOwnProperty.call(line,"partyType")&&previousLine.partyType)row.partyType=txt(previousLine.partyType,120);
     if(sameAccount&&!Object.prototype.hasOwnProperty.call(line,"partyId")&&previousLine.partyId)row.partyId=txt(previousLine.partyId,120);
     if(Object.prototype.hasOwnProperty.call(line,"quantity")&&line.quantity!==""&&line.quantity!==null&&line.quantity!==undefined)row.quantity=num(line.quantity);
+    if(previous.sourceType==="legacyImport"){
+     const sourceKeys=["sourceLineNo","sourceAccountCode","sourceAccountName","sourceAnalyticCode","sourceAnalyticName","sourceAdditionalDescription","sourceEndorsement","sourceProjectOrChequeRef","sourceInvoiceNumber","sourceDateOriginal"];
+     sourceKeys.forEach(key=>{const value=Object.prototype.hasOwnProperty.call(line,key)?line[key]:previousLine[key];if(value!==undefined&&value!==null)row[key]=key==="sourceLineNo"?Number(value):txt(value||"",1000);});
+    }
     return row;
    });
   }
@@ -1517,8 +1521,13 @@ export async function handleFinancialRequest(ctx){
   const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{};
   next.lines=normalizeJournalAnalyticLines(next.lines,chart);
   const validation=validateJournal(next,chart,centers);
-  next.balance=validation.balance;next.errors=validation.errors;next.status="pending_review";next.updatedAt=now;next.updatedBy=claims.sub;
-  const updates={};updates["documents/"+docId]=next;updates["reviewQueue/"+docId]=reviewRecord(next);
+  next.balance=validation.balance;next.errors=validation.errors;
+  if(previous.sourceType==="legacyImport"&&body.acknowledgeSourceWarnings===true){
+   next.sourceWarningsAcknowledgedAt=now;next.sourceWarningsAcknowledgedBy=claims.sub;
+  }
+  const unresolvedSourceWarnings=previous.sourceType==="legacyImport"&&(next.warnings||[]).length>0&&!next.sourceWarningsAcknowledgedAt;
+  next.status=validation.errors.length||unresolvedSourceWarnings?"needs_correction":"pending_review";next.updatedAt=now;next.updatedBy=claims.sub;
+  const updates={};updates["documents/"+docId]=next;updates["reviewQueue/"+docId]=next.status==="pending_review"?reviewRecord(next):null;
   updates["audit/"+uid("AUD")]={action:"update_review_journal",documentId:docId,sourceType:next.sourceType||"manual",lineCountBefore:(previous.lines||[]).length,lineCountAfter:(next.lines||[]).length,errors:next.errors,uid:claims.sub,createdAt:now};
   await adminPatch(updates);
   return {success:true,id:docId,status:next.status,errors:next.errors,balance:next.balance};
@@ -1644,6 +1653,92 @@ export async function handleFinancialRequest(ctx){
   updates["audit/"+uid("AUD")]={action:"apply_inventory_movement_change_without_value_impact",movementId,mode,itemCode,warehouseCode,uid:claims.sub,createdAt:now,before:beforeMovement||null,after:afterMovement||null};
   await adminPatch(updates);
   return {success:true,applied:true,pendingReview:false,movementId,resultBalance:replay.balance,deltaValue:0};
+ }
+ if(action==="bulkImportJournals"){
+  if(profile.role!=="admin")throw new Error("استيراد أرشيف القيود متاح لمدير النظام فقط.");
+  requireFinanceArea("journal","add");
+  const batchId=txt(body.batchId||"",100);
+  if(!batchId||!/^[A-Za-z0-9_-]+$/.test(batchId))throw new Error("رقم دفعة الاستيراد غير صالح.");
+  const imported=Array.isArray(body.journals)?body.journals:[];
+  if(!imported.length||imported.length>5)throw new Error("أرسل من 1 إلى 5 قيود في كل دفعة.");
+  const totalLines=imported.reduce((sum,item)=>sum+(Array.isArray(item&&item.lines)?item.lines.length:0),0);
+  if(totalLines>500)throw new Error("تجاوزت الدفعة حد 500 سطر. أعد تقسيم دفعة النقل.");
+  const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{};
+  const now=Date.now(),updates={},results=[],seen=new Set();
+  let created=0,skipped=0,pendingReview=0,needsCorrection=0;
+  const sourceKeys=new Set();
+  for(let index=0;index<imported.length;index++){
+   const input=imported[index]||{},docId=id(input.id||"");
+   if(!docId.startsWith("LEGACY_"))throw new Error("معرف القيد رقم "+(index+1)+" لا يحمل بادئة استيراد الأرشيف.");
+   if(seen.has(docId))throw new Error("معرف القيد "+docId+" مكرر داخل الدفعة.");
+   seen.add(docId);
+   if(input.importBatchId!==batchId)throw new Error("رقم دفعة القيد "+docId+" لا يطابق الدفعة الحالية.");
+   const sourceGroupKey=txt(input.sourceGroupKey||"",160);
+   if(!sourceGroupKey||sourceKeys.has(sourceGroupKey))throw new Error("مرجع مجموعة المصدر مفقود أو مكرر: "+docId);
+   sourceKeys.add(sourceGroupKey);
+   const existing=await adminRead("documents/"+docId);
+   if(existing){
+    if(existing.sourceType==="legacyImport"&&existing.importBatchId===batchId&&existing.sourceGroupKey===sourceGroupKey){
+     skipped++;results.push({id:docId,status:existing.status||"existing",skipped:true,lineCount:(existing.lines||[]).length});continue;
+    }
+    throw new Error("يوجد مستند بنفس المعرف "+docId+" لكنه لا يطابق دفعة الاستيراد؛ أوقف النقل وافحص السجل.");
+   }
+   if(input.type!=="journal"||input.sourceType!=="legacyImport")throw new Error("نوع المستند أو مصدره غير صحيح للقيد "+docId);
+   const journalDate=date(input.date),currency=txt(input.currency||"EGP",3);
+   if(currency!=="EGP")throw new Error("أرشيف القيود الحالي بالجنيه المصري فقط.");
+   const rawLines=Array.isArray(input.lines)?input.lines:[];
+   if(rawLines.length<2||rawLines.length>500)throw new Error("عدد سطور القيد "+docId+" يجب أن يكون من 2 إلى 500.");
+   const sourceFieldKeys=["sourceLineNo","sourceAccountCode","sourceAccountName","sourceAnalyticCode","sourceAnalyticName","sourceAdditionalDescription","sourceEndorsement","sourceProjectOrChequeRef","sourceInvoiceNumber","sourceDateOriginal"];
+   const lines=rawLines.map((line,lineIndex)=>{
+    if(!line||typeof line!=="object"||Array.isArray(line))throw new Error("بيانات السطر "+(lineIndex+1)+" في "+docId+" غير صحيحة.");
+    const accountCode=txt(line.accountCode||"",32),debit=line.debit===""||line.debit===null||line.debit===undefined?0:Number(line.debit),credit=line.credit===""||line.credit===null||line.credit===undefined?0:Number(line.credit);
+    if(!Number.isFinite(debit)||!Number.isFinite(credit)||debit<0||credit<0||debit>1e15||credit>1e15)throw new Error("قيمة مدين/دائن غير صحيحة في القيد "+docId+" السطر "+(lineIndex+1));
+    if(!chart[accountCode]||chart[accountCode].isGroup||chart[accountCode].active===false)throw new Error("الحساب "+accountCode+" غير موجود أو غير قابل للترحيل في القيد "+docId);
+    const row={accountCode,description:txt(line.description||"",250),debit,credit,costCenterId:txt(line.costCenterId||"",120),projectCode:txt(line.projectCode||"",120),partyType:txt(line.partyType||"",80),partyId:txt(line.partyId||"",120)};
+    sourceFieldKeys.forEach(key=>{
+     if(Object.prototype.hasOwnProperty.call(line,key)){
+      const value=line[key];
+      row[key]=key==="sourceLineNo"?(Number.isInteger(Number(value))?Number(value):null):txt(value||"",1000);
+     }
+    });
+    return row;
+   });
+   const sourceWarnings=Array.isArray(input.needsCorrectionReasons)?input.needsCorrectionReasons.map(value=>txt(value,1000)).filter(Boolean).slice(0,100):[];
+   if(input.forceNeedsCorrection===true&&!sourceWarnings.length)sourceWarnings.push("القيد وارد من الأرشيف ويحتاج مراجعة تصنيف المصدر قبل الاعتماد.");
+   const journal={
+    id:docId,number:txt(input.number||input.sourceJournalNumber||docId,120),type:"journal",
+    sourceType:"legacyImport",sourceId:"EXCEL_EDIT_XLSX",date:journalDate,
+    description:txt(input.description||"",500),reference:txt(input.reference||input.sourceJournalNumber||"",120),
+    currency:"EGP",lines,sourceJournalNumber:txt(input.sourceJournalNumber||"",80),
+    sourceDate:journalDate,sourceFirstExcelRow:Number(input.sourceFirstExcelRow)||0,
+    sourceLastExcelRow:Number(input.sourceLastExcelRow)||0,sourceLineCount:lines.length,
+    sourceGroupKey,importBatchId:batchId,importSourceFile:"edit.xlsx",
+    importSourceDigest:txt(input.importSourceDigest||"",128),
+    sourceTotals:input.sourceTotals&&typeof input.sourceTotals==="object"?input.sourceTotals:{},
+    warnings:sourceWarnings,sourceWarningsAcknowledgedAt:null,sourceWarningsAcknowledgedBy:"",
+    createdAt:now,createdBy:claims.sub,createdByName:txt(profile.fullName||profile.username||profile.email,120),
+    title:"قيد أرشيف "+txt(input.sourceJournalNumber||docId,80)+" — "+journalDate
+   };
+   const normalizedLines=normalizeJournalAnalyticLines(journal.lines,chart);
+   journal.lines=normalizedLines;
+   const validation=validateJournal(journal,chart,centers);
+   journal.balance=validation.balance;
+   journal.errors=validation.errors;
+   journal.status=validation.errors.length||sourceWarnings.length?"needs_correction":"pending_review";
+   if(journal.status==="pending_review"){
+    updates["reviewQueue/"+docId]=reviewRecord(journal);
+    pendingReview++;
+   }else{
+    updates["reviewQueue/"+docId]=null;
+    needsCorrection++;
+   }
+   updates["documents/"+docId]=journal;
+   created++;
+   results.push({id:docId,status:journal.status,lineCount:lines.length,errors:journal.errors,warnings:sourceWarnings});
+  }
+  updates["audit/"+uid("AUD")]={action:"bulk_import_legacy_journals",batchId,requested:imported.length,created,skipped,pendingReview,needsCorrection,totalLines,uid:claims.sub,createdAt:now};
+  await adminPatch(updates);
+  return {success:true,batchId,requested:imported.length,created,skipped,pendingReview,needsCorrection,totalLines,results};
  }
  if(action==="submitJournal"){
    const journalId=id(body.id||uid("DOC"));let previous=null,postedRecord=null;
@@ -2723,6 +2818,7 @@ await adminPatch(u);
   }
   if(decision!=="approve"&&decision!=="approveDuplicate")throw new Error("قرار المراجعة غير صحيح");const updates={};let j,sourceRootUpdate=null,secondaryRootUpdate=null;
   if(doc.type==="journal"){
+   if(doc.sourceType==="legacyImport"&&(doc.warnings||[]).length>0&&!doc.sourceWarningsAcknowledgedAt)throw new Error("يجب مراجعة ملاحظات استيراد الأرشيف وتأكيد معالجتها قبل اعتماد القيد.");
    const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{},v=validateJournal(doc,chart,centers);
    if(v.errors.length)throw new Error(v.errors.join("؛ "));
    if(doc.sourceType==="journalRevision"&&doc.revisionOf){
