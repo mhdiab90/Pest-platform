@@ -125,6 +125,9 @@ test("all journal rows expose delete or cancel-impact action, including source-g
   assert.match(source, /حذف القيد نهائيًا/);
   assert.match(source, /لن يمنع وجود حركات مخزنية لاحقة تنفيذ الحذف/);
   assert.doesNotMatch(source, /سيُنشأ قيد عكسي بانتظار المراجعة/);
+  assert.match(source, /linkedRefs=/);
+  assert.match(source, /سيتم حذف القيد الأصلي وكل القيود المرتبطة به/);
+
 });
 
 
@@ -137,3 +140,5 @@ test("journal entry account, cost center and analytic party fields support typin
   assert.match(source, /＋ إضافة سطر جديد/);
   assert.match(source, /journal\.lines\.length<=2/);
 });
+
+
