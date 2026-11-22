@@ -195,3 +195,24 @@ test("daily journal rows show green posted and red cancelled status badges", () 
   assert.match(source, /border-emerald-200 bg-emerald-50 text-emerald-700/);
   assert.match(source, /border-rose-200 bg-rose-50 text-rose-700/);
 });
+
+test("inventory movement screen supports edit/delete and direct stock balance correction", () => {
+  assert.match(source, /const openInventoryMovementEditor=movement=>/);
+  assert.match(source, /action:"changeInventoryMovement"/);
+  assert.match(source, /button\("تعديل",\(\)=>openInventoryMovementEditor\(item\)/);
+  assert.match(source, /button\("حذف",\(\)=>void deleteInventoryMovement\(item\)/);
+  assert.match(source, /button\("تعديل الرصيد"/);
+  assert.match(source, /button\("تصفير الرصيد"/);
+});
+
+test("balance sheet displays warehouse inventory value and compares it with account 1300", () => {
+  assert.match(source, /const inventoryStatementRows=/);
+  assert.match(source, /const inventorySubledgerValue=/);
+  assert.match(source, /const inventoryLedgerBalance=/);
+  assert.match(source, /inventoryStatementReconciliationPanel\(\)/);
+});
+
+test("inventory movement adjustment journals remain read-only in review and journal details", () => {
+  assert.match(source, /!draft\.inventoryMovementChange/);
+  assert.match(source, /inventoryMovementChange:doc\.inventoryMovementChange\|\|null/);
+});
