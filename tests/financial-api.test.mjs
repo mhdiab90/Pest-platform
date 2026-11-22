@@ -1908,3 +1908,36 @@ test("inventory endpoint returns persisted warehouse balances and stock movement
   assert.deepEqual(result.items.balances.default["ITEM-7892"],balance,"warehouse balance must be returned to the financial UI");
   assert.deepEqual(result.items.movements["INV-MOVEMENT-7892"],movement,"stock movement must be returned with its journal link");
 });
+
+
+test("period reports include older posted journals even if accountingStartMonth was saved later", async () => {
+  write("settings/accountingStartMonth","2026-11");
+  const oldJournal={id:"OLD-INVOICE-JOURNAL",type:"journal",date:"2026-08-19",status:"posted",sourceType:"invoice",sourceId:"OLD-INVOICE-DOC",lines:[{accountCode:"1300",debit:1200,credit:0},{accountCode:"1410",debit:168,credit:0},{accountCode:"281",debit:0,credit:1368,partyType:"vendor",partyId:"OLD-VENDOR"}]};
+  write("journals/OLD-INVOICE-JOURNAL",oldJournal);
+  const result=await invoke("GET","?resource=periods&from=2026-11&to=2026-11");
+  assert.equal(result.accountingStartMonth,"2026-08","the cumulative report dynamically starts from the earliest actually posted journal");
+  assert.ok(result.balanceEntries["2026-08"]["OLD-INVOICE-JOURNAL"],"the older invoice journal is included in cumulative balances");
+  assert.equal(read("ledger/1300/2026-08/OLD-INVOICE-JOURNAL_1").debit,1200,"the historic inventory ledger line is rebuilt");
+  assert.equal(read("partyLedger/vendor/OLD-VENDOR/2026-08/OLD-INVOICE-JOURNAL_3").credit,1368,"the historic supplier subledger line is rebuilt");
+});
+
+test("delete action requests a reversing journal for posted invoice-source journals instead of leaving stock and GL out of sync", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const invoiceId="INVOICE-SOURCE-DELETE-01",journalId="INVOICE-SOURCE-JOURNAL-DELETE-01";
+  write("documents/"+invoiceId,{id:invoiceId,type:"invoice",invoiceType:"purchase",status:"posted",date:"2026-11-18",number:"PUR-DELETE-SOURCE-01",partyId:"VENDOR-DELETE-SOURCE",totals:{net:1000,vat:140,total:1140},lines:[{description:"Stock item",kind:"stock",itemCode:"ITEM-DELETE-SOURCE",quantity:2,unitPrice:500}],journalId});
+  write("journals/"+journalId,{id:journalId,type:"journal",status:"posted",date:"2026-11-18",sourceType:"invoice",sourceId:invoiceId,lines:[{accountCode:"1300",debit:1000,credit:0},{accountCode:"1410",debit:140,credit:0},{accountCode:"281",debit:0,credit:1140,partyType:"vendor",partyId:"VENDOR-DELETE-SOURCE"}]});
+  write("inventory/balances/default/ITEM-DELETE-SOURCE",{quantity:2,value:1000,averageCost:500});
+  write("inventory/movements/MOV-DELETE-SOURCE",{id:"MOV-DELETE-SOURCE",date:"2026-11-18",invoiceId,journalId,itemCode:"ITEM-DELETE-SOURCE",warehouseCode:"default",kind:"purchase",quantity:2,unitCost:500,value:1000,createdAt:100});
+  const request=await invoke("POST","",{action:"deleteJournal",id:journalId,reason:"wrong invoice"});
+  assert.equal(request.deleted,false);
+  assert.equal(request.reversalRequested,true);
+  assert.equal(read("journals/"+journalId+"/reversalJournalId"),request.reversalId);
+  assert.equal(read("inventory/balances/default/ITEM-DELETE-SOURCE").quantity,2,"stock is not changed until the reversal is approved");
+  const approved=await invoke("POST","",{action:"review",id:request.reversalId,decision:"approve",reason:"approve source reversal"});
+  assert.equal(approved.status,"posted");
+  assert.equal(read("documents/"+invoiceId+"/status"),"reversed");
+  assert.equal(read("journals/"+journalId+"/reversedByJournalId"),approved.journalId);
+  assert.equal(read("inventory/balances/default/ITEM-DELETE-SOURCE").quantity,0);
+  assert.equal(read("inventory/balances/default/ITEM-DELETE-SOURCE").value,0);
+  assert.equal(read("inventory/movements/MOV-DELETE-SOURCE/reversedByJournalId"),approved.journalId);
+});
