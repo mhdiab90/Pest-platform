@@ -1394,6 +1394,13 @@ test("daily journals can be reversed through review and unposted entries can be 
   assert.equal(read("journals/"+postedDraft.id+"/reversedByJournalId"),reversal.id);
   assert.equal(read("ledger/6100/2026-11/"+postedDraft.id+"_1").debit,300);
   assert.equal(read("ledger/6100/2026-11/"+reversal.id+"_1").credit,300);
+  const removedFamily=await invoke("POST","",{action:"deleteJournal",id:postedDraft.id,reason:"Clean financial initialization"});
+  assert.equal(removedFamily.deleted,true);
+  assert.equal(removedFamily.deletedIds.length,2,"original and approved reversal are both removed");
+  assert.equal(read("journals/"+postedDraft.id),null);
+  assert.equal(read("journals/"+reversal.id),null);
+  assert.equal(read("ledger/6100/2026-11/"+postedDraft.id+"_1"),null);
+  assert.equal(read("ledger/6100/2026-11/"+reversal.id+"_1"),null);
 
   const draft=await invoke("POST","",{action:"submitJournal",date:"2026-11-19",description:"Journal to cancel",reference:"REV-CANCEL-01",
     lines:[{accountCode:"6100",debit:50,credit:0,description:"Expense"},{accountCode:"1110",debit:0,credit:50,description:"Cash"}]});
@@ -1418,6 +1425,16 @@ test("a transferred invoice recipient can cancel the assigned invoice and close 
   assert.equal(read("documents/"+invoiceId+"/status"),"cancelled");
   assert.equal(read("assignments/"+recipientUid+"/"+assigned.assignmentId+"/status"),"cancelled");
   assert.equal(read("tasks/"+recipientUid+"/"+assigned.taskId+"/status"),"completed");
+
+  const senderInvoiceId="INV-ASSIGNED-CANCEL-BY-SENDER";
+  write("documents/"+senderInvoiceId,{id:senderInvoiceId,type:"invoice",invoiceType:"purchase",status:"draft",createdBy:claims.sub,createdByName:"Finance Test",number:"CANCEL-SENDER-01",date:"2026-11-19",partyId:"VENDOR-X",partyName:"Supplier",currency:"EGP",lines:[]});
+  const senderAssignment=await invoke("POST","",{action:"assignInvoice",invoiceId:senderInvoiceId,assigneeUid:recipientUid,instruction:"Review invoice for sender cancellation"});
+  const senderCancelled=await invoke("POST","",{action:"deleteInvoice",id:senderInvoiceId,reason:"Reset test data"});
+  assert.equal(senderCancelled.status,"cancelled","the original sender with invoice-delete permission can cancel an assigned invoice");
+  assert.equal(read("documents/"+senderInvoiceId+"/status"),"cancelled");
+  assert.equal(read("assignments/"+recipientUid+"/"+senderAssignment.assignmentId+"/status"),"cancelled");
+  assert.equal(read("sentAssignments/"+claims.sub+"/"+senderAssignment.assignmentId+"/status"),"cancelled");
+  assert.equal(read("tasks/"+recipientUid+"/"+senderAssignment.taskId+"/status"),"completed");
 });
 
 
