@@ -592,36 +592,54 @@ export async function handleFinancialRequest(ctx){
   if(res==="bank"){requireFinanceArea("bank","view");return {items:(await adminRead("bankImports"))||{},accounts:(await adminRead("bankAccounts"))||{}};}
   if(res==="periods"){if(!hasFinanceArea("reports","view")&&!hasFinanceArea("overview","view")&&!hasFinanceArea("centers","view")&&!hasFinanceArea("tax","view"))throw new Error("ليس لديك صلاحية عرض التقارير المالية.");
    const from=txt(url.searchParams.get("from")||new Date().toISOString().slice(0,7),7),to=txt(url.searchParams.get("to")||from,7);
-   if(!/^\d{4}-\d{2}$/.test(from)||!/^\d{4}-\d{2}$/.test(to))throw new Error("Invalid financial period.");
+   if(!/^\\d{4}-\\d{2}$/.test(from)||!/^\\d{4}-\\d{2}$/.test(to))throw new Error("Invalid financial period.");
    const configuredStart=await adminRead("settings/accountingStartMonth"),balanceFrom=String(configuredStart||from);
-   if(!/^\d{4}-\d{2}$/.test(balanceFrom))throw new Error("تاريخ بداية الدفاتر المحاسبية غير مضبوط. راجع إعدادات النظام المالي.");
+   if(!/^\\d{4}-\\d{2}$/.test(balanceFrom))throw new Error("تاريخ بداية الدفاتر المحاسبية غير مضبوط. راجع إعدادات النظام المالي.");
    const startDate=new Date(balanceFrom+"-01T00:00:00Z"),fromDate=new Date(from+"-01T00:00:00Z"),toDate=new Date(to+"-01T00:00:00Z");
    const diff=(toDate.getUTCFullYear()-startDate.getUTCFullYear())*12+toDate.getUTCMonth()-startDate.getUTCMonth();
    const periodDiff=(toDate.getUTCFullYear()-fromDate.getUTCFullYear())*12+toDate.getUTCMonth()-fromDate.getUTCMonth();
    if(diff<0||periodDiff<0||diff>120||periodDiff>24)throw new Error("مدى التقرير غير صحيح. الحد الأقصى 24 شهرًا لحركة الفترة و120 شهرًا للأرصدة التراكمية.");
-   const months=[],entries={},balanceEntries={},numberUpdates={};
+
+   // journals is the authoritative posting record. Period, GL, party and cost-center
+   // trees are derived indexes and may be incomplete for older posted entries.
+   const sourceJournals=(await adminRead("journals"))||{},canonicalByMonth=new Map();
+   Object.entries(sourceJournals).forEach(([key,value])=>{
+    if(!value||typeof value!=="object"||value.status!=="posted"||!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(value.date||"")))return;
+    const journalId=String(value.id||key),monthKey=month(value.date);
+    if(monthKey<balanceFrom||monthKey>to)return;
+    const number=value.number||journalNumberFor(value.date,journalId);
+    if(!canonicalByMonth.has(monthKey))canonicalByMonth.set(monthKey,new Map());
+    canonicalByMonth.get(monthKey).set(journalId,{key:journalId,journal:{...value,id:journalId,number}});
+   });
+
+   const months=[],entries={},balanceEntries={},repairUpdates={};
    for(let i=0;i<=diff;i++){
     const d=new Date(Date.UTC(startDate.getUTCFullYear(),startDate.getUTCMonth()+i,1)),m=d.toISOString().slice(0,7);
-    const monthly=(await adminRead("periods/"+m+"/entries"))||{};
-    if(m>=from&&m<=to){
-     Object.entries(monthly).forEach(([key,value])=>{
-      if(!value||typeof value!=="object"||value.number)return;
-      const journalId=String(value.id||key),number=journalNumberFor(value.date,journalId),journal={...value,number};
-      monthly[key]=journal;
-      numberUpdates["journals/"+journalId+"/number"]=number;
-      numberUpdates["periods/"+m+"/entries/"+key]=journal;
-      (journal.lines||[]).forEach((line,index)=>{
-       const suffix=journalId+"_"+(index+1);
-       if(line.accountCode)numberUpdates["ledger/"+line.accountCode+"/"+m+"/"+suffix+"/journalNumber"]=number;
-       if(line.partyType&&line.partyId)numberUpdates["partyLedger/"+line.partyType+"/"+line.partyId+"/"+m+"/"+suffix+"/journalNumber"]=number;
-       if(line.costCenterId)numberUpdates["costLedger/"+line.costCenterId+"/"+m+"/"+suffix+"/journalNumber"]=number;
-      });
-     });
-     months.push(m);entries[m]=monthly;
-    }
+    const stored=(await adminRead("periods/"+m+"/entries"))||{},merged=new Map();
+    Object.entries(stored).forEach(([key,value])=>{
+     if(!value||typeof value!=="object"||value.status!=="posted"||!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(value.date||"")))return;
+     const journalId=String(value.id||key),number=value.number||journalNumberFor(value.date,journalId);
+     merged.set(journalId,{key,journal:{...value,id:journalId,number}});
+    });
+    (canonicalByMonth.get(m)||new Map()).forEach((entry,journalId)=>{
+     const previous=merged.get(journalId);
+     merged.set(journalId,{key:previous&&previous.key||journalId,journal:entry.journal});
+    });
+
+    const monthly={};
+    merged.forEach(({key,journal},journalId)=>{
+     // Preserve the old entry key in the response for compatibility, but store a
+     // single canonical journal ID in Firebase to prevent duplicates on later reads.
+     monthly[key||journalId]=journal;
+     if(key&&key!==journalId)repairUpdates["periods/"+m+"/entries/"+key]=null;
+     // Rebuild the journal, GL, party, cost-center, period and source-lock indexes
+     // idempotently from the posted journal record.
+     Object.assign(repairUpdates,journalUpdates(journal));
+    });
+    if(m>=from&&m<=to){months.push(m);entries[m]=monthly;}
     balanceEntries[m]=monthly;
    }
-   if(Object.keys(numberUpdates).length)await adminPatch(numberUpdates);
+   if(Object.keys(repairUpdates).length)await adminPatch(repairUpdates);
    return {months,entries,balanceEntries,accountingStartMonth:balanceFrom};
   }
   if(res==="partnerCurrentAccounts"){
@@ -656,7 +674,23 @@ export async function handleFinancialRequest(ctx){
    const allowed=["customer","vendor","employeeCustody","employeeAdvance","partnerCurrentAccount"];
    if(!allowed.includes(requested))throw new Error("Invalid analytic party type.");
    const partyId=id(url.searchParams.get("id"));
-   return {entries:(await adminRead("partyLedger/"+requested+"/"+partyId))||{}};
+   const stored=(await adminRead("partyLedger/"+requested+"/"+partyId))||{},merged={};
+   // Keep legacy subledger rows, then overlay the canonical posted journal lines.
+   // An empty/incomplete partyLedger index must not hide a real supplier/customer balance.
+   Object.entries(stored).forEach(([monthKey,periodRows])=>{merged[monthKey]=Object.assign({},periodRows||{});});
+   const sourceJournals=(await adminRead("journals"))||{};
+   Object.entries(sourceJournals).forEach(([journalKey,journal])=>{
+    if(!journal||typeof journal!=="object"||journal.status!=="posted"||!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(journal.date||"")))return;
+    const journalId=String(journal.id||journalKey),monthKey=month(journal.date);
+    (Array.isArray(journal.lines)?journal.lines:[]).forEach((line,index)=>{
+     if(String(line.partyType||"")!==requested||String(line.partyId||"")!==partyId)return;
+     const suffix=journalId+"_"+(index+1),number=journal.number||journalNumberFor(journal.date,journalId);
+     const row={journalId,journalNumber:number,lineNo:index+1,date:journal.date,description:line.description||journal.description||"",accountCode:line.accountCode,debit:Number(line.debit||0),credit:Number(line.credit||0),currency:line.currency||journal.currency||"EGP",costCenterId:line.costCenterId||"",projectCode:line.projectCode||"",partyType:requested,partyId,sourceType:journal.sourceType||"manual",sourceId:journal.sourceId||"",reference:journal.reference||"",taxCode:line.taxCode||"",taxType:line.taxType||""};
+     if(!merged[monthKey])merged[monthKey]={};
+     merged[monthKey][suffix]=row;
+    });
+   });
+   return {entries:merged};
   }
   if(res==="assignments"){
    requireFinanceArea("assignments","view");
