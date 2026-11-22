@@ -1610,26 +1610,38 @@ export async function handleFinancialRequest(ctx){
    if(action==="deleteJournal"){
    requireFinanceArea("journal","delete");
    const journalId=id(body.id),reason=txt(body.reason||"حذف القيد من شاشة القيود اليومية",500);
-   const firstDocument=await adminRead("documents/"+journalId),firstPosted=await adminRead("journals/"+journalId),firstTarget=firstPosted||firstDocument;
-   if(!firstTarget||firstTarget.type!=="journal")throw new Error("قيد اليومية المطلوب حذفه غير موجود.");
-   // Expand the full journal family: original, pending/posted reversal and pending/posted revision.
-   const deleteRecords=new Map(),pendingIds=[journalId];
-   while(pendingIds.length){
-    const currentId=id(pendingIds.shift());
-    if(!currentId||deleteRecords.has(currentId))continue;
-    const [currentDocument,currentPosted]=await Promise.all([
-     adminRead("documents/"+currentId),adminRead("journals/"+currentId)
+   const [firstDocument,firstPosted,allDocuments,allPosted]=await Promise.all([
+     adminRead("documents/"+journalId),adminRead("journals/"+journalId),adminRead("documents"),adminRead("journals")
     ]);
-    const current=currentPosted||currentDocument;
-    if(!current||current.type!=="journal")continue;
-    deleteRecords.set(currentId,{id:currentId,record:current,posted:Boolean(currentPosted&&currentPosted.status==="posted")});
-    [
-     current.reversalJournalId,current.reversedByJournalId,current.revisedByJournalId,current.pendingRevisionId,
-     current.reversalOf,current.revisionOf
-    ].forEach(linkedId=>{if(linkedId&&!deleteRecords.has(String(linkedId))&&!pendingIds.includes(String(linkedId)))pendingIds.push(String(linkedId));});
-    if(deleteRecords.size>40)throw new Error("ارتباطات القيود أكثر من الحد الآمن للحذف المتسلسل. راجع مسؤول النظام قبل المتابعة.");
-   }
-   if(!deleteRecords.has(journalId))throw new Error("تعذر العثور على بيانات القيد المطلوب.");
+    const firstTarget=firstPosted||firstDocument;
+    if(!firstTarget||firstTarget.type!=="journal")throw new Error("قيد اليومية المطلوب حذفه غير موجود.");
+    const allJournalRecords=new Map();
+    Object.entries(allDocuments||{}).forEach(([key,value])=>{if(value&&value.type==="journal")allJournalRecords.set(String(value.id||key),{record:value,posted:false});});
+    Object.entries(allPosted||{}).forEach(([key,value])=>{if(value&&value.type==="journal")allJournalRecords.set(String(value.id||key),{record:value,posted:value.status==="posted"});});
+    const deleteRecords=new Map(),pendingIds=[journalId];
+    while(pendingIds.length){
+     const currentId=id(pendingIds.shift());
+     if(!currentId||deleteRecords.has(currentId))continue;
+     const [currentDocument,currentPosted]=await Promise.all([
+      adminRead("documents/"+currentId),adminRead("journals/"+currentId)
+     ]);
+     const current=currentPosted||currentDocument;
+     if(!current||current.type!=="journal")continue;
+     const indexedRecord=allJournalRecords.get(currentId);
+     deleteRecords.set(currentId,{id:currentId,record:current,posted:Boolean(currentPosted&&currentPosted.status==="posted"||indexedRecord&&indexedRecord.posted)});
+     [
+      current.reversalJournalId,current.reversedByJournalId,current.revisedByJournalId,current.pendingRevisionId,
+      current.reversalOf,current.revisionOf
+     ].forEach(linkedId=>{if(linkedId&&!deleteRecords.has(String(linkedId))&&!pendingIds.includes(String(linkedId)))pendingIds.push(String(linkedId));});
+     allJournalRecords.forEach((candidate,candidateId)=>{
+      const linked=candidate&&candidate.record;
+      if(!linked||candidateId===currentId||deleteRecords.has(candidateId)||pendingIds.includes(candidateId))return;
+      const pointsToCurrent=[linked.reversalOf,linked.revisionOf,linked.reversedByJournalId,linked.revisedByJournalId].some(value=>String(value||"")===currentId);
+      if(pointsToCurrent)pendingIds.push(candidateId);
+     });
+     if(deleteRecords.size>500)throw new Error("ارتباطات القيود تجاوزت 500 قيد. أوقف الحذف وراجع تسلسل القيود قبل المتابعة.");
+    }
+    if(!deleteRecords.has(journalId))throw new Error("تعذر العثور على بيانات القيد المطلوب.");
    const family=[...deleteRecords.values()];
    // Prefer the source/original journal so invoice, custody and other source records are reconciled once.
    const sourceEntry=family.find(item=>!item.record.reversalOf&&!item.record.revisionOf&&
@@ -1994,12 +2006,17 @@ if(action==="forwardInvoiceAssignment"){
    const docId=id(body.id),previous=await adminRead("documents/"+docId);
    if(!previous||previous.type!=="invoice")throw new Error("الفاتورة المطلوب حذفها غير موجودة.");
    if(previous.status==="posted"||previous.journalId)throw new Error("لا يمكن حذف فاتورة مُرحّلة محاسبيًا. استخدم قيدًا عكسيًا بعد المراجعة.");
-   let activeAssignment=null,assignedRecipient=false;
+   let activeAssignment=null,assignedRecipient=false,assignedOwnerUid="";
    if(previous.status==="assigned"){
-    if(previous.assignedTo!==claims.sub)throw new Error("لا يمكن حذف فاتورة محوّلة إلا من المستخدم الموجود في عهدته حاليًا.");
-    requireFinanceArea("assignments","edit");
-    activeAssignment=previous.assignmentId?await adminRead("assignments/"+claims.sub+"/"+id(previous.assignmentId)):null;
-    if(!activeAssignment||activeAssignment.status!=="open")throw new Error("مهمة التحويل لم تعد مفتوحة؛ لا يمكن إلغاء هذه الفاتورة.");
+    assignedOwnerUid=id(previous.assignedTo||"");
+    const isCurrentAssignee=Boolean(assignedOwnerUid&&assignedOwnerUid===claims.sub);
+    const isSender=String(previous.assignmentSenderUid||previous.createdBy||"")===String(claims.sub);
+    const canManageAssigned=!isCurrentAssignee&&(profile.role==="admin"||isSender);
+    if(!isCurrentAssignee&&!canManageAssigned)throw new Error("إلغاء الفاتورة المحوّلة متاح للمستخدم الموجود في عهدته أو لمنشئ التحويل/مدير النظام بصلاحية حذف الفواتير.");
+    if(isCurrentAssignee)requireFinanceArea("assignments","edit");
+    else requireFinanceArea("invoices","delete");
+    activeAssignment=previous.assignmentId&&assignedOwnerUid?await adminRead("assignments/"+assignedOwnerUid+"/"+id(previous.assignmentId)):null;
+    if(isCurrentAssignee&&(!activeAssignment||activeAssignment.status!=="open"))throw new Error("مهمة التحويل لم تعد مفتوحة؛ لا يمكن إلغاء هذه الفاتورة من حساب المستلم.");
     assignedRecipient=true;
    }else requireFinanceArea("invoices","delete");
    const allowed=["draft","needs_correction","returned_to_creator","pending_review","duplicate_review","rejected","assigned"];
@@ -2011,14 +2028,21 @@ if(action==="forwardInvoiceAssignment"){
    updates["documents/"+docId+"/deleteReason"]=txt(body.reason||(assignedRecipient?"إلغاء من المستخدم المحال إليه":"حذف/إلغاء بطلب المستخدم"),300);
    updates["reviewQueue/"+docId]=null;
    if(assignedRecipient){
-    const assignmentId=id(previous.assignmentId);
-    updates["assignments/"+claims.sub+"/"+assignmentId+"/status"]="cancelled";
-    updates["assignments/"+claims.sub+"/"+assignmentId+"/completedAt"]=now;
-    updates["assignments/"+claims.sub+"/"+assignmentId+"/decision"]="cancelled_by_assignee";
-    const senderUid=id(activeAssignment.createdBy||previous.assignmentSenderUid||previous.createdBy);
-    updates["sentAssignments/"+senderUid+"/"+assignmentId+"/status"]="cancelled";
-    updates["sentAssignments/"+senderUid+"/"+assignmentId+"/decision"]="cancelled_by_assignee";
-    if(activeAssignment.taskId)await patchExternalBranch("tasks",{[claims.sub+"/"+id(activeAssignment.taskId)+"/status"]:"completed",[claims.sub+"/"+id(activeAssignment.taskId)+"/completedAt"]:now});
+    const assignmentId=id(previous.assignmentId||activeAssignment&&activeAssignment.id||"");
+    const assignedUid=assignedOwnerUid||id(activeAssignment&&activeAssignment.assigneeUid||"");
+    const senderUid=id(activeAssignment&&activeAssignment.createdBy||previous.assignmentSenderUid||previous.createdBy);
+    const sentRecord=assignmentId&&senderUid?await adminRead("sentAssignments/"+senderUid+"/"+assignmentId):null;
+    const taskId=id(activeAssignment&&activeAssignment.taskId||sentRecord&&sentRecord.taskId||"");
+    if(assignmentId&&assignedUid){
+     updates["assignments/"+assignedUid+"/"+assignmentId+"/status"]="cancelled";
+     updates["assignments/"+assignedUid+"/"+assignmentId+"/completedAt"]=now;
+     updates["assignments/"+assignedUid+"/"+assignmentId+"/decision"]="cancelled_by_manager";
+    }
+    if(assignmentId&&senderUid){
+     updates["sentAssignments/"+senderUid+"/"+assignmentId+"/status"]="cancelled";
+     updates["sentAssignments/"+senderUid+"/"+assignmentId+"/decision"]="cancelled_by_manager";
+    }
+    if(taskId&&assignedUid)await patchExternalBranch("tasks",{[assignedUid+"/"+taskId+"/status"]:"completed",[assignedUid+"/"+taskId+"/completedAt"]:now});
    }
    if(previous.fingerprint){
     const fingerprint=await adminRead("documentFingerprints/"+previous.fingerprint);
@@ -2026,7 +2050,7 @@ if(action==="forwardInvoiceAssignment"){
    }
    updates["audit/"+uid("AUD")]={action:nextStatus==="cancelled"?"cancel_invoice":"delete_invoice",documentId:docId,previousStatus:previous.status,uid:claims.sub,createdAt:now};
    await adminPatch(updates);
-   return {success:true,id:docId,deleted:nextStatus==="deleted",status:nextStatus,assignmentCancelled:assignedRecipient};
+   return {success:true,id:docId,deleted:nextStatus==="deleted",status:nextStatus,assignmentCancelled:assignedRecipient,assignmentOwnerUid:assignedOwnerUid};
   }
   if(action==="submitInvoice"){
    if(!["purchase","sales"].includes(body.type))throw new Error("حدد هل الفاتورة مشتريات من مورد أم مبيعات لعميل.");
