@@ -552,7 +552,7 @@ function FinanceModule(props){
     ['invoices','journal','cash','bank'].some(area=>canFinance(area,'view'))?api('?resource=documents'):Promise.resolve({items:{}}),
     canFinance('journal','view')?api('?resource=journals'):Promise.resolve({items:{}})
    ]);
-   setMaster(Object.assign({chartOfAccounts:{},costCenters:{},items:{},itemGroups:{},warehouses:{},bankAccounts:{},taxCodes:{},parties:{},settings:{},inventory:{balances:{}}},b));
+   setMaster(previous=>Object.assign({chartOfAccounts:{},costCenters:{},items:{},itemGroups:{},warehouses:{},bankAccounts:{},taxCodes:{},parties:{},settings:{},inventory:{balances:{},movements:{}}},previous,b,{inventory:Object.assign({},previous.inventory||{},{balances:previous.inventory&&previous.inventory.balances||{},movements:previous.inventory&&previous.inventory.movements||{}})}));
    const partyRows=rows(b.parties||{});
    setClients(partyRows.filter(item=>item.partyType==='customer'));
    setVendors(partyRows.filter(item=>item.partyType==='vendor'));
@@ -560,19 +560,22 @@ function FinanceModule(props){
    setReview(rows(r.items).filter(item=>['pending_review','duplicate_review'].includes(item.status)).sort((a,b)=>n(b.createdAt)-n(a.createdAt)));
    setDocuments(rows(d.items).sort((a,b)=>n(b.createdAt)-n(a.createdAt)));
    setJournalRecords(rows(j.items).sort((a,b)=>n(b.postedAt||b.createdAt)-n(a.postedAt||a.createdAt)));
+   if((tab==='inventory'||tab==='inventoryMovements'||(tab==='reports'&&report==='balance'))&&canFinance('inventory','view'))await loadInventoryMovements();
   }catch(e){setError(e.message||String(e));}
   finally{setBusy(false);}
  };
  const loadInventoryMovements=async()=>{
   try{
    const result=await api('?resource=inventory');
-   const source=result&&result.items&&result.items.movements||{};
+   const inventory=result&&result.items&&typeof result.items==='object'?result.items:{};
+   setMaster(previous=>Object.assign({},previous,{inventory:Object.assign({},previous.inventory||{},{...inventory,balances:inventory.balances||previous.inventory&&previous.inventory.balances||{},movements:inventory.movements||{}})}));
+   const source=inventory.movements||{};
    const list=Object.entries(source).filter(([,movement])=>movement&&typeof movement==='object').map(([key,movement])=>Object.assign({id:movement.id||key},movement));
    list.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||n(b.createdAt)-n(a.createdAt));
    setInventoryMovements(list);
   }catch(error){setError(error.message||String(error));}
  };
- React.useEffect(()=>{if((tab==='inventoryMovements'||(tab==='reports'&&report==='balance'))&&canFinance('inventory','view'))void loadInventoryMovements();},[tab,report,currentUser&&currentUser.uid]);
+ React.useEffect(()=>{if((tab==='inventory'||tab==='inventoryMovements'||(tab==='reports'&&report==='balance'))&&canFinance('inventory','view'))void loadInventoryMovements();},[tab,report,currentUser&&currentUser.uid]);
  const refreshReviewQueue=async(silent)=>{
   try{
    const result=await api('?resource=review');
@@ -3417,5 +3420,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261122-ledger-subledger-audit-v3";
+ window.PEST_FINANCE_MODULE_VERSION="20261122-ledger-subledger-audit-v4";
 })();
