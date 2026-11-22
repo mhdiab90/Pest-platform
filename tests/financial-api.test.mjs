@@ -769,7 +769,7 @@ test("period report returns selected-period activity and cumulative balances sep
   assert.equal(report.balanceEntries["2026-10"].opening.lines[0].debit,1000);
   assert.equal(report.entries["2026-11"].november.lines[0].debit,100);
   assert.match(report.entries["2026-11"].november.number,/^JE-202611-[A-Z0-9]{32}$/);
-  assert.equal(read("periods/2026-11/entries/november/number"),report.entries["2026-11"].november.number);
+  assert.equal(read("periods/2026-11/entries/NOV/number"),report.entries["2026-11"].november.number,"legacy period aliases are migrated to the canonical journal ID");
   assert.equal(read("journals/NOV/number"),report.entries["2026-11"].november.number);
   assert.equal(read("ledger/6100/2026-11/NOV_1/journalNumber"),report.entries["2026-11"].november.number);
 });
@@ -1853,4 +1853,15 @@ test("supplier and customer statements fall back to posted journal lines when su
   assert.equal(customerRows.length,1);
   assert.equal(customerRows[0].accountCode,"1210");
   assert.equal(customerRows[0].debit,4200);
+});
+
+
+test("initial accounting month also discovers older posted entries stored only in period indexes", async () => {
+  write("settings/accountingStartMonth",null);
+  write("periods/2020-02/entries/LEGACY-PERIOD-ONLY",{
+    id:"LEGACY-PERIOD-ONLY",date:"2020-02-14",status:"posted",
+    lines:[{accountCode:"1110",debit:75,credit:0},{accountCode:"3100",debit:0,credit:75}]
+  });
+  await invoke("GET","?resource=bootstrap");
+  assert.equal(read("settings/accountingStartMonth"),"2020-02","legacy period-only history must not be excluded from cumulative financial statements");
 });
