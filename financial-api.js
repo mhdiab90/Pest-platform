@@ -166,7 +166,7 @@ function journalUpdates(j){
  if(!j.number)j.number=journalNumberFor(j.date,j.id);
  const u={},m=month(j.date);u["journals/"+j.id]=j;u["periods/"+m+"/entries/"+j.id]=j;
  (j.lines||[]).forEach((l,i)=>{const row={journalId:j.id,journalNumber:j.number,lineNo:i+1,date:j.date,description:l.description||j.description||"",accountCode:l.accountCode,debit:Number(l.debit||0),credit:Number(l.credit||0),currency:l.currency||j.currency||"EGP",costCenterId:l.costCenterId||"",projectCode:l.projectCode||"",partyType:l.partyType||"",partyId:l.partyId||"",sourceType:j.sourceType||"manual",sourceId:j.sourceId||"",reference:j.reference||"",taxCode:l.taxCode||"",taxType:l.taxType||""};u["ledger/"+l.accountCode+"/"+m+"/"+j.id+"_"+(i+1)]=row;if(l.partyType&&l.partyId)u["partyLedger/"+l.partyType+"/"+l.partyId+"/"+m+"/"+j.id+"_"+(i+1)]=row;if(l.costCenterId)u["costLedger/"+l.costCenterId+"/"+m+"/"+j.id+"_"+(i+1)]=row;});
- if(j.sourceType&&j.sourceId)u["sourceLocks/"+j.sourceType+"_"+j.sourceId]={journalId:j.id,postedAt:Date.now()};return u;
+ if(j.sourceType&&j.sourceId)u["sourceLocks/"+j.sourceType+"_"+j.sourceId]={journalId:j.id,postedAt:Number(j.postedAt||j.approvedAt||j.createdAt||Date.now())};return u;
 }
 function journalMaintenanceUpdates(previous,next){
  const updates=journalUpdates(next),newPaths=new Set(Object.keys(updates)),oldMonth=month(previous.date),newMonth=month(next.date);
