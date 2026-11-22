@@ -2152,6 +2152,15 @@ if(action==="submitCash"){
     u["journals/"+id(doc.revisionOf)+"/revisionRejectedAt"]=now;
     u["journals/"+id(doc.revisionOf)+"/revisionRejectedBy"]=claims.sub;
    }
+   if(doc.type==="journal"&&doc.sourceType==="journalReversal"&&doc.reversalOf&&decision==="reject"){
+    const originalId=id(doc.reversalOf);
+    if(String(await adminRead("journals/"+originalId+"/reversalJournalId")||"")===String(docId)){
+     u["journals/"+originalId+"/reversalJournalId"]=null;
+     u["journals/"+originalId+"/reversalRejectedAt"]=now;
+     u["journals/"+originalId+"/reversalRejectedBy"]=claims.sub;
+     u["journals/"+originalId+"/reversalRequestStatus"]="rejected";
+    }
+   }
    if(doc.type==="journal"&&doc.sourceType==="projectEvent"&&doc.sourceId&&adminPatchRootAt){
     const separator=String(doc.sourceId).lastIndexOf("--");
     if(separator>0)sourceRootUpdate={path:"projects/"+id(doc.sourceId.slice(0,separator))+"/events/"+id(doc.sourceId.slice(separator+2)),value:{accountingStatus:status,accountingReviewReason:txt(body.reason,1000),accountingReviewedAt:now,accountingReviewedBy:claims.sub}};
