@@ -1651,7 +1651,7 @@ export async function handleFinancialRequest(ctx){
    const sourceType=String(target.sourceType||"manual"),sourceId=target.sourceId?id(target.sourceId):"";
    const updates={},stockEffects=[],inventoryWarnings=[];
    const linkedPostedReversalId=target.reversedByJournalId||"";
-   const linkedPostedReversal=linkedPostedReversalId&&deleteRecords.get(String(linkedPostedReversalId));
+   const linkedPostedReversal=(linkedPostedReversalId&&deleteRecords.get(String(linkedPostedReversalId)))||family.find(item=>String(item.record.reversalOf||"")===String(sourceJournalId)&&item.posted&&item.record.status==="posted");
    const stockAlreadyReversed=Boolean(linkedPostedReversal&&linkedPostedReversal.posted&&linkedPostedReversal.record.status==="posted");
    if(isPosted&&sourceType==="invoice"&&sourceId){
     const sourceInvoice=await adminRead("documents/"+sourceId);
