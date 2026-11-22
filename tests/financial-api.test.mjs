@@ -1870,6 +1870,7 @@ test("initial accounting month also discovers older posted entries stored only i
 
 test("supplier payment settles canonical posted payable even when partyLedger index is missing", async () => {
   await invoke("GET","?resource=bootstrap");
+  write("parties/VENDOR-NO-SUBLEDGER",{code:"VENDOR-NO-SUBLEDGER",name:"Supplier without index",partyType:"vendor",active:true});
   write("journals/VENDOR-OPEN-PAYABLE-NO-SUBLEDGER",{
     id:"VENDOR-OPEN-PAYABLE-NO-SUBLEDGER",number:"JE-202611-VENDOR-OPEN",type:"journal",
     date:"2026-11-18",description:"Existing supplier payable",status:"posted",
