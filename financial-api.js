@@ -1607,6 +1607,189 @@ export async function handleFinancialRequest(ctx){
     await adminPatch(updates);
     return {success:true,id:revisionId,status:"pending_review",originalJournalId:originalId,item:revision,errors:[]};
    }
+   if(action==="unpostJournal"){
+   requireFinanceArea("journal","delete");
+   requireFinanceArea("review","edit");
+   const journalId=id(body.id),reason=txt(body.reason||"فك الترحيل وإعادة المستند للمراجعة من سجل القيود اليومية",500);
+   const [firstDocument,firstPosted,allDocuments,allPosted]=await Promise.all([
+    adminRead("documents/"+journalId),adminRead("journals/"+journalId),adminRead("documents"),adminRead("journals")
+   ]);
+   const firstTarget=firstPosted||firstDocument;
+   if(!firstTarget||firstTarget.type!=="journal")throw new Error("القيد المطلوب فك ترحيله غير موجود.");
+   const allJournalRecords=new Map();
+   Object.entries(allDocuments||{}).forEach(([key,value])=>{if(value&&value.type==="journal")allJournalRecords.set(String(value.id||key),{record:value,posted:false});});
+   Object.entries(allPosted||{}).forEach(([key,value])=>{if(value&&value.type==="journal")allJournalRecords.set(String(value.id||key),{record:value,posted:value.status==="posted"});});
+   const familyMap=new Map(),pendingIds=[journalId];
+   while(pendingIds.length){
+    const currentId=id(pendingIds.shift());
+    if(!currentId||familyMap.has(currentId))continue;
+    const [currentDocument,currentPosted]=await Promise.all([adminRead("documents/"+currentId),adminRead("journals/"+currentId)]);
+    const current=currentPosted||currentDocument;
+    if(!current||current.type!=="journal")continue;
+    const indexed=allJournalRecords.get(currentId);
+    familyMap.set(currentId,{id:currentId,record:current,posted:Boolean(currentPosted&&currentPosted.status==="posted"||indexed&&indexed.posted)});
+    [
+     current.reversalJournalId,current.reversedByJournalId,current.revisedByJournalId,current.pendingRevisionId,
+     current.reversalOf,current.revisionOf
+    ].forEach(linkedId=>{if(linkedId&&!familyMap.has(String(linkedId))&&!pendingIds.includes(String(linkedId)))pendingIds.push(String(linkedId));});
+    allJournalRecords.forEach((candidate,candidateId)=>{
+     const linked=candidate&&candidate.record;
+     if(!linked||candidateId===currentId||familyMap.has(candidateId)||pendingIds.includes(candidateId))return;
+     const pointsToCurrent=[linked.reversalOf,linked.revisionOf,linked.reversedByJournalId,linked.revisedByJournalId].some(value=>String(value||"")===currentId);
+     if(pointsToCurrent)pendingIds.push(candidateId);
+    });
+    if(familyMap.size>500)throw new Error("ارتباطات القيود تجاوزت 500 قيد. أوقف فك الترحيل وراجع تسلسل القيود.");
+   }
+   if(!familyMap.has(journalId))throw new Error("تعذر العثور على بيانات القيد المطلوب.");
+   const family=[...familyMap.values()];
+   const sourceEntry=family.find(item=>!item.record.reversalOf&&!item.record.revisionOf&&
+    !["journalReversal","journalRevision"].includes(String(item.record.sourceType||"")))||
+    family.find(item=>!["journalReversal","journalRevision"].includes(String(item.record.sourceType||"")))||family[0];
+   const root=sourceEntry.record,rootId=sourceEntry.id,sourceType=String(root.sourceType||"manual"),sourceId=root.sourceId?id(root.sourceId):"";
+   if(!family.some(item=>item.posted||item.record.status==="posted"))throw new Error("لا توجد قيود مرحّلة في هذه المجموعة لفك ترحيلها.");
+   const updates={},stockEffects=[],warnings=[],returnedReviewIds=[],returnedInvoiceIds=[],rootPatches=[];
+   const hasInvoiceSources=family.some(item=>String(item.record.sourceType||"")==="invoice"&&item.record.sourceId);
+   const separateSourceTypes=new Set(["invoice","cash","bankLine"]);
+   const sourceJournalIds=new Set();
+   // Return each invoice source to review and roll back only the stock effect that is still active.
+   for(const invoiceEntry of family.filter(item=>String(item.record.sourceType||"")==="invoice"&&item.record.sourceId)){
+    const invoiceId=id(invoiceEntry.record.sourceId),invoice=await adminRead("documents/"+invoiceId);
+    if(!invoice||invoice.type!=="invoice")throw new Error("فاتورة المصدر المرتبطة بالقيد "+invoiceEntry.id+" غير موجودة؛ لم يتم فك الترحيل.");
+    sourceJournalIds.add(invoiceEntry.id);
+    const allMovements=(await adminRead("inventory/movements"))||{};
+    const relatedMovements=Object.entries(allMovements).filter(([key,movement])=>
+     movement&&String(movement.invoiceId||"")===invoiceId&&String(movement.journalId||"")===invoiceEntry.id&&!movement.cancelledByJournalDeletion&&!movement.cancelledByJournalUnpost
+    );
+    const postedReversal=family.find(item=>String(item.record.reversalOf||"")===String(invoiceEntry.id)&&item.posted&&item.record.status==="posted");
+    const stockAlreadyReversed=Boolean(postedReversal);
+    const groups=new Map();
+    if(!stockAlreadyReversed){
+     relatedMovements.forEach(([movementKey,movement])=>{
+      const warehouse=id(movement.warehouseCode||"default"),item=id(movement.itemCode||"");
+      if(!item){warnings.push("توجد حركة مخزون بلا كود صنف للفاتورة "+(invoice.number||invoiceId)+"؛ لم يتم تعديل هذه الحركة تلقائيًا.");return;}
+      const key=warehouse+"|"+item,group=groups.get(key)||{warehouse,item,quantity:0,value:0,movements:[]};
+      group.quantity+=Number(movement.quantity||0);group.value+=Number(movement.value||0);group.movements.push({key:movementKey,movement});
+      groups.set(key,group);
+     });
+     for(const group of groups.values()){
+      const stock=(await adminRead("inventory/balances/"+group.warehouse+"/"+group.item))||{quantity:0,value:0,averageCost:0};
+      const nextQuantity=rnd(Number(stock.quantity||0)-group.quantity),nextValue=rnd(Number(stock.value||0)-group.value);
+      const nextAverageCost=Math.abs(nextQuantity)>0.005?rnd(nextValue/nextQuantity):0;
+      updates["inventory/balances/"+group.warehouse+"/"+group.item]={
+       quantity:nextQuantity,value:nextValue,averageCost:nextAverageCost,updatedAt:now,lastJournalUnpostId:invoiceEntry.id,
+       ...(nextQuantity< -0.005||nextValue< -0.01?{unpostInventoryWarning:true}:{})
+      };
+      stockEffects.push({invoiceId,warehouseCode:group.warehouse,itemCode:group.item,removedQuantity:rnd(group.quantity),removedValue:rnd(group.value),newQuantity:nextQuantity,newValue:nextValue});
+      if(nextQuantity< -0.005||nextValue< -0.01)warnings.push("الصنف "+group.item+" في المخزن "+group.warehouse+" أصبح رصيده سالبًا بعد فك الترحيل؛ راجع الحركات اللاحقة وتسوية المخزون.");
+     }
+    }else warnings.push("الفاتورة "+(invoice.number||invoiceId)+" لها قيد عكسي مرحّل ضمن المجموعة؛ لم يتم تعديل المخزون مرة ثانية.");
+    relatedMovements.forEach(([movementKey,movement])=>{
+     updates["inventory/movements/"+id(movementKey)+"/cancelledByJournalUnpost"]=true;
+     updates["inventory/movements/"+id(movementKey)+"/unpostedAt"]=now;
+     updates["inventory/movements/"+id(movementKey)+"/unpostedBy"]=claims.sub;
+     updates["inventory/movements/"+id(movementKey)+"/unpostJournalId"]=invoiceEntry.id;
+     if(movement.reversedByJournalId&&familyMap.has(String(movement.reversedByJournalId)))updates["inventory/movements/"+id(movementKey)+"/reversedByJournalId"]=null;
+    });
+    const pendingInvoice={...invoice,status:"pending_review",accountingStatus:"pending_review",reviewReason:reason,unpostedAt:now,unpostedBy:claims.sub};
+    delete pendingInvoice.journalId;delete pendingInvoice.journalNumber;delete pendingInvoice.postedAt;delete pendingInvoice.approvedAt;delete pendingInvoice.approvedBy;delete pendingInvoice.reversedByJournalId;delete pendingInvoice.reversedAt;delete pendingInvoice.reversedBy;
+    updates["documents/"+invoiceId]=pendingInvoice;
+    updates["reviewQueue/"+invoiceId]=reviewRecord(pendingInvoice);
+    updates["sourceLocks/invoice_"+invoiceId]=null;
+    returnedInvoiceIds.push(invoiceId);returnedReviewIds.push(invoiceId);
+   }
+   // Cash and bank statements are separate source documents; send those documents back to review too.
+   if(["cash","bankLine"].includes(sourceType)&&sourceId){
+    const sourceDocument=await adminRead("documents/"+sourceId);
+    if(!sourceDocument)throw new Error("المستند المصدر المرتبط بالقيد غير موجود؛ لم يتم فك الترحيل.");
+    const pendingSource={...sourceDocument,status:"pending_review",reviewReason:reason,unpostedAt:now,unpostedBy:claims.sub};
+    delete pendingSource.journalId;delete pendingSource.journalNumber;delete pendingSource.postedAt;delete pendingSource.approvedAt;delete pendingSource.approvedBy;
+    updates["documents/"+sourceId]=pendingSource;
+    updates["reviewQueue/"+sourceId]=reviewRecord(pendingSource);
+    updates["sourceLocks/"+sourceType+"_"+sourceId]=null;
+    returnedReviewIds.push(sourceId);
+   }
+   // Re-open the external workflow record for journal-origin documents that are reviewed as journals.
+   if(!separateSourceTypes.has(sourceType)&&root.sourceId){
+    if(sourceType==="projectEvent"&&adminPatchRootAt){
+     const separator=String(root.sourceId).lastIndexOf("--");
+     if(separator>0)rootPatches.push({path:"projects/"+id(root.sourceId.slice(0,separator))+"/events/"+id(root.sourceId.slice(separator+2)),value:{accountingStatus:"pending_review",accountingImpact:false,accountingJournalId:null,accountingUnpostedAt:now,accountingUnpostedBy:claims.sub}});
+    }else if(sourceType==="cashCustody"&&adminPatchRootAt){
+     const separator=String(root.sourceId).indexOf("--");
+     if(separator>0){
+      const ownerUid=id(root.sourceId.slice(0,separator)),transactionId=id(root.sourceId.slice(separator+2)),sourcePath="cashCustodies/"+ownerUid+"/transactions/"+transactionId;
+      const custody=adminReadRoot?await adminReadRoot(sourcePath):null;
+      rootPatches.push({path:sourcePath,value:{status:"pending_finance_review",financialReviewStatus:"pending_review",financialJournalId:null,financialUnpostedAt:now}});
+      if(custody&&custody.linkedOwnerUid&&custody.linkedTransactionId)rootPatches.push({path:"cashCustodies/"+id(custody.linkedOwnerUid)+"/transactions/"+id(custody.linkedTransactionId),value:{status:"pending_finance_review",financialReviewStatus:"pending_review",financialJournalId:null,financialUnpostedAt:now}});
+     }
+    }else if(sourceType==="cashCustodyTransfer"&&adminPatchRootAt){
+     const ownerUid=id(root.ownerUid||""),transactionId=id(root.custodyTransactionId||""),transferId=id(root.custodyTransferId||"");
+     if(!ownerUid||!transactionId||!transferId)throw new Error("مرجع تحويل العهدة غير مكتمل؛ لم يتم فك الترحيل.");
+     const sourcePath="cashCustodies/"+ownerUid+"/transactions/"+transactionId;
+     rootPatches.push({path:sourcePath,value:{"cashCustodyTransfer/pending":true,"cashCustodyTransfer/pendingJournalId":rootId,"cashCustodyTransfer/lastReviewStatus":"pending_review",["cashCustodyTransferHistory/"+transferId+"/status"]:"pending_review"}});
+     if(root.destinationOwnerUid&&root.custodyMirrorId)rootPatches.push({path:"cashCustodies/"+id(root.destinationOwnerUid)+"/transactions/"+id(root.custodyMirrorId),value:{status:"pending_finance_review",financialReviewStatus:"pending_review",financialJournalId:null}});
+    }else if(sourceType==="partnerCurrentAccountTransfer"&&adminPatchRootAt){
+     const source=String(root.sourceId),first=source.indexOf("--"),last=source.lastIndexOf("--");
+     if(first<=0||last<=first+2)throw new Error("مرجع تحويل جاري الشريك غير صالح؛ لم يتم فك الترحيل.");
+     const ownerUid=id(source.slice(0,first)),transactionId=id(source.slice(first+2,last)),transferId=id(source.slice(last+2));
+     rootPatches.push({path:"cashCustodies/"+ownerUid+"/transactions/"+transactionId,value:{"partnerCurrentAccountTransfer/pending":true,"partnerCurrentAccountTransfer/pendingJournalId":rootId,"partnerCurrentAccountTransfer/pendingTransferId":transferId,"partnerCurrentAccountTransfer/pendingDirection":root.transferDirection||"","partnerCurrentAccountTransfer/lastReviewStatus":"pending_review",["partnerCurrentAccountTransferHistory/"+transferId+"/status"]:"pending_review"}});
+    }else if(sourceType==="partnerCurrentAccountExpenseCorrection"&&adminPatchRootAt){
+     const source=String(root.sourceId),first=source.indexOf("--"),last=source.lastIndexOf("--");
+     if(first<=0||last<=first+2)throw new Error("مرجع تصحيح جاري الشريك غير صالح؛ لم يتم فك الترحيل.");
+     const ownerUid=id(source.slice(0,first)),transactionId=id(source.slice(first+2,last)),correctionId=id(source.slice(last+2));
+     rootPatches.push({path:"cashCustodies/"+ownerUid+"/transactions/"+transactionId,value:{"partnerCurrentAccountTransfer/expenseCorrectionPendingJournalId":rootId,"partnerCurrentAccountTransfer/expenseCorrectionStatus":"pending_review",["partnerCurrentAccountTransferHistory/"+correctionId+"/status"]:"pending_review"}});
+    }
+   }
+   // Remove all family ledger and period impacts. Manual journals return to review under the same IDs;
+   // source-generated journals are recreated only when their source document is approved again.
+   for(const item of family){
+    const linkedId=item.id,record=item.record,wasPosted=item.posted||record.status==="posted";
+    updates["journals/"+linkedId]=null;
+    updates["sourceLocks/"+String(record.sourceType||"manual")+"_"+id(record.sourceId||"")]=null;
+    if(wasPosted){
+     const period=month(record.date),lines=Array.isArray(record.lines)?record.lines:[];
+     updates["periods/"+period+"/entries/"+linkedId]=null;
+     lines.forEach((line,index)=>{
+      const suffix=linkedId+"_"+(index+1),account=id(line.accountCode||"");
+      if(account)updates["ledger/"+account+"/"+period+"/"+suffix]=null;
+      if(line.partyType&&line.partyId)updates["partyLedger/"+id(line.partyType)+"/"+id(line.partyId)+"/"+period+"/"+suffix]=null;
+      if(line.costCenterId)updates["costLedger/"+id(line.costCenterId)+"/"+period+"/"+suffix]=null;
+     });
+    }
+    const invoiceGenerated=String(record.sourceType||"")==="invoice";
+    const separateRootJournal=separateSourceTypes.has(sourceType)&&linkedId===rootId;
+    const childOfSourceInvoice=hasInvoiceSources&&linkedId!==rootId&&family.some(parent=>String(parent.record.sourceType||"")==="invoice"&&String(record.reversalOf||"")===String(parent.id));
+    if(separateRootJournal||invoiceGenerated){
+     updates["documents/"+linkedId]=null;
+     updates["reviewQueue/"+linkedId]=null;
+    }else if(childOfSourceInvoice){
+     updates["documents/"+linkedId]={...record,type:"journal",status:"cancelled",unpostedAt:now,unpostedBy:claims.sub,unpostReason:"تم إلغاء القيد المرتبط لأن فاتورة المصدر عادت للمراجعة."};
+     updates["reviewQueue/"+linkedId]=null;
+    }else{
+     const pendingJournal={...record,type:"journal",status:"pending_review",unpostedAt:now,unpostedBy:claims.sub,unpostReason:reason};
+     delete pendingJournal.postedAt;delete pendingJournal.approvedAt;delete pendingJournal.approvedBy;delete pendingJournal.reversedAt;delete pendingJournal.reversedBy;delete pendingJournal.revisedAt;delete pendingJournal.revisedBy;
+     if(pendingJournal.reversedByJournalId)delete pendingJournal.reversedByJournalId;
+     if(pendingJournal.revisedByJournalId)delete pendingJournal.revisedByJournalId;
+     updates["documents/"+linkedId]=pendingJournal;
+     updates["reviewQueue/"+linkedId]=reviewRecord(pendingJournal);
+     returnedReviewIds.push(linkedId);
+    }
+    updates["audit/"+uid("AUD")]={action:"unpost_linked_journal_chain",documentId:linkedId,rootDocumentId:journalId,previousStatus:record.status||"",sourceType:record.sourceType||"manual",sourceId:record.sourceId||"",reversalOf:record.reversalOf||"",revisionOf:record.revisionOf||"",unpostedAt:now,uid:claims.sub,reason,snapshot:record,stockEffects:linkedId===rootId?stockEffects:[],inventoryWarnings:linkedId===rootId?warnings:[]};
+   }
+   if(!returnedReviewIds.length&&!returnedInvoiceIds.length)throw new Error("لم يتم العثور على مستند مصدر أو قيد يمكن إعادته للمراجعة.");
+   await adminPatch(updates);
+   if(rootPatches.length){
+    if(!adminPatchRootAt)throw new Error("تعذر تحديث سجل المصدر الخارجي؛ راجع مسؤول النظام قبل إعادة المراجعة.");
+    if(adminPatchRoot){
+     const rootUpdates={};
+     rootPatches.forEach(patch=>Object.entries(patch.value).forEach(([key,value])=>{rootUpdates[patch.path+"/"+key]=value;}));
+     await adminPatchRoot(rootUpdates);
+    }else{
+     for(const patch of rootPatches)await adminPatchRootAt(patch.path,patch.value);
+    }
+   }
+   const primaryReviewId=returnedInvoiceIds[0]||returnedReviewIds[0]||"";
+   return {success:true,id:journalId,unposted:true,unpostedIds:family.map(item=>item.id),returnedReviewIds:[...new Set(returnedReviewIds)],returnedInvoiceIds:[...new Set(returnedInvoiceIds)],primaryReviewId,stockEffects,warnings};
+  }
    if(action==="deleteJournal"){
    requireFinanceArea("journal","delete");
    const journalId=id(body.id),reason=txt(body.reason||"حذف القيد من شاشة القيود اليومية",500);
