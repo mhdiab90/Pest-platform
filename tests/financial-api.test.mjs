@@ -1805,6 +1805,7 @@ test("period reports recover posted journals missing from period, GL, party and 
       {accountCode:"281",debit:0,credit:5700,description:"Supplier payable",partyType:"vendor",partyId:"VENDOR-INDEX",costCenterId:"CC-INDEX"}
     ]
   };
+  journal.postedAt=1234567890000;
   write("journals/"+journalId,journal);
 
   const report=await invoke("GET","?resource=periods&from=2026-11&to=2026-11");
@@ -1818,6 +1819,7 @@ test("period reports recover posted journals missing from period, GL, party and 
   assert.equal(read("ledger/281/2026-11/"+journalId+"_3").credit,5700,"supplier control ledger line is rebuilt");
   assert.equal(read("partyLedger/vendor/VENDOR-INDEX/2026-11/"+journalId+"_3").credit,5700,"supplier subledger line is rebuilt");
   assert.equal(read("costLedger/CC-INDEX/2026-11/"+journalId+"_1").debit,5000,"cost-center ledger line is rebuilt");
+  assert.equal(read("sourceLocks/invoice_PURCHASE-DOC-INDEX-REPAIR/postedAt"),1234567890000,"index rebuilding must preserve the original posting time rather than resetting it on every report load");
   const recovered=selected.find(item=>item.id===journalId);
   const debit=(recovered.lines||[]).reduce((sum,line)=>sum+Number(line.debit||0),0);
   const credit=(recovered.lines||[]).reduce((sum,line)=>sum+Number(line.credit||0),0);
