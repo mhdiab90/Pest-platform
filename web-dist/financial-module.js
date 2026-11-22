@@ -423,6 +423,7 @@ function FinanceModule(props){
  const [period,setPeriod]=React.useState({from:today().slice(0,7),to:today().slice(0,7)}),[report,setReport]=React.useState('trial');
  const [assignmentItems,setAssignmentItems]=React.useState([]),[sentAssignmentItems,setSentAssignmentItems]=React.useState([]),[selectedAssignmentId,setSelectedAssignmentId]=React.useState(''),[assignmentLines,setAssignmentLines]=React.useState([]),[assignmentHeader,setAssignmentHeader]=React.useState({}),[assignmentBusy,setAssignmentBusy]=React.useState(false),[assignmentInstruction,setAssignmentInstruction]=React.useState('مراجعة تصنيف البنود وتحديد الأكواد المخزنية أو حسابات المصروفات'),[assignmentUserUid,setAssignmentUserUid]=React.useState(''),[forwardUserUid,setForwardUserUid]=React.useState(''),[forwardInstruction,setForwardInstruction]=React.useState('استكمال ومراجعة بيانات الفاتورة');
  const [selected,setSelected]=React.useState(null),[offset,setOffset]=React.useState('6100');
+ const [invoiceDecisionDoc,setInvoiceDecisionDoc]=React.useState(null);
  const [quickAddType,setQuickAddType]=React.useState(''),[quickAddTarget,setQuickAddTarget]=React.useState(null),[quickAddParent,setQuickAddParent]=React.useState(null),[quickAddOriginalCode,setQuickAddOriginalCode]=React.useState(''),[quickAddForm,setQuickAddForm]=React.useState({code:'',name:'',active:true,type:'expense',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',unit:'قطعة',groupCode:'',groupType:'other',itemType:'stock',version:'',warehouseCode:'default',projectCode:'',taxType:'vat_output',rate:'0',effectiveFrom:today(),partyType:'customer',phone:'',taxNumber:'',email:'',address:''});
  const [masterForm,setMasterForm]=React.useState({kind:'chartOfAccounts',code:'',name:'',type:'asset',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',unit:'قطعة',groupCode:'',groupType:'other',itemType:'stock',version:'',projectCode:'',warehouseCode:'default',taxType:'vat',rate:'0',effectiveFrom:today()});
  const [journal,setJournal]=React.useState({id:'',date:today(),description:'',reference:'',currency:'EGP',lines:[{accountCode:'6100',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''},{accountCode:'1110',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''}]});
@@ -689,12 +690,13 @@ function FinanceModule(props){
  const deleteInvoiceRecord=async doc=>{
   if(!doc||!doc.id)return;
   if(!canFinance('invoices','delete')){setError('ليس لديك صلاحية حذف أو إلغاء الفواتير.');return;}
-  if(!window.confirm('تأكيد حذف/إلغاء الفاتورة '+(doc.number||doc.id)+'؟ لن تُحذف أي فاتورة تم ترحيلها محاسبيًا.'))return;
+  if(doc.status==='posted'||doc.journalId){setError('الفاتورة مرتبطة بقيد مرحّل؛ افتح القيد من شاشة القيود اليومية لاستخدام حذف القيد ومصدره أو إنشاء قيد عكسي.');return;}
+  if(!window.confirm('تأكيد حذف/إلغاء الفاتورة '+(doc.number||doc.id)+'؟ سيتم إغلاق مهمة الاستكمال إن كانت الفاتورة محوّلة، مع الاحتفاظ بسجل التدقيق.'))return;
   setBusy(true);setError('');
   try{
    const result=await api('','POST',{action:'deleteInvoice',id:doc.id,reason:'حذف بطلب المستخدم من شاشة الفواتير'});
    if(invoice.id===doc.id){setInvoice(blankInvoice(invoice.type));setInvoiceFile(null);setInvoicePartySearch('');setOcrSuggestions({party:null,items:[]});}
-   setSelected(null);
+   setSelected(null);setInvoiceDecisionDoc(null);
    setNotice(result.status==='cancelled'?'تم إلغاء الفاتورة وإزالتها من قائمة المراجعة مع الاحتفاظ بسجلها.':'تم حذف المسودة من قائمة الفواتير مع الاحتفاظ بأثر العملية في سجل النظام.');
    await refresh();
   }catch(e){setError(e.message||String(e));}
@@ -1235,10 +1237,31 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
       rows.push([title],...lines.map(line=>[line]));
      }
      const aoa=[[title],[rtl?"تاريخ التصدير":"Exported at",new Date().toLocaleString(rtl?"ar-EG-u-nu-latn":"en-US")],[],...rows];
-     const sheet=Excel.utils.aoa_to_sheet(aoa);
-     sheet["!views"]=[{RTL:Boolean(rtl)}];
-     sheet["!cols"]=Array.from({length:Math.max(1,...aoa.map(row=>row.length))},()=>({wch:22}));
-     const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='panel']");
+          const sheet=Excel.utils.aoa_to_sheet(aoa);
+     const columnCount=Math.max(1,...aoa.map(row=>row.length)),lastColumn=columnCount-1;
+     const cellAt=(row,column)=>Excel.utils.encode_cell({r:row,c:column});
+     const columnWidth=column=>Math.min(46,Math.max(12,...aoa.map(row=>String(row[column]===undefined?"":row[column]).length+2)));
+     sheet["!views"]=[{RTL:Boolean(rtl),state:"frozen",ySplit:tableNode?4:2,topLeftCell:tableNode?"A5":"A3"}];
+     sheet["!cols"]=Array.from({length:columnCount},(_,column)=>({wch:columnWidth(column)}));
+     sheet["!rows"]=[{hpt:30},{hpt:20},{hpt:8},{hpt:25}];
+     sheet["!merges"]=[{s:{r:0,c:0},e:{r:0,c:lastColumn}}];
+     const styleRow=(row,style)=>{for(let column=0;column<columnCount;column++){const address=cellAt(row,column);if(sheet[address])sheet[address].s=style;}};
+     styleRow(0,{fill:{patternType:"solid",fgColor:{rgb:"17365D"}},font:{name:"Arial",sz:16,bold:true,color:{rgb:"FFFFFF"}},alignment:{horizontal:"center",vertical:"center"}});
+     styleRow(1,{fill:{patternType:"solid",fgColor:{rgb:"EAF0F6"}},font:{name:"Arial",sz:10,color:{rgb:"475569"}},alignment:{horizontal:rtl?"right":"left",vertical:"center"}});
+     const bottomBorder={style:"thin",color:{rgb:"D7E0EA"}};
+     if(tableNode){
+      styleRow(3,{fill:{patternType:"solid",fgColor:{rgb:"1F4E78"}},font:{name:"Arial",sz:10,bold:true,color:{rgb:"FFFFFF"}},alignment:{horizontal:"center",vertical:"center",wrapText:true},border:{bottom:{style:"medium",color:{rgb:"17365D"}}}});
+      for(let rowIndex=4;rowIndex<aoa.length;rowIndex++){
+       for(let column=0;column<columnCount;column++){
+        const address=cellAt(rowIndex,column);
+        if(sheet[address])sheet[address].s={font:{name:"Arial",sz:10,color:{rgb:"1F2937"}},fill:{patternType:"solid",fgColor:{rgb:rowIndex%2===0?"F3F6FA":"FFFFFF"}},alignment:{horizontal:rtl?"right":"left",vertical:"center",wrapText:true},border:{bottom:bottomBorder}};
+       }
+      }
+      if(aoa.length>4)sheet["!autofilter"]={ref:"A4:"+cellAt(aoa.length-1,lastColumn)};
+     }
+     sheet["!pageSetup"]={orientation:"landscape",fitToWidth:1,fitToHeight:0};
+     sheet["!margins"]={left:0.25,right:0.25,top:0.5,bottom:0.5,header:0.2,footer:0.2};
+const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='panel']");
      const panelTitle=panelNode&&panelNode.getAttribute("data-pest-export-title")||tableNode&&tableNode.getAttribute("data-pest-export-title")||title;
      const cleanSheetBase=String(panelTitle||"بيانات التقرير").replace(/[\\/?*:[\]]/g," ").trim().slice(0,25)||"Report";
      const sheetSuffix=sheetNameCounts.get(cleanSheetBase)||0;sheetNameCounts.set(cleanSheetBase,sheetSuffix+1);
@@ -1831,7 +1854,37 @@ const submitJournal=async()=>{
   if(doc.type==='journal'){setJournal({id:doc.id,date:doc.date,description:doc.description||'',reference:doc.reference||'',currency:doc.currency||'EGP',lines:(doc.lines||[]).map(x=>Object.assign({},x))});setTab('journal');}
   else if(doc.type==='invoice'){const type=doc.invoiceType||'purchase';setInvoice({id:doc.id,type,date:doc.date,number:doc.number,partyId:doc.partyId,partyName:doc.partyName,partyTaxNumber:doc.partyTaxNumber||'',currency:doc.currency||'EGP',taxCode:defaultVatCodeForInvoice(type),taxType:vatTypeForInvoice(type),taxRate:'14',taxAmount:doc.taxAmount==null?'':String(doc.taxAmount),otherTaxes:(doc.otherTaxes||[]).map(x=>Object.assign({},x)),discount:String(doc.discount||''),projectCode:doc.projectCode||'',lines:(doc.lines||[]).map(x=>Object.assign({},x))});setInvoicePartySearch(doc.partyName||doc.partyId||'');setInvoiceTypeManuallySelected(true);setTab('invoices');}
  };
- const nav=[
+ const openInvoiceDiagnostic=async diagnostic=>{
+   const doc=diagnostic&&diagnostic.doc||diagnostic;
+   if(!doc||!doc.id)return;
+   setInvoiceDecisionDoc(null);
+   const state=String(doc.status||'');
+   if(diagnostic&&diagnostic.posted&&diagnostic.journal){
+    setSelected(null);setTab('journal');setStatementJournalId('');openJournalModal(diagnostic.journal);return;
+   }
+   if(['pending_review','duplicate_review'].includes(state)){
+    setTab('review');await openReviewItem(doc);return;
+   }
+   if(state==='assigned'){
+    if(String(doc.assignedTo||'')===String(currentUser&&currentUser.uid||'')){
+     window.PEST_PENDING_FINANCE_ASSIGNMENT_ID=String(doc.assignmentId||'');
+     setTab('assignments');await refreshAssignments();
+    }else{
+     setInvoiceDecisionDoc(doc);setTab('invoices');
+    }
+    return;
+   }
+   if(state==='posted'&&doc.journalId){
+    try{
+     const result=await api('?resource=document&id='+encodeURIComponent(doc.journalId));
+     if(result.item){setSelected(null);setTab('journal');openJournalModal(result.item);return;}
+    }catch(error){setError(error.message||String(error));return;}
+    setError('الفاتورة مرحّلة لكن القيد المرتبط بها غير متاح للعرض. راجع رقم القيد من شاشة القيود اليومية.');return;
+   }
+   if(['draft','needs_correction','returned_to_creator'].includes(state)){editDoc(doc);return;}
+   setInvoiceDecisionDoc(doc);setTab('invoices');
+  };
+  const nav=[
  ['overview','ملخص مالي','Financial Summary'],['journal','القيود اليومية','Journal Entries'],['review','المراجعة والاعتماد','Review & Approval'],['invoices','فواتير العملاء والموردين','Customer & Supplier Invoices'],['assignments','الإجراءات المحولة إليّ','Tasks Assigned to Me'],['partyStatements','كشوف الحسابات والأطراف','Account & Party Statements'],['partnerCurrent','جاري الشركاء',"Partners' Current Accounts"],['masters','البيانات الأساسية والاستيراد','Master Data & Import'],['accounts','دليل الحسابات','Chart of Accounts'],['centers','مراكز التكلفة','Cost Centers'],['inventory','المخزون والأكواد','Inventory & Item Codes'],['inventoryMovements','حركة المخزن','Inventory Movements'],['cash','الخزينة والتحصيل والسداد','Cash, Receipts & Payments'],['bank','كشوف البنوك','Bank Statements'],['tax','الضرائب','Taxes'],['accountAnalysis','تحليل الحسابات','Account Analysis'],['reports','القوائم المالية','Financial Statements']
  ];
  const visibleNav=nav.filter(item=>canFinance(financeTabAreas[item[0]],"view"));
@@ -1949,8 +2002,9 @@ const renderJournal = function() {
        editable?button('حفظ وإرسال التعديلات للمراجعة',saveJournalModal,'primary',busy):null,
        posted&&canFinance('journal','edit')?button('تعديل القيد',()=>void startJournalRevision(draft,'edit'),'primary',busy||!manual||!canFinance('review','edit')||!!draft.pendingRevisionId||!!draft.revisedByJournalId||!!draft.reversalJournalId||!!draft.reversedByJournalId):null,
        posted&&canFinance('journal','edit')?button('إرجاع للمراجعة',()=>void startJournalRevision(draft,'return'),'muted',busy||!manual||!canFinance('review','edit')||!!draft.pendingRevisionId||!!draft.revisedByJournalId||!!draft.reversalJournalId||!!draft.reversedByJournalId):null,
-       posted&&!manual?h('p',{className:'w-full text-xs text-amber-700'},'هذا القيد ناتج عن مستند مصدر؛ يتم تعديله من الفاتورة أو السند أو حركة العهدة الأصلية حتى تظل الأرصدة الفرعية والمخزون متطابقة.'):null,
-       posted&&manual&&canFinance('journal','add')?button('إنشاء قيد عكسي',()=>void reverseJournal(draft),'success',busy||!!draft.reversalJournalId||!!draft.pendingRevisionId||!!draft.revisedByJournalId):null,
+       posted&&!manual&&draft.sourceType==='invoice'?h('p',{className:'w-full text-xs text-amber-800'},'هذا قيد فاتورة مرحّل؛ يمكنك إنشاء قيد عكسي للمراجعة أو حذف القيد ومصدره. التعديل المباشر يتم بإلغاء القيد ثم إصدار فاتورة صحيحة جديدة.'):null,
+        posted&&!manual&&draft.sourceType!=='invoice'?h('p',{className:'w-full text-xs text-amber-700'},'هذا القيد ناتج عن مستند مصدر؛ تتم معالجة التعديل من المستند الأصلي للحفاظ على الأرصدة الفرعية والمخزون.'):null,
+       posted&&(manual||draft.sourceType==='invoice')&&canFinance('journal','add')?button('إنشاء قيد عكسي',()=>void reverseJournal(draft),'success',busy||!!draft.reversalJournalId||!!draft.pendingRevisionId||!!draft.revisedByJournalId||!!draft.reversedByJournalId):null,
        !posted?button('إلغاء القيد',()=>void cancelJournal(draft),'muted',busy||!canFinance('journal','edit')):null,
        canFinance('journal','delete')?button(posted&&!manual?'حذف القيد ومصدره':'حذف القيد',()=>void deleteJournalDocument(draft),'danger',busy):null
       )
@@ -2048,12 +2102,17 @@ const renderJournal = function() {
    button('حفظ المسودة وتحويلها',assignInvoiceToUser,'primary',busy||!assignmentUserUid||!canFinance("assignments","add")||!canFinance("invoices",invoice.id?"edit":"add"))
   ));
   const totalsBox = h('div',{className:'flex flex-wrap items-center gap-3 p-3 bg-white border rounded-xl'},h('b',null,'الصافي: '+fmt(net)),h('b',null,'ضريبة القيمة المضافة 14%: '+fmt(primaryVat)),h('b',null,'الضرائب الأخرى: '+fmt(otherTaxTotal)),h('b',null,'الإجمالي: '+fmt(total)),button('حفظ وإرسال للمراجعة',submitInvoice,'primary',busy||!canFinance("invoices",invoice.id?"edit":"add")),button('مسح / إلغاء الفاتورة',clearInvoiceEntry,'danger',busy||!!invoice.id&&!canFinance("invoices","delete")));
-  const correctionRows=documents.filter(function(x){return x.type==='invoice'&&['needs_correction','draft','returned_to_creator'].includes(x.status);}).map(function(x){
+  const decisionPanel=invoiceDecisionDoc?panel('قرار الفاتورة المحوّلة أو غير المكتملة','الفاتورة '+(invoiceDecisionDoc.number||invoiceDecisionDoc.id)+' — '+(invoiceDecisionDoc.partyName||'')+' · '+status(invoiceDecisionDoc.status),h('div',{className:'flex flex-wrap items-center gap-2'},
+    h('p',{className:'text-sm text-slate-600'},'يمكن إلغاء الفاتورة وإغلاق مهمة الاستكمال من هنا. أما الاعتماد والترحيل فيتم من قائمة المراجعة، والقيد المرحّل من شاشة القيود اليومية.'),
+    canFinance('invoices','delete')?button('إلغاء الفاتورة وإغلاق التحويل',()=>void deleteInvoiceRecord(invoiceDecisionDoc),'danger',busy):null,
+    button('إخفاء التفاصيل',()=>setInvoiceDecisionDoc(null),'muted')
+   )):null;
+   const correctionRows=documents.filter(function(x){return x.type==='invoice'&&['needs_correction','draft','returned_to_creator'].includes(x.status);}).map(function(x){
    const reason=[...(x.errors||[]),x.reviewReason||''].filter(Boolean).join(' · ');
    return h('tr',{key:x.id,className:'border-t'},h('td',{className:'p-2'},x.number||x.id),h('td',{className:'p-2'},x.partyName),h('td',{className:'p-2'},x.date),h('td',{className:'p-2'},status(x.status)),h('td',{className:'p-2 text-xs text-rose-700 min-w-[180px]'},reason||(x.status==='draft'?'مسودة لم تُرسل للمراجعة بعد':'لا يوجد سبب محفوظ؛ افتح الفاتورة وراجع بياناتها')),h('td',{className:'p-2'},h('div',{className:'flex flex-wrap gap-1'},button('تعديل واستكمال',function(){editDoc(x);},'muted',!canFinance("invoices","edit")),button('حذف',function(){void deleteInvoiceRecord(x);},'danger',!canFinance("invoices","delete")))));
   });
   const correctionPanel = panel('فواتير تحتاج تصحيح','هذه الفواتير لم تدخل قائمة الاعتماد بعد، أو أعادها المراجع للتصحيح. راجع السبب واستكملها ثم أرسلها للمراجعة.',table(['الفاتورة','الطرف','التاريخ','الحالة','سبب عدم ظهورها في المراجعة','إجراء'],correctionRows));
-  return h('div',{className:'space-y-4'},invoiceHead,otherTaxesPanel,suggestionsPanel,invoiceLines,journalPreview,totalsBox,delegationPanel,correctionPanel);
+  return h('div',{className:'space-y-4'},invoiceDecisionDoc?decisionPanel:null,invoiceHead,otherTaxesPanel,suggestionsPanel,invoiceLines,journalPreview,totalsBox,delegationPanel,correctionPanel);
  };
  const renderMaster=kind=>{
   const currentFormCodeSuggestion=getCodeSuggestion(masterForm.kind,masterForm);
@@ -2457,7 +2516,12 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
    Object.keys(selected.attachments||{}).length?panel('مرفقات المستند','الملفات محفوظة في مساحة المرفقات المالية المرتبطة بالفاتورة.',table(['اسم الملف','النوع','الحجم','الإجراء'],Object.values(selected.attachments||{}).map(function(attachment){return h('tr',{key:attachment.id,className:'border-t'},h('td',{className:'p-2'},attachment.fileName||'—'),h('td',{className:'p-2'},attachment.mimeType||'—'),h('td',{className:'p-2'},fmt((Number(attachment.size)||0)/1024)+' KB'),h('td',{className:'p-2'},button('تحميل المرفق',function(){downloadFinancialAttachment(selected.id,attachment);},'muted')));}))) : null,
    selected.type==='bankLine'?select('الحساب المقابل',offset,v=>setOffset(v),posting.map(a=>({value:a.code,label:a.code+' — '+a.name}))):null,
    selected.type==='bankLine'?canFinance("bank","edit")?button('حفظ الحساب المقابل',async()=>{try{await api('', 'POST',{action:'setBankOffset',id:selected.id,offsetAccountCode:offset});setNotice('تم حفظ الحساب المقابل');await refreshReviewQueue(true);}catch(e){setError(e.message);}}):null:null,
-   h('div',{className:'flex flex-wrap gap-2'},canFinance("review","approve")?button('اعتماد وترحيل',()=>reviewAction(selected.status==='duplicate_review'?'approveDuplicate':'approve'),'success',busy):null,canFinance("review","edit")?button('إعادة للتصحيح',()=>reviewAction('return'),'muted',busy):null,canFinance("review","approve")?button('رفض',()=>reviewAction('reject'),'danger',busy):null)
+   h('div',{className:'flex flex-wrap gap-2'},
+     canFinance("review","approve")?button('اعتماد وترحيل',()=>reviewAction(selected.status==='duplicate_review'?'approveDuplicate':'approve'),'success',busy):null,
+     canFinance("review","edit")?button('إعادة للتصحيح',()=>reviewAction('return'),'muted',busy):null,
+     canFinance("review","approve")?button('رفض',()=>reviewAction('reject'),'danger',busy):null,
+     selected.type==='invoice'&&canFinance('invoices','delete')?button('حذف الفاتورة',()=>void deleteInvoiceRecord(selected),'danger',busy):null
+    )
   ):table(['المستند','النوع','التاريخ','الطرف','المبلغ','الحالة','المرفق','مراجعة'],review.map(x=>h('tr',{key:x.id,className:'border-t'},
    h('td',{className:'p-2'},x.title||x.id),
    h('td',{className:'p-2'},x.type==='invoice'?(x.invoiceType==='purchase'?'مشتريات':'مبيعات'):x.type==='cash'?'الخزينة':x.type),
@@ -2834,6 +2898,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
  const statementJournalCredit=statementJournal?(statementJournal.lines||[]).reduce((sum,line)=>sum+n(line.credit),0):0;
  const statementJournalPosted=Boolean(statementJournal&&(statementJournal.status==='posted'||journalRecords.some(item=>String(item.id)===String(statementJournal.id)&&item.status==='posted')));
  const statementJournalManual=Boolean(statementJournal&&(!statementJournal.sourceType||statementJournal.sourceType==='manual'));
+ const statementJournalReversible=Boolean(statementJournalManual||statementJournal&&statementJournal.sourceType==='invoice');
  const statementJournalHasLinkedAction=Boolean(statementJournal&&(statementJournal.pendingRevisionId||statementJournal.revisedByJournalId||statementJournal.reversalJournalId||statementJournal.reversedByJournalId));
  const accountDetailModal=accountDetailData?h('div',{className:'fixed inset-0 z-[125] bg-slate-950/60 flex items-center justify-center p-2 sm:p-4',onClick:()=>setAccountDetailCode('')},
   h('section',{className:'w-full max-w-7xl max-h-[94vh] overflow-auto rounded-2xl bg-white shadow-2xl',onClick:e=>e.stopPropagation()},
@@ -2893,10 +2958,12 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
      h('div',{className:'flex flex-wrap gap-2'},
       canFinance('journal','edit')?button('تعديل القيد',()=>void startJournalRevision(statementJournal,'edit'),'primary',busy||!statementJournalPosted||!statementJournalManual||statementJournalHasLinkedAction||!canFinance('review','edit')):null,
       canFinance('journal','edit')?button('إرجاع للمراجعة',()=>void startJournalRevision(statementJournal,'return'),'muted',busy||!statementJournalPosted||!statementJournalManual||statementJournalHasLinkedAction||!canFinance('review','edit')):null,
-      canFinance('journal','edit')?button(statementJournalPosted?'إلغاء القيد (قيد عكسي للمراجعة)':'إلغاء القيد',()=>statementJournalPosted?void reverseJournal(statementJournal):void cancelJournal(statementJournal),'danger',busy||statementJournalHasLinkedAction||(statementJournalPosted&&!statementJournalManual)):null
-     ),
-     statementJournalPosted&&!statementJournalManual?h('p',{className:'w-full text-xs text-amber-800'},'القيد مرتبط بمستند مصدر ('+String(statementJournal.sourceType||'غير محدد')+'). الإجراءات تظهر هنا، لكن التعديل أو الإلغاء المباشر ممنوع حتى لا تنفصل الفاتورة أو السند عن المخزون والأستاذ الفرعي.'):null,
-     statementJournalPosted&&statementJournalManual&&statementJournalHasLinkedAction?h('p',{className:'w-full text-xs text-amber-800'},'هذا القيد مرتبط بطلب تعديل أو إلغاء أو قيد عكسي سابق؛ راجع القيد المرتبط قبل إنشاء إجراء جديد.'):null,
+      canFinance('journal','edit')?button(statementJournalPosted?'إنشاء قيد عكسي للمراجعة':'إلغاء القيد',()=>statementJournalPosted?void reverseJournal(statementJournal):void cancelJournal(statementJournal),'danger',busy||statementJournalHasLinkedAction||(statementJournalPosted&&!statementJournalReversible)):null,
+       canFinance('journal','delete')?button(statementJournalPosted&&!statementJournalManual?'حذف القيد ومصدره':'حذف القيد',()=>void deleteJournalDocument(statementJournal),'danger',busy):null
+      ),
+      statementJournalPosted&&!statementJournalManual&&statementJournal.sourceType==='invoice'?h('p',{className:'w-full text-xs text-amber-800'},'قيد الفاتورة المرحّل: يمكنك إنشاء قيد عكسي للمراجعة أو حذف القيد ومصدره. إذا كانت هناك حركات مخزنية لاحقة فقد يرفض اعتماد القيد العكسي، لكن الحذف متاح مع تسجيل أثر المخزون في سجل التدقيق.'):null,
+      statementJournalPosted&&!statementJournalManual&&statementJournal.sourceType!=='invoice'?h('p',{className:'w-full text-xs text-amber-800'},'القيد مرتبط بمستند مصدر ('+String(statementJournal.sourceType||'غير محدد')+'). تتم معالجة تصحيحه من شاشة المصدر الأصلية.'):null,
+      statementJournalPosted&&statementJournalManual&&statementJournalHasLinkedAction?h('p',{className:'w-full text-xs text-amber-800'},'هذا القيد مرتبط بطلب تعديل أو إلغاء أو قيد عكسي سابق؛ راجع القيد المرتبط قبل إنشاء إجراء جديد.'):null,
      !canFinance('journal','edit')?h('p',{className:'w-full text-xs text-slate-600'},'لا تتوفر لديك صلاحية تعديل أو إلغاء القيود.'):null
     ),
     h('div',{className:'flex flex-wrap justify-end gap-4 rounded-xl border bg-slate-50 p-3 text-sm font-bold'},
@@ -3142,7 +3209,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
    const doc=row.doc;
    return h("tr",{key:doc.id||index,className:"border-t"},
     h("td",{className:"p-2 whitespace-nowrap"},doc.date||"—"),
-    h("td",{className:"p-2 font-bold"},doc.number||doc.id||"—"),
+    h("td",{className:"p-2 font-bold"},h("button",{type:"button",className:"text-blue-700 underline font-extrabold whitespace-nowrap",title:"فتح شاشة اتخاذ القرار لهذه الفاتورة",onClick:()=>void openInvoiceDiagnostic(row)},doc.number||doc.id||"فتح الفاتورة")),
     h("td",{className:"p-2"},doc.invoiceType==="purchase"?"مشتريات":"مبيعات"),
     h("td",{className:"p-2"},doc.partyName||doc.partyId||"—"),
     h("td",{className:"p-2 text-end"},fmt(row.total)),
@@ -3174,58 +3241,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
    h("div",{className:"text-xs text-slate-500"},"لا ينشئ هذا الفحص قيود تسوية تلقائية ولا يغير أي رصيد؛ وظيفته تحديد مصدر الفرق فقط.")
   ));
  };
- const inventoryReconciliationPanel=()=>{
-  const warehouseBalances=master.inventory&&master.inventory.balances||{};
-  const inventoryStockValue=Object.values(warehouseBalances).reduce((sum,warehouseRows)=>
-   sum+Object.values(warehouseRows||{}).reduce((part,stock)=>part+n(stock&&stock.value),0),0);
-  const inventoryStockQuantity=Object.values(warehouseBalances).reduce((sum,warehouseRows)=>
-   sum+Object.values(warehouseRows||{}).reduce((part,stock)=>part+n(stock&&stock.quantity),0),0);
-  const inventoryAccountCodes=Array.from(new Set(["1300",...accounts.filter(account=>accountIsInBranch(account,"1300")).map(account=>String(account.code))]));
-  const inventoryGeneralLedgerValue=inventoryAccountCodes.reduce((sum,code)=>{
-   const amount=balanceBalances[code]||{};
-   return sum+n(amount.debit)-n(amount.credit);
-  },0);
-  const reconciliationDifference=inventoryStockValue-inventoryGeneralLedgerValue;
-  const itemNameByCode=new Map(items.map(item=>[String(item.code),item.name]));
-  const purchaseMovementRows=inventoryMovements.filter(item=>item.kind==="purchase"&&!item.reversedByJournalId).slice(0,20).map(item=>{
-   const linkedValue=balanceFlat.filter(line=>
-    String(line.journalId||"")===String(item.journalId||"")&&
-    inventoryAccountCodes.includes(String(line.accountCode))&&
-    String(line.itemCode||"")===String(item.itemCode||"")
-   ).reduce((sum,line)=>sum+n(line.debit)-n(line.credit),0);
-   const journal=statementJournalMap.get(String(item.journalId||""));
-   const match=Math.abs(linkedValue-n(item.value))<0.01;
-   const state=!item.journalId?"لا يوجد رقم قيد":!journal?"القيد غير موجود في دفتر الأستاذ المحمل":
-    !linkedValue?"القيد لا يتضمن حركة على حساب المخزون 1300":match?"مطابق":"قيمة القيد لا تطابق حركة المخزن";
-   return h("tr",{key:item.id,className:"border-t"},
-    h("td",{className:"p-2 whitespace-nowrap"},item.date||"—"),
-    h("td",{className:"p-2"},item.invoiceId||"—"),
-    h("td",{className:"p-2"},item.itemCode+" — "+(itemNameByCode.get(String(item.itemCode))||"صنف غير موجود")),
-    h("td",{className:"p-2"},item.warehouseCode||"default"),
-    h("td",{className:"p-2 text-end"},fmt(item.quantity)),
-    h("td",{className:"p-2 text-end"},fmt(item.value)),
-    h("td",{className:"p-2 text-end"},fmt(linkedValue)),
-    h("td",{className:"p-2"},item.journalId?h("button",{type:"button",className:"font-bold text-blue-700 underline",onClick:()=>openStatementJournal(item.journalId)},journal&&(journal.number||journal.journalNumber)||item.journalId):"—"),
-    h("td",{className:"p-2"},h("span",{className:match?"text-emerald-700 font-bold":"text-rose-700 font-bold"},state))
-   );
-  });
-  return panel("مطابقة رصيد المخزون مع دفتر الأستاذ","مراجعة مستقلة بين قيمة الأصناف الفعلية في سجل المخزن ورصيد حساب المخزون 1300 في القيود المرحلة. لا يتم إنشاء قيد تسوية تلقائيًا عند وجود فرق.",h("div",{className:"space-y-3"},
-   h("div",{className:"grid grid-cols-1 md:grid-cols-3 gap-2"},
-    metric("قيمة رصيد المخزن",fmt(inventoryStockValue)+" ج.م"),
-    metric("رصيد حساب المخزون 1300",fmt(inventoryGeneralLedgerValue)+" ج.م"),
-    metric("فرق المطابقة",fmt(reconciliationDifference)+" ج.م")
-   ),
-   h("div",{className:"text-xs text-slate-600"},"إجمالي الكمية المسجلة بالمخازن: "+fmt(inventoryStockQuantity)+" · حسابات الأستاذ الداخلة في المطابقة: "+inventoryAccountCodes.join("، ")),
-   Math.abs(reconciliationDifference)>0.01
-    ?h("div",{className:"rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"},"يوجد فرق بين سجل المخزن والأستاذ العام. إذا كانت قيمة المخزن نحو 7,892 جنيهًا ولم تظهر في الأصول، فراجع هل لكل حركة شراء قيد مرحّل على 1300 وهل حساب 1300 مصنف كأصل. لا تضف القيمة للقائمة يدويًا قبل تحديد مصدر الفرق.")
-    :h("div",{className:"rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800"},"قيمة المخزن متطابقة مع رصيد حساب المخزون في الأستاذ العام."),
-   purchaseMovementRows.length
-    ?table(["التاريخ","مستند الشراء","الصنف","المخزن","الكمية","قيمة المخزن","قيمة 1300 بالقيد","رقم القيد","المطابقة"],purchaseMovementRows)
-    :h("div",{className:"rounded-lg border border-dashed p-3 text-sm text-slate-500"},"لا توجد حركات شراء مخزني محملة حاليًا للمقارنة. حدّث بيانات المخزن أو راجع صلاحية عرض المخزون."),
-   button("فتح كشف حساب المخزون 1300",()=>{setPartyStatement({type:"account",id:"1300"});setStatementPartySearch("");setPartyRows([]);setTab("partyStatements");},"muted")
-  ));
- };
-const controlSubledgerAuditRows=accounts.filter(account=>account.subledgerType&&!account.isGroup).map(account=>{
+ const controlSubledgerAuditRows=accounts.filter(account=>account.subledgerType&&!account.isGroup).map(account=>{
   const gl=balanceBalances[String(account.code)]||{debit:0,credit:0};
   const analytic=balanceFlat.filter(line=>String(line.accountCode)===String(account.code)&&String(line.partyType||"")===String(account.subledgerType)&&String(line.partyId||""));
   const subDebit=analytic.reduce((sum,line)=>sum+n(line.debit),0),subCredit=analytic.reduce((sum,line)=>sum+n(line.credit),0);
@@ -3295,7 +3311,7 @@ const criticalAccountConfiguration=[
   Math.abs(ledgerBalanceDifference)>0.01?h('div',{className:'rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900'},'تحذير: إجمالي المدين لا يساوي إجمالي الدائن في الأستاذ. المدين '+fmt(ledgerBalanceDebit)+'، الدائن '+fmt(ledgerBalanceCredit)+'، والفرق '+fmt(ledgerBalanceDifference)+'. لا تعتمد القوائم قبل معالجة الفرق.'):h('div',{className:'rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900'},'إجمالي ميزان المراجعة متوازن.'),
   unmappedBalanceRows.length?panel('أرصدة غير مرتبطة بدليل الحسابات','هذه الأرصدة موجودة في الأستاذ ولكن كودها غير موجود بدليل الحسابات. يتم إظهارها منفصلة ولا يتم تجاهلها أو ضمها تلقائيًا إلى الأصول أو الالتزامات.',table(['كود الحساب','مدين','دائن','صافي مدين / (دائن)'],unmappedBalanceRows.map(row=>h('tr',{key:row.code,className:'border-t'},h('td',{className:'p-2 font-bold'},row.code),h('td',{className:'p-2 text-end'},fmt(row.debit)),h('td',{className:'p-2 text-end'},fmt(row.credit)),h('td',{className:'p-2 text-end font-bold'},fmt(row.net)))))):null,
   invoicePostingReconciliationPanel(),
-  inventoryReconciliationPanel(),
+  
   panel('الأصول','الرصيد التراكمي حتى نهاية الفترة، ويشمل الحسابات التجميعية والحسابات التابعة. اضغط على الحساب لعرض كشف الحساب.',table(['الحساب','مدين','دائن','الرصيد الطبيعي'],balanceAssetRows)),
   panel('الالتزامات','الأرصدة الدائنة والمدينة لكل حساب التزام.',table(['الحساب','مدين','دائن','الرصيد الطبيعي'],balanceLiabilityRows)),
   panel('حقوق الملكية','تظهر نتيجة الأعمال المتراكمة بشكل مستقل ضمن حقوق الملكية.',h('div',{className:'space-y-2'},table(['الحساب','مدين','دائن','الرصيد الطبيعي'],balanceEquityRows),table(['البيان','القيمة'],[['الأرباح المتراكمة منذ بداية الدفاتر',fmt(accumulatedProfit)],['إجمالي حقوق الملكية',fmt(equity)]]))),
@@ -3650,5 +3666,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261122-financial-delete-linked-journals-v3";
+ window.PEST_FINANCE_MODULE_VERSION="20261122-financial-accounting-reset-actions-v1";
 })();
