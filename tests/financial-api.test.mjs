@@ -1394,6 +1394,8 @@ test("daily journals can be reversed through review and unposted entries can be 
   assert.equal(read("journals/"+postedDraft.id+"/reversedByJournalId"),reversal.id);
   assert.equal(read("ledger/6100/2026-11/"+postedDraft.id+"_1").debit,300);
   assert.equal(read("ledger/6100/2026-11/"+reversal.id+"_1").credit,300);
+  write("journals/"+postedDraft.id+"/reversedByJournalId",null);
+  write("documents/"+postedDraft.id+"/reversedByJournalId",null);
   const removedFamily=await invoke("POST","",{action:"deleteJournal",id:postedDraft.id,reason:"Clean financial initialization"});
   assert.equal(removedFamily.deleted,true);
   assert.equal(removedFamily.deletedIds.length,2,"original and approved reversal are both removed");
