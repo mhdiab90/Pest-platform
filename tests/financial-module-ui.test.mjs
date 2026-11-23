@@ -266,3 +266,15 @@ test("financial attachments can be deleted from invoice, statement, and partner-
   assert.match(source, /canDeleteStatementAttachment\(reference\)/);
   assert.match(source, /canDeleteStatementAttachment\(statementAttachmentPreview\.attachment\)/);
 });
+
+
+test("review journal account pickers have independent search state and a wider account field", () => {
+  assert.match(source, /const select=\(label,value,onChange,options,searchKey\)=>searchablePicker/);
+  assert.match(source, /const selectWithAdd=\(label,value,onChange,options,kind,defaults,searchKey\)=>select/);
+  assert.match(source, /review-journal-"\+String\(draft\.id\)\+"-line-"\+index\+"-account"/);
+  assert.match(source, /review-journal-"\+String\(draft\.id\)\+"-line-"\+index\+"-center"/);
+  assert.match(source, /journal-modal-'\+String\(draft\.id\)\+'-line-'\+index\+'-account'/);
+  assert.match(source, /journal-modal-'\+String\(draft\.id\)\+'-line-'\+index\+'-center'/);
+  assert.match(source, /className:"md:col-span-3 min-w-0"},selectWithAdd\("كود \/ اسم الحساب"/);
+  assert.match(source, /map\(\(row,i\)=>i===index\?Object\.assign\(\{\},row,\{accountCode:value/);
+});
