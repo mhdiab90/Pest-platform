@@ -205,9 +205,9 @@ test("journal review editors expose and save check, invoice and document numbers
   assert.match(source, /checkNumber:doc\.checkNumber\|\|""/);
   assert.match(source, /invoiceNumber:doc\.invoiceNumber\|\|""/);
   assert.match(source, /documentNumber:doc\.documentNumber\|\|""/);
-  assert.match(source, /field\("رقم الشيك",draft\.checkNumber\|\|""/);
-  assert.match(source, /field\("رقم الفاتورة",draft\.invoiceNumber\|\|""/);
-  assert.match(source, /field\("رقم المستند",draft\.documentNumber\|\|""/);
+  assert.match(source, /headerField\("رقم الشيك",draft\.checkNumber\|\|""/);
+  assert.match(source, /headerField\("رقم الفاتورة",draft\.invoiceNumber\|\|""/);
+  assert.match(source, /headerField\("رقم المستند",draft\.documentNumber\|\|""/);
   assert.match(source, /checkNumber:draft\.checkNumber\|\|""/);
   assert.match(source, /invoiceNumber:draft\.invoiceNumber\|\|""/);
   assert.match(source, /documentNumber:draft\.documentNumber\|\|""/);
