@@ -408,7 +408,7 @@ function FinanceModule(props){
   return React.createElement(type,nextAttributes,...children.map(translateChild));
  };
 
- const financeTabAreas={legacyImport:"journal",inventoryMovements:'inventory',overview:"overview",journal:"journal",openingBalances:"journal",review:"review",invoices:"invoices",assignments:"assignments",partyStatements:"partyStatements",partnerCurrent:"partyStatements",masters:"masters",accounts:"accounts",centers:"centers",inventory:"inventory",cash:"cash",bank:"bank",tax:"tax",reports:"reports",accountAnalysis:"reports"};
+ const financeTabAreas={legacyImport:"journal",inventoryMovements:'inventory',overview:"overview",journal:"journal",openingBalances:"journal",review:"review",invoices:"invoices",assignments:"assignments",partyStatements:"partyStatements",partnerCurrent:"partyStatements",masters:"masters",accounts:"accounts",centers:"centers",inventory:"inventory",cash:"cash",bank:"bank",tax:"tax",reports:"reports",accountAnalysis:"reports",accountReview:"reports"};
  const financeMasterAreas={parties:"masters",chartOfAccounts:"accounts",costCenters:"centers",items:"inventory",itemGroups:"inventory",warehouses:"inventory",bankAccounts:"bank",taxCodes:"tax"};
  const canFinance=(area,action="view")=>{
   if(currentUser&&currentUser.role==="admin")return true;
@@ -461,6 +461,7 @@ function FinanceModule(props){
   return ()=>document.removeEventListener('pointerdown',closeFinancePickers,true);
  },[]);
  const [accountAnalysisCode,setAccountAnalysisCode]=React.useState(''),[accountAnalysisGroupKey,setAccountAnalysisGroupKey]=React.useState(''),[accountAnalysisSearch,setAccountAnalysisSearch]=React.useState('');
+ const [accountReviewDecisions,setAccountReviewDecisions]=React.useState({}),[accountReviewSelectedCode,setAccountReviewSelectedCode]=React.useState(''),[accountReviewSelectedParty,setAccountReviewSelectedParty]=React.useState(''),[accountReviewSelectedPartyType,setAccountReviewSelectedPartyType]=React.useState(''),[accountReviewSearch,setAccountReviewSearch]=React.useState(''),[accountReviewFilter,setAccountReviewFilter]=React.useState('all'),[accountReviewNote,setAccountReviewNote]=React.useState('');
  const [statementAttachmentIndex,setStatementAttachmentIndex]=React.useState({});
  const [statementAttachmentList,setStatementAttachmentList]=React.useState(null),[statementAttachmentPreview,setStatementAttachmentPreview]=React.useState(null);
  const statementAttachmentCacheRef=React.useRef(new Set());
@@ -681,7 +682,7 @@ function FinanceModule(props){
    const b=await api('?resource=bootstrap');
    const [r,d,j]=await Promise.all([
     !initialOnly&&canFinance('review','view')?api('?resource=review'):Promise.resolve({items:{}}),
-    !initialOnly&&['invoices','journal','cash','bank'].some(area=>canFinance(area,'view'))?api('?resource=documents'):Promise.resolve({items:{}}),
+    !initialOnly&&(['invoices','journal','cash','bank'].some(area=>canFinance(area,'view'))||(tab==='accountReview'&&canFinance('reports','view')))?api('?resource=documents'):Promise.resolve({items:{}}),
     !initialOnly&&canFinance('journal','view')?api('?resource=journals'):Promise.resolve({items:{}})
    ]);
    setMaster(previous=>Object.assign({chartOfAccounts:{},costCenters:{},items:{},itemGroups:{},warehouses:{},bankAccounts:{},taxCodes:{},parties:{},settings:{},inventory:{balances:{},movements:{}}},previous,b,{inventory:Object.assign({},previous.inventory||{},{balances:previous.inventory&&previous.inventory.balances||{},movements:previous.inventory&&previous.inventory.movements||{}})}));
@@ -956,7 +957,13 @@ function FinanceModule(props){
   }).catch(error=>{if(active)setError(error.message||String(error));}).finally(()=>{if(active)setBusy(false);});
   return()=>{active=false;};
  },[tab,currentUser&&currentUser.uid]);
- React.useEffect(()=>{if(['overview','reports','accountAnalysis','partyStatements','tax','centers'].includes(tab)&&canFinance(financeTabAreas[tab],"view"))loadPeriod();},[tab,period.from,period.to,currentUser&&currentUser.uid]);
+ React.useEffect(()=>{if(['overview','reports','accountAnalysis','accountReview','partyStatements','tax','centers'].includes(tab)&&canFinance(financeTabAreas[tab],"view"))loadPeriod();},[tab,period.from,period.to,currentUser&&currentUser.uid]);
+ React.useEffect(()=>{
+  if(tab!=='accountReview'||!canFinance('reports','view'))return;
+  let active=true;
+  api('?resource=accountReviews').then(result=>{if(active)setAccountReviewDecisions(result.items&&typeof result.items==='object'?result.items:{});}).catch(error=>{if(active)setError(error.message||String(error));});
+  return()=>{active=false;};
+ },[tab,currentUser&&currentUser.uid]);
  const loadParty=async()=>{
   if(!partyStatement.id){setError('اختر العميل أو المورد أولاً.');return;}
   setBusy(true);setError('');
@@ -1191,7 +1198,8 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
  const moneyLabel=value=>fmt(value)+(rtl?' ج.م':' EGP');
  const button=(label,fn,kind,disabled)=>h('button',{type:'button',onClick:fn,disabled:!!disabled,className:'rounded-xl px-3 py-2 text-sm font-bold border '+(kind==='primary'?'bg-blue-700 text-white border-blue-700':kind==='success'?'bg-emerald-600 text-white border-emerald-600':kind==='danger'?'bg-rose-50 text-rose-700 border-rose-200':'bg-white text-slate-700 border-slate-200')},label);
  const field=(label,value,onChange,type,extra)=>h('label',{className:'block text-sm font-bold text-slate-700'},label,h('input',Object.assign({type:type||'text',value:value==null?'':value,onChange:e=>onChange(e.target.value),className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal bg-white',step:'any'},extra||{})));
- const select=(label,value,onChange,options)=>h('label',{className:'block text-sm font-bold text-slate-700'},label,h('select',{value:value||'',onChange:e=>onChange(e.target.value),className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal bg-white'},options.map(x=>h('option',{key:x.value,value:x.value},x.label))));
+ let genericPickerSequence=0;
+ const select=(label,value,onChange,options)=>searchablePicker(label,value,onChange,options,'finance-select-'+String(++genericPickerSequence)+'-'+normalizeMatch(label));
  const searchablePicker=(label,value,onChange,options,searchKey)=>{
   const list=Array.isArray(options)?options:[];
   const selected=list.find(item=>String(item.value)===String(value||'')),hasQuery=Object.prototype.hasOwnProperty.call(journalPickerSearch,searchKey);
@@ -1516,7 +1524,7 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
    return Object.assign({},line,{partyType:line.partyType||account&&account.subledgerType||"",partyId:line.partyId||""});
   });
   setJournalModal(Object.assign({},doc));
-  setJournalModalDraft({id:doc.id,sourceId:doc.sourceId||"",journalId:doc.journalId||"",type:doc.type||"journal",number:doc.number||doc.journalNumber||'',date:doc.date||today(),description:doc.description||"",reference:doc.reference||"",checkNumber:doc.checkNumber||"",invoiceNumber:doc.invoiceNumber||"",documentNumber:doc.documentNumber||"",currency:doc.currency||"EGP",sourceType:doc.sourceType||"manual",openingBalance:doc.openingBalance===true,inventoryMovementChange:doc.inventoryMovementChange||null,projectCode:doc.projectCode||"",reversalOf:doc.reversalOf||"",revisionOf:doc.revisionOf||"",revisionNotes:doc.revisionNotes||"",acknowledgeSourceWarnings:Boolean(doc.sourceWarningsAcknowledgedAt),pendingRevisionId:doc.pendingRevisionId||"",revisedByJournalId:doc.revisedByJournalId||"",reversalJournalId:doc.reversalJournalId||"",reversedByJournalId:doc.reversedByJournalId||"",status:doc.status||"posted",lines:normalizedLines});
+  setJournalModalDraft({id:doc.id,sourceId:doc.sourceId||"",journalId:doc.journalId||"",type:doc.type||"journal",number:doc.number||doc.journalNumber||'',date:doc.date||today(),description:doc.description||"",reference:doc.reference||"",checkNumber:doc.checkNumber||"",invoiceNumber:doc.invoiceNumber||"",documentNumber:doc.documentNumber||"",currency:doc.currency||"EGP",sourceType:doc.sourceType||"manual",openingBalance:doc.openingBalance===true,inventoryMovementChange:doc.inventoryMovementChange||null,projectCode:doc.projectCode||"",reversalOf:doc.reversalOf||"",revisionOf:doc.revisionOf||"",revisionNotes:doc.revisionNotes||"",reviewReason:doc.reviewReason||doc.reason||"",errors:Array.isArray(doc.errors)?doc.errors.slice():[],warnings:Array.isArray(doc.warnings)?doc.warnings.slice():[],acknowledgeSourceWarnings:Boolean(doc.sourceWarningsAcknowledgedAt),pendingRevisionId:doc.pendingRevisionId||"",revisedByJournalId:doc.revisedByJournalId||"",reversalJournalId:doc.reversalJournalId||"",reversedByJournalId:doc.reversedByJournalId||"",status:doc.status||"posted",lines:normalizedLines});
  };
  const updateJournalModalLine=(index,key,value)=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).map((line,i)=>i===index?Object.assign({},line,{[key]:value}):line)}));
  const updateJournalModalAccount=(index,accountCode)=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).map((line,i)=>{if(i!==index)return line;const currentAccount=posting.find(item=>String(item.code)===String(line.accountCode)),nextAccount=posting.find(item=>String(item.code)===String(accountCode)),currentType=currentAccount&&currentAccount.subledgerType||line.partyType||"",nextType=nextAccount&&nextAccount.subledgerType||"",keepParty=Boolean(nextType&&currentType===nextType&&line.partyId);return Object.assign({},line,{accountCode,partyType:nextType,partyId:keepParty?line.partyId:""});})}));
@@ -1525,6 +1533,7 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
   const draft=journalModalDraft;
   const pendingReview=draft.type==="journal"&&["pending_review","needs_correction"].includes(draft.status);
   const openedFromReview=tab==="review"&&pendingReview;
+  const archiveCorrection=draft.sourceType==="legacyImport";
   if(!pendingReview){setError("القيد المرحّل لا يُعدّل مباشرة. استخدم «تعديل القيد» لإنشاء نسخة مراجعة مرتبطة بالأصل.");return;}
   if(!canFinance("review","edit")){setError("ليس لديك صلاحية تعديل القيود داخل المراجعة.");return;}
   const missingAnalytic=(draft.lines||[]).map((line,index)=>({line,index,account:posting.find(item=>String(item.code)===String(line.accountCode))})).find(item=>item.account&&item.account.subledgerType&&!String(item.line.partyId||"").trim());
@@ -1532,10 +1541,26 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
   setBusy(true);setError("");
   try{
    const result=await api("","POST",{action:"updateReviewJournal",id:draft.id,acknowledgeSourceWarnings:draft.acknowledgeSourceWarnings===true,journal:{date:draft.date,description:draft.description,reference:draft.reference,checkNumber:draft.checkNumber||"",invoiceNumber:draft.invoiceNumber||"",documentNumber:draft.documentNumber||"",revisionNotes:draft.revisionNotes||""},lines:draft.lines});
-   setNotice((result.errors||[]).length?"تم حفظ التعديلات وما زالت هناك أخطاء يجب تصحيحها قبل الاعتماد.":"تم حفظ التعديلات وإبقاء القيد في مسار المراجعة دون تغيير الأرصدة.");
+   const archiveMoved=archiveCorrection&&result.status==="pending_review";
+   const archiveStillNeedsCorrection=archiveCorrection&&result.status==="needs_correction";
+   setNotice(result.status==="posted"?"تم تصحيح القيد وترحيله بنجاح وتحديث الأستاذ والفترات.":archiveMoved?"تم تصحيح قيد الأرشيف ونقله إلى قائمة المراجعة والاعتماد؛ لن يعود إلى قائمة الاستكمال.":archiveStillNeedsCorrection?"ما زالت هناك أسباب تصحيح: "+(result.errors||[]).join("، "):"تم حفظ التعديلات. حالة القيد الحالية: "+status(result.status||"pending_review")+".");
    setJournalModal(null);setJournalModalDraft(null);
-   if(openedFromReview){await refreshReviewQueue(true);await openReviewItem({id:draft.id});}
-   else await refresh();
+   await refresh();
+   if(result.status==="posted"){
+    setTab("journal");
+    await loadPeriod();
+   }else if(archiveMoved||result.status==="pending_review"&&openedFromReview){
+    setTab("review");
+    const queue=await refreshReviewQueue(true);
+    const queued=(queue||[]).find(row=>String(row.id)===String(draft.id));
+    await openReviewItem(queued||{id:draft.id});
+   }else if(archiveStillNeedsCorrection){
+    setTab("legacyImport");
+   }else if(result.status==="needs_correction"){
+    setTab("journal");
+    const detail=await api("?resource=document&id="+encodeURIComponent(draft.id));
+    if(detail.item)openJournalModal(detail.item);
+   }
    await loadPeriod();
   }catch(error){setError(error.message||String(error));}
   finally{setBusy(false);}
@@ -1561,8 +1586,8 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
      setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).map((row,i)=>i===index?Object.assign({},row,{accountCode:value,partyType:nextType,partyId:keepParty?row.partyId||"":""}):row)}));
     },posting.map(item=>({value:item.code,label:item.code+" — "+item.name})))),
     h("div",{className:"md:col-span-2"},field("البيان",line.description||"",value=>editLine(index,"description",value))),
-    h("div",{className:"md:col-span-1"},field("مدين",line.debit??"",value=>editLine(index,"debit",value),"number")),
-    h("div",{className:"md:col-span-1"},field("دائن",line.credit??"",value=>editLine(index,"credit",value),"number")),
+    h("div",{className:"md:col-span-1 pest-resizable-number"},field("مدين",line.debit??"",value=>editLine(index,"debit",value),"number")),
+    h("div",{className:"md:col-span-1 pest-resizable-number"},field("دائن",line.credit??"",value=>editLine(index,"credit",value),"number")),
     h("div",{className:"md:col-span-1"},selectWithAdd("مركز التكلفة",line.costCenterId||"",value=>editLine(index,"costCenterId",value),[{value:"",label:"بدون مركز تكلفة"}].concat(activeCenters.map(item=>({value:item.code,label:item.code+" — "+item.name}))))),
     h("div",{className:"md:col-span-2"},analyticType?select("الطرف التحليلي — "+analyticPartyLabel(analyticType),line.partyId||"",value=>{editLine(index,"partyId",value);editLine(index,"partyType",analyticType);},analyticOptions):h("div",{className:"rounded-lg border border-dashed border-slate-300 bg-white p-2 text-xs text-slate-500"},"هذا الحساب لا يتطلب طرفًا تحليليًا")),
     h("div",{className:"md:col-span-1"},field("كود المشروع",line.projectCode||"",value=>editLine(index,"projectCode",value))),
@@ -1588,6 +1613,8 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
      h("span",{className:"rounded-full bg-amber-50 text-amber-800 px-3 py-1"},"الحالة: "+status(draft.status)),
      h("span",{className:"rounded-full bg-indigo-50 text-indigo-800 px-3 py-1"},"العملة: EGP")
     ),
+    draft.status==="needs_correction"||draft.reviewReason||(draft.errors||[]).length?h("div",{className:"rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900 space-y-1"},h("strong",null,"أسباب حاجة القيد إلى التصحيح"),draft.reviewReason?h("p",null,draft.reviewReason):null,(draft.errors||[]).length?h("ul",{className:"list-disc pr-5"},(draft.errors||[]).map((reason,index)=>h("li",{key:index},reason))):null):null,
+    (draft.warnings||[]).length?h("div",{className:"rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"},h("strong",null,"ملاحظات الفحص"),h("ul",{className:"list-disc pr-5"},draft.warnings.map((reason,index)=>h("li",{key:index},reason)))):null,
     draft.sourceType==="journalRevision"?h("label",{className:"block text-sm font-bold"},"ملاحظات التعديل / سبب إرجاع القيد",h("textarea",{value:draft.revisionNotes||"",onChange:event=>setJournalModalDraft(old=>Object.assign({},old,{revisionNotes:event.target.value})),rows:3,disabled:!editable,className:"mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal"})):null,
     draft.sourceType==="legacyImport"&&(draft.warnings||[]).length?h("div",{className:"rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-2"},h("b",{className:"text-amber-900"},"ملاحظات المصدر التي يجب مراجعتها قبل الاعتماد"),h("ul",{className:"list-disc pr-5 text-sm text-amber-900"},(draft.warnings||[]).map((warning,index)=>h("li",{key:index},warning))),h("label",{className:"flex items-start gap-2 text-sm font-bold text-amber-950"},h("input",{type:"checkbox",checked:Boolean(draft.acknowledgeSourceWarnings||draft.sourceWarningsAcknowledgedAt),disabled:!editable,onChange:event=>setJournalModalDraft(old=>Object.assign({},old,{acknowledgeSourceWarnings:event.target.checked}))}),"أؤكد أنني راجعت ملاحظات هذا القيد وصححت تصنيفه أو تحققت من صحته، ويمكن إرساله للمراجعة والاعتماد.")):null,
     h("div",{className:"rounded-xl border border-indigo-100 overflow-hidden"},
@@ -1605,7 +1632,7 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
     h("p",{className:"rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"},"التعديل لا يرحّل القيد ولا يغيّر أي رصيد. سيظل القيد في قائمة المراجعة، ولن يظهر أثره في الأستاذ أو القوائم إلا بعد اعتماده بنجاح وبعد اجتياز التحقق المحاسبي."),
     h("div",{className:"flex flex-wrap justify-end gap-2"},
      button("إلغاء",()=>{setJournalModal(null);setJournalModalDraft(null);},"muted",busy),
-     button("حفظ التعديلات وإبقاء القيد للمراجعة",saveJournalModal,"primary",busy||!editable)
+     button(draft.status==="needs_correction"&&(!draft.sourceType||draft.sourceType==="manual")?"حفظ التصحيح وترحيل القيد":"حفظ التعديلات وإبقاء القيد للمراجعة",saveJournalModal,"primary",busy||!editable)
     )
    )
   );
@@ -2089,7 +2116,7 @@ const submitJournal=async()=>{
    setInvoiceDecisionDoc(doc);setTab('invoices');
   };
   const nav=[
- ['overview','ملخص مالي','Financial Summary'],['journal','القيود اليومية','Journal Entries'],['openingBalances','الأرصدة الافتتاحية','Opening Balances'],['review','المراجعة والاعتماد','Review & Approval'],['invoices','فواتير العملاء والموردين','Customer & Supplier Invoices'],['assignments','الإجراءات المحولة إليّ','Tasks Assigned to Me'],['partyStatements','كشوف الحسابات والأطراف','Account & Party Statements'],['partnerCurrent','جاري الشركاء',"Partners' Current Accounts"],['masters','البيانات الأساسية والاستيراد','Master Data & Import'],['accounts','دليل الحسابات','Chart of Accounts'],['centers','مراكز التكلفة','Cost Centers'],['inventory','المخزون والأكواد','Inventory & Item Codes'],['inventoryMovements','حركة المخزن','Inventory Movements'],['cash','الخزينة والتحصيل والسداد','Cash, Receipts & Payments'],['bank','كشوف البنوك','Bank Statements'],['tax','الضرائب','Taxes'],['accountAnalysis','تحليل الحسابات','Account Analysis'],['reports','القوائم المالية','Financial Statements'],['legacyImport','استيراد أرشيف القيود','Legacy Journal Archive Import']
+ ['overview','ملخص مالي','Financial Summary'],['journal','القيود اليومية','Journal Entries'],['openingBalances','الأرصدة الافتتاحية','Opening Balances'],['review','المراجعة والاعتماد','Review & Approval'],['invoices','فواتير العملاء والموردين','Customer & Supplier Invoices'],['assignments','الإجراءات المحولة إليّ','Tasks Assigned to Me'],['partyStatements','كشوف الحسابات والأطراف','Account & Party Statements'],['partnerCurrent','جاري الشركاء',"Partners' Current Accounts"],['masters','البيانات الأساسية والاستيراد','Master Data & Import'],['accounts','دليل الحسابات','Chart of Accounts'],['centers','مراكز التكلفة','Cost Centers'],['inventory','المخزون والأكواد','Inventory & Item Codes'],['inventoryMovements','حركة المخزن','Inventory Movements'],['cash','الخزينة والتحصيل والسداد','Cash, Receipts & Payments'],['bank','كشوف البنوك','Bank Statements'],['tax','الضرائب','Taxes'],['accountAnalysis','تحليل الحسابات','Account Analysis'],['accountReview','مراجعة شاملة','Comprehensive Review'],['reports','القوائم المالية','Financial Statements'],['legacyImport','استيراد أرشيف القيود','Legacy Journal Archive Import']
  ];
  const visibleNav=nav.filter(item=>item[0]==="legacyImport"?(currentUser&&currentUser.role==="admin"):canFinance(financeTabAreas[item[0]],"view"));
  React.useEffect(()=>{
@@ -2139,8 +2166,8 @@ const renderJournal = function() {
      h('div',{className:'min-w-0 flex-1'},searchablePickerWithAdd('الحساب',line.accountCode,function(v){updateJournalLineAccount(index,v);},posting.map(function(a){return {value:a.code,label:a.code+' — '+a.name};}),'chartOfAccounts',pickerKey+'-account'))
     ),
     h('div',{className:'md:col-span-2'},field('البيان',line.description,function(v){updateJ(index,'description',v);})),
-    h('div',{className:'md:col-span-1'},field('مدين',line.debit,function(v){updateJ(index,'debit',v);},'number')),
-    h('div',{className:'md:col-span-1'},field('دائن',line.credit,function(v){updateJ(index,'credit',v);},'number')),
+    h('div',{className:'md:col-span-1 pest-resizable-number'},field('مدين',line.debit,function(v){updateJ(index,'debit',v);},'number')),
+    h('div',{className:'md:col-span-1 pest-resizable-number'},field('دائن',line.credit,function(v){updateJ(index,'credit',v);},'number')),
     h('div',{className:'md:col-span-2'},searchablePickerWithAdd('مركز التكلفة',line.costCenterId,function(v){updateJ(index,'costCenterId',v);},[{value:'',label:'بدون مركز تكلفة'}].concat(activeCenters.map(function(x){return {value:x.code,label:x.code+' — '+x.name};})),'costCenters',pickerKey+'-center')),
     h('div',{className:'md:col-span-2'},analyticType?searchablePicker('الطرف التحليلي — '+analyticPartyLabel(analyticType),line.partyId||'',function(v){updateJ(index,'partyType',analyticType);updateJ(index,'partyId',v);},analyticPartyOptions(analyticType,line.accountCode,line.partyId),pickerKey+'-party'):h('div',{className:'rounded-lg border border-dashed border-slate-300 bg-white p-2 text-xs text-slate-500'},'هذا الحساب لا يتطلب طرفًا تحليليًا')),
     h('div',{className:'md:col-span-1 flex items-end'},button('حذف',function(){setJournal(function(old){return Object.assign({},old,{lines:old.lines.filter(function(x,j){return j!==index;})});});},'danger',journal.lines.length<=2))
@@ -2188,8 +2215,8 @@ const renderJournal = function() {
      return h('div',{key:index,className:'grid grid-cols-1 md:grid-cols-12 gap-2 rounded-lg border bg-slate-50 p-2'},
       h('div',{className:'md:col-span-3'},editable?selectWithAdd('الحساب',line.accountCode||'',v=>updateJournalModalAccount(index,v),posting.map(x=>({value:x.code,label:x.code+' — '+x.name})),'chartOfAccounts'):field('الحساب',(line.accountCode||'')+' — '+(account.name||''),()=>{},undefined,{disabled:true})),
       h('div',{className:'md:col-span-2'},field('البيان',line.description||'',v=>updateJournalModalLine(index,'description',v),undefined,editable?undefined:{disabled:true})),
-      h('div',{className:'md:col-span-1'},field('مدين',line.debit??'',v=>updateJournalModalLine(index,'debit',v),'number',editable?undefined:{disabled:true})),
-      h('div',{className:'md:col-span-1'},field('دائن',line.credit??'',v=>updateJournalModalLine(index,'credit',v),'number',editable?undefined:{disabled:true})),
+      h('div',{className:'md:col-span-1 pest-resizable-number'},field('مدين',line.debit??'',v=>updateJournalModalLine(index,'debit',v),'number',editable?undefined:{disabled:true})),
+      h('div',{className:'md:col-span-1 pest-resizable-number'},field('دائن',line.credit??'',v=>updateJournalModalLine(index,'credit',v),'number',editable?undefined:{disabled:true})),
       h('div',{className:'md:col-span-2'},editable?selectWithAdd('مركز التكلفة',line.costCenterId||'',v=>updateJournalModalLine(index,'costCenterId',v),[{value:'',label:'بدون مركز تكلفة'}].concat(activeCenters.map(x=>({value:x.code,label:x.code+' — '+x.name}))),'costCenters'):field('مركز التكلفة',line.costCenterId||'بدون',()=>{},undefined,{disabled:true})),
       h('div',{className:'md:col-span-2'},editable&&analyticType?select('الطرف التحليلي — '+analyticPartyLabel(analyticType),line.partyId||'',v=>{setJournalModalDraft(old=>Object.assign({},old,{lines:old.lines.map((x,i)=>i===index?Object.assign({},x,{partyType:analyticType,partyId:v}):x)}));},analyticPartyOptions(analyticType,line.accountCode,line.partyId)):field('الطرف التحليلي',analyticType?(line.partyId||'لم يتم اختيار طرف'):'غير مطلوب لهذا الحساب',()=>{},undefined,{disabled:true})),
       h('div',{className:'md:col-span-1 flex items-end'},button('حذف',()=>setJournalModalDraft(old=>Object.assign({},old,{lines:old.lines.filter((x,i)=>i!==index)})),'danger',!editable))
@@ -2207,11 +2234,13 @@ const renderJournal = function() {
        h('div',{className:'md:col-span-3'},field('البيان',draft.description||'',v=>setJournalModalDraft(old=>Object.assign({},old,{description:v})),undefined,editable?undefined:{disabled:true}))
       )),
       h('div',{className:'flex flex-wrap items-center gap-3 text-sm'},h('b',null,'المصدر: '+journalSourceLabel(draft)),h('b',null,'الحالة: '+status(draft.status)),draft.reversalOf?h('b',null,'قيد عكسي للقيد: '+draft.reversalOf):null,draft.revisionOf?h('b',null,'تعديل للقيد الأصلي: '+draft.revisionOf):null,statementAttachmentAction(draft),journalAttachmentUploadControl(draft)),
+      draft.status==='needs_correction'||draft.reviewReason||(draft.errors||[]).length?h('div',{className:'rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900 space-y-1'},h('strong',null,'أسباب حاجة القيد إلى التصحيح'),draft.reviewReason?h('p',null,draft.reviewReason):null,(draft.errors||[]).length?h('ul',{className:'list-disc pr-5'},(draft.errors||[]).map((reason,index)=>h('li',{key:index},reason))):null):null,
+      (draft.warnings||[]).length?h('div',{className:'rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900'},h('strong',null,'ملاحظات الفحص'),h('ul',{className:'list-disc pr-5'},draft.warnings.map((reason,index)=>h('li',{key:index},reason)))):null,
       draft.sourceType==='journalRevision'?h('label',{className:'block text-sm font-bold'},'ملاحظات التعديل / سبب إعادة القيد للمراجعة',h('textarea',{value:draft.revisionNotes||'',onChange:e=>setJournalModalDraft(old=>Object.assign({},old,{revisionNotes:e.target.value})),rows:3,disabled:!editable,className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal bg-white'})):null,
       h('div',{className:'space-y-2'},...modalLines,editable?button('إضافة سطر',()=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).concat([{accountCode:'6100',description:'',debit:0,credit:0,costCenterId:'',partyType:'',partyId:''}])})),'muted'):null),
       h('div',{className:'flex flex-wrap gap-4 rounded-lg border p-3'},h('b',null,'المدين: '+fmt(modalDebit)),h('b',null,'الدائن: '+fmt(modalCredit)),h('b',{className:Math.abs(modalDebit-modalCredit)<0.01?'text-emerald-700':'text-rose-700'},'الفرق: '+fmt(modalDebit-modalCredit))),
       h('div',{className:'flex flex-wrap gap-2'},
-       editable?button('حفظ وإرسال التعديلات للمراجعة',saveJournalModal,'primary',busy):null,
+       editable?button(draft.status==='needs_correction'&&manual?'حفظ التصحيح وترحيل القيد':'حفظ وإرسال التعديلات للمراجعة',saveJournalModal,'primary',busy):null,
        posted&&canFinance('journal','edit')?button('تعديل القيد',()=>void startJournalRevision(draft,'edit'),'primary',busy||!manual||!canFinance('review','edit')||!!draft.pendingRevisionId||!!draft.revisedByJournalId||!!draft.reversalJournalId||!!draft.reversedByJournalId):null,
        posted&&canFinance('journal','edit')?button('إرجاع للمراجعة',()=>void startJournalRevision(draft,'return'),'muted',busy||!manual||!canFinance('review','edit')||!!draft.pendingRevisionId||!!draft.revisedByJournalId||!!draft.reversalJournalId||!!draft.reversedByJournalId):null,
        posted&&!manual&&draft.sourceType==='invoice'?h('p',{className:'w-full text-xs text-amber-800'},'هذا قيد فاتورة مرحّل؛ يمكنك إنشاء قيد عكسي للمراجعة أو حذف القيد ومصدره. التعديل المباشر يتم بإلغاء القيد ثم إصدار فاتورة صحيحة جديدة.'):null,
@@ -3088,7 +3117,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
    h("td",{className:"p-2 font-bold"},item.sourceJournalNumber||item.number||item.id),
    h("td",{className:"p-2"},item.date||"—"),
    h("td",{className:"p-2 text-end"},String((item.lines||[]).length)),
-   h("td",{className:"p-2 text-rose-700 text-xs"},(item.errors||[]).concat(item.warnings||[]).slice(0,3).join(" · ")||"مراجعة مطلوبة"),
+   h("td",{className:"p-2 text-rose-700 text-xs"},(item.errors||[]).concat(item.warnings||[]).concat(item.reviewReason?[item.reviewReason]:[]).slice(0,5).join(" · ")||"مراجعة مطلوبة"),
    h("td",{className:"p-2"},button("فتح واستكمال",()=>{setSelected(item);setTab("review");openJournalModal(item);},"muted",!canFinance("review","edit")))
   ));
   return h("div",{className:"space-y-4"},
@@ -3996,6 +4025,194 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   ));
  };
 
+ const accountReviewDecisionFor=(accountCode,partyType,partyId)=>{
+  const periodKey=String(period.to||'');
+  return Object.values(accountReviewDecisions||{}).find(item=>item&&String(item.period||'')===periodKey&&String(item.accountCode||'')===String(accountCode||'')&&String(item.partyType||'')===String(partyType||'')&&String(item.partyId||'')===String(partyId||''))||null;
+ };
+ const saveAccountReviewMark=async(accountCode,partyType,partyId,decision)=>{
+  if(!canFinance('reports','edit')){setError('ليس لديك صلاحية تسجيل قرارات المراجعة الشاملة.');return;}
+  setBusy(true);setError('');
+  try{
+   const result=await api('','POST',{action:'saveAccountReviewDecision',accountCode:String(accountCode||''),period:String(period.to||''),partyType:partyType||'',partyId:partyId||'',status:decision,notes:accountReviewNote||''});
+   if(result.item)setAccountReviewDecisions(old=>Object.assign({},old,{[result.item.id]:result.item}));
+   setNotice('تم حفظ قرار المراجعة وملاحظاته للفترة '+period.to+'.');
+  }catch(error){setError(error.message||String(error));}
+  finally{setBusy(false);}
+ };
+ const renderAccountReview=()=>{
+  const rowsForAccounts=accounts.map(account=>{
+   const codes=accounts.filter(item=>accountIsInBranch(item,account.code)).map(item=>String(item.code));
+   const codeSet=new Set(codes),lines=balanceFlat.filter(line=>codeSet.has(String(line.accountCode)));
+   const debit=lines.reduce((sum,line)=>sum+n(line.debit),0),credit=lines.reduce((sum,line)=>sum+n(line.credit),0);
+   const balance=account.nature==='credit'?credit-debit:debit-credit;
+   return {account,codes,lines,debit,credit,balance,decision:accountReviewDecisionFor(account.code,'','')};
+  });
+  const visibleRows=rowsForAccounts.filter(row=>{
+   const query=normalizeMatch(accountReviewSearch);
+   const textMatch=!query||normalizeMatch(String(row.account.code)+' '+String(row.account.name)).includes(query);
+   const balanceMatch=accountReviewFilter==='all'||(accountReviewFilter==='nonzero'&&Math.abs(row.balance)>0.005)||(accountReviewFilter==='matched'&&row.decision&&row.decision.status==='matched')||(accountReviewFilter==='follow_up'&&row.decision&&row.decision.status!=='matched');
+   return textMatch&&balanceMatch;
+  });
+  const selected=rowsForAccounts.find(row=>String(row.account.code)===String(accountReviewSelectedCode||''))||null;
+  const decisionLabel=value=>({matched:'تمت المطابقة',follow_up:'يحتاج متابعة',requires_adjustment:'تسوية / قيد تصحيح مطلوب'}[value]||'لم تتم المراجعة');
+  const decisionTone=value=>value==='matched'?'text-emerald-700':value==='follow_up'||value==='requires_adjustment'?'text-amber-700':'text-slate-500';
+  const displayParty=party=>String(party&&(party.name||party.companyName||party.partyName||party.code||party.id)||'طرف بدون اسم');
+  const accountRows=visibleRows.map(row=>h('tr',{key:row.account.code,className:'border-t hover:bg-blue-50'},
+   h('td',{className:'p-2 font-bold'},h('button',{type:'button',className:'text-blue-700 underline text-start',onClick:()=>{
+    setAccountReviewSelectedCode(String(row.account.code));setAccountReviewSelectedParty('');setAccountReviewSelectedPartyType('');
+    setAccountReviewNote(row.decision&&row.decision.notes||'');
+   }},String(row.account.code)+' — '+row.account.name)),
+   h('td',{className:'p-2'},row.account.type||'—'),
+   h('td',{className:'p-2 text-end'},fmt(row.debit)),
+   h('td',{className:'p-2 text-end'},fmt(row.credit)),
+   h('td',{className:'p-2 text-end font-bold'},accountAnalysisBalanceText(row.balance)),
+   h('td',{className:'p-2'},h('span',{className:'font-bold '+decisionTone(row.decision&&row.decision.status)},decisionLabel(row.decision&&row.decision.status)))
+  ));
+  const accountType=selected&&selected.account.subledgerType;
+  const matchingPartyTypes=selected?Array.from(new Set(accounts.filter(item=>selected.codes.includes(String(item.code))&&['vendor','customer'].includes(String(item.subledgerType||''))).map(item=>String(item.subledgerType)))):[];
+  const partyType=matchingPartyTypes.includes(accountType)?accountType:accountReviewSelectedPartyType&&matchingPartyTypes.includes(accountReviewSelectedPartyType)?accountReviewSelectedPartyType:matchingPartyTypes[0]||'';
+  const partyAccounts=selected&&partyType?accounts.filter(item=>selected.codes.includes(String(item.code))&&item.subledgerType===partyType):[];
+  const partyCodes=new Set(partyAccounts.map(item=>String(item.code)));
+  const parties=partyType==='vendor'?allVendors:partyType==='customer'?allClients:[];
+  const journalById=new Map();
+  documents.filter(item=>item&&item.type==='journal').forEach(item=>journalById.set(String(item.id),item));
+  journalRecords.forEach(item=>journalById.set(String(item.id),item));
+  const partySummary=parties.map(party=>{
+   const partyId=String(party.code||party.id||'');
+   const lines=balanceFlat.filter(line=>partyCodes.has(String(line.accountCode))&&String(line.partyType||'')===partyType&&String(line.partyId||'')===partyId);
+   const net=lines.reduce((sum,line)=>{
+    const account=accounts.find(item=>String(item.code)===String(line.accountCode))||{};
+    const normal=account.nature==='credit'?n(line.credit)-n(line.debit):n(line.debit)-n(line.credit);
+    const expectedType=partyType==='vendor'?'liability':'asset';
+    return sum+normal*(account.type===expectedType?1:-1);
+   },0);
+   const invoices=documents.filter(item=>item&&item.type==='invoice'&&item.status==='posted'&&String(item.invoiceType||'')===(partyType==='vendor'?'purchase':'sales')&&String(item.partyId||'')===partyId);
+   return {party,partyId,lines,net,invoices,decision:accountReviewDecisionFor(selected.account.code,partyType,partyId)};
+  }).filter(row=>Math.abs(row.net)>0.005||row.invoices.length||row.lines.length);
+  const chosenParty=partySummary.find(row=>row.partyId===String(accountReviewSelectedParty||''))||null;
+  const partyLines=chosenParty?chosenParty.lines.slice().sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))||String(a.journalId||'').localeCompare(String(b.journalId||''))||n(a.lineNo)-n(b.lineNo)):[];
+  const invoiceNumberKey=invoice=>normalizeMatch(invoice.number||invoice.invoiceNumber||invoice.documentNumber||'');
+  const lineMatchesInvoice=(line,invoice)=>{
+   const header=journalById.get(String(line.journalId||''))||{};
+   const refs=[line.reference,header.reference,header.invoiceNumber,header.documentNumber,header.number].map(normalizeMatch).filter(Boolean);
+   const targets=[invoiceNumberKey(invoice),normalizeMatch(invoice.id||'')].filter(Boolean);
+   return targets.some(target=>refs.includes(target));
+  };
+  const invoiceDetailRows=chosenParty?chosenParty.invoices.map(invoice=>{
+   const total=n(invoice.totals&&invoice.totals.total!==undefined?invoice.totals.total:invoice.total||invoice.amount||0);
+   const linkedPayments=partyLines.filter(line=>line.sourceType!=='invoice'&&lineMatchesInvoice(line,invoice));
+   const paid=linkedPayments.reduce((sum,line)=>sum+Math.max(0,partyType==='vendor'?n(line.debit)-n(line.credit):n(line.credit)-n(line.debit)),0);
+   const journalId=invoice.journalId||invoice.accountingJournalId||'';
+   return h('tr',{key:invoice.id,className:'border-t'},
+    h('td',{className:'p-2'},invoice.date||'—'),
+    h('td',{className:'p-2 font-bold'},journalId?h('button',{type:'button',className:'text-blue-700 underline',onClick:()=>openStatementJournal(journalId)},invoice.number||invoice.id):String(invoice.number||invoice.id)),
+    h('td',{className:'p-2 text-end'},fmt(total)),
+    h('td',{className:'p-2 text-end'},fmt(paid)),
+    h('td',{className:'p-2 text-end font-bold'},linkedPayments.length?fmt(Math.max(0,total-paid)):'غير محدد — يحتاج تخصيص'),
+    h('td',{className:'p-2'},linkedPayments.length?'يوجد سداد/تسوية بمرجع مطابق':'لم يتم ربط سداد مباشر برقم الفاتورة')
+   );
+  }):[];
+  const unmatchedPayments=chosenParty?partyLines.filter(line=>{
+   if(line.sourceType==='invoice')return false;
+   const amount=partyType==='vendor'?n(line.debit)-n(line.credit):n(line.credit)-n(line.debit);
+   return amount>0.005&&!chosenParty.invoices.some(invoice=>lineMatchesInvoice(line,invoice));
+  }):[];
+  const movementRows=partyLines.map((line,index)=>{
+   const header=journalById.get(String(line.journalId||''))||{};
+   const account=accounts.find(item=>String(item.code)===String(line.accountCode))||{};
+   return h('tr',{key:String(line.journalId)+'-'+String(line.lineNo)+'-'+index,className:'border-t'},
+    h('td',{className:'p-2'},line.date||'—'),
+    h('td',{className:'p-2'},h('button',{type:'button',className:'text-blue-700 underline',onClick:()=>openStatementJournal(line.journalId)},line.journalNumber||header.number||line.journalId||'—')),
+    h('td',{className:'p-2'},String(line.accountCode||'')+' — '+(account.name||'')),
+    h('td',{className:'p-2'},line.description||line.journalDescription||'—'),
+    h('td',{className:'p-2'},line.reference||header.reference||header.invoiceNumber||'—'),
+    h('td',{className:'p-2 text-end'},fmt(line.debit)),
+    h('td',{className:'p-2 text-end'},fmt(line.credit))
+   );
+  });
+  const unmatchedRows=unmatchedPayments.map((line,index)=>{
+   const header=journalById.get(String(line.journalId||''))||{};
+   return h('tr',{key:String(line.journalId)+'-u-'+index,className:'border-t'},
+    h('td',{className:'p-2'},line.date||'—'),
+    h('td',{className:'p-2'},h('button',{type:'button',className:'text-blue-700 underline',onClick:()=>openStatementJournal(line.journalId)},line.journalNumber||header.number||line.journalId||'—')),
+    h('td',{className:'p-2'},line.reference||header.reference||'بدون مرجع فاتورة'),
+    h('td',{className:'p-2 text-end font-bold'},fmt(Math.max(0,partyType==='vendor'?n(line.debit)-n(line.credit):n(line.credit)-n(line.debit)))),
+    h('td',{className:'p-2 text-amber-700'},'دفعة غير مخصصة — تحقق من الطرف ورقم الفاتورة')
+   );
+  });
+  const detailLines=selected?selected.lines.slice().sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))||String(a.journalId||'').localeCompare(String(b.journalId||''))||n(a.lineNo)-n(b.lineNo)):[];
+  const generalRows=detailLines.map((line,index)=>{
+   const account=accounts.find(item=>String(item.code)===String(line.accountCode))||{};
+   return h('tr',{key:String(line.journalId)+'-'+String(line.lineNo)+'-'+index,className:'border-t'},
+    h('td',{className:'p-2'},line.date||'—'),
+    h('td',{className:'p-2'},h('button',{type:'button',className:'text-blue-700 underline',onClick:()=>openStatementJournal(line.journalId)},line.journalNumber||line.journalId||'—')),
+    h('td',{className:'p-2'},String(line.accountCode||'')+' — '+(account.name||'')),
+    h('td',{className:'p-2'},line.description||line.journalDescription||'—'),
+    h('td',{className:'p-2 text-end'},fmt(line.debit)),
+    h('td',{className:'p-2 text-end'},fmt(line.credit))
+   );
+  });
+  return panel('المراجعة الشاملة للحسابات','مراجعة إقفال حتى نهاية '+period.to+'، مبنية على الأستاذ العام والقيود المرحلة والفواتير المرحلة. الفواتير تُربط آليًا بالسداد عند تطابق رقم الفاتورة في مرجع القيد فقط؛ الحركات غير المرتبطة تظهر كدفعات غير مخصصة ولا تُعتبر سدادًا مؤكدًا.',h('div',{className:'space-y-3'},
+   h('div',{className:'grid grid-cols-2 md:grid-cols-4 gap-2'},
+    metric('عدد الحسابات',String(accounts.length)),
+    metric('حسابات بأرصدة غير صفرية',String(rowsForAccounts.filter(row=>Math.abs(row.balance)>0.005).length)),
+    metric('حسابات تمت مراجعتها',String(rowsForAccounts.filter(row=>row.decision&&row.decision.status==='matched').length)),
+    metric('حسابات تحتاج متابعة',String(rowsForAccounts.filter(row=>row.decision&&row.decision.status!=='matched').length))
+   ),
+   h('div',{className:'grid grid-cols-1 md:grid-cols-4 gap-2 items-end'},
+    field('من شهر',period.from,value=>setPeriod(old=>Object.assign({},old,{from:value})),'month'),
+    field('حتى شهر',period.to,value=>setPeriod(old=>Object.assign({},old,{to:value})),'month'),
+    field('بحث الحساب',accountReviewSearch,setAccountReviewSearch),
+    select('تصفية المراجعة',accountReviewFilter,setAccountReviewFilter,[{value:'all',label:'كل الحسابات'},{value:'nonzero',label:'أرصدة غير صفرية'},{value:'matched',label:'تمت مطابقتها'},{value:'follow_up',label:'تحتاج متابعة'}])
+   ),
+   h('div',{className:'flex flex-wrap gap-2 items-center'},button('تحديث الأرصدة',loadPeriod,'primary',busy),h('span',{className:'text-xs text-slate-500'},'جميع القيم بالجنيه المصري · الأرصدة تراكمية حتى '+period.to)),
+   panel('قائمة الحسابات وحالة الإقفال','اضغط اسم الحساب لعرض تفاصيله وحركاته. الحسابات التجميعية تشمل الحسابات التابعة.',table(['الحساب','النوع','مدين','دائن','الرصيد الطبيعي','حالة المراجعة'],accountRows)),
+   selected?h('div',{className:'space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3'},
+    h('div',{className:'flex flex-wrap justify-between gap-2 items-center'},
+     h('div',null,h('h3',{className:'font-extrabold'},'تفاصيل '+selected.account.code+' — '+selected.account.name),h('p',{className:'text-xs text-slate-500'},'الرصيد حتى '+period.to+' · '+(selected.account.isGroup?'يشمل الحسابات التابعة':'حساب تفصيلي'))),
+     button('إغلاق التفاصيل',()=>{setAccountReviewSelectedCode('');setAccountReviewSelectedParty('');},'muted')
+    ),
+    h('div',{className:'grid grid-cols-2 md:grid-cols-4 gap-2'},
+     metric('إجمالي المدين',fmt(selected.debit)),
+     metric('إجمالي الدائن',fmt(selected.credit)),
+     metric('الرصيد',accountAnalysisBalanceText(selected.balance)),
+     metric('قرار المراجع',decisionLabel(selected.decision&&selected.decision.status))
+    ),
+    field('ملاحظات المراجع لهذا الحساب',accountReviewNote,setAccountReviewNote),
+    h('div',{className:'flex flex-wrap gap-2'},
+     button('تأكيد المطابقة',()=>void saveAccountReviewMark(selected.account.code,'','', 'matched'),'success',busy||!canFinance('reports','edit')),
+     button('يحتاج متابعة',()=>void saveAccountReviewMark(selected.account.code,'','', 'follow_up'),'muted',busy||!canFinance('reports','edit')),
+     button('يتطلب تسوية / قيد تصحيح',()=>void saveAccountReviewMark(selected.account.code,'','', 'requires_adjustment'),'danger',busy||!canFinance('reports','edit'))
+    ),
+    matchingPartyTypes.length?h('div',{className:'space-y-2'},
+     matchingPartyTypes.length>1?select('نوع الطرف التحليلي',partyType,value=>{setAccountReviewSelectedPartyType(value);setAccountReviewSelectedParty('');},matchingPartyTypes.map(value=>({value,label:value==='vendor'?'الموردون':'العملاء'}))):null,
+     panel(partyType==='vendor'?'الموردون — أرصدة واجبة السداد':'العملاء — أرصدة واجبة التحصيل','اختر الطرف لعرض فواتيره وحركاته والدفعات التي تحتاج إلى مطابقة.',table(['الطرف','إجمالي مدين','إجمالي دائن','الرصيد المطلوب','حالة المتابعة'],partySummary.map(row=>h('tr',{key:row.partyId,className:'border-t'},
+      h('td',{className:'p-2'},h('button',{type:'button',className:'text-blue-700 underline font-bold',onClick:()=>{setAccountReviewSelectedParty(row.partyId);setAccountReviewSelectedPartyType(partyType);setAccountReviewNote(row.decision&&row.decision.notes||'');}},displayParty(row.party)+' ('+row.partyId+')')),
+      h('td',{className:'p-2 text-end'},fmt(row.lines.reduce((sum,line)=>sum+n(line.debit),0))),
+      h('td',{className:'p-2 text-end'},fmt(row.lines.reduce((sum,line)=>sum+n(line.credit),0))),
+      h('td',{className:'p-2 text-end font-bold'},accountAnalysisBalanceText(row.net)),
+      h('td',{className:'p-2'},h('span',{className:'font-bold '+decisionTone(row.decision&&row.decision.status)},decisionLabel(row.decision&&row.decision.status)))
+     ))))
+    ):null,
+    chosenParty?h('div',{className:'space-y-3 rounded-xl border bg-white p-3'},
+     h('div',{className:'flex flex-wrap justify-between gap-2'},h('h4',{className:'font-bold'},'متابعة '+(partyType==='vendor'?'المورد: ':'العميل: ')+displayParty(chosenParty.party)+' · '+chosenParty.partyId),h('strong',null,accountAnalysisBalanceText(chosenParty.net))),
+     metric('إجمالي الفواتير المرحلة',fmt(chosenParty.invoices.reduce((sum,item)=>sum+n(item.totals&&item.totals.total!==undefined?item.totals.total:item.total||item.amount||0),0))),
+     panel('الفواتير وما تم تخصيصه من سداد','يظهر المتبقي فقط عندما يتطابق مرجع السداد مع رقم الفاتورة. عند غياب المرجع يلزم تخصيص الدفعة يدويًا قبل تأكيد المتبقي.',table(['التاريخ','رقم الفاتورة / القيد','قيمة الفاتورة','سداد مرتبط بالمرجع','المتبقي حسب المرجع','نتيجة المطابقة'],invoiceDetailRows)),
+     unmatchedRows.length?panel('دفعات وتسويات غير مخصصة','قد تكون دفعات صحيحة لم يكتب فيها رقم الفاتورة، أو سُجلت على طرف آخر بالخطأ. راجع الطرف والمرجع وافتح القيد قبل تسجيل قرار الإقفال.',table(['التاريخ','القيد','المرجع','القيمة','الإجراء المطلوب'],unmatchedRows)):null,
+     panel('حركة حساب الطرف','كل الحركات المرحّلة على الحساب التحليلي للطرف المختار.',table(['التاريخ','رقم القيد','الحساب','البيان','المرجع','مدين','دائن'],movementRows)),
+     field('ملاحظات المراجع للطرف',accountReviewNote,setAccountReviewNote),
+     h('div',{className:'flex flex-wrap gap-2'},
+      button('تأكيد مطابقة الطرف',()=>void saveAccountReviewMark(selected.account.code,partyType,chosenParty.partyId,'matched'),'success',busy||!canFinance('reports','edit')),
+      button('الطرف يحتاج متابعة',()=>void saveAccountReviewMark(selected.account.code,partyType,chosenParty.partyId,'follow_up'),'muted',busy||!canFinance('reports','edit')),
+      button('يتطلب تسوية',()=>void saveAccountReviewMark(selected.account.code,partyType,chosenParty.partyId,'requires_adjustment'),'danger',busy||!canFinance('reports','edit'))
+     )
+    ):null,
+    !matchingPartyTypes.length?panel('حركة الحساب','راجع الحركات والأطراف المقابلة قبل إغلاق الحساب.',table(['التاريخ','رقم القيد','الحساب','البيان','مدين','دائن'],generalRows)):null
+   ):h('div',{className:'rounded-lg border border-dashed p-4 text-center text-sm text-slate-500'},'اختر حسابًا من الجدول لبدء المراجعة التفصيلية.'),
+   h('p',{className:'text-xs text-slate-500'},'تنبيه رقابي: اختلاف إجمالي الفواتير عن رصيد الأستاذ قد ينتج عن أرصدة افتتاحية أو دفعات مقدمة أو تسويات أو مدفوعات غير مخصصة؛ لا ينفذ النظام أي قيد أو تجميع تلقائيًا. سجل قرار المطابقة بعد فحص المستندات وكشف الطرف.')
+  ));
+ };
+
  const renderQuickAdd = function() {
   if(!quickAddType)return null;
   const change=function(key,value){setQuickAddForm(function(old){return Object.assign({},old,{[key]:value});});};
@@ -4240,6 +4457,7 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
  if(tab==='tax')content=renderTax();
  if(tab==='reports')content=renderReports();
  if(tab==='accountAnalysis')content=renderAccountAnalysis();
+ if(tab==='accountReview')content=renderAccountReview();
  return h('div',{className:'pest-finance-workspace p-2 md:p-3 space-y-2',dir:rtl?'rtl':'ltr'},
   h('style',null,`
    .pest-finance-workspace[dir="rtl"] table{direction:rtl!important;text-align:right!important;}
@@ -4249,6 +4467,8 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
    .pest-finance-workspace[dir="rtl"] table td[class~="text-center"]{text-align:center!important;}
    .pest-finance-workspace[dir="ltr"] table td[class~="text-end"]{direction:ltr!important;text-align:right!important;white-space:nowrap;font-variant-numeric:tabular-nums;}
    .pest-finance-workspace table th,.pest-finance-workspace table td{vertical-align:middle;}
+   .pest-finance-workspace .pest-resizable-number{resize:horizontal;overflow:auto;min-width:118px;max-width:min(360px,85vw);width:100%;}
+   .pest-finance-workspace .pest-resizable-number:focus-within{position:relative;z-index:12;}
   `),
   h('header',{className:'flex flex-wrap items-center justify-between gap-3'},h('div',null,h('h2',{className:'text-2xl font-extrabold'},t('النظام المالي والمحاسبي','Financial & Accounting System')),h('p',{className:'text-xs text-slate-500'},t('دفتر أستاذ مستقل — لا ترحيل قبل المراجعة والاعتماد','Separate General Ledger — No Posting Before Review & Approval'))),button(busy?t('جارٍ التحديث','Updating'):t('تحديث البيانات','Refresh Data'),refresh,'muted',busy)),
   h('nav',{className:'flex flex-wrap gap-2'},visibleNav.map(x=>button(rtl?x[1]:x[2],()=>{setTab(x[0]);setNotice('');setError('');setScreenTableSearch('');},tab===x[0]?'primary':'muted'))),
