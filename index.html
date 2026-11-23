@@ -1152,7 +1152,7 @@ function installPestSpreadsheetGrid(root){
     const row=table.tHead&&table.tHead.rows&&table.tHead.rows[0];
     if(!row)return [];
     return Array.from(row.cells).filter(cell=>!cell.hasAttribute("data-pest-grid-select-head")).map((cell,index)=>{
-      if(!cell.dataset.pestGridColumnLabel)cell.dataset.pestGridColumnLabel=clean(cellText(cell));
+      const currentLabel=clean(cellText(cell));if(currentLabel)cell.dataset.pestGridColumnLabel=currentLabel;
       return cell.dataset.pestGridColumnLabel||((arabic()?"عمود ":"Column ")+(index+1));
     });
   };
@@ -1165,6 +1165,7 @@ function installPestSpreadsheetGrid(root){
     return hash(headers.join("\u241e")+"\u241d"+rows.join("\u241e"));
   };
   const states=new WeakMap();
+  const activeStates=new Set();
   const button=(label,action,disabled)=>{
     const node=el("button","pest-grid-button",label);node.type="button";node.disabled=!!disabled;
     node.addEventListener("click",action);return node;
@@ -1174,7 +1175,7 @@ function installPestSpreadsheetGrid(root){
   };
   const selectControl=()=>el("select","pest-grid-select");
   const buildToolbar=(state,key)=>{
-    const t=words(),bar=state.toolbar;
+    const t=words(),bar=state.toolbar;bar.replaceChildren();
     bar.setAttribute("data-pest-grid-toolbar","true");bar.setAttribute("data-pest-export-actions","true");
     bar.setAttribute("dir",arabic()?"rtl":"ltr");
     const first=el("div","pest-grid-toolbar-main");
@@ -1238,7 +1239,7 @@ function installPestSpreadsheetGrid(root){
       headerCheck:null,filterField:null,filterOperator:null,filterValue:null,searchInput:null,filterChips:null,
       selectionInfo:null,allVisibleCheck:null,pageInfo:null,pageSizeSelect:null,prevButton:null,nextButton:null,
       columnDetails:null,columnList:null,sortLabel:null,copyButton:null,csvButton:null,prefKey:key,toolbarBuilt:false};
-    states.set(host,state);host.classList.add("pest-grid-enhanced-host");buildToolbar(state,key);return state;
+    states.set(host,state);activeStates.add(state);host.classList.add("pest-grid-enhanced-host");buildToolbar(state,key);return state;
   };
   const savePrefs=(state,key)=>{
     try{localStorage.setItem(key,JSON.stringify({sortColumn:state.sortColumn,sortDirection:state.sortDirection,pageSize:state.pageSize,hiddenColumns:Array.from(state.hiddenColumns)}));}catch(_){}
@@ -1417,7 +1418,7 @@ function installPestSpreadsheetGrid(root){
     ensureSelectionColumn(state);apply(state,state.prefKey);
   };
   const style=el("style");style.id="pest-spreadsheet-grid-style";
-  style.textContent=".pest-grid-toolbar{display:flex;flex-direction:column;gap:8px;padding:10px 12px;margin:0 0 8px;border:1px solid #dbe3ec;border-radius:12px;background:linear-gradient(180deg,#fff,#f8fafc);color:#334155;font:inherit;direction:inherit;min-width:0}"+
+  style.textContent=".pest-grid-toolbar{display:flex;flex-direction:column;gap:8px;padding:10px 12px;margin:0 0 8px;border:1px solid #dbe3ec;border-radius:12px;background:linear-gradient(180deg,#fff,#f8fafc);color:#334155;font:inherit;min-width:0}"+
     ".pest-grid-toolbar-main,.pest-grid-toolbar-footer{display:flex;align-items:end;gap:8px;flex-wrap:wrap;min-width:0}"+
     ".pest-grid-control{display:flex;flex-direction:column;gap:4px;min-width:90px;max-width:230px;flex:1 1 115px;font-size:11px;font-weight:700;color:#64748b}"+
     ".pest-grid-label{white-space:nowrap}.pest-grid-input,.pest-grid-select{min-width:0;width:100%;height:34px;padding:5px 9px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a;font-size:12px;font-weight:500}"+
@@ -1453,7 +1454,14 @@ function installPestSpreadsheetGrid(root){
     candidates.forEach(decorate);
   });
   observer.observe(root,{childList:true,subtree:true,characterData:true});
-  return ()=>{observer.disconnect();const existing=document.getElementById(style.id);if(existing)existing.remove();};
+  window.PEST_REFRESH_SPREADSHEET_GRID_LANGUAGE=()=>{
+    activeStates.forEach(state=>{
+      if(!state.host.isConnected){activeStates.delete(state);return;}
+      buildToolbar(state,state.prefKey);state.searchInput.value=state.search;
+      renderFilterChips(state,state.prefKey);syncSelection(state);apply(state,state.prefKey);
+    });
+  };
+  return ()=>{observer.disconnect();activeStates.clear();if(window.PEST_REFRESH_SPREADSHEET_GRID_LANGUAGE)delete window.PEST_REFRESH_SPREADSHEET_GRID_LANGUAGE;const existing=document.getElementById(style.id);if(existing)existing.remove();};
 }
 
 function App(){
@@ -1461,6 +1469,7 @@ function App(){
   const tr = key => words[lang][key] || key;
   const rtl = lang === 'ar';
   useEffect(()=>installPestSpreadsheetGrid(document.body),[]);
+  useEffect(()=>{if(window.PEST_REFRESH_SPREADSHEET_GRID_LANGUAGE)window.PEST_REFRESH_SPREADSHEET_GRID_LANGUAGE();},[lang]);
   useEffect(()=>{
     if(window.PEST_NATIVE?.isNative && typeof window.PEST_NATIVE.initializeOtaUpdates==='function'){
       void window.PEST_NATIVE.initializeOtaUpdates();
