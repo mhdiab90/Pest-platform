@@ -262,6 +262,7 @@ test("financial attachments can be deleted from invoice, statement, and partner-
   assert.match(source, /action:"deleteAttachment",documentId,attachmentId:attachment\.id/);
   assert.match(source, /deleteStatementAttachment\(item,invoiceDocumentIdForAttachment\(item\)\)/);
   assert.match(source, /deleteStatementAttachment\(Object\.assign\(\{\},attachment,\{entityType:'financial',entityId:selected\.id\}\),selected\.id\)/);
-  assert.match(source, /canDeleteStatementAttachment\(\{entityType:'cashCustody'/);
+  assert.match(source, /const reference=Object\.assign\(\{\},item,\{entityType:'cashCustody',entityId\}\)/);
+  assert.match(source, /canDeleteStatementAttachment\(reference\)/);
   assert.match(source, /canDeleteStatementAttachment\(statementAttachmentPreview\.attachment\)/);
 });

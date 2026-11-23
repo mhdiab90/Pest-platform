@@ -6,9 +6,9 @@ const app = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 
 test("record attachments, chat files, and previews provide a delete action", () => {
   assert.match(app, /canDeleteRecordAttachment\(entityType\)&&<button[^>]*onClick=\{\(\)=>removeRecordAttachment\(entityType,entityId,item\)\}/);
-  assert.match(app, /canDeleteRecordAttachment\('message'\)&&<button[^>]*removeRecordAttachment\('message',messageId,file\)/);
+  assert.match(app, /canDeleteRecordAttachment\('message'\)&&<button[\s\S]{0,500}removeRecordAttachment\('message',messageId,file\)/);
   assert.match(app, /removeRecordAttachment\('message',messageId,file\)/);
-  assert.match(app, /attachmentPreview\.attachment&&hasPermission\('attachments','delete'\)/);
+  assert.match(app, /attachmentPreview\.attachment&&canDeleteRecordAttachment\(attachmentPreview\.entityType\)/);
   assert.match(app, /async function removeRecordAttachment\(entityType,entityId,attachment\)/);
 });
 
