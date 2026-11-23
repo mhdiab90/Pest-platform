@@ -44,3 +44,9 @@ test("financial and CRM screens keep using real semantic tables covered by the g
   assert.match(crm, /h\(['"]table['"]/);
   assert.match(app, /<table\b/);
 });
+
+test("spreadsheet controls refresh their labels and direction when the app language changes", () => {
+  assert.match(app, /window\.PEST_REFRESH_SPREADSHEET_GRID_LANGUAGE/);
+  assert.match(app, /useEffect\(\(\)=>\{if\(window\.PEST_REFRESH_SPREADSHEET_GRID_LANGUAGE\)window\.PEST_REFRESH_SPREADSHEET_GRID_LANGUAGE\(\);\},\[lang\]\)/);
+  assert.match(app, /state\.toolbar\.setAttribute/);
+});
