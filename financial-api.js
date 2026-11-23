@@ -844,7 +844,7 @@ export async function handleFinancialRequest(ctx){
   requireFinanceArea("reports","edit");
   const findingId=txt(body.findingId,80),period=txt(body.period,7),journalId=txt(body.journalId||"",120),accountCode=txt(body.accountCode||"",32),decision=txt(body.status,32),notes=txt(body.notes||"",2000);
   if(!/^[A-Za-z0-9_-]{6,80}$/.test(findingId))throw new Error("معرّف ملاحظة المراجعة غير صحيح.");
-  if(!/^\\d{4}-\\d{2}$/.test(period))throw new Error("حدد فترة المراجعة بصورة صحيحة.");
+  if(!/^\d{4}-\d{2}$/.test(period))throw new Error("حدد فترة المراجعة بصورة صحيحة.");
   if(!["open","follow_up","resolved","accepted_risk"].includes(decision))throw new Error("حالة الملاحظة غير صحيحة.");
   if(journalId){const journal=await adminRead("journals/"+id(journalId));if(!journal||journal.status!=="posted")throw new Error("القيد المرتبط بالملاحظة غير موجود أو غير مرحّل.");}
   if(accountCode){const account=await adminRead("chartOfAccounts/"+id(accountCode));if(!account)throw new Error("الحساب المرتبط بالملاحظة غير موجود.");}
