@@ -55,12 +55,29 @@
     h('span',{className:'block mb-1'},label),
     h('textarea',{rows:(opts&&opts.rows)||3,value:value||'',onChange:e=>onChange(e.target.value),className:'w-full border border-slate-200 rounded-lg p-2.5 text-sm font-normal bg-white',placeholder:opts&&opts.placeholder||''})
   );
-  const select = (label,value,onChange,options,opts) => h('label',{className:cx('block text-xs font-bold text-slate-700',opts&&opts.className)},
-    h('span',{className:'block mb-1'},label),
-    h('select',{value:value==null?'':value,onChange:e=>onChange(e.target.value),className:'w-full border border-slate-200 rounded-lg p-2.5 text-sm font-normal bg-white'},
-      options.map(item=>h('option',{key:item[0],value:item[0]},item[1]))
-    )
-  );
+  function CrmSearchableSelect(props){
+    const [open,setOpen]=React.useState(false),[query,setQuery]=React.useState('');
+    const selected=(props.options||[]).find(item=>String(item[0])===String(props.value==null?'':props.value));
+    const root=React.useRef(null);
+    React.useEffect(()=>{if(!open)setQuery(selected?String(selected[1]):String(props.value||''));},[props.value,open,selected&&selected[1]]);
+    React.useEffect(()=>{if(!open)return;const close=event=>{if(root.current&&!root.current.contains(event.target))setOpen(false);};document.addEventListener('pointerdown',close,true);return()=>document.removeEventListener('pointerdown',close,true);},[open]);
+    const normal=value=>norm(value);
+    const matches=(props.options||[]).filter(item=>!normal(query)||normal(item[1]).includes(normal(query))||normal(item[0]).includes(normal(query))).slice(0,60);
+    return h('div',{ref:root,className:cx('relative min-w-0',props.className)},
+      h('label',{className:'block text-xs font-bold text-slate-700'},
+        h('span',{className:'block mb-1'},props.label),
+        h('input',{type:'search',value:open?query:(selected?String(selected[1]):String(props.value||'')),disabled:props.disabled,placeholder:'ابحث بالاسم أو الكود...',autoComplete:'off',
+          onFocus:()=>{setQuery('');setOpen(true);},
+          onChange:event=>{setQuery(event.target.value);setOpen(true);},
+          onKeyDown:event=>{if(event.key==='Escape')setOpen(false);else if(event.key==='Enter'&&matches.length){event.preventDefault();props.onChange(matches[0][0]);setQuery(String(matches[0][1]));setOpen(false);}},
+          className:'w-full border border-slate-200 rounded-lg p-2.5 text-sm font-normal bg-white'})
+      ),
+      open?h('div',{className:'absolute z-[180] top-full left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-2xl'},
+        matches.length?matches.map((item,index)=>h('button',{key:String(item[0])+'-'+index,type:'button',onMouseDown:event=>event.preventDefault(),onClick:()=>{props.onChange(item[0]);setQuery(String(item[1]));setOpen(false);},className:'block w-full border-b border-slate-100 px-3 py-2 text-start text-sm font-normal text-slate-800 hover:bg-blue-50 last:border-0'},item[1])):h('div',{className:'p-3 text-xs font-normal text-slate-500'},'لا توجد نتائج مطابقة')
+      ):null
+    );
+  }
+  const select = (label,value,onChange,options,opts) => h(CrmSearchableSelect,{label,value,onChange,options,disabled:opts&&opts.disabled,className:opts&&opts.className});
   const metric = (label,value,caption) => h('section',{className:'rounded-xl border border-slate-200 bg-white p-3 shadow-sm min-w-0'},
     h('div',{className:'text-xs text-slate-500'},label),
     h('strong',{className:'block text-2xl font-extrabold text-slate-900 mt-1',dir:'auto'},value),
