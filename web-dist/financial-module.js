@@ -4060,7 +4060,7 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
     journalId:String(item.journalId||''),journalNumber:String(item.journalNumber||item.journalId||''),
     date:String(item.date||period.to+'-01'),accountCode:String(item.accountCode||''),
     accountName:String(item.accountName||''),lineNo:Number(item.lineNo||0),amount:n(item.amount||0),
-    partyType:String(item.partyType||''),partyId:String(item.partyId||''),category:String(item.category||'عام')
+    partyType:String(item.partyType||''),partyId:String(item.partyId||''),category:String(item.category||'عام'),similarJournals:Array.isArray(item.similarJournals)?item.similarJournals.slice(0,8):[]
    });
   };
   const journalMap=new Map();
@@ -4084,7 +4084,16 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
    if(/خصم|استقطاع|withholding|deducted at source/i.test(String(account.name||'')))withholdingCodes.add(code);
   });
   const invoiceById=new Map((documents||[]).filter(item=>item&&item.type==='invoice').map(item=>[String(item.id),item]));
-  const historicalAmounts=new Map();
+   const findSimilarJournals=(sourceJournal,invoice)=>{
+    const sourceLines=Array.isArray(sourceJournal&&sourceJournal.lines)?sourceJournal.lines:[],sourceAmount=sourceLines.reduce((sum,line)=>sum+n(line.debit),0),firstParty=sourceLines.find(line=>line.partyId),sourceParty=String(invoice&&invoice.partyId||firstParty&&firstParty.partyId||'');
+    const sourceRefs=[sourceJournal&&sourceJournal.reference,sourceJournal&&sourceJournal.invoiceNumber,sourceJournal&&sourceJournal.documentNumber,invoice&&invoice.number,invoice&&invoice.invoiceNumber].map(normalizeMatch).filter(Boolean);
+    return allPostedJournals.filter(candidate=>String(candidate.id)!==String(sourceJournal&&sourceJournal.id)).map(candidate=>{
+     const candidateLines=Array.isArray(candidate.lines)?candidate.lines:[],candidateAmount=candidateLines.reduce((sum,line)=>sum+n(line.debit),0),candidateRefs=[candidate.reference,candidate.invoiceNumber,candidate.documentNumber,candidate.number].map(normalizeMatch).filter(Boolean),sameReference=sourceRefs.some(ref=>candidateRefs.includes(ref)),sameParty=Boolean(sourceParty&&candidateLines.some(line=>String(line.partyId||'')===sourceParty)),closeAmount=sourceAmount>0&&candidateAmount>0&&Math.abs(sourceAmount-candidateAmount)<=Math.max(1,sourceAmount*0.02);
+     if(!sameReference&&!(sameParty&&closeAmount))return null;
+     return {id:String(candidate.id),number:String(candidate.number||candidate.journalNumber||candidate.id),date:String(candidate.date||''),description:String(candidate.description||''),reference:String(candidate.reference||candidate.invoiceNumber||candidate.documentNumber||''),amount:candidateAmount,matchReason:sameReference?'مرجع مطابق':'نفس الطرف ومبلغ متقارب'};
+    }).filter(Boolean).sort((a,b)=>Number(b.matchReason==='مرجع مطابق')-Number(a.matchReason==='مرجع مطابق')||Math.abs(a.amount-sourceAmount)-Math.abs(b.amount-sourceAmount)).slice(0,8);
+   };
+   const historicalAmounts=new Map();
   allPostedJournals.filter(journal=>String(journal.date||'').slice(0,7)<fromMonth).forEach(journal=>{
    (journal.lines||[]).forEach(line=>{
     const code=String(line.accountCode||''),amount=Math.max(n(line.debit),n(line.credit));
@@ -4106,7 +4115,7 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
    if(Math.abs(debit-credit)>0.01)push('JOURNAL_BALANCE','high','القيد المرحّل غير متوازن','إجمالي المدين '+fmt(debit)+' مقابل إجمالي الدائن '+fmt(credit)+'؛ الفرق '+fmt(debit-credit)+'.','أعد فحص القيم والحسابات والسطور المقابلة. لا تنشئ قيد تسوية قبل معرفة سبب الفرق.',Object.assign({amount:Math.abs(debit-credit)},journalBase));
    const sourceInvoice=journal.sourceType==='invoice'?invoiceById.get(String(journal.sourceId||'')):null;
    if(journal.sourceType==='invoice'&&!sourceInvoice)push('SOURCE_INVOICE_MISSING','high','قيد فاتورة دون فاتورة مصدر متاحة','القيد مسجل على أنه ناتج من فاتورة، لكن لم يتم العثور على مستند الفاتورة المرتبط به.','راجع رابط المستند المصدر وسجل الفاتورة قبل إقفال الفترة.',journalBase);
-   if(sourceInvoice&&sourceInvoice.status!=='posted')push('SOURCE_INVOICE_STATUS','high','قيد مرحّل وفاتورته المصدر ليست مرحّلة','حالة الفاتورة المرتبطة '+String(sourceInvoice.status||'غير محددة')+' رغم وجود قيد مرحّل.','راجع تسلسل اعتماد الفاتورة والقيد وتأكد من عدم وجود ترحيل يتيم.',journalBase);
+   if(sourceInvoice&&sourceInvoice.status!=='posted')push('SOURCE_INVOICE_STATUS','high','قيد مرحّل وفاتورته المصدر ليست مرحّلة','حالة الفاتورة المرتبطة '+String(sourceInvoice.status||'غير محددة')+' رغم وجود قيد مرحّل.','راجع تسلسل اعتماد الفاتورة والقيد وتأكد من عدم وجود ترحيل يتيم، وقارن القيود المشابهة قبل اتخاذ قرار الإلغاء أو التصحيح.',Object.assign({similarJournals:findSimilarJournals(journal,sourceInvoice),category:'تعارض مستند مصدر'},journalBase));
    const partyControlLines=lines.filter(line=>{
     const code=String(line.accountCode||''),account=accountMap.get(code);
     return ['vendor','customer'].includes(String(account&&account.subledgerType||''))||code==='281'||code==='1210';
@@ -4258,7 +4267,7 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   const selectedFinding=smartFindings.find(finding=>finding.id===accountReviewSelectedFinding)||null;
   const findingStatusLabel=value=>({open:'مفتوحة',follow_up:'قيد المتابعة',resolved:'تمت المعالجة',accepted_risk:'مقبولة مع توثيق'}[value]||'مفتوحة');
   const findingSeverityLabel=value=>({high:'عالية',medium:'متوسطة',low:'تنبيه'}[value]||'تنبيه');
-  const findingRows=visibleFindings.map(finding=>h('tr',{key:finding.id,className:'border-t align-top'},
+  const findingRows=visibleFindings.map(finding=>h('tr',{key:finding.id,className:'border-t align-top cursor-pointer hover:bg-blue-50',onClick:()=>{setAccountReviewSelectedFinding(finding.id);setAccountReviewFindingNote(finding.decision&&finding.decision.notes||'');}},
    h('td',{className:'p-2 whitespace-nowrap'},h('span',{className:'font-bold '+(finding.severity==='high'?'text-rose-700':finding.severity==='medium'?'text-amber-700':'text-slate-600')},findingSeverityLabel(finding.severity))),
    h('td',{className:'p-2 whitespace-nowrap'},finding.date),
    h('td',{className:'p-2'},finding.title),
@@ -4386,21 +4395,24 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
      select('تصفية الملاحظات',accountReviewFindingFilter,setAccountReviewFindingFilter,[{value:'open',label:'المفتوحة فقط'},{value:'high',label:'المخاطر العالية'},{value:'medium',label:'الملاحظات المتوسطة'},{value:'follow_up',label:'قيد المتابعة'},{value:'resolved',label:'المعالجة / المقبولة'},{value:'all',label:'كل الملاحظات'}])
     ),
     visibleFindings.length?table(['الخطورة','التاريخ','الملاحظة','رقم القيد','الحساب / السطر','سبب التنبيه','الإجراء المقترح','الحالة','إجراء'],findingRows):h('div',{className:'rounded-lg border border-dashed p-4 text-center text-sm text-slate-500'},'لا توجد ملاحظات مطابقة لهذا الفلتر في الفترة المحددة.'),
-    selectedFinding?h('div',{className:'rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-2'},
+    selectedFinding?h('div',{className:'fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/60 p-3',onClick:()=>setAccountReviewSelectedFinding('')},h('section',{className:'w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-2xl border border-blue-200 bg-white p-4 shadow-2xl space-y-3',onClick:event=>event.stopPropagation()},
      h('div',{className:'flex flex-wrap justify-between gap-2 items-center'},h('strong',{className:'text-sm'},selectedFinding.title),button('إغلاق التفاصيل',()=>setAccountReviewSelectedFinding(''),'muted')),
      h('p',{className:'text-sm'},selectedFinding.reason),
      h('p',{className:'text-sm text-slate-700'},'الإجراء المقترح: '+selectedFinding.action),
      h('div',{className:'flex flex-wrap gap-2 text-xs'},h('span',null,'الخطورة: '+findingSeverityLabel(selectedFinding.severity)),h('span',null,'القيد: '+(selectedFinding.journalNumber||'—')),h('span',null,'الحساب: '+(selectedFinding.accountCode||'—'))),
-     selectedFinding.journalId?button('فتح القيد المرتبط',()=>openStatementJournal(selectedFinding.journalId),'primary'):selectedFinding.accountCode?button('فتح كشف الحساب',()=>openStatementAccount(selectedFinding.accountCode),'primary'):null,
-     field('ملاحظة المراجع والإجراء المتخذ',accountReviewFindingNote,setAccountReviewFindingNote),
+     selectedFinding.journalId?button('فتح القيد واتخاذ إجراء',()=>openStatementJournal(selectedFinding.journalId),'primary'):selectedFinding.accountCode?button('فتح كشف الحساب',()=>openStatementAccount(selectedFinding.accountCode),'primary'):null,
+      selectedFinding.similarJournals&&selectedFinding.similarJournals.length?h('div',{className:'rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2'},h('div',{className:'font-bold text-sm text-amber-900'},'قيود مشابهة للمقارنة ('+selectedFinding.similarJournals.length+')'),h('p',{className:'text-xs text-amber-800'},'اقتراحات للمقارنة حسب تطابق المرجع أو تقارب المبلغ والطرف؛ لا تعتبر إثباتًا على التكرار أو الخطأ.'),h('div',{className:'overflow-x-auto'},h('table',{className:'w-full text-xs'},h('thead',null,h('tr',null,['رقم القيد','التاريخ','المرجع','المبلغ','سبب التشابه','فتح'].map(label=>h('th',{key:label,className:'p-2 text-right'},label)))),h('tbody',null,selectedFinding.similarJournals.map(item=>h('tr',{key:item.id,className:'border-t'},h('td',{className:'p-2 font-bold'},item.number),h('td',{className:'p-2'},item.date||'—'),h('td',{className:'p-2'},item.reference||'—'),h('td',{className:'p-2 text-end'},fmt(item.amount)),h('td',{className:'p-2'},item.matchReason),h('td',{className:'p-2'},button('فتح',()=>openStatementJournal(item.id),'muted')))))))):h('p',{className:'text-xs text-slate-500'},'لم يتم العثور على قيد مشابه بدرجة كافية للمقارنة الآلية.'),
+      field('ملاحظة المراجع والإجراء المتخذ',accountReviewFindingNote,setAccountReviewFindingNote),
      h('div',{className:'flex flex-wrap gap-2'},
       button('إعادة فتح',()=>void saveAccountReviewFindingDecision(selectedFinding,'open'),'muted',busy||!canFinance('reports','edit')),
       button('قيد المتابعة',()=>void saveAccountReviewFindingDecision(selectedFinding,'follow_up'),'primary',busy||!canFinance('reports','edit')),
       button('تمت المعالجة',()=>void saveAccountReviewFindingDecision(selectedFinding,'resolved'),'success',busy||!canFinance('reports','edit')),
       button('مقبولة مع توثيق',()=>void saveAccountReviewFindingDecision(selectedFinding,'accepted_risk'),'muted',busy||!canFinance('reports','edit'))
+     ),
+      h('div',{className:'flex justify-end'},button('إغلاق التفاصيل',()=>setAccountReviewSelectedFinding(''),'muted'))
      )
     ):null,
-    h('p',{className:'text-xs text-slate-500'},'عند اختيار «تمت المعالجة» تُغلق متابعة الملاحظة فقط؛ يظل القيد الأصلي كما هو. التصحيح المحاسبي يتم من شاشة القيد المعتادة ثم يعاد فحص الفترة. «مقبولة مع توثيق» لا تعني أن البرنامج اعتبر المخالفة خطأً أو عدّل البيانات.')
+    h('p',{className:'text-xs text-slate-500'},'عند اختيار «تمت المعالجة»/ تُغلق متابعة الملاحظة فقط؛ يظل القيد الأصلي كما هو. التصحيح المحاسبي يتم من شاشة القيد المعتادة ثم يعاد فحص الفترة. «مقبولة مع توثيق» لا تعني أن البرنامج اعتبر المخالفة خطأً أو عدّل البيانات.')
    )),
    h('div',{className:'grid grid-cols-1 md:grid-cols-4 gap-2 items-end'},
     field('من شهر',period.from,value=>setPeriod(old=>Object.assign({},old,{from:value})),'month'),
