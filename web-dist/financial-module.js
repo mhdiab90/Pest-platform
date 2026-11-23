@@ -1485,6 +1485,10 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
   const lines=Array.isArray(draft.lines)?draft.lines:[];
   const debit=lines.reduce((sum,line)=>sum+n(line.debit),0),credit=lines.reduce((sum,line)=>sum+n(line.credit),0),difference=debit-credit;
   const editLine=(index,key,value)=>updateJournalModalLine(index,key,value);
+  const headerField=(label,value,onChange,type)=>h("label",{className:"block min-w-0 text-[11px] font-semibold leading-tight text-slate-600"},
+   h("span",{className:"block truncate"},label),
+   h("input",{type:type||"text",value:value==null?"":value,onChange:event=>onChange(event.target.value),disabled:!editable,step:"any",className:"mt-0.5 h-8 w-full min-w-0 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-normal text-slate-800 focus:border-blue-500 focus:outline-none"})
+  );
   const lineCards=lines.map((line,index)=>{
    const account=posting.find(item=>String(item.code)===String(line.accountCode)),analyticType=account&&account.subledgerType||line.partyType||"",analyticOptions=analyticType?analyticPartyOptions(analyticType,line.accountCode,line.partyId):[];
    return h("div",{key:index,className:"grid grid-cols-1 md:grid-cols-12 gap-2 rounded-xl border bg-slate-50 p-3"},
@@ -1510,13 +1514,13 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
      h("div",null,h("h3",{className:"font-extrabold text-xl"},"تعديل قيد المراجعة: "+(draft.number||draft.id)),h("p",{className:"text-xs text-slate-500 mt-1"},"يمكن تعديل الحساب والبيان والمدين والدائن ومركز التكلفة والطرف وإضافة أو حذف سطور.")),
      button("إغلاق",()=>{setJournalModal(null);setJournalModalDraft(null);},"muted",busy)
     ),
-    panel("بيانات رأس القيد","يمكن تعديل التاريخ والمرجع والبيان وأرقام الشيك والفاتورة والمستند قبل اعتماد القيد.",h("div",{className:"grid grid-cols-1 md:grid-cols-3 gap-3"},
-     field("تاريخ القيد",draft.date||"",value=>setJournalModalDraft(old=>Object.assign({},old,{date:value})),"date",editable?undefined:{disabled:true}),
-     field("المرجع",draft.reference||"",value=>setJournalModalDraft(old=>Object.assign({},old,{reference:value})),undefined,editable?undefined:{disabled:true}),
-     field("رقم الشيك",draft.checkNumber||"",value=>setJournalModalDraft(old=>Object.assign({},old,{checkNumber:value})),undefined,editable?undefined:{disabled:true}),
-     field("رقم الفاتورة",draft.invoiceNumber||"",value=>setJournalModalDraft(old=>Object.assign({},old,{invoiceNumber:value})),undefined,editable?undefined:{disabled:true}),
-     field("رقم المستند",draft.documentNumber||"",value=>setJournalModalDraft(old=>Object.assign({},old,{documentNumber:value})),undefined,editable?undefined:{disabled:true}),
-     h("div",{className:"md:col-span-3"},field("بيان القيد",draft.description||"",value=>setJournalModalDraft(old=>Object.assign({},old,{description:value})),undefined,editable?undefined:{disabled:true}))
+    panel("بيانات رأس القيد","يمكن تعديل التاريخ والمرجع وأرقام الشيك والفاتورة والمستند والبيان قبل الاعتماد.",h("div",{className:"grid grid-cols-3 gap-x-2 gap-y-1.5 min-w-0"},
+     headerField("تاريخ القيد",draft.date||"",value=>setJournalModalDraft(old=>Object.assign({},old,{date:value})),"date"),
+     headerField("المرجع",draft.reference||"",value=>setJournalModalDraft(old=>Object.assign({},old,{reference:value}))),
+     headerField("رقم الشيك",draft.checkNumber||"",value=>setJournalModalDraft(old=>Object.assign({},old,{checkNumber:value}))),
+     headerField("رقم الفاتورة",draft.invoiceNumber||"",value=>setJournalModalDraft(old=>Object.assign({},old,{invoiceNumber:value}))),
+     headerField("رقم المستند",draft.documentNumber||"",value=>setJournalModalDraft(old=>Object.assign({},old,{documentNumber:value}))),
+     headerField("بيان القيد",draft.description||"",value=>setJournalModalDraft(old=>Object.assign({},old,{description:value})))
     )),
     h("div",{className:"flex flex-wrap gap-2 text-xs"},
      h("span",{className:"rounded-full bg-slate-100 px-3 py-1"},"المصدر: "+(draft.sourceType||"manual")),
@@ -4171,5 +4175,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261123-journal-header-reference-fields-v1";
+ window.PEST_FINANCE_MODULE_VERSION="20261123-journal-header-two-row-v1";
 })();
