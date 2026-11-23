@@ -202,6 +202,7 @@ test("journal attachments load in review, support multiple new files, and preser
   assert.match(source, /journalAttachmentUploadControl\(selected\)/);
   assert.match(source, /journalAttachmentUploadControl\(draft\)/);
   assert.match(source, /journalAttachmentUploadControl\(statementJournal\)/);
+  assert.match(source, /const combined=\[\.\.\.\(found\.get\(key\)\|\|\[\]\),\.\.\.\(Array\.isArray\(previous\[key\]\)\?previous\[key\]:\[\]\)\]/);
 });
 
 test("daily journal rows show green posted and red cancelled status badges", () => {
