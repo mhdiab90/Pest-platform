@@ -565,14 +565,15 @@ function FinanceModule(props){
    setError('الفاتورة ما زالت موجودة في قائمة المراجعة، لكن تعذر رفع المرفق: '+message);
   }finally{setBusy(false);}
  };
- const refresh=async()=>{
+ const refresh=async(options)=>{
+  const initialOnly=Boolean(options&&options.initialOnly);
   setBusy(true);setError('');
   try{
    const b=await api('?resource=bootstrap');
    const [r,d,j]=await Promise.all([
-    canFinance('review','view')?api('?resource=review'):Promise.resolve({items:{}}),
-    ['invoices','journal','cash','bank'].some(area=>canFinance(area,'view'))?api('?resource=documents'):Promise.resolve({items:{}}),
-    canFinance('journal','view')?api('?resource=journals'):Promise.resolve({items:{}})
+    !initialOnly&&canFinance('review','view')?api('?resource=review'):Promise.resolve({items:{}}),
+    !initialOnly&&['invoices','journal','cash','bank'].some(area=>canFinance(area,'view'))?api('?resource=documents'):Promise.resolve({items:{}}),
+    !initialOnly&&canFinance('journal','view')?api('?resource=journals'):Promise.resolve({items:{}})
    ]);
    setMaster(previous=>Object.assign({chartOfAccounts:{},costCenters:{},items:{},itemGroups:{},warehouses:{},bankAccounts:{},taxCodes:{},parties:{},settings:{},inventory:{balances:{},movements:{}}},previous,b,{inventory:Object.assign({},previous.inventory||{},{balances:previous.inventory&&previous.inventory.balances||{},movements:previous.inventory&&previous.inventory.movements||{}})}));
    const partyRows=rows(b.parties||{});
@@ -581,9 +582,11 @@ function FinanceModule(props){
    const configuredStartMonth=b.settings&&b.settings.accountingStartMonth||'';
    setAccountingStartMonth(configuredStartMonth);
    setOpeningBalanceDate(previous=>previous||openingBalanceDefaultDate(configuredStartMonth));
-   setReview(rows(r.items).filter(item=>['pending_review','duplicate_review'].includes(item.status)).sort((a,b)=>n(b.createdAt)-n(a.createdAt)));
-   setDocuments(rows(d.items).sort((a,b)=>n(b.createdAt)-n(a.createdAt)));
-   setJournalRecords(rows(j.items).sort((a,b)=>n(b.postedAt||b.createdAt)-n(a.postedAt||a.createdAt)));
+   if(!initialOnly){
+    setReview(rows(r.items).filter(item=>['pending_review','duplicate_review'].includes(item.status)).sort((a,b)=>n(b.createdAt)-n(a.createdAt)));
+    setDocuments(rows(d.items).sort((a,b)=>n(b.createdAt)-n(a.createdAt)));
+    setJournalRecords(rows(j.items).sort((a,b)=>n(b.postedAt||b.createdAt)-n(a.postedAt||a.createdAt)));
+   }
    if((tab==='inventory'||tab==='inventoryMovements'||(tab==='reports'&&report==='balance'))&&canFinance('inventory','view'))await loadInventoryMovements();
   }catch(e){setError(e.message||String(e));}
   finally{setBusy(false);}
@@ -808,7 +811,7 @@ function FinanceModule(props){
   catch(e){setError(e.message||String(e));}
   finally{setBusy(false);}
  };
- React.useEffect(()=>{refresh();if(db){Promise.all([db.ref('clients').once('value'),db.ref('vendors').once('value'),db.ref('projects').once('value')]).then(a=>{setClients(rows(a[0].val()));setVendors(rows(a[1].val()));setProjects(rows(a[2].val()));}).catch(e=>console.warn(e));}},[]);
+ React.useEffect(()=>{void refresh({initialOnly:true});if(db){Promise.all([db.ref('clients').once('value'),db.ref('vendors').once('value'),db.ref('projects').once('value')]).then(a=>{setClients(rows(a[0].val()));setVendors(rows(a[1].val()));setProjects(rows(a[2].val()));}).catch(e=>console.warn(e));}},[]);
  React.useEffect(()=>{
   if(tab!=='review'||!canFinance("review","view"))return;
   let active=true,loading=false;
@@ -825,10 +828,21 @@ function FinanceModule(props){
    finally{loading=false;}
   };
   void sync();
-  const timer=window.setInterval(sync,15000);
+  const timer=window.setInterval(sync,60000);
   const onVisibility=()=>{if(document.visibilityState==='visible')void sync();};
   document.addEventListener('visibilitychange',onVisibility);
   return()=>{active=false;window.clearInterval(timer);document.removeEventListener('visibilitychange',onVisibility);};
+ },[tab,currentUser&&currentUser.uid]);
+ React.useEffect(()=>{
+  if(tab!=='journal'||!canFinance('journal','view'))return;
+  let active=true;
+  setBusy(true);setError('');
+  Promise.all([api('?resource=documents'),api('?resource=journals')]).then(([documentResult,journalResult])=>{
+   if(!active)return;
+   setDocuments(rows(documentResult.items).sort((a,b)=>n(b.createdAt)-n(a.createdAt)));
+   setJournalRecords(rows(journalResult.items).sort((a,b)=>n(b.postedAt||b.createdAt)-n(a.postedAt||a.createdAt)));
+  }).catch(error=>{if(active)setError(error.message||String(error));}).finally(()=>{if(active)setBusy(false);});
+  return()=>{active=false;};
  },[tab,currentUser&&currentUser.uid]);
  React.useEffect(()=>{if(['overview','reports','accountAnalysis','partyStatements','tax','centers'].includes(tab)&&canFinance(financeTabAreas[tab],"view"))loadPeriod();},[tab,period.from,period.to,currentUser&&currentUser.uid]);
  const loadParty=async()=>{
