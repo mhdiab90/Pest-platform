@@ -1086,10 +1086,380 @@ function FinanceModuleSlot(props){
   return <FinanceModule {...props}/>;
 }
 
+
+function installPestSpreadsheetGrid(root){
+  if(!root||!root.querySelectorAll||typeof MutationObserver==="undefined")return ()=>{};
+  const arabic=()=>{try{return localStorage.getItem("pestLang")!=="en";}catch(_){return true;}};
+  const words=()=>arabic()?{
+    search:"بحث شامل",searchPlaceholder:"ابحث في كل بيانات الجدول...",column:"العمود",condition:"الشرط",value:"القيمة",addFilter:"إضافة فلتر",
+    contains:"يحتوي على",notContains:"لا يحتوي على",equals:"يساوي",notEquals:"لا يساوي",starts:"يبدأ بـ",ends:"ينتهي بـ",
+    greater:"أكبر من",less:"أقل من",empty:"فارغ",notEmpty:"غير فارغ",clearFilters:"مسح الفلاتر",
+    columns:"الأعمدة الظاهرة",selectAll:"تحديد الظاهر",clearSelection:"إلغاء التحديد",selected:"محدد",
+    copy:"نسخ المحدد",download:"تنزيل المحدد CSV",pageSize:"عدد الصفوف",previous:"السابق",next:"التالي",
+    rows:"صف",of:"من",noRows:"لا توجد بيانات مطابقة",sortHint:"اضغط عنوان العمود للترتيب تصاعديًا أو تنازليًا",
+    selectRow:"تحديد الصف"
+  }:{
+    search:"Search all",searchPlaceholder:"Search all table data...",column:"Column",condition:"Condition",value:"Value",addFilter:"Add filter",
+    contains:"Contains",notContains:"Does not contain",equals:"Equals",notEquals:"Does not equal",starts:"Starts with",ends:"Ends with",
+    greater:"Greater than",less:"Less than",empty:"Is empty",notEmpty:"Is not empty",clearFilters:"Clear filters",
+    columns:"Visible columns",selectAll:"Select visible",clearSelection:"Clear selection",selected:"selected",
+    copy:"Copy selected",download:"Download selected CSV",pageSize:"Rows per page",previous:"Previous",next:"Next",
+    rows:"rows",of:"of",noRows:"No matching data",sortHint:"Click a column heading to sort ascending or descending",
+    selectRow:"Select row"
+  };
+  const el=(tag,className,text)=>{const node=document.createElement(tag);if(className)node.className=className;if(text!==undefined)node.textContent=text;return node;};
+  const clean=value=>String(value==null?"":value).replace(/\s+/g," ").trim();
+  const cellText=cell=>{
+    if(!cell)return "";
+    const clone=cell.cloneNode(true);
+    clone.querySelectorAll(".pest-grid-sort-icon,[data-pest-grid-select-cell],input,button[aria-label='select-row']").forEach(node=>node.remove());
+    const text=clean(clone.innerText||clone.textContent||"");
+    const extras=Array.from(cell.querySelectorAll("[aria-label],[title],img[alt]"))
+      .map(node=>clean(node.getAttribute("aria-label")||node.getAttribute("title")||node.getAttribute("alt")||""))
+      .filter(Boolean);
+    return clean([text,...extras].join(" "));
+  };
+  const parseNumber=value=>{
+    let text=String(value==null?"":value).trim()
+      .replace(/[٠-٩]/g,d=>String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
+      .replace(/[۰-۹]/g,d=>String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
+      .replace(/[٬،]/g,",").replace(/[,٬\s]/g,"")
+      .replace(/[^\d.+-]/g,"");
+    if(!text||!/[0-9]/.test(text))return null;
+    const number=Number(text);
+    return Number.isFinite(number)?number:null;
+  };
+  const comparable=value=>{
+    const text=clean(value);
+    if(!text)return {kind:"empty",value:""};
+    if(/^\d{4}-\d{2}-\d{2}$/.test(text))return {kind:"date",value:Date.parse(text+"T00:00:00Z")};
+    const number=parseNumber(text);
+    if(number!==null)return {kind:"number",value:number};
+    return {kind:"text",value:text.toLocaleLowerCase()};
+  };
+  const compare=(left,right)=>{
+    const a=comparable(left),b=comparable(right);
+    if(a.kind!=="text"&&b.kind!=="text"&&a.kind===b.kind)return a.value-b.value;
+    if(a.kind==="empty"||b.kind==="empty")return a.kind==="empty"?(b.kind==="empty"?0:-1):1;
+    return String(left).localeCompare(String(right),arabic()?"ar":"en",{numeric:true,sensitivity:"base"});
+  };
+  const hash=value=>{
+    let result=2166136261;const text=String(value||"");
+    for(let i=0;i<text.length;i++){result^=text.charCodeAt(i);result=Math.imul(result,16777619);}
+    return (result>>>0).toString(36);
+  };
+  const tableHeaders=table=>{
+    const row=table.tHead&&table.tHead.rows&&table.tHead.rows[0];
+    if(!row)return [];
+    return Array.from(row.cells).filter(cell=>!cell.hasAttribute("data-pest-grid-select-head")).map((cell,index)=>{
+      if(!cell.dataset.pestGridColumnLabel)cell.dataset.pestGridColumnLabel=clean(cellText(cell));
+      return cell.dataset.pestGridColumnLabel||((arabic()?"عمود ":"Column ")+(index+1));
+    });
+  };
+  const allRows=table=>table.tBodies&&table.tBodies.length?Array.from(table.tBodies[0].rows):[];
+  const rowCells=row=>Array.from(row.cells||[]).filter(cell=>!cell.hasAttribute("data-pest-grid-select-cell"));
+  const rowTexts=row=>rowCells(row).map(cellText);
+  const signature=table=>{
+    const headers=tableHeaders(table);
+    const rows=allRows(table).map(row=>rowTexts(row).join("\u241f")).sort();
+    return hash(headers.join("\u241e")+"\u241d"+rows.join("\u241e"));
+  };
+  const states=new WeakMap();
+  const button=(label,action,disabled)=>{
+    const node=el("button","pest-grid-button",label);node.type="button";node.disabled=!!disabled;
+    node.addEventListener("click",action);return node;
+  };
+  const labelWrap=(label,control)=>{
+    const box=el("label","pest-grid-control");box.append(el("span","pest-grid-label",label),control);return box;
+  };
+  const selectControl=()=>el("select","pest-grid-select");
+  const buildToolbar=(state,key)=>{
+    const t=words(),bar=state.toolbar;
+    bar.setAttribute("data-pest-grid-toolbar","true");
+    bar.setAttribute("dir",arabic()?"rtl":"ltr");
+    const first=el("div","pest-grid-toolbar-main");
+    const search=el("input","pest-grid-input");search.type="search";search.placeholder=t.searchPlaceholder;search.setAttribute("aria-label",t.search);
+    search.addEventListener("input",()=>{state.search=search.value;state.page=1;apply(state,key);});
+    state.searchInput=search;first.append(labelWrap(t.search,search));
+    const column=selectControl(),operator=selectControl(),value=el("input","pest-grid-input");value.type="text";value.placeholder=t.value;
+    state.filterField=column;state.filterOperator=operator;state.filterValue=value;
+    const operators=[["contains",t.contains],["notContains",t.notContains],["equals",t.equals],["notEquals",t.notEquals],["starts",t.starts],["ends",t.ends],["greater",t.greater],["less",t.less],["empty",t.empty],["notEmpty",t.notEmpty]];
+    operators.forEach(([v,label])=>{const option=el("option","",label);option.value=v;operator.append(option);});
+    operator.addEventListener("change",()=>{value.disabled=["empty","notEmpty"].includes(operator.value);});
+    const add=button(t.addFilter,()=>{
+      const index=Number(column.value),op=operator.value,filterValue=value.value;
+      if(!Number.isInteger(index)||index<0)return;
+      if(!["empty","notEmpty"].includes(op)&&!clean(filterValue))return;
+      state.filters.push({column:index,operator:op,value:filterValue});value.value="";state.page=1;
+      renderFilterChips(state,key);apply(state,key);
+    });
+    first.append(labelWrap(t.column,column),labelWrap(t.condition,operator),labelWrap(t.value,value),add);
+    bar.append(first);
+    const chips=el("div","pest-grid-filter-chips");state.filterChips=chips;bar.append(chips);
+    const second=el("div","pest-grid-toolbar-footer");
+    const selectAll=el("input","");selectAll.type="checkbox";selectAll.setAttribute("aria-label",t.selectAll);
+    selectAll.addEventListener("change",()=>{
+      state.visibleRows.forEach(row=>{const k=row.dataset.pestGridRowKey;if(!k)return;if(selectAll.checked)state.selected.add(k);else state.selected.delete(k);});
+      syncSelection(state);
+    });
+    state.allVisibleCheck=selectAll;
+    const selectLabel=el("label","pest-grid-select-visible");selectLabel.append(selectAll,document.createTextNode(" "+t.selectAll));second.append(selectLabel);
+    const selectInfo=el("span","pest-grid-selection-info","0 "+t.selected);state.selectionInfo=selectInfo;second.append(selectInfo);
+    second.append(button(t.clearSelection,()=>{state.selected.clear();syncSelection(state);}));
+    const copyBtn=button(t.copy,()=>exportSelected(state,"copy"),true);state.copyButton=copyBtn;second.append(copyBtn);
+    const csvBtn=button(t.download,()=>exportSelected(state,"csv"),true);state.csvButton=csvBtn;second.append(csvBtn);
+    const details=el("details","pest-grid-columns"),summary=el("summary","",t.columns),list=el("div","pest-grid-columns-list");
+    details.append(summary,list);state.columnDetails=details;state.columnList=list;second.append(details);
+    const pageSize=selectControl();
+    [[25,"25"],[50,"50"],[100,"100"],[250,"250"],[0,arabic()?"الكل":"All"]].forEach(([v,label])=>{const option=el("option","",label);option.value=String(v);pageSize.append(option);});
+    pageSize.value=String(state.pageSize);pageSize.addEventListener("change",()=>{state.pageSize=Number(pageSize.value);state.page=1;apply(state,key);savePrefs(state,key);});
+    state.pageSizeSelect=pageSize;second.append(labelWrap(t.pageSize,pageSize));
+    const prev=button("‹ "+t.previous,()=>{state.page=Math.max(1,state.page-1);apply(state,key);});
+    const pageInfo=el("span","pest-grid-page-info","");state.pageInfo=pageInfo;
+    const next=button(t.next+" ›",()=>{state.page+=1;apply(state,key);});
+    state.prevButton=prev;state.nextButton=next;second.append(prev,pageInfo,next);
+    second.append(button(t.clearFilters,()=>{state.search="";state.searchInput.value="";state.filters=[];state.sortColumn=-1;state.page=1;renderFilterChips(state,key);apply(state,key);savePrefs(state,key);}));
+    bar.append(second);
+    state.sortLabel=el("div","pest-grid-sort-hint",t.sortHint);bar.append(state.sortLabel);
+    state.toolbarBuilt=true;
+  };
+  const stateFor=(host,table)=>{
+    let state=states.get(host);if(state)return state;
+    const toolbar=el("div","pest-grid-toolbar"),anchor=host.parentNode;
+    if(anchor)anchor.insertBefore(toolbar,host);
+    const headers=tableHeaders(table),title=clean(host.getAttribute("data-pest-export-title")||host.closest("[data-pest-export-title]")?.getAttribute("data-pest-export-title")||"");
+    const nearby=host.parentElement&&host.parentElement.querySelector("h1,h2,h3,summary");
+    const key="pest-grid:"+hash(document.title+"|"+title+"|"+clean(nearby&&nearby.textContent)+"|"+headers.join("|"));
+    let saved={};try{saved=JSON.parse(localStorage.getItem(key)||"{}")||{};}catch(_){}
+    state={host,toolbar,table:null,headers,baseRows:[],visibleRows:[],selected:new Set(),filters:[],search:"",
+      sortColumn:Number.isInteger(saved.sortColumn)?saved.sortColumn:-1,sortDirection:saved.sortDirection==="desc"?"desc":"asc",
+      page:1,pageSize:[25,50,100,250,0].includes(Number(saved.pageSize))?Number(saved.pageSize):25,
+      hiddenColumns:new Set(Array.isArray(saved.hiddenColumns)?saved.hiddenColumns:[]),contentSignature:"",columnSignature:"",
+      headerCheck:null,filterField:null,filterOperator:null,filterValue:null,searchInput:null,filterChips:null,
+      selectionInfo:null,allVisibleCheck:null,pageInfo:null,pageSizeSelect:null,prevButton:null,nextButton:null,
+      columnDetails:null,columnList:null,sortLabel:null,copyButton:null,csvButton:null,prefKey:key,toolbarBuilt:false};
+    states.set(host,state);host.classList.add("pest-grid-enhanced-host");buildToolbar(state,key);return state;
+  };
+  const savePrefs=(state,key)=>{
+    try{localStorage.setItem(key,JSON.stringify({sortColumn:state.sortColumn,sortDirection:state.sortDirection,pageSize:state.pageSize,hiddenColumns:Array.from(state.hiddenColumns)}));}catch(_){}
+  };
+  const renderColumns=(state,key)=>{
+    state.columnList.replaceChildren();
+    state.headers.forEach((header,index)=>{
+      const input=el("input","");input.type="checkbox";input.checked=!state.hiddenColumns.has(index);
+      input.addEventListener("change",()=>{if(input.checked)state.hiddenColumns.delete(index);else state.hiddenColumns.add(index);apply(state,key);savePrefs(state,key);});
+      const label=el("label","pest-grid-column-option");label.append(input,document.createTextNode(" "+header));state.columnList.append(label);
+    });
+  };
+  const renderFilterChips=(state,key)=>{
+    const t=words();state.filterChips.replaceChildren();
+    state.filters.forEach((filter,index)=>{
+      const label=state.headers[filter.column]||t.column,operator=({contains:t.contains,notContains:t.notContains,equals:t.equals,notEquals:t.notEquals,starts:t.starts,ends:t.ends,greater:t.greater,less:t.less,empty:t.empty,notEmpty:t.notEmpty})[filter.operator]||filter.operator;
+      const chip=el("span","pest-grid-filter-chip",label+" · "+operator+(filter.value?" · "+filter.value:""));
+      const remove=el("button","","×");remove.type="button";remove.setAttribute("aria-label",arabic()?"إزالة الفلتر":"Remove filter");
+      remove.addEventListener("click",()=>{state.filters.splice(index,1);renderFilterChips(state,key);state.page=1;apply(state,key);});
+      chip.append(remove);state.filterChips.append(chip);
+    });
+    state.filterField.replaceChildren();
+    state.headers.forEach((header,index)=>{const option=el("option","",header);option.value=String(index);state.filterField.append(option);});
+    if(state.headers.length)state.filterField.value="0";
+    state.columnDetails.querySelector("summary").textContent=t.columns+" ▾";
+    renderColumns(state,key);
+  };
+  const rowKey=(row,index)=>{
+    if(row.dataset.pestGridRowKey)return row.dataset.pestGridRowKey;
+    const explicit=row.getAttribute("data-id")||row.getAttribute("data-key")||row.querySelector("[data-row-id]")?.getAttribute("data-row-id");
+    row.dataset.pestGridRowKey=explicit?"id:"+explicit:"row:"+hash(rowTexts(row).join("|"))+"_"+index;
+    return row.dataset.pestGridRowKey;
+  };
+  const rowCells=row=>Array.from(row.cells||[]).filter(cell=>!cell.hasAttribute("data-pest-grid-select-cell"));
+  const rowTexts=row=>rowCells(row).map(cellText);
+  const ensureSelectionColumn=state=>{
+    const table=state.table;if(!table.tHead||!table.tHead.rows.length)return;
+    const head=table.tHead.rows[0];
+    if(!head.querySelector("th[data-pest-grid-select-head]")){
+      const th=el("th","pest-grid-select-head");th.setAttribute("data-pest-grid-select-head","true");
+      const check=el("input","");check.type="checkbox";check.setAttribute("aria-label",words().selectAll);
+      check.addEventListener("change",()=>{
+        state.visibleRows.forEach(row=>{if(check.checked)state.selected.add(row.dataset.pestGridRowKey);else state.selected.delete(row.dataset.pestGridRowKey);});
+        syncSelection(state);
+      });
+      th.append(check);head.insertBefore(th,head.firstChild);state.headerCheck=check;
+    }else state.headerCheck=head.querySelector("th[data-pest-grid-select-head] input");
+    allRows(table).forEach((row,index)=>{
+      if(row.cells.length===1&&Number(row.cells[0].colSpan||1)>1)return;
+      if(!row.querySelector("[data-pest-grid-select-cell]")){
+        const td=el("td","pest-grid-select-cell");td.setAttribute("data-pest-grid-select-cell","true");
+        const check=el("input","");check.type="checkbox";check.setAttribute("aria-label",words().selectRow);
+        check.addEventListener("change",()=>{
+          const k=row.dataset.pestGridRowKey;if(!k)return;
+          if(check.checked)state.selected.add(k);else state.selected.delete(k);syncSelection(state);
+        });
+        td.append(check);row.insertBefore(td,row.firstChild);
+      }
+      const k=rowKey(row,index),check=row.querySelector("[data-pest-grid-select-cell] input");if(check)check.checked=state.selected.has(k);
+    });
+  };
+  const allRows=table=>table.tBodies&&table.tBodies.length?Array.from(table.tBodies[0].rows):[];
+  const getValue=(row,index)=>cellText(rowCells(row)[index]);
+  const matches=(text,filter)=>{
+    const left=clean(text).toLocaleLowerCase(),right=clean(filter.value).toLocaleLowerCase();
+    switch(filter.operator){
+      case "contains":return left.includes(right);
+      case "notContains":return !left.includes(right);
+      case "equals":return left===right;
+      case "notEquals":return left!==right;
+      case "starts":return left.startsWith(right);
+      case "ends":return left.endsWith(right);
+      case "empty":return !left;
+      case "notEmpty":return Boolean(left);
+      case "greater":return compare(text,filter.value)>0;
+      case "less":return compare(text,filter.value)<0;
+      default:return true;
+    }
+  };
+  const apply=(state,key)=>{
+    if(!state.table||!state.table.tBodies||!state.table.tBodies.length)return;
+    const tbody=state.table.tBodies[0],query=clean(state.search).toLocaleLowerCase();
+    let list=state.baseRows.filter(row=>{
+      const values=rowTexts(row);
+      if(query&&!values.join(" ").toLocaleLowerCase().includes(query))return false;
+      return state.filters.every(filter=>matches(values[filter.column]||"",filter));
+    });
+    if(state.sortColumn>=0){
+      const column=state.sortColumn,direction=state.sortDirection==="asc"?1:-1;
+      list=list.map((row,index)=>({row,index})).sort((a,b)=>direction*compare(getValue(a.row,column),getValue(b.row,column))||a.index-b.index).map(item=>item.row);
+    }
+    const total=list.length,pageSize=state.pageSize||total||1,pages=Math.max(1,Math.ceil(total/pageSize));
+    state.page=Math.min(Math.max(1,state.page),pages);
+    const start=state.pageSize?(state.page-1)*state.pageSize:0,displayed=state.pageSize?list.slice(start,start+state.pageSize):list;
+    const shown=new Set(displayed);state.visibleRows=displayed;
+    state.baseRows.forEach(row=>{row.style.display=shown.has(row)?"":"none";});
+    displayed.forEach(row=>tbody.appendChild(row));
+    const t=words();
+    state.pageInfo.textContent=(total?String(start+1)+"–"+String(Math.min(start+displayed.length,total)):"0")+" "+t.of+" "+total+" "+t.rows+" · "+state.page+" / "+pages;
+    state.prevButton.disabled=state.page<=1;state.nextButton.disabled=state.page>=pages;
+    state.selectionInfo.textContent=state.selected.size+" "+t.selected;
+    state.copyButton.disabled=state.selected.size===0;state.csvButton.disabled=state.selected.size===0;
+    state.allVisibleCheck.checked=displayed.length>0&&displayed.every(row=>state.selected.has(row.dataset.pestGridRowKey));
+    state.allVisibleCheck.indeterminate=displayed.some(row=>state.selected.has(row.dataset.pestGridRowKey))&&!state.allVisibleCheck.checked;
+    if(state.headerCheck){state.headerCheck.checked=displayed.length>0&&displayed.every(row=>state.selected.has(row.dataset.pestGridRowKey));state.headerCheck.indeterminate=displayed.some(row=>state.selected.has(row.dataset.pestGridRowKey))&&!state.headerCheck.checked;}
+    state.headers.forEach((_,index)=>{
+      const hidden=state.hiddenColumns.has(index),header=Array.from(state.table.tHead.rows[0].cells).filter(cell=>!cell.hasAttribute("data-pest-grid-select-head"))[index];
+      if(header)header.style.display=hidden?"none":"";
+      state.baseRows.forEach(row=>{const cell=rowCells(row)[index];if(cell)cell.style.display=hidden?"none":"";});
+    });
+    Array.from(state.table.tHead.rows[0].cells).filter(cell=>!cell.hasAttribute("data-pest-grid-select-head")).forEach((header,index)=>{
+      const icon=header.querySelector(".pest-grid-sort-icon");if(icon)icon.textContent=state.sortColumn===index?(state.sortDirection==="asc"?" ▲":" ▼"):" ↕";
+      header.setAttribute("aria-sort",state.sortColumn===index?(state.sortDirection==="asc"?"ascending":"descending"):"none");
+      header.title=t.sortHint;
+    });
+    savePrefs(state,key);
+  };
+  const syncSelection=state=>{
+    if(!state.table)return;
+    allRows(state.table).forEach(row=>{
+      const check=row.querySelector("[data-pest-grid-select-cell] input");if(check)check.checked=state.selected.has(row.dataset.pestGridRowKey);
+    });
+    const shown=state.visibleRows||[];
+    if(state.allVisibleCheck){state.allVisibleCheck.checked=shown.length>0&&shown.every(row=>state.selected.has(row.dataset.pestGridRowKey));state.allVisibleCheck.indeterminate=shown.some(row=>state.selected.has(row.dataset.pestGridRowKey))&&!state.allVisibleCheck.checked;}
+    if(state.headerCheck){state.headerCheck.checked=shown.length>0&&shown.every(row=>state.selected.has(row.dataset.pestGridRowKey));state.headerCheck.indeterminate=shown.some(row=>state.selected.has(row.dataset.pestGridRowKey))&&!state.headerCheck.checked;}
+    state.selectionInfo.textContent=state.selected.size+" "+words().selected;
+    state.copyButton.disabled=state.selected.size===0;state.csvButton.disabled=state.selected.size===0;
+  };
+  const downloadSelectedText=(text,extension)=>{
+    const title=clean(document.title||"pest-data").replace(/[^\w\u0600-\u06FF-]+/g,"_").slice(0,50)||"pest-data";
+    const blob=new Blob([text],{type:extension==="csv"?"text/csv;charset=utf-8":"text/plain;charset=utf-8"});
+    const url=URL.createObjectURL(blob),anchor=document.createElement("a");anchor.href=url;anchor.download=title+"-selected."+extension;
+    document.body.appendChild(anchor);anchor.click();anchor.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
+  };
+  const exportSelected=(state,mode)=>{
+    if(!state.selected.size)return;
+    const headers=state.headers.filter((_,index)=>!state.hiddenColumns.has(index));
+    const indices=state.headers.map((_,index)=>index).filter(index=>!state.hiddenColumns.has(index));
+    const chosen=state.baseRows.filter(row=>state.selected.has(row.dataset.pestGridRowKey));
+    const values=[headers,...chosen.map(row=>indices.map(index=>getValue(row,index)))];
+    const tsv=values.map(row=>row.map(value=>String(value??"").replace(/\t/g," ").replace(/\r?\n/g," ")).join("\t")).join("\n");
+    const csv="\ufeff"+values.map(row=>row.map(value=>'"'+String(value??"").replace(/"/g,'""')+'"').join(",")).join("\r\n");
+    if(mode==="copy"){
+      if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(tsv).then(()=>{state.copyButton.textContent=arabic()?"تم النسخ":"Copied";setTimeout(()=>{state.copyButton.textContent=words().copy;},1400);}).catch(()=>downloadSelectedText(tsv,"txt"));
+      else downloadSelectedText(tsv,"txt");
+    }else downloadSelectedText(csv,"csv");
+  };
+  const decorate=table=>{
+    if(!table||!table.isConnected||!table.tHead||!table.tHead.rows.length||!table.tBodies||!table.tBodies.length)return;
+    if(table.closest("[data-pest-grid-ignore='true']"))return;
+    const headers=tableHeaders(table);if(headers.length<2)return;
+    const host=table.parentElement;if(!host)return;
+    const state=stateFor(host,table),sig=signature(table),newTable=state.table!==table,newHeaders=headers.join("\u241f")!==state.columnSignature,newData=sig!==state.contentSignature;
+    state.table=table;table.classList.add("pest-grid-enhanced");
+    if(newTable||newHeaders||newData){
+      state.headers=headers;state.columnSignature=headers.join("\u241f");state.baseRows=allRows(table);state.contentSignature=sig;
+      state.baseRows.forEach((row,index)=>rowKey(row,index));
+      if(newHeaders||!state.columnList.childElementCount)renderFilterChips(state,state.prefKey);
+      else if(newTable)renderFilterChips(state,state.prefKey);
+    }
+    const head=table.tHead.rows[0];
+    Array.from(head.cells).filter(cell=>!cell.hasAttribute("data-pest-grid-select-head")).forEach((th,index)=>{
+      th.dataset.pestGridColumn=String(index);
+      if(!th.querySelector(".pest-grid-sort-icon")){const icon=el("span","pest-grid-sort-icon"," ↕");icon.setAttribute("aria-hidden","true");th.append(icon);}
+      if(!th.dataset.pestGridSortBound){
+        th.dataset.pestGridSortBound="1";
+        th.addEventListener("click",event=>{
+          if(event.target.closest("button,input,select,a"))return;
+          const column=Number(th.dataset.pestGridColumn);
+          if(state.sortColumn===column)state.sortDirection=state.sortDirection==="asc"?"desc":"asc";
+          else{state.sortColumn=column;state.sortDirection="asc";}
+          state.page=1;apply(state,state.prefKey);
+        });
+      }
+    });
+    ensureSelectionColumn(state);apply(state,state.prefKey);
+  };
+  const style=el("style");style.id="pest-spreadsheet-grid-style";
+  style.textContent=".pest-grid-toolbar{display:flex;flex-direction:column;gap:8px;padding:10px 12px;margin:0 0 8px;border:1px solid #dbe3ec;border-radius:12px;background:linear-gradient(180deg,#fff,#f8fafc);color:#334155;font:inherit;direction:rtl;min-width:0}"+
+    ".pest-grid-toolbar-main,.pest-grid-toolbar-footer{display:flex;align-items:end;gap:8px;flex-wrap:wrap;min-width:0}"+
+    ".pest-grid-control{display:flex;flex-direction:column;gap:4px;min-width:90px;max-width:230px;flex:1 1 115px;font-size:11px;font-weight:700;color:#64748b}"+
+    ".pest-grid-label{white-space:nowrap}.pest-grid-input,.pest-grid-select{min-width:0;width:100%;height:34px;padding:5px 9px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a;font-size:12px;font-weight:500}"+
+    ".pest-grid-button{min-height:34px;padding:6px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#334155;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap}"+
+    ".pest-grid-button:hover:not(:disabled){background:#eff6ff;border-color:#93c5fd;color:#1d4ed8}.pest-grid-button:disabled{opacity:.4;cursor:not-allowed}"+
+    ".pest-grid-select-visible,.pest-grid-column-option{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:#475569;white-space:nowrap}"+
+    ".pest-grid-selection-info,.pest-grid-page-info,.pest-grid-sort-hint{font-size:11px;font-weight:700;color:#64748b;white-space:nowrap}"+
+    ".pest-grid-filter-chips{display:flex;gap:6px;flex-wrap:wrap}.pest-grid-filter-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;font-size:10px;font-weight:700;max-width:100%;overflow-wrap:anywhere}"+
+    ".pest-grid-filter-chip button{border:0;background:transparent;color:inherit;font-weight:900;cursor:pointer;font-size:14px;line-height:1}"+
+    ".pest-grid-columns{position:relative}.pest-grid-columns summary{cursor:pointer;list-style:none;min-height:34px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#334155;font-size:11px;font-weight:800;white-space:nowrap}"+
+    ".pest-grid-columns-list{position:absolute;z-index:80;inset-inline-end:0;top:calc(100% + 4px);display:grid;grid-template-columns:repeat(2,minmax(100px,1fr));gap:7px;min-width:240px;max-height:260px;overflow:auto;padding:10px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;box-shadow:0 12px 32px #0f172a25}"+
+    ".pest-grid-select-head,.pest-grid-select-cell{width:38px;min-width:38px;max-width:38px;text-align:center;padding:5px!important;vertical-align:middle}"+
+    ".pest-grid-select-head input,.pest-grid-select-cell input,.pest-grid-select-visible input,.pest-grid-column-option input{width:15px;height:15px;accent-color:#2563eb;cursor:pointer}"+
+    ".pest-grid-enhanced thead th{white-space:nowrap;cursor:pointer;position:sticky;top:0;z-index:2;user-select:none}.pest-grid-enhanced thead th.pest-grid-select-head{cursor:default;z-index:3}"+
+    ".pest-grid-sort-icon{display:inline-block;margin-inline-start:5px;font-size:10px;color:#64748b;font-weight:900}.pest-grid-enhanced tbody tr:hover{background-color:#eff6ff}.pest-grid-enhanced tbody tr:nth-child(even){background-color:#f8fafc}"+
+    "@media(max-width:640px){.pest-grid-toolbar{padding:8px;gap:7px}.pest-grid-toolbar-main .pest-grid-control:first-child{flex-basis:100%;max-width:none}.pest-grid-toolbar-main{align-items:stretch}.pest-grid-toolbar-footer{align-items:center}.pest-grid-button{font-size:10px;padding:5px 7px}.pest-grid-page-info{white-space:normal}}";
+  if(!document.getElementById(style.id))document.head.append(style);
+  const initial=()=>root.querySelectorAll("table").forEach(decorate);initial();
+  const observer=new MutationObserver(records=>{
+    const candidates=new Set();
+    records.forEach(record=>{
+      if(record.type==="characterData"){
+        const table=record.target.parentElement&&record.target.parentElement.closest("table");if(table)candidates.add(table);
+      }
+      record.addedNodes&&record.addedNodes.forEach(node=>{
+        if(node.nodeType!==1)return;
+        if(node.matches&&node.matches("table"))candidates.add(node);
+        node.querySelectorAll&&node.querySelectorAll("table").forEach(table=>candidates.add(table));
+        const parentTable=node.closest&&node.closest("table");if(parentTable)candidates.add(parentTable);
+      });
+    });
+    candidates.forEach(decorate);
+  });
+  observer.observe(root,{childList:true,subtree:true,characterData:true});
+  return ()=>{observer.disconnect();const existing=document.getElementById(style.id);if(existing)existing.remove();};
+}
+
 function App(){
   const [lang,setLang] = useState(()=>localStorage.getItem('pestLang') || 'ar');
   const tr = key => words[lang][key] || key;
   const rtl = lang === 'ar';
+  useEffect(()=>installPestSpreadsheetGrid(document.body),[]);
   useEffect(()=>{
     if(window.PEST_NATIVE?.isNative && typeof window.PEST_NATIVE.initializeOtaUpdates==='function'){
       void window.PEST_NATIVE.initializeOtaUpdates();
