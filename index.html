@@ -1298,7 +1298,6 @@ function installPestSpreadsheetGrid(root){
       const k=rowKey(row,index),check=row.querySelector("[data-pest-grid-select-cell] input");if(check)check.checked=state.selected.has(k);
     });
   };
-  const allRows=table=>table.tBodies&&table.tBodies.length?Array.from(table.tBodies[0].rows):[];
   const getValue=(row,index)=>cellText(rowCells(row)[index]);
   const matches=(text,filter)=>{
     const left=clean(text).toLocaleLowerCase(),right=clean(filter.value).toLocaleLowerCase();
