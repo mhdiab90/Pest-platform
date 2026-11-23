@@ -525,12 +525,13 @@ function FinanceModule(props){
    setStatementAttachmentList(null);
   }catch(error){setError(error.message||String(error));}finally{setBusy(false);}
  };
- const canDeleteStatementAttachment=attachment=>{
+ const canDeleteStatementAttachment=(attachment,assignedContext=false)=>{
   if(currentUser&&currentUser.role==="admin")return true;
   const type=String(attachment&&attachment.entityType||"");
   if(type==="financial"){
    const record=[...(documents||[]),...(journalRecords||[]),...(review||[]),...(selected?[selected]:[])].find(item=>item&&String(item.id)===String(attachment.entityId));
    if(attachment.ownerUid&&attachment.ownerUid!==currentUser.uid&&!canFinance("attachments","delete"))return false;
+   if(assignedContext&&canFinance("assignments","edit"))return true;
    if(record&&record.status==="assigned"&&record.assignedTo===currentUser.uid)return canFinance("assignments","edit");
    if(record&&["pending_review","duplicate_review","needs_correction"].includes(record.status)&&canFinance("review","edit"))return true;
    if(record&&record.type==="journal")return canFinance("journal","delete")||canFinance("journal","edit")||canFinance("financial","delete")||canFinance("financial","edit");
@@ -546,9 +547,9 @@ function FinanceModule(props){
   const record=records.find(item=>item&&item.type==="invoice"&&String(item.id)===String(attachment&&attachment.entityId));
   return record&&record.id||"";
  };
- const deleteStatementAttachment=async(attachment,invoiceDocumentId="")=>{
+ const deleteStatementAttachment=async(attachment,invoiceDocumentId="",assignedContext=false)=>{
   if(!attachment||!attachment.id||!attachment.entityType||!attachment.entityId)return false;
-  if(!canDeleteStatementAttachment(attachment)){setError("ليس لديك صلاحية حذف هذا المرفق.");return false;}
+  if(!canDeleteStatementAttachment(attachment,assignedContext)){setError("ليس لديك صلاحية حذف هذا المرفق.");return false;}
   if(!window.confirm("هل تريد حذف المرفق "+String(attachment.fileName||"")+" نهائيًا من النظام وGoogle Drive؟"))return false;
   setBusy(true);setError("");
   const documentId=invoiceDocumentId||(attachment.entityType==="financial"?invoiceDocumentIdForAttachment(attachment):"");
@@ -2409,7 +2410,7 @@ const renderJournal = function() {
   const addLine=button("إضافة بند",()=>setAssignmentLines(old=>old.concat([{description:"",kind:"",itemCode:"",quantity:"",unitPrice:"",discount:"",accountCode:"",incomeAccountCode:"",costCenterId:"",warehouseCode:"default"}])));
   const attachmentRows=Object.values(inv.attachments||{});
   const attachmentsPanel=panel("مرفقات الفاتورة",inv.attachmentUploadStatus==="pending"?"المرفق الأصلي لم يكتمل رفعه: "+(inv.attachmentUploadError||inv.attachmentFileName||"")+" — يمكنك إعادة رفعه من هنا.":"المرفقات الأصلية تنتقل مع الفاتورة بين المستخدمين.",h("div",{className:"space-y-2"},
-   attachmentRows.length?table(["اسم الملف","النوع","الحجم","الإجراء"],attachmentRows.map(attachment=>h("tr",{key:attachment.id,className:"border-t"},h("td",{className:"p-2"},attachment.fileName||"—"),h("td",{className:"p-2"},attachment.mimeType||"—"),h("td",{className:"p-2"},fmt((Number(attachment.size)||0)/1024)+" KB"),h("td",{className:"p-2"},h("div",{className:"flex flex-wrap gap-1"},button("تحميل",()=>downloadFinancialAttachment(selectedAssignment.invoiceId,attachment),"muted"),canDeleteStatementAttachment({entityType:"financial",entityId:selectedAssignment.invoiceId})?button("حذف",()=>void deleteStatementAttachment(Object.assign({},attachment,{entityType:"financial",entityId:selectedAssignment.invoiceId}),selectedAssignment.invoiceId),"danger",assignmentBusy):null))))):h("p",{className:"text-sm text-slate-500"},"لا توجد مرفقات مسجلة على الفاتورة."),
+   attachmentRows.length?table(["اسم الملف","النوع","الحجم","الإجراء"],attachmentRows.map(attachment=>h("tr",{key:attachment.id,className:"border-t"},h("td",{className:"p-2"},attachment.fileName||"—"),h("td",{className:"p-2"},attachment.mimeType||"—"),h("td",{className:"p-2"},fmt((Number(attachment.size)||0)/1024)+" KB"),h("td",{className:"p-2"},h("div",{className:"flex flex-wrap gap-1"},button("تحميل",()=>downloadFinancialAttachment(selectedAssignment.invoiceId,attachment),"muted"),canDeleteStatementAttachment({entityType:"financial",entityId:selectedAssignment.invoiceId},true)?button("حذف",()=>void deleteStatementAttachment(Object.assign({},attachment,{entityType:"financial",entityId:selectedAssignment.invoiceId}),selectedAssignment.invoiceId,true),"danger",assignmentBusy):null))))):h("p",{className:"text-sm text-slate-500"},"لا توجد مرفقات مسجلة على الفاتورة."),
    h("label",{className:"inline-flex flex-col gap-1 rounded-lg border border-dashed p-3 text-sm font-bold cursor-pointer"},"إضافة أو إعادة رفع مرفق",h("input",{type:"file",accept:"image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt",disabled:assignmentBusy,className:"text-xs font-normal",onChange:e=>{const file=e.target.files&&e.target.files[0];if(file)void retryInvoiceAttachment(file,selectedAssignment.invoiceId).then(()=>refreshAssignments());e.target.value="";}}))
   ));
   const errorsPanel=(inv.errors||[]).length?panel("نواقص الفاتورة المطلوب استكمالها","هذه النواقص لا تمنع إعادة التحويل أو إرسال الملف للمراجعة، لكنها تمنع الاعتماد النهائي حتى تصحيحها.",h("ul",{className:"list-disc pr-5 text-sm text-rose-700"},(inv.errors||[]).map((error,index)=>h("li",{key:index},error)))):null;
@@ -2571,7 +2572,28 @@ const renderPartnerCurrent=()=>{
  return h('div',{className:'space-y-4'},
   h('div',{className:'grid md:grid-cols-2 gap-3'},...partnerCurrentAccounts.map(account=>{const balance=(account.entries||[]).reduce((sum,line)=>sum+n(line.credit)-n(line.debit),0);return h('button',{type:'button',onClick:()=>{setPartnerCurrentSelectedUid(account.uid||'');setPartnerCurrentAttachmentView(null);},className:'text-start rounded-xl border p-4 '+(account.uid===partnerCurrentSelectedUid?'border-blue-500 bg-blue-50':'bg-white')},h('div',{className:'flex items-start justify-between gap-2'},h('div',null,h('div',{className:'font-bold'},account.partnerName),h('div',{className:'text-xs text-slate-500 mt-1'},account.accountCode+' — '+account.accountName)),h('span',{className:'text-xs rounded-full px-2 py-1 '+(account.linked&&account.active?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-800')},account.linked?(account.active?'مرتبط بالمستخدم':'المستخدم غير نشط'):'لم يتم العثور على المستخدم')),h('div',{className:'text-2xl font-extrabold mt-3'},fmt(balance)+' ج.م'),h('div',{className:'text-xs text-slate-500 mt-1'},'عدد الحركات: '+(account.transactions||[]).length));})),
   selected?panel('حساب '+selected.partnerName,'الحساب التحليلي '+selected.accountCode+' مرتبط بالمستخدم '+selected.username+'. حركات العهدة التي تم تحويلها تظهر هنا دون تكرار، ويظل ملف المرفقات مربوطًا بنفس سجل الحركة الأصلي.',h('div',{className:'space-y-3'},h('div',{className:'grid grid-cols-2 xl:grid-cols-4 gap-3'},metric('الحساب المحاسبي',selected.accountCode),metric('إجمالي المدين',fmt(totalDebit)+' ج.م'),metric('إجمالي الدائن',fmt(totalCredit)+' ج.م'),metric('الرصيد الدائن / (المدين)',fmt(Math.abs(partnerBalance))+(partnerBalance>=0?' دائن':' مدين')+' ج.م')),h('div',{className:'flex flex-wrap gap-2 items-center'},field('بحث في حركات الجاري',partnerCurrentSearch,setPartnerCurrentSearch),button('تحديث الحسابات',()=>loadPartnerCurrentAccounts(),'muted',busy),currentUser&&currentUser.role==='admin'?button('تصحيح المصروفات السابقة ('+legacyExpenseCorrectionCount+')',()=>repairPartnerCurrentExpenseTransfers(selected),'primary',busy||legacyExpenseCorrectionCount===0):null),legacyExpenseCorrectionCount?h('p',{className:'text-xs text-amber-700'},'يوجد '+legacyExpenseCorrectionCount+' حركة مصروف قديمة محولة إلى الجاري. سيتم إنشاء قيود تصحيح منفصلة للمطابقة فقط، وتبقى بانتظار اعتماد المراجع قبل تغير الأرصدة والقوائم.'):null,h('h4',{className:'font-bold'},'حركات العهدة المحولة إلى الجاري'),table(['التاريخ','الاتجاه','البيان','المرجع','المبلغ','المشروع','رقم قيد التحويل','الإجراءات'],movementRows),movements.length?null:h('p',{className:'text-sm text-slate-500 p-3 text-center'},'لا توجد حركات محولة إلى جاري هذا الشريك.'),h('h4',{className:'font-bold pt-3'},'كشف الحساب المحاسبي التفصيلي'),table(['التاريخ','رقم القيد','البيان','المرجع','مدين','دائن','الرصيد'],statementRows),h('div',{className:'text-sm font-bold text-slate-800'},'الرصيد الختامي: '+fmt(Math.abs(running))+(running>=0?' دائن':' مدين')+' ج.م'))):panel('جاري الشركاء','اختر حساب أحد الشريكين لعرض حركاته وكشف حسابه.',h('p',{className:'text-sm text-slate-500'},partnerCurrentAccounts.length?'لا يوجد مستخدم مرتبط بالحسابات حتى الآن. تحقق من اسم المستخدم في إدارة المستخدمين.':'تعذر العثور على حسابات الجاري. حدّث الشاشة بعد تهيئة دليل الحسابات.')),
-  partnerCurrentAttachmentView?panel('مرفقات الحركة الأصلية','المرفقات باقية على سجل العهدة نفسه ولم يتم نقل الملفات أو إنشاء نسخ منها.',h('div',{className:'space-y-2'},h('div',{className:'text-sm font-bold'},partnerCurrentAttachmentView.transaction.description||partnerCurrentAttachmentView.transaction.id),partnerCurrentAttachmentView.attachments.length?table(['اسم الملف','النوع','الحجم','الإجراء'],partnerCurrentAttachmentView.attachments.map(item=>h('tr',{key:item.id,className:'border-t'},h('td',{className:'p-2'},item.fileName||'—'),h('td',{className:'p-2'},item.mimeType||'—'),h('td',{className:'p-2'},fmt((Number(item.size)||0)/1024)+' KB'),h('td',{className:'p-2'},h('div',{className:'flex flex-wrap gap-1'},button('تحميل',()=>downloadPartnerCustodyAttachment({uid:partnerCurrentAttachmentView.ownerUid},partnerCurrentAttachmentView.transaction,item),'muted',busy),canDeleteStatementAttachment({entityType:'cashCustody',entityId:partnerCurrentAttachmentView.ownerUid+'--'+partnerCurrentAttachmentView.transaction.id})?button('حذف',()=>void deleteStatementAttachment(Object.assign({},item,{entityType:'cashCustody',entityId:partnerCurrentAttachmentView.ownerUid+'--'+partnerCurrentAttachmentView.transaction.id}),'') ,'danger',busy):null)))):h('p',{className:'text-sm text-slate-500'},'لا توجد مرفقات مرتبطة بهذه الحركة.'))):null
+  partnerCurrentAttachmentView?panel('مرفقات الحركة الأصلية','المرفقات باقية على سجل العهدة نفسه ولم يتم نقل الملفات أو إنشاء نسخ منها.',
+   h('div',{className:'space-y-2'},
+    h('div',{className:'text-sm font-bold'},partnerCurrentAttachmentView.transaction.description||partnerCurrentAttachmentView.transaction.id),
+    partnerCurrentAttachmentView.attachments.length
+     ?table(['اسم الملف','النوع','الحجم','الإجراء'],partnerCurrentAttachmentView.attachments.map(item=>{
+       const entityId=partnerCurrentAttachmentView.ownerUid+'--'+partnerCurrentAttachmentView.transaction.id;
+       const reference=Object.assign({},item,{entityType:'cashCustody',entityId});
+       return h('tr',{key:item.id,className:'border-t'},
+        h('td',{className:'p-2'},item.fileName||'—'),
+        h('td',{className:'p-2'},item.mimeType||'—'),
+        h('td',{className:'p-2'},fmt((Number(item.size)||0)/1024)+' KB'),
+        h('td',{className:'p-2'},
+         h('div',{className:'flex flex-wrap gap-1'},
+          button('تحميل',()=>downloadPartnerCustodyAttachment({uid:partnerCurrentAttachmentView.ownerUid},partnerCurrentAttachmentView.transaction,item),'muted',busy),
+          canDeleteStatementAttachment(reference)?button('حذف',()=>void deleteStatementAttachment(reference),'danger',busy):null
+         )
+        )
+       );
+      }))
+     :h('p',{className:'text-sm text-slate-500'},'لا توجد مرفقات مرتبطة بهذه الحركة.')
+   )
+  ):null
  );
 };
 const renderCostCenterAnalysis = function() {
