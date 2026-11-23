@@ -50,3 +50,21 @@ test("spreadsheet controls refresh their labels and direction when the app langu
   assert.match(app, /useEffect\(\(\)=>\{if\(window\.PEST_REFRESH_SPREADSHEET_GRID_LANGUAGE\)window\.PEST_REFRESH_SPREADSHEET_GRID_LANGUAGE\(\);\},\[lang\]\)/);
   assert.match(app, /bar\.setAttribute\("dir"/);
 });
+
+
+test("spreadsheet grid batches DOM observation and ignores its own row and control mutations", () => {
+  assert.match(app, /const pendingTables=new Set\(\)/);
+  assert.match(app, /const scheduleGridRefresh=table=>/);
+  assert.match(app, /const isGridOnlyMutation=\(record,table\)=>/);
+  assert.match(app, /state\.baseRows\.includes\(node\)/);
+  assert.match(app, /if\(!newTable&&!newHeaders&&!newData\)return/);
+  assert.doesNotMatch(app, /activeStates\.forEach\(state=>\{if\(!state\.host\.isConnected\)activeStates\.delete\(state\);\}\);/);
+});
+
+test("financial workspace loads review and journal lists only when their sections are opened", () => {
+  assert.match(finance, /const initialOnly=Boolean\(options&&options\.initialOnly\)/);
+  assert.match(finance, /refresh\(\{initialOnly:true\}\)/);
+  assert.match(finance, /if\(tab!=='journal'\|\|!canFinance\('journal','view'\)\)return/);
+  assert.match(finance, /Promise\.all\(\[api\('\?resource=documents'\),api\('\?resource=journals'\)\]\)/);
+  assert.match(finance, /window\.setInterval\(sync,60000\)/);
+});
