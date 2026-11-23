@@ -191,6 +191,19 @@ test("searchable financial dropdowns close when clicking outside their picker", 
   assert.match(source, /data-finance-picker-root':'true'/);
 });
 
+test("journal review editors expose and save check, invoice and document numbers in the header", () => {
+  assert.match(source, /checkNumber:doc\.checkNumber\|\|""/);
+  assert.match(source, /invoiceNumber:doc\.invoiceNumber\|\|""/);
+  assert.match(source, /documentNumber:doc\.documentNumber\|\|""/);
+  assert.match(source, /field\("رقم الشيك",draft\.checkNumber\|\|""/);
+  assert.match(source, /field\("رقم الفاتورة",draft\.invoiceNumber\|\|""/);
+  assert.match(source, /field\("رقم المستند",draft\.documentNumber\|\|""/);
+  assert.match(source, /checkNumber:draft\.checkNumber\|\|""/);
+  assert.match(source, /invoiceNumber:draft\.invoiceNumber\|\|""/);
+  assert.match(source, /documentNumber:draft\.documentNumber\|\|""/);
+  assert.match(source, /reviewDetailItem\(t\('رقم الشيك','Check Number'\),selected\.checkNumber\|\|'—'\)/);
+});
+
 test("journal attachments load in review, support multiple new files, and preserve existing files", () => {
   assert.match(source, /tab==='review'&&selected&&selected\.type==='journal'\)void loadStatementAttachments\(\[selected\]\)/);
   assert.match(source, /const appendStatementAttachment=\(entityId,rawAttachment\)=>/);

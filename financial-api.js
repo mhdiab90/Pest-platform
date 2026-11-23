@@ -166,7 +166,7 @@ function journalUpdates(j){
  if(!j.type)j.type="journal";
  if(!j.number)j.number=journalNumberFor(j.date,j.id);
  const u={},m=month(j.date);u["journals/"+j.id]=j;u["periods/"+m+"/entries/"+j.id]=j;
- (j.lines||[]).forEach((l,i)=>{const row={journalId:j.id,journalNumber:j.number,lineNo:i+1,date:j.date,description:l.description||j.description||"",accountCode:l.accountCode,debit:Number(l.debit||0),credit:Number(l.credit||0),currency:l.currency||j.currency||"EGP",costCenterId:l.costCenterId||"",projectCode:l.projectCode||"",partyType:l.partyType||"",partyId:l.partyId||"",sourceType:j.sourceType||"manual",sourceId:j.sourceId||"",reference:j.reference||"",taxCode:l.taxCode||"",taxType:l.taxType||"",sourceLineNo:l.sourceLineNo||"",sourceAccountCode:l.sourceAccountCode||"",sourceAccountName:l.sourceAccountName||"",sourceAnalyticCode:l.sourceAnalyticCode||"",sourceAnalyticName:l.sourceAnalyticName||"",sourceAdditionalDescription:l.sourceAdditionalDescription||"",sourceEndorsement:l.sourceEndorsement||"",sourceProjectOrChequeRef:l.sourceProjectOrChequeRef||"",sourceInvoiceNumber:l.sourceInvoiceNumber||"",sourceDateOriginal:l.sourceDateOriginal||""};u["ledger/"+l.accountCode+"/"+m+"/"+j.id+"_"+(i+1)]=row;if(l.partyType&&l.partyId)u["partyLedger/"+l.partyType+"/"+l.partyId+"/"+m+"/"+j.id+"_"+(i+1)]=row;if(l.costCenterId)u["costLedger/"+l.costCenterId+"/"+m+"/"+j.id+"_"+(i+1)]=row;});
+ (j.lines||[]).forEach((l,i)=>{const row={journalId:j.id,journalNumber:j.number,lineNo:i+1,date:j.date,description:l.description||j.description||"",accountCode:l.accountCode,debit:Number(l.debit||0),credit:Number(l.credit||0),currency:l.currency||j.currency||"EGP",costCenterId:l.costCenterId||"",projectCode:l.projectCode||"",partyType:l.partyType||"",partyId:l.partyId||"",sourceType:j.sourceType||"manual",sourceId:j.sourceId||"",reference:j.reference||"",checkNumber:j.checkNumber||"",invoiceNumber:j.invoiceNumber||"",documentNumber:j.documentNumber||"",taxCode:l.taxCode||"",taxType:l.taxType||"",sourceLineNo:l.sourceLineNo||"",sourceAccountCode:l.sourceAccountCode||"",sourceAccountName:l.sourceAccountName||"",sourceAnalyticCode:l.sourceAnalyticCode||"",sourceAnalyticName:l.sourceAnalyticName||"",sourceAdditionalDescription:l.sourceAdditionalDescription||"",sourceEndorsement:l.sourceEndorsement||"",sourceProjectOrChequeRef:l.sourceProjectOrChequeRef||"",sourceInvoiceNumber:l.sourceInvoiceNumber||"",sourceDateOriginal:l.sourceDateOriginal||""};u["ledger/"+l.accountCode+"/"+m+"/"+j.id+"_"+(i+1)]=row;if(l.partyType&&l.partyId)u["partyLedger/"+l.partyType+"/"+l.partyId+"/"+m+"/"+j.id+"_"+(i+1)]=row;if(l.costCenterId)u["costLedger/"+l.costCenterId+"/"+m+"/"+j.id+"_"+(i+1)]=row;});
  if(j.sourceType&&j.sourceId)u["sourceLocks/"+j.sourceType+"_"+j.sourceId]={journalId:j.id,postedAt:Number(j.postedAt||j.approvedAt||j.createdAt||Date.now())};return u;
 }
 function journalMaintenanceUpdates(previous,next){
@@ -1493,6 +1493,7 @@ export async function handleFinancialRequest(ctx){
   if(Object.prototype.hasOwnProperty.call(editable,"date"))next.date=date(editable.date);
   if(Object.prototype.hasOwnProperty.call(editable,"description"))next.description=txt(editable.description,500);
   if(Object.prototype.hasOwnProperty.call(editable,"reference"))next.reference=txt(editable.reference,120);
+  for(const key of ["checkNumber","invoiceNumber","documentNumber"])if(Object.prototype.hasOwnProperty.call(editable,key))next[key]=txt(editable[key]||"",120);
   if(Object.prototype.hasOwnProperty.call(editable,"revisionNotes"))next.revisionNotes=txt(editable.revisionNotes,2000);
   next.currency="EGP";
   if(Array.isArray(body.lines)){
@@ -1757,7 +1758,7 @@ export async function handleFinancialRequest(ctx){
     if(previous.status==="posted")throw new Error("القيد مرحّل. استخدم زر «تعديل القيد» لإنشاء إصدار تعديل مستقل يُرسل للمراجعة قبل تحديث الأستاذ.");
     if(previous.sourceType&&previous.sourceType!=="manual")throw new Error("هذا القيد مرتبط بمستند أصلي؛ يجب تعديل المستند المصدر حتى لا تختل أرصدته.");
    }else requireFinanceArea("journal","add");
-   const journalDate=date(body.date),j={id:journalId,number:previous&&previous.number||journalNumberFor(journalDate,journalId),type:"journal",date:journalDate,description:txt(body.description,500),reference:txt(body.reference,120),currency:txt(body.currency||"EGP",3),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:previous&&previous.createdAt||now,createdBy:previous&&previous.createdBy||claims.sub,createdByName:previous&&previous.createdByName||txt(profile.fullName||profile.username||profile.email,120)};
+   const journalDate=date(body.date),j={id:journalId,number:previous&&previous.number||journalNumberFor(journalDate,journalId),type:"journal",date:journalDate,description:txt(body.description,500),reference:txt(body.reference,120),checkNumber:txt(body.checkNumber!==undefined?body.checkNumber:(previous&&previous.checkNumber)||"",120),invoiceNumber:txt(body.invoiceNumber!==undefined?body.invoiceNumber:(previous&&previous.invoiceNumber)||"",120),documentNumber:txt(body.documentNumber!==undefined?body.documentNumber:(previous&&previous.documentNumber)||"",120),currency:txt(body.currency||"EGP",3),lines:Array.isArray(body.lines)?body.lines.slice(0,100):[],createdAt:previous&&previous.createdAt||now,createdBy:previous&&previous.createdBy||claims.sub,createdByName:previous&&previous.createdByName||txt(profile.fullName||profile.username||profile.email,120)};
    if(j.currency!=="EGP")throw new Error("القيود متعددة العملات وأسعار الصرف غير مفعّلة بعد. استخدم الجنيه المصري حتى لا تختلط أرصدة العملات في القوائم.");
    const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{};
    j.lines=normalizeJournalAnalyticLines(j.lines,chart);
@@ -1857,7 +1858,8 @@ export async function handleFinancialRequest(ctx){
     const revision={
      id:revisionId,number:journalNumberFor(revisionDate,revisionId),type:"journal",date:revisionDate,
      description:txt(original.description||("تعديل القيد "+(original.number||original.id)),500),
-     reference:txt(original.reference||original.number||original.id,120),currency:"EGP",
+     reference:txt(original.reference||original.number||original.id,120),
+     checkNumber:txt(original.checkNumber||"",120),invoiceNumber:txt(original.invoiceNumber||"",120),documentNumber:txt(original.documentNumber||"",120),currency:"EGP",
      lines:(original.lines||[]).map(line=>({...line})),
      sourceType:"journalRevision",revisionOf:originalId,revisionOriginalNumber:original.number||originalId,
      revisionNotes:"",revisionRequestedBy:claims.sub,revisionRequestedAt:now,

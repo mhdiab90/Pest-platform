@@ -685,6 +685,38 @@ test("manual journal analytical party follows the selected control account and e
   assert.ok(missing.errors.some(error=>error.includes("الموظف صاحب العهدة")));
 });
 
+test("manual journal header retains check, invoice and document numbers through review and posting", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const submitted=await invoke("POST","",{
+    action:"submitJournal",date:"2026-11-20",description:"Header reference data test",
+    reference:"HDR-REF-01",checkNumber:"CHK-2026-001",invoiceNumber:"INV-2026-002",
+    documentNumber:"DOC-2026-003",
+    lines:[
+      {accountCode:"6100",debit:90,credit:0,description:"Expense"},
+      {accountCode:"1110",debit:0,credit:90,description:"Cash"}
+    ]
+  });
+  assert.equal(submitted.status,"pending_review");
+  assert.equal(read("documents/"+submitted.id+"/checkNumber"),"CHK-2026-001");
+  assert.equal(read("documents/"+submitted.id+"/invoiceNumber"),"INV-2026-002");
+  assert.equal(read("documents/"+submitted.id+"/documentNumber"),"DOC-2026-003");
+  const edited=await invoke("POST","",{action:"updateReviewJournal",id:submitted.id,
+    journal:{checkNumber:"CHK-UPDATED-01",invoiceNumber:"INV-UPDATED-02",documentNumber:"DOC-UPDATED-03"}});
+  assert.equal(edited.status,"pending_review");
+  assert.equal(read("documents/"+submitted.id+"/checkNumber"),"CHK-UPDATED-01");
+  assert.equal(read("documents/"+submitted.id+"/invoiceNumber"),"INV-UPDATED-02");
+  assert.equal(read("documents/"+submitted.id+"/documentNumber"),"DOC-UPDATED-03");
+  const approved=await invoke("POST","",{action:"review",id:submitted.id,decision:"approve",reason:"Header reference data test"});
+  assert.equal(approved.status,"posted");
+  const posted=read("journals/"+submitted.id);
+  assert.equal(posted.checkNumber,"CHK-UPDATED-01");
+  assert.equal(posted.invoiceNumber,"INV-UPDATED-02");
+  assert.equal(posted.documentNumber,"DOC-UPDATED-03");
+  assert.equal(read("ledger/6100/2026-11/"+submitted.id+"_1").checkNumber,"CHK-UPDATED-01");
+  assert.equal(read("ledger/6100/2026-11/"+submitted.id+"_1").invoiceNumber,"INV-UPDATED-02");
+  assert.equal(read("ledger/6100/2026-11/"+submitted.id+"_1").documentNumber,"DOC-UPDATED-03");
+});
+
 test("manual journal receives a unique number and carries it through posting indexes", async () => {
   await invoke("GET","?resource=bootstrap");
   const submitted=await invoke("POST","",{

@@ -431,7 +431,7 @@ function FinanceModule(props){
  const [invoiceDecisionDoc,setInvoiceDecisionDoc]=React.useState(null);
  const [quickAddType,setQuickAddType]=React.useState(''),[quickAddTarget,setQuickAddTarget]=React.useState(null),[quickAddParent,setQuickAddParent]=React.useState(null),[quickAddOriginalCode,setQuickAddOriginalCode]=React.useState(''),[quickAddForm,setQuickAddForm]=React.useState({code:'',name:'',active:true,type:'expense',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',unit:'قطعة',groupCode:'',groupType:'other',itemType:'stock',version:'',warehouseCode:'default',projectCode:'',taxType:'vat_output',rate:'0',effectiveFrom:today(),partyType:'customer',phone:'',taxNumber:'',email:'',address:''});
  const [masterForm,setMasterForm]=React.useState({kind:'chartOfAccounts',code:'',name:'',type:'asset',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',unit:'قطعة',groupCode:'',groupType:'other',itemType:'stock',version:'',projectCode:'',warehouseCode:'default',taxType:'vat',rate:'0',effectiveFrom:today()});
- const [journal,setJournal]=React.useState({id:'',date:today(),description:'',reference:'',currency:'EGP',lines:[{accountCode:'6100',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''},{accountCode:'1110',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''}]});
+ const [journal,setJournal]=React.useState({id:'',date:today(),description:'',reference:'',checkNumber:'',invoiceNumber:'',documentNumber:'',currency:'EGP',lines:[{accountCode:'6100',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''},{accountCode:'1110',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''}]});
  const [invoice,setInvoice]=React.useState({id:'',type:'purchase',date:today(),number:'',partyId:'',partyName:'',partyTaxNumber:'',currency:'EGP',taxCode:'VAT-IN-14',taxRate:'14',taxAmount:'',discount:'',projectCode:'',lines:[{description:'',kind:'stock',itemCode:'',quantity:'1',unit:'قطعة',unitPrice:'',discount:'',accountCode:'6100',incomeAccountCode:'4100',costCenterId:'',warehouseCode:'default'}]});
  const [invoiceTypeManuallySelected,setInvoiceTypeManuallySelected]=React.useState(false);
  const [invoiceFile,setInvoiceFile]=React.useState(null),[invoicePartySearch,setInvoicePartySearch]=React.useState(''),[cashPartySearch,setCashPartySearch]=React.useState(''),[statementPartySearch,setStatementPartySearch]=React.useState(''),[ocrSuggestions,setOcrSuggestions]=React.useState({party:null,items:[]}),[cash,setCash]=React.useState({movementType:'customer_receipt',date:today(),amount:'',description:'',reference:'',partyType:'customer',partyId:'',partyName:'',employeeUid:'',employeeName:'',cashAccountCode:'1110',bankAccountCode:'1120',offsetAccountCode:'6100',projectCode:'',currency:'EGP'});
@@ -1455,7 +1455,7 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
    return Object.assign({},line,{partyType:line.partyType||account&&account.subledgerType||"",partyId:line.partyId||""});
   });
   setJournalModal(Object.assign({},doc));
-  setJournalModalDraft({id:doc.id,sourceId:doc.sourceId||"",journalId:doc.journalId||"",type:doc.type||"journal",number:doc.number||doc.journalNumber||'',date:doc.date||today(),description:doc.description||"",reference:doc.reference||"",currency:doc.currency||"EGP",sourceType:doc.sourceType||"manual",openingBalance:doc.openingBalance===true,inventoryMovementChange:doc.inventoryMovementChange||null,projectCode:doc.projectCode||"",reversalOf:doc.reversalOf||"",revisionOf:doc.revisionOf||"",revisionNotes:doc.revisionNotes||"",acknowledgeSourceWarnings:Boolean(doc.sourceWarningsAcknowledgedAt),pendingRevisionId:doc.pendingRevisionId||"",revisedByJournalId:doc.revisedByJournalId||"",reversalJournalId:doc.reversalJournalId||"",reversedByJournalId:doc.reversedByJournalId||"",status:doc.status||"posted",lines:normalizedLines});
+  setJournalModalDraft({id:doc.id,sourceId:doc.sourceId||"",journalId:doc.journalId||"",type:doc.type||"journal",number:doc.number||doc.journalNumber||'',date:doc.date||today(),description:doc.description||"",reference:doc.reference||"",checkNumber:doc.checkNumber||"",invoiceNumber:doc.invoiceNumber||"",documentNumber:doc.documentNumber||"",currency:doc.currency||"EGP",sourceType:doc.sourceType||"manual",openingBalance:doc.openingBalance===true,inventoryMovementChange:doc.inventoryMovementChange||null,projectCode:doc.projectCode||"",reversalOf:doc.reversalOf||"",revisionOf:doc.revisionOf||"",revisionNotes:doc.revisionNotes||"",acknowledgeSourceWarnings:Boolean(doc.sourceWarningsAcknowledgedAt),pendingRevisionId:doc.pendingRevisionId||"",revisedByJournalId:doc.revisedByJournalId||"",reversalJournalId:doc.reversalJournalId||"",reversedByJournalId:doc.reversedByJournalId||"",status:doc.status||"posted",lines:normalizedLines});
  };
  const updateJournalModalLine=(index,key,value)=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).map((line,i)=>i===index?Object.assign({},line,{[key]:value}):line)}));
  const updateJournalModalAccount=(index,accountCode)=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).map((line,i)=>{if(i!==index)return line;const currentAccount=posting.find(item=>String(item.code)===String(line.accountCode)),nextAccount=posting.find(item=>String(item.code)===String(accountCode)),currentType=currentAccount&&currentAccount.subledgerType||line.partyType||"",nextType=nextAccount&&nextAccount.subledgerType||"",keepParty=Boolean(nextType&&currentType===nextType&&line.partyId);return Object.assign({},line,{accountCode,partyType:nextType,partyId:keepParty?line.partyId:""});})}));
@@ -1470,7 +1470,7 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
   if(missingAnalytic){setError("السطر "+(missingAnalytic.index+1)+": الحساب "+missingAnalytic.account.code+" — "+missingAnalytic.account.name+" يتطلب اختيار "+analyticPartyLabel(missingAnalytic.account.subledgerType)+". اختر الطرف من قائمة الطرف التحليلي قبل الحفظ.");return;}
   setBusy(true);setError("");
   try{
-   const result=await api("","POST",{action:"updateReviewJournal",id:draft.id,acknowledgeSourceWarnings:draft.acknowledgeSourceWarnings===true,journal:{date:draft.date,description:draft.description,reference:draft.reference,revisionNotes:draft.revisionNotes||""},lines:draft.lines});
+   const result=await api("","POST",{action:"updateReviewJournal",id:draft.id,acknowledgeSourceWarnings:draft.acknowledgeSourceWarnings===true,journal:{date:draft.date,description:draft.description,reference:draft.reference,checkNumber:draft.checkNumber||"",invoiceNumber:draft.invoiceNumber||"",documentNumber:draft.documentNumber||"",revisionNotes:draft.revisionNotes||""},lines:draft.lines});
    setNotice((result.errors||[]).length?"تم حفظ التعديلات وما زالت هناك أخطاء يجب تصحيحها قبل الاعتماد.":"تم حفظ التعديلات وإبقاء القيد في مسار المراجعة دون تغيير الأرصدة.");
    setJournalModal(null);setJournalModalDraft(null);
    if(openedFromReview){await refreshReviewQueue(true);await openReviewItem({id:draft.id});}
@@ -1510,11 +1510,14 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
      h("div",null,h("h3",{className:"font-extrabold text-xl"},"تعديل قيد المراجعة: "+(draft.number||draft.id)),h("p",{className:"text-xs text-slate-500 mt-1"},"يمكن تعديل الحساب والبيان والمدين والدائن ومركز التكلفة والطرف وإضافة أو حذف سطور.")),
      button("إغلاق",()=>{setJournalModal(null);setJournalModalDraft(null);},"muted",busy)
     ),
-    h("div",{className:"grid grid-cols-1 md:grid-cols-3 gap-3"},
-     field("تاريخ القيد",draft.date||"",value=>setJournalModalDraft(old=>Object.assign({},old,{date:value})),"date"),
-     field("المرجع",draft.reference||"",value=>setJournalModalDraft(old=>Object.assign({},old,{reference:value}))),
-     field("بيان القيد",draft.description||"",value=>setJournalModalDraft(old=>Object.assign({},old,{description:value})))
-    ),
+    panel("بيانات رأس القيد","يمكن تعديل التاريخ والمرجع والبيان وأرقام الشيك والفاتورة والمستند قبل اعتماد القيد.",h("div",{className:"grid grid-cols-1 md:grid-cols-3 gap-3"},
+     field("تاريخ القيد",draft.date||"",value=>setJournalModalDraft(old=>Object.assign({},old,{date:value})),"date",editable?undefined:{disabled:true}),
+     field("المرجع",draft.reference||"",value=>setJournalModalDraft(old=>Object.assign({},old,{reference:value})),undefined,editable?undefined:{disabled:true}),
+     field("رقم الشيك",draft.checkNumber||"",value=>setJournalModalDraft(old=>Object.assign({},old,{checkNumber:value})),undefined,editable?undefined:{disabled:true}),
+     field("رقم الفاتورة",draft.invoiceNumber||"",value=>setJournalModalDraft(old=>Object.assign({},old,{invoiceNumber:value})),undefined,editable?undefined:{disabled:true}),
+     field("رقم المستند",draft.documentNumber||"",value=>setJournalModalDraft(old=>Object.assign({},old,{documentNumber:value})),undefined,editable?undefined:{disabled:true}),
+     h("div",{className:"md:col-span-3"},field("بيان القيد",draft.description||"",value=>setJournalModalDraft(old=>Object.assign({},old,{description:value})),undefined,editable?undefined:{disabled:true}))
+    )),
     h("div",{className:"flex flex-wrap gap-2 text-xs"},
      h("span",{className:"rounded-full bg-slate-100 px-3 py-1"},"المصدر: "+(draft.sourceType||"manual")),
      h("span",{className:"rounded-full bg-amber-50 text-amber-800 px-3 py-1"},"الحالة: "+status(draft.status)),
@@ -1672,7 +1675,7 @@ const unpostJournalDocument=async(doc)=>{
   };
 const submitJournal=async()=>{
   if(!canFinance("journal",journal.id?"edit":"add")){setError("ليس لديك صلاحية حفظ أو تعديل القيود اليومية.");return;}
-  setBusy(true);setError('');try{const payload=Object.assign({},journal);const result=await api('', 'POST',Object.assign({action:'submitJournal'},payload));setNotice(result.status==='pending_review'?'تم إرسال القيد إلى المراجعة':'تم حفظ القيد مع أخطاء: '+(result.errors||[]).join('، '));if(result.status==='pending_review')setJournal({id:'',date:today(),description:'',reference:'',currency:'EGP',lines:[{accountCode:'6100',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''},{accountCode:'1110',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''}]});else setJournal(o=>Object.assign({},o,{id:result.id}));await refresh();}catch(e){setError(e.message||String(e));}finally{setBusy(false);}
+  setBusy(true);setError('');try{const payload=Object.assign({},journal);const result=await api('', 'POST',Object.assign({action:'submitJournal'},payload));setNotice(result.status==='pending_review'?'تم إرسال القيد إلى المراجعة':'تم حفظ القيد مع أخطاء: '+(result.errors||[]).join('، '));if(result.status==='pending_review')setJournal({id:'',date:today(),description:'',reference:'',checkNumber:'',invoiceNumber:'',documentNumber:'',currency:'EGP',lines:[{accountCode:'6100',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''},{accountCode:'1110',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''}]});else setJournal(o=>Object.assign({},o,{id:result.id}));await refresh();}catch(e){setError(e.message||String(e));}finally{setBusy(false);}
  };
  const submitInvoice=async()=>{
   if(!canFinance("invoices",invoice.id?"edit":"add")){setError("ليس لديك صلاحية إرسال أو تعديل الفواتير.");return;}
@@ -2080,10 +2083,13 @@ const renderJournal = function() {
   });
   const addLine = button('＋ إضافة سطر جديد',function(){setJournal(function(old){return Object.assign({},old,{lines:old.lines.concat([{accountCode:'6100',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''}])});});});
   const linesPanel = panel('سطور القيد','',h('div',{className:'space-y-2'},...lineCards,addLine));
-  const headerPanel = panel('بيانات القيد','',h('div',{className:'grid grid-cols-1 md:grid-cols-12 gap-x-3 gap-y-2 items-end'},
+  const headerPanel = panel('بيانات رأس القيد','رقم الشيك أو الفاتورة أو المستند بيانات اختيارية بحسب طبيعة العملية.',h('div',{className:'grid grid-cols-1 md:grid-cols-12 gap-x-3 gap-y-2 items-end'},
    h('div',{className:'md:col-span-2'},field('التاريخ',journal.date,function(v){setJournal(function(old){return Object.assign({},old,{date:v});});},'date')),
    h('div',{className:'md:col-span-2'},field('المرجع',journal.reference,function(v){setJournal(function(old){return Object.assign({},old,{reference:v});});})),
-   h('div',{className:'md:col-span-8'},field('البيان',journal.description,function(v){setJournal(function(old){return Object.assign({},old,{description:v});});}))
+   h('div',{className:'md:col-span-2'},field('رقم الشيك',journal.checkNumber||'',function(v){setJournal(function(old){return Object.assign({},old,{checkNumber:v});});})),
+   h('div',{className:'md:col-span-2'},field('رقم الفاتورة',journal.invoiceNumber||'',function(v){setJournal(function(old){return Object.assign({},old,{invoiceNumber:v});});})),
+   h('div',{className:'md:col-span-2'},field('رقم المستند',journal.documentNumber||'',function(v){setJournal(function(old){return Object.assign({},old,{documentNumber:v});});})),
+   h('div',{className:'md:col-span-12'},field('البيان',journal.description,function(v){setJournal(function(old){return Object.assign({},old,{description:v});});}))
   ));
   const totalsPanel = h('div',{className:'flex flex-wrap gap-4 items-center p-3 bg-white border rounded-xl'},
    h('b',null,'المدين: '+fmt(jDebit)),h('b',null,'الدائن: '+fmt(jCredit)),
@@ -2127,11 +2133,14 @@ const renderJournal = function() {
     return h('div',{className:'fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-3',onClick:()=>{setJournalModal(null);setJournalModalDraft(null);}},
      h('div',{className:'w-full max-w-6xl max-h-[92vh] overflow-auto rounded-2xl bg-white p-4 shadow-2xl space-y-3',onClick:e=>e.stopPropagation()},
       h('div',{className:'flex flex-wrap items-center justify-between gap-2'},h('h3',{className:'font-bold text-lg'},'تفاصيل القيد: '+(draft.number||draft.id)),button('إغلاق',()=>{setJournalModal(null);setJournalModalDraft(null);},'muted')),
-      h('div',{className:'grid md:grid-cols-3 gap-2'},
+      panel('بيانات رأس القيد','رقم الشيك والفاتورة والمستند بيانات اختيارية ويمكن تعديلها مع رأس القيد أثناء المراجعة.',h('div',{className:'grid md:grid-cols-3 gap-2'},
        field('التاريخ',draft.date||'',v=>setJournalModalDraft(old=>Object.assign({},old,{date:v})),'date',editable?undefined:{disabled:true}),
        field('المرجع',draft.reference||'',v=>setJournalModalDraft(old=>Object.assign({},old,{reference:v})),undefined,editable?undefined:{disabled:true}),
-       field('البيان',draft.description||'',v=>setJournalModalDraft(old=>Object.assign({},old,{description:v})),undefined,editable?undefined:{disabled:true})
-      ),
+       field('رقم الشيك',draft.checkNumber||'',v=>setJournalModalDraft(old=>Object.assign({},old,{checkNumber:v})),undefined,editable?undefined:{disabled:true}),
+       field('رقم الفاتورة',draft.invoiceNumber||'',v=>setJournalModalDraft(old=>Object.assign({},old,{invoiceNumber:v})),undefined,editable?undefined:{disabled:true}),
+       field('رقم المستند',draft.documentNumber||'',v=>setJournalModalDraft(old=>Object.assign({},old,{documentNumber:v})),undefined,editable?undefined:{disabled:true}),
+       h('div',{className:'md:col-span-3'},field('البيان',draft.description||'',v=>setJournalModalDraft(old=>Object.assign({},old,{description:v})),undefined,editable?undefined:{disabled:true}))
+      )),
       h('div',{className:'flex flex-wrap items-center gap-3 text-sm'},h('b',null,'المصدر: '+journalSourceLabel(draft)),h('b',null,'الحالة: '+status(draft.status)),draft.reversalOf?h('b',null,'قيد عكسي للقيد: '+draft.reversalOf):null,draft.revisionOf?h('b',null,'تعديل للقيد الأصلي: '+draft.revisionOf):null,statementAttachmentAction(draft),journalAttachmentUploadControl(draft)),
       draft.sourceType==='journalRevision'?h('label',{className:'block text-sm font-bold'},'ملاحظات التعديل / سبب إعادة القيد للمراجعة',h('textarea',{value:draft.revisionNotes||'',onChange:e=>setJournalModalDraft(old=>Object.assign({},old,{revisionNotes:e.target.value})),rows:3,disabled:!editable,className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal bg-white'})):null,
       h('div',{className:'space-y-2'},...modalLines,editable?button('إضافة سطر',()=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).concat([{accountCode:'6100',description:'',debit:0,credit:0,costCenterId:'',partyType:'',partyId:''}])})),'muted'):null),
@@ -2567,6 +2576,9 @@ const renderCostCenterAnalysis = function() {
      reviewDetailItem(t('رقم القيد','Journal Entry No.'),selected.id),
      reviewDetailItem(t('تاريخ القيد','Journal Date'),selected.date),
      reviewDetailItem(t('المرجع','Reference'),selected.reference),
+     reviewDetailItem(t('رقم الشيك','Check Number'),selected.checkNumber||'—'),
+     reviewDetailItem(t('رقم الفاتورة','Invoice Number'),selected.invoiceNumber||'—'),
+     reviewDetailItem(t('رقم المستند','Document Number'),selected.documentNumber||'—'),
      reviewDetailItem(t('العملة','Currency'),selected.currency||'EGP'),
      reviewDetailItem(t('مصدر القيد','Journal Source'),selected.sourceType==='legacyImport'?t('استيراد أرشيف القيود','Legacy Journal Import'):selected.sourceType==='cashCustody'?t('عهدة موظف','Employee Custody'):selected.sourceType==='projectEvent'?t('حدث مشروع','Project Event'):t('قيد يدوي','Manual Journal')),
      reviewDetailItem(t('أنشأه','Created By'),selected.createdByName||selected.createdBy),
@@ -4159,5 +4171,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261123-journal-attachments-review-multi-v1";
+ window.PEST_FINANCE_MODULE_VERSION="20261123-journal-header-reference-fields-v1";
 })();
