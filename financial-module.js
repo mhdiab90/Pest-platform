@@ -811,7 +811,7 @@ function FinanceModule(props){
   catch(e){setError(e.message||String(e));}
   finally{setBusy(false);}
  };
- React.useEffect(()=>{void refresh({initialOnly:true});if(db){Promise.all([db.ref('clients').once('value'),db.ref('vendors').once('value'),db.ref('projects').once('value')]).then(a=>{setClients(rows(a[0].val()));setVendors(rows(a[1].val()));setProjects(rows(a[2].val()));}).catch(e=>console.warn(e));}},[]);
+ React.useEffect(()=>{void refresh({initialOnly:true});if(db){db.ref('projects').once('value').then(snapshot=>setProjects(rows(snapshot.val()))).catch(e=>console.warn(e));}},[]);
  React.useEffect(()=>{
   if(tab!=='review'||!canFinance("review","view"))return;
   let active=true,loading=false;
@@ -822,7 +822,10 @@ function FinanceModule(props){
     const result=await api('?resource=review');
     if(!active)return;
     const list=rows(result.items).filter(item=>['pending_review','duplicate_review'].includes(item.status)).sort((a,b)=>n(b.createdAt)-n(a.createdAt));
-    setReview(list);
+    setReview(old=>old.length===list.length&&old.every((item,index)=>{
+     const next=list[index];
+     return next&&item.id===next.id&&item.status===next.status&&item.createdAt===next.createdAt&&item.total===next.total&&item.title===next.title&&item.number===next.number&&item.attachmentUploadStatus===next.attachmentUploadStatus;
+    })?old:list);
     setSelected(old=>old&&!list.some(item=>item.id===old.id)?null:old);
    }catch(error){if(active)setError(error.message||String(error));}
    finally{loading=false;}
