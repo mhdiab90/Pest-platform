@@ -689,6 +689,7 @@ export async function handleFinancialRequest(ctx){
    }
   if(res==="documents"){
    const allowed=["invoices","journal","cash","bank"].filter(area=>hasFinanceArea(area,"view"));
+   if(hasFinanceArea("reports","view"))allowed.push("invoices","journal","cash","bank");
    if(!allowed.length)throw new Error("ليس لديك صلاحية عرض مستندات الوحدة المالية.");
    const source=(await adminRead("documents"))||{},items={};
    Object.entries(source).forEach(([key,document])=>{if(allowed.includes(documentPermissionArea(document)))items[key]=document;});
@@ -698,6 +699,7 @@ export async function handleFinancialRequest(ctx){
   if(res==="tax"){requireFinanceArea("tax","view");return {items:(await adminRead("tax"))||{}};}
   if(res==="audit"){requireFinanceArea("reports","view");return {items:(await adminRead("audit"))||{}};}
   if(res==="bank"){requireFinanceArea("bank","view");return {items:(await adminRead("bankImports"))||{},accounts:(await adminRead("bankAccounts"))||{}};}
+  if(res==="accountReviews"){requireFinanceArea("reports","view");return {items:(await adminRead("accountReviewDecisions"))||{}};}
   if(res==="periods"){if(!hasFinanceArea("reports","view")&&!hasFinanceArea("overview","view")&&!hasFinanceArea("centers","view")&&!hasFinanceArea("tax","view"))throw new Error("ليس لديك صلاحية عرض التقارير المالية.");
    const from=txt(url.searchParams.get("from")||new Date().toISOString().slice(0,7),7),to=txt(url.searchParams.get("to")||from,7);
    if(!/^\d{4}-\d{2}$/.test(from)||!/^\d{4}-\d{2}$/.test(to))throw new Error("Invalid financial period.");
@@ -822,6 +824,21 @@ export async function handleFinancialRequest(ctx){
   throw new Error("Unknown financial data resource.");
  }
  if(request.method!=="POST")throw new Error("Method not allowed.");const action=txt(body.action,80),now=Date.now();
+ if(action==="saveAccountReviewDecision"){
+  requireFinanceArea("reports","edit");
+  const accountCode=id(body.accountCode),period=txt(body.period,7),partyType=txt(body.partyType||"",24),partyId=id(body.partyId||""),decision=txt(body.status,32),notes=txt(body.notes||"",2000);
+  if(!accountCode||!/^\d{4}-\d{2}$/.test(period))throw new Error("حدد الحساب وفترة المراجعة بصورة صحيحة.");
+  if(!["matched","follow_up","requires_adjustment"].includes(decision))throw new Error("قرار المراجعة غير صحيح.");
+  if((partyType&&!partyId)||(!partyType&&partyId)||partyType&&!['vendor','customer'].includes(partyType))throw new Error("بيانات الطرف التحليلي غير مكتملة.");
+  const chart=(await adminRead("chartOfAccounts"))||{};
+  if(!chart[accountCode])throw new Error("الحساب غير موجود في دليل الحسابات.");
+  const key=id("AR_"+period.replace("-","")+"_"+(partyType?partyType+"_"+partyId:"account_"+accountCode));
+  const record={id:key,accountCode,period,partyType,partyId,status:decision,notes,updatedAt:now,updatedBy:claims.sub,updatedByName:txt(profile.fullName||profile.username||profile.email||claims.sub,120)};
+  const updates={};updates["accountReviewDecisions/"+key]=record;
+  updates["audit/"+uid("AUD")]={action:"save_account_review_decision",accountCode,period,partyType,partyId,status:decision,uid:claims.sub,createdAt:now};
+  await adminPatch(updates);
+  return {success:true,item:record};
+ }
  if(action==="repairPartnerCurrentAccountExpenseTransfers"){
   if(profile.role!=="admin")throw new Error("تصحيح تصنيف حركات جاري الشركاء متاح لمدير النظام فقط.");
   if(!adminReadRoot||!adminPatchRoot)throw new Error("خدمة تصحيح القيود الموحدة غير متاحة.");
@@ -1529,11 +1546,17 @@ export async function handleFinancialRequest(ctx){
   }
   const unresolvedSourceWarnings=previous.sourceType==="legacyImport"&&(next.warnings||[]).length>0&&!next.sourceWarningsAcknowledgedAt;
   const remainsLegacyCorrection=previous.sourceType==="legacyImport"&&(validation.errors.length>0||unresolvedSourceWarnings);
-  next.status=remainsLegacyCorrection?"needs_correction":"pending_review";next.updatedAt=now;next.updatedBy=claims.sub;
-  const updates={};updates["documents/"+docId]=next;updates["reviewQueue/"+docId]=next.status==="pending_review"?reviewRecord(next):null;
-  updates["audit/"+uid("AUD")]={action:"update_review_journal",documentId:docId,sourceType:next.sourceType||"manual",lineCountBefore:(previous.lines||[]).length,lineCountAfter:(next.lines||[]).length,errors:next.errors,uid:claims.sub,createdAt:now};
+  const autoPostManualCorrection=previous.status==="needs_correction"&&(!previous.sourceType||previous.sourceType==="manual")&&previous.openingBalance!==true&&!previous.inventoryMovementChange&&validation.errors.length===0;
+  if(autoPostManualCorrection)requireFinanceArea("review","approve");
+  next.status=remainsLegacyCorrection?"needs_correction":autoPostManualCorrection?"posted":"pending_review";
+  next.updatedAt=now;next.updatedBy=claims.sub;
+  if(autoPostManualCorrection){next.approvedAt=now;next.approvedBy=claims.sub;next.postedAt=now;}
+  const updates={};
+  if(autoPostManualCorrection)Object.assign(updates,journalUpdates(next));
+  updates["documents/"+docId]=next;updates["reviewQueue/"+docId]=next.status==="pending_review"?reviewRecord(next):null;
+  updates["audit/"+uid("AUD")]={action:autoPostManualCorrection?"correct_and_post_manual_journal":"update_review_journal",documentId:docId,sourceType:next.sourceType||"manual",lineCountBefore:(previous.lines||[]).length,lineCountAfter:(next.lines||[]).length,errors:next.errors,uid:claims.sub,createdAt:now};
   await adminPatch(updates);
-  return {success:true,id:docId,status:next.status,errors:next.errors,balance:next.balance};
+  return {success:true,id:docId,status:next.status,errors:next.errors,balance:next.balance,posted:autoPostManualCorrection};
  }
  if(action==="submitOpeningBalances"){
   requireFinanceArea("journal","add");
