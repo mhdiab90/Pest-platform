@@ -1332,7 +1332,9 @@ function installPestSpreadsheetGrid(root){
     const start=state.pageSize?(state.page-1)*state.pageSize:0,displayed=state.pageSize?list.slice(start,start+state.pageSize):list;
     const shown=new Set(displayed);state.visibleRows=displayed;
     state.baseRows.forEach(row=>{row.style.display=shown.has(row)?"":"none";});
-    displayed.forEach(row=>tbody.appendChild(row));
+    const desired=displayed.concat(state.baseRows.filter(row=>!shown.has(row)));
+    const current=Array.from(tbody.rows);
+    if(current.length!==desired.length||current.some((row,index)=>row!==desired[index]))desired.forEach(row=>tbody.appendChild(row));
     const t=words();
     state.pageInfo.textContent=(total?String(start+1)+"–"+String(Math.min(start+displayed.length,total)):"0")+" "+t.of+" "+total+" "+t.rows+" · "+state.page+" / "+pages;
     state.prevButton.disabled=state.page<=1;state.nextButton.disabled=state.page>=pages;
@@ -1392,7 +1394,8 @@ function installPestSpreadsheetGrid(root){
     state.table=table;table.classList.add("pest-grid-enhanced");
     if(newTable||newHeaders||newData){
       state.headers=headers;state.columnSignature=headers.join("\u241f");state.baseRows=allRows(table);state.contentSignature=sig;
-      state.baseRows.forEach((row,index)=>rowKey(row,index));
+      const validKeys=new Set(state.baseRows.map((row,index)=>rowKey(row,index)));
+      state.selected.forEach(key=>{if(!validKeys.has(key))state.selected.delete(key);});
       if(newHeaders||!state.columnList.childElementCount)renderFilterChips(state,state.prefKey);
       else if(newTable)renderFilterChips(state,state.prefKey);
     }
