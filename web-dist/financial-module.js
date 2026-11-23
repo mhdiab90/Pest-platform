@@ -544,6 +544,47 @@ function FinanceModule(props){
   const response=await fetch(base+'/attachments/upload',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':file.type||'application/octet-stream','X-Attachment-Entity-Type':'financial','X-Attachment-Entity-Id':entityId,'X-Attachment-File-Name':encodeURIComponent(file.name)},body:file});
   const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||'تعذر حفظ المرفق');return data;
  };
+ const appendStatementAttachment=(entityId,rawAttachment)=>{
+  const id=String(entityId||''),attachment=Object.assign({},rawAttachment||{},{entityType:'financial',entityId:id});
+  if(!id||!attachment.id)return;
+  const key=statementAttachmentKey({entityType:'financial',entityId:id});
+  statementAttachmentCacheRef.current.add(key);
+  setStatementAttachmentIndex(previous=>{
+   const current=Array.isArray(previous[key])?previous[key]:[];
+   const next=current.filter(item=>String(item.id)!==String(attachment.id));
+   next.push(attachment);
+   next.sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+   return Object.assign({},previous,{[key]:next});
+  });
+ };
+ const uploadJournalAttachments=async(files,record)=>{
+  const selectedFiles=Array.from(files||[]).filter(file=>file&&file.name),entityId=String(record&&record.id||'');
+  if(!selectedFiles.length)return;
+  if(!entityId){setError('تعذر تحديد رقم القيد لربط المرفق.');return;}
+  const pending=['pending_review','duplicate_review','needs_correction'].includes(String(record.status||''));
+  const permitted=pending?canFinance('review','edit'):(canFinance('journal','add')||canFinance('journal','edit'));
+  if(!permitted){setError(pending?'إضافة مرفق لقيد المراجعة تتطلب صلاحية تعديل المراجعة.':'إضافة مرفق لقيد مرحّل تتطلب صلاحية إضافة أو تعديل القيود.');return;}
+  setBusy(true);setError('');
+  let uploaded=0;const failures=[];
+  try{
+   for(const file of selectedFiles){
+    try{
+     const result=await upload(file,entityId),attachment=result.attachment||result;
+     if(!attachment.id)throw new Error('لم تُرجع خدمة المرفقات معرّف الملف بعد الرفع.');
+     appendStatementAttachment(entityId,attachment);uploaded++;
+    }catch(error){failures.push((file.name||'ملف')+': '+(error.message||String(error)));}
+   }
+   if(uploaded)setNotice('تم رفع '+uploaded+' مرفق وربطها بالقيد بنجاح. تم الاحتفاظ بكل المرفقات السابقة.');
+   if(failures.length)setError('تعذر رفع بعض المرفقات: '+failures.join(' · '));
+  }finally{setBusy(false);}
+ };
+ const journalAttachmentUploadControl=record=>{
+  if(!record||record.type!=='journal')return null;
+  const pending=['pending_review','duplicate_review','needs_correction'].includes(String(record.status||''));
+  const permitted=pending?canFinance('review','edit'):(canFinance('journal','add')||canFinance('journal','edit'));
+  if(!permitted)return null;
+  return h('label',{className:'inline-flex items-center gap-2 rounded-lg border border-dashed border-blue-300 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-800 cursor-pointer hover:bg-blue-100'},'＋ إضافة مرفق للقيد',h('input',{type:'file',multiple:true,accept:'image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt',disabled:busy,className:'hidden',onChange:event=>{const files=event.target.files;if(files&&files.length)void uploadJournalAttachments(files,record);event.target.value='';}}));
+ };
  const saveInvoiceAttachment=async(file,documentId)=>{
   const uploadResult=await upload(file,documentId),attachment=uploadResult.attachment||uploadResult;
   await api('', 'POST',{action:'addAttachment',documentId,attachment});
@@ -2084,7 +2125,7 @@ const renderJournal = function() {
        field('المرجع',draft.reference||'',v=>setJournalModalDraft(old=>Object.assign({},old,{reference:v})),undefined,editable?undefined:{disabled:true}),
        field('البيان',draft.description||'',v=>setJournalModalDraft(old=>Object.assign({},old,{description:v})),undefined,editable?undefined:{disabled:true})
       ),
-      h('div',{className:'flex flex-wrap items-center gap-3 text-sm'},h('b',null,'المصدر: '+journalSourceLabel(draft)),h('b',null,'الحالة: '+status(draft.status)),draft.reversalOf?h('b',null,'قيد عكسي للقيد: '+draft.reversalOf):null,draft.revisionOf?h('b',null,'تعديل للقيد الأصلي: '+draft.revisionOf):null,statementAttachmentAction(draft)),
+      h('div',{className:'flex flex-wrap items-center gap-3 text-sm'},h('b',null,'المصدر: '+journalSourceLabel(draft)),h('b',null,'الحالة: '+status(draft.status)),draft.reversalOf?h('b',null,'قيد عكسي للقيد: '+draft.reversalOf):null,draft.revisionOf?h('b',null,'تعديل للقيد الأصلي: '+draft.revisionOf):null,statementAttachmentAction(draft),journalAttachmentUploadControl(draft)),
       draft.sourceType==='journalRevision'?h('label',{className:'block text-sm font-bold'},'ملاحظات التعديل / سبب إعادة القيد للمراجعة',h('textarea',{value:draft.revisionNotes||'',onChange:e=>setJournalModalDraft(old=>Object.assign({},old,{revisionNotes:e.target.value})),rows:3,disabled:!editable,className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal bg-white'})):null,
       h('div',{className:'space-y-2'},...modalLines,editable?button('إضافة سطر',()=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).concat([{accountCode:'6100',description:'',debit:0,credit:0,costCenterId:'',partyType:'',partyId:''}])})),'muted'):null),
       h('div',{className:'flex flex-wrap gap-4 rounded-lg border p-3'},h('b',null,'المدين: '+fmt(modalDebit)),h('b',null,'الدائن: '+fmt(modalCredit)),h('b',{className:Math.abs(modalDebit-modalCredit)<0.01?'text-emerald-700':'text-rose-700'},'الفرق: '+fmt(modalDebit-modalCredit))),
@@ -2568,6 +2609,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
    h('p',{className:'text-sm'},t('النوع: ','Type: ')+(selected.type==='invoice'?(selected.invoiceType==='purchase'?t('فاتورة مشتريات','Purchase Invoice'):t('فاتورة مبيعات','Sales Invoice')):documentType(selected.type))+' · '+t('التاريخ: ','Date: ')+(selected.date||'—')+' · '+t('الحالة: ','Status: ')+status(selected.status)),
    h('p',{className:'text-sm font-bold'},t('قيمة القيد / المستند: ','Journal / Document Amount: ')+moneyLabel(selected.total||selected.amount||(selected.type==='journal'?(selected.lines||[]).reduce((sum,line)=>sum+n(line.debit),0):0))),
    selected.type==='journal'?renderReviewJournalDetails():null,
+   selected.type==='journal'?h('div',{className:'flex flex-wrap items-center gap-3 rounded-xl border border-blue-200 bg-blue-50/60 p-3'},h('b',{className:'text-sm'},'مرفقات القيد'),statementAttachmentAction(selected)||h('span',{className:'text-xs text-slate-500'},'لا توجد مرفقات مرتبطة بهذا القيد'),journalAttachmentUploadControl(selected)):null,
     selected.type==='journal'&&canFinance('review','edit')&&['pending_review','needs_correction'].includes(selected.status)?button('تعديل القيد',()=>openJournalModal(selected),'primary',busy):null,
     (selected.reviewReason||'')?h('p',{className:'rounded-lg border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900'},'ملاحظة المراجعة السابقة: '+selected.reviewReason):null,
    (selected.errors||[]).length?h('ul',{className:'list-disc pr-5 text-rose-700'},selected.errors.map((x,i)=>h('li',{key:i},x))):null,
@@ -3167,6 +3209,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
  const statementJournal=statementJournalId?statementJournalMap.get(String(statementJournalId)):null;
   React.useEffect(()=>{if(journalModalDraft)void loadStatementAttachments([journalModalDraft]);},[journalModalDraft&&journalModalDraft.id]);
   React.useEffect(()=>{if(statementJournal)void loadStatementAttachments([statementJournal]);},[statementJournalId]);
+ React.useEffect(()=>{if(tab==='review'&&selected&&selected.type==='journal')void loadStatementAttachments([selected]);},[tab,selected&&selected.type,selected&&selected.id,selected&&selected.sourceId,selected&&selected.journalId]);
  React.useEffect(()=>{if(tab==='journal'&&(journalRecords.length||documents.length))void loadStatementAttachments(journalRecords.concat(documents.filter(document=>document&&document.type==='journal')));},[tab,journalRecords,documents]);
  const statementJournalLines=statementJournal?(statementJournal.lines||[]).map((line,index)=>{
   const account=accounts.find(item=>String(item.code)===String(line.accountCode));
@@ -4109,5 +4152,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261122-inventory-deleted-row-cleanup-v2";
+ window.PEST_FINANCE_MODULE_VERSION="20261123-journal-attachments-review-multi-v1";
 })();
