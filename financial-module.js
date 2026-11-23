@@ -1205,7 +1205,7 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
  const moneyLabel=value=>fmt(value)+(rtl?' ج.م':' EGP');
  const button=(label,fn,kind,disabled)=>h('button',{type:'button',onClick:fn,disabled:!!disabled,className:'rounded-xl px-3 py-2 text-sm font-bold border '+(kind==='primary'?'bg-blue-700 text-white border-blue-700':kind==='success'?'bg-emerald-600 text-white border-emerald-600':kind==='danger'?'bg-rose-50 text-rose-700 border-rose-200':'bg-white text-slate-700 border-slate-200')},label);
  const field=(label,value,onChange,type,extra)=>h('label',{className:'block text-sm font-bold text-slate-700'},label,h('input',Object.assign({type:type||'text',value:value==null?'':value,onChange:e=>onChange(e.target.value),className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal bg-white',step:'any'},extra||{})));
- const select=(label,value,onChange,options)=>searchablePicker(label,value,onChange,options,'finance-select-'+normalizeMatch(label)+'-'+(options||[]).map(item=>String(item.value)).join('_'));
+ const select=(label,value,onChange,options,searchKey)=>searchablePicker(label,value,onChange,options,searchKey||'finance-select-'+normalizeMatch(label)+'-'+(options||[]).map(item=>String(item.value)).join('_'));
  const searchablePicker=(label,value,onChange,options,searchKey)=>{
   const list=Array.isArray(options)?options:[];
   const selected=list.find(item=>String(item.value)===String(value||'')),hasQuery=Object.prototype.hasOwnProperty.call(journalPickerSearch,searchKey);
@@ -1277,7 +1277,7 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
    }});
   }else openQuickAdd('parties',onCreated,defaults);
  };
- const selectWithAdd=(label,value,onChange,options,kind,defaults)=>select(label,value,function(next){if(next==='__quick_add__'){openQuickAdd(kind,onChange,defaults);}else onChange(next);},(options||[]).concat([{value:'__quick_add__',label:'＋ إضافة كود جديد'}]));
+ const selectWithAdd=(label,value,onChange,options,kind,defaults,searchKey)=>select(label,value,function(next){if(next==='__quick_add__'){openQuickAdd(kind,onChange,defaults);}else onChange(next);},(options||[]).concat([{value:'__quick_add__',label:'＋ إضافة كود جديد'}]),searchKey);
  const partyPicker=(label,list,value,onChange,query,setQuery,partyType,showResults=true)=>{
   const term=normalizeMatch(query),selected=(list||[]).find(p=>String(p.code||p.id)===String(value||''));
   const findExactParty=raw=>{
@@ -1584,18 +1584,18 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
   const lineCards=lines.map((line,index)=>{
    const account=posting.find(item=>String(item.code)===String(line.accountCode)),analyticType=account&&account.subledgerType||line.partyType||"",analyticOptions=analyticType?analyticPartyOptions(analyticType,line.accountCode,line.partyId):[];
    return h("div",{key:index,className:"grid grid-cols-1 md:grid-cols-12 gap-2 rounded-xl border bg-slate-50 p-3"},
-    h("div",{className:"md:col-span-2"},selectWithAdd("كود / اسم الحساب",line.accountCode||"",value=>{
+    h("div",{className:"md:col-span-3 min-w-0"},selectWithAdd("كود / اسم الحساب",line.accountCode||"",value=>{
      const selectedAccount=posting.find(item=>String(item.code)===String(value));
      const currentLine=(journalModalDraft.lines||[])[index]||{},currentAccount=posting.find(item=>String(item.code)===String(currentLine.accountCode));
      const currentType=currentAccount&&currentAccount.subledgerType||currentLine.partyType||"",nextType=selectedAccount&&selectedAccount.subledgerType||"";
      const keepParty=Boolean(nextType&&currentType===nextType&&currentLine.partyId);
      setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).map((row,i)=>i===index?Object.assign({},row,{accountCode:value,partyType:nextType,partyId:keepParty?row.partyId||"":""}):row)}));
-    },posting.map(item=>({value:item.code,label:item.code+" — "+item.name})))),
+    },posting.map(item=>({value:item.code,label:item.code+" — "+item.name})),"chartOfAccounts",undefined,"review-journal-"+String(draft.id)+"-line-"+index+"-account")),
     h("div",{className:"md:col-span-2"},field("البيان",line.description||"",value=>editLine(index,"description",value))),
     h("div",{className:"md:col-span-1 pest-resizable-number"},field("مدين",line.debit??"",value=>editLine(index,"debit",value),"number")),
     h("div",{className:"md:col-span-1 pest-resizable-number"},field("دائن",line.credit??"",value=>editLine(index,"credit",value),"number")),
-    h("div",{className:"md:col-span-1"},selectWithAdd("مركز التكلفة",line.costCenterId||"",value=>editLine(index,"costCenterId",value),[{value:"",label:"بدون مركز تكلفة"}].concat(activeCenters.map(item=>({value:item.code,label:item.code+" — "+item.name}))))),
-    h("div",{className:"md:col-span-2"},analyticType?select("الطرف التحليلي — "+analyticPartyLabel(analyticType),line.partyId||"",value=>{editLine(index,"partyId",value);editLine(index,"partyType",analyticType);},analyticOptions):h("div",{className:"rounded-lg border border-dashed border-slate-300 bg-white p-2 text-xs text-slate-500"},"هذا الحساب لا يتطلب طرفًا تحليليًا")),
+    h("div",{className:"md:col-span-1"},selectWithAdd("مركز التكلفة",line.costCenterId||"",value=>editLine(index,"costCenterId",value),[{value:"",label:"بدون مركز تكلفة"}].concat(activeCenters.map(item=>({value:item.code,label:item.code+" — "+item.name}))),"costCenters",undefined,"review-journal-"+String(draft.id)+"-line-"+index+"-center")),
+    h("div",{className:"md:col-span-2"},analyticType?select("الطرف التحليلي — "+analyticPartyLabel(analyticType),line.partyId||"",value=>{editLine(index,"partyId",value);editLine(index,"partyType",analyticType);},analyticOptions,"review-journal-"+String(draft.id)+"-line-"+index+"-party"):h("div",{className:"rounded-lg border border-dashed border-slate-300 bg-white p-2 text-xs text-slate-500"},"هذا الحساب لا يتطلب طرفًا تحليليًا")),
     h("div",{className:"md:col-span-1"},field("كود المشروع",line.projectCode||"",value=>editLine(index,"projectCode",value))),
     h("div",{className:"md:col-span-1 flex items-end"},button("حذف السطر",()=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).filter((row,i)=>i!==index)})),"danger",!editable))
    );
@@ -2219,12 +2219,12 @@ const renderJournal = function() {
     const modalLines=(draft.lines||[]).map((line,index)=>{
      const account=accounts.find(x=>String(x.code)===String(line.accountCode))||{},analyticType=account.subledgerType||line.partyType||'';
      return h('div',{key:index,className:'grid grid-cols-1 md:grid-cols-12 gap-2 rounded-lg border bg-slate-50 p-2'},
-      h('div',{className:'md:col-span-3'},editable?selectWithAdd('الحساب',line.accountCode||'',v=>updateJournalModalAccount(index,v),posting.map(x=>({value:x.code,label:x.code+' — '+x.name})),'chartOfAccounts'):field('الحساب',(line.accountCode||'')+' — '+(account.name||''),()=>{},undefined,{disabled:true})),
+      h('div',{className:'md:col-span-3'},editable?selectWithAdd('الحساب',line.accountCode||'',v=>updateJournalModalAccount(index,v),posting.map(x=>({value:x.code,label:x.code+' — '+x.name})),'chartOfAccounts',null,'journal-modal-'+String(draft.id)+'-line-'+index+'-account'):field('الحساب',(line.accountCode||'')+' — '+(account.name||''),()=>{},undefined,{disabled:true})),
       h('div',{className:'md:col-span-2'},field('البيان',line.description||'',v=>updateJournalModalLine(index,'description',v),undefined,editable?undefined:{disabled:true})),
       h('div',{className:'md:col-span-1 pest-resizable-number'},field('مدين',line.debit??'',v=>updateJournalModalLine(index,'debit',v),'number',editable?undefined:{disabled:true})),
       h('div',{className:'md:col-span-1 pest-resizable-number'},field('دائن',line.credit??'',v=>updateJournalModalLine(index,'credit',v),'number',editable?undefined:{disabled:true})),
-      h('div',{className:'md:col-span-2'},editable?selectWithAdd('مركز التكلفة',line.costCenterId||'',v=>updateJournalModalLine(index,'costCenterId',v),[{value:'',label:'بدون مركز تكلفة'}].concat(activeCenters.map(x=>({value:x.code,label:x.code+' — '+x.name}))),'costCenters'):field('مركز التكلفة',line.costCenterId||'بدون',()=>{},undefined,{disabled:true})),
-      h('div',{className:'md:col-span-2'},editable&&analyticType?select('الطرف التحليلي — '+analyticPartyLabel(analyticType),line.partyId||'',v=>{setJournalModalDraft(old=>Object.assign({},old,{lines:old.lines.map((x,i)=>i===index?Object.assign({},x,{partyType:analyticType,partyId:v}):x)}));},analyticPartyOptions(analyticType,line.accountCode,line.partyId)):field('الطرف التحليلي',analyticType?(line.partyId||'لم يتم اختيار طرف'):'غير مطلوب لهذا الحساب',()=>{},undefined,{disabled:true})),
+      h('div',{className:'md:col-span-2'},editable?selectWithAdd('مركز التكلفة',line.costCenterId||'',v=>updateJournalModalLine(index,'costCenterId',v),[{value:'',label:'بدون مركز تكلفة'}].concat(activeCenters.map(x=>({value:x.code,label:x.code+' — '+x.name}))),'costCenters',null,'journal-modal-'+String(draft.id)+'-line-'+index+'-center'):field('مركز التكلفة',line.costCenterId||'بدون',()=>{},undefined,{disabled:true})),
+      h('div',{className:'md:col-span-2'},editable&&analyticType?select('الطرف التحليلي — '+analyticPartyLabel(analyticType),line.partyId||'',v=>{setJournalModalDraft(old=>Object.assign({},old,{lines:old.lines.map((x,i)=>i===index?Object.assign({},x,{partyType:analyticType,partyId:v}):x)}));},analyticPartyOptions(analyticType,line.accountCode,line.partyId),'journal-modal-'+String(draft.id)+'-line-'+index+'-party'):field('الطرف التحليلي',analyticType?(line.partyId||'لم يتم اختيار طرف'):'غير مطلوب لهذا الحساب',()=>{},undefined,{disabled:true})),
       h('div',{className:'md:col-span-1 flex items-end'},button('حذف',()=>setJournalModalDraft(old=>Object.assign({},old,{lines:old.lines.filter((x,i)=>i!==index)})),'danger',!editable))
      );
     });
