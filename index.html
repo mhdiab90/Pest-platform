@@ -1399,18 +1399,19 @@ function installPestSpreadsheetGrid(root){
     if(table.closest("[data-pest-grid-ignore='true']"))return;
     const headers=tableHeaders(table);if(headers.length<2)return;
     const host=table.parentElement;if(!host)return;
-    const liveRows=allRows(table),state=stateFor(host,table),knownRows=new Set(state.baseRows);
+    const liveRows=allRows(table),state=stateFor(host,table),knownRows=new Set(state.baseRows),head=table.tHead.rows[0];
     const refsChanged=liveRows.length!==state.baseRows.length||liveRows.some(row=>!knownRows.has(row));
-    const sig=signature(table,liveRows),newTable=state.table!==table,newHeaders=headers.join("\u241f")!==state.columnSignature,newData=sig!==state.contentSignature||refsChanged;
+    const headCells=Array.from(head.cells).filter(cell=>!cell.hasAttribute("data-pest-grid-select-head"));
+    const headerRefsChanged=!state.headerCells||headCells.length!==state.headerCells.length||headCells.some((cell,index)=>state.headerCells[index]!==cell);
+    const sig=signature(table,liveRows),newTable=state.table!==table,newHeaders=headers.join("\u241f")!==state.columnSignature||headerRefsChanged,newData=sig!==state.contentSignature||refsChanged;
     state.table=table;table.classList.add("pest-grid-enhanced");
     if(newTable||newHeaders||newData){
-      state.headers=headers;state.columnSignature=headers.join("\u241f");state.baseRows=liveRows;state.contentSignature=sig;
+      state.headers=headers;state.headerCells=headCells;state.columnSignature=headers.join("\u241f");state.baseRows=liveRows;state.contentSignature=sig;
       const validKeys=new Set(state.baseRows.map((row,index)=>rowKey(row,index)));
       state.selected.forEach(key=>{if(!validKeys.has(key))state.selected.delete(key);});
       if(newHeaders||!state.columnList.childElementCount)renderFilterChips(state,state.prefKey);
       else if(newTable)renderFilterChips(state,state.prefKey);
     }
-    const head=table.tHead.rows[0];
     Array.from(head.cells).filter(cell=>!cell.hasAttribute("data-pest-grid-select-head")).forEach((th,index)=>{
       th.dataset.pestGridColumn=String(index);
       if(!th.querySelector(".pest-grid-sort-icon")){const icon=el("span","pest-grid-sort-icon"," ↕");icon.setAttribute("aria-hidden","true");icon.setAttribute("data-pest-export-actions","true");th.append(icon);}
@@ -1425,6 +1426,7 @@ function installPestSpreadsheetGrid(root){
         });
       }
     });
+    if(!newTable&&!newHeaders&&!newData)return;
     ensureSelectionColumn(state);apply(state,state.prefKey);
   };
   const style=el("style");style.id="pest-spreadsheet-grid-style";
