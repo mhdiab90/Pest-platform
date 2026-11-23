@@ -1272,8 +1272,6 @@ function installPestSpreadsheetGrid(root){
     row.dataset.pestGridRowKey=explicit?"id:"+explicit:"row:"+hash(rowTexts(row).join("|"))+"_"+index;
     return row.dataset.pestGridRowKey;
   };
-  const rowCells=row=>Array.from(row.cells||[]).filter(cell=>!cell.hasAttribute("data-pest-grid-select-cell"));
-  const rowTexts=row=>rowCells(row).map(cellText);
   const ensureSelectionColumn=state=>{
     const table=state.table;if(!table.tHead||!table.tHead.rows.length)return;
     const head=table.tHead.rows[0];
@@ -1439,6 +1437,7 @@ function installPestSpreadsheetGrid(root){
   const observer=new MutationObserver(records=>{
     const candidates=new Set();
     records.forEach(record=>{
+      const targetTable=record.target&&record.target.closest&&record.target.closest("table");if(targetTable)candidates.add(targetTable);
       if(record.type==="characterData"){
         const table=record.target.parentElement&&record.target.parentElement.closest("table");if(table)candidates.add(table);
       }
