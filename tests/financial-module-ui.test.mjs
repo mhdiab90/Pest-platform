@@ -180,7 +180,7 @@ test("opening balances screen supports account and analytical party balances wit
 });
 
 test("journal entry form compacts details and places line labels beside the account selector", () => {
-  assert.match(source, /md:col-span-8.*field\('البيان'/);
+  assert.match(source, /md:col-span-12.*field\('البيان'/);
   assert.match(source, /'السطر '\+\(index\+1\)/);
   assert.match(source, /panel\('سطور القيد','',/);
   assert.doesNotMatch(source, /panel\('سطور القيد','يجب أن يتساوى المدين والدائن\.'/);
