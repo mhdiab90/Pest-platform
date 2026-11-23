@@ -1175,7 +1175,7 @@ function installPestSpreadsheetGrid(root){
   const selectControl=()=>el("select","pest-grid-select");
   const buildToolbar=(state,key)=>{
     const t=words(),bar=state.toolbar;
-    bar.setAttribute("data-pest-grid-toolbar","true");
+    bar.setAttribute("data-pest-grid-toolbar","true");bar.setAttribute("data-pest-export-actions","true");
     bar.setAttribute("dir",arabic()?"rtl":"ltr");
     const first=el("div","pest-grid-toolbar-main");
     const search=el("input","pest-grid-input");search.type="search";search.placeholder=t.searchPlaceholder;search.setAttribute("aria-label",t.search);
@@ -1276,7 +1276,7 @@ function installPestSpreadsheetGrid(root){
     const table=state.table;if(!table.tHead||!table.tHead.rows.length)return;
     const head=table.tHead.rows[0];
     if(!head.querySelector("th[data-pest-grid-select-head]")){
-      const th=el("th","pest-grid-select-head");th.setAttribute("data-pest-grid-select-head","true");
+      const th=el("th","pest-grid-select-head");th.setAttribute("data-pest-grid-select-head","true");th.setAttribute("data-pest-export-actions","true");
       const check=el("input","");check.type="checkbox";check.setAttribute("aria-label",words().selectAll);
       check.addEventListener("change",()=>{
         state.visibleRows.forEach(row=>{if(check.checked)state.selected.add(row.dataset.pestGridRowKey);else state.selected.delete(row.dataset.pestGridRowKey);});
@@ -1287,7 +1287,7 @@ function installPestSpreadsheetGrid(root){
     allRows(table).forEach((row,index)=>{
       if(row.cells.length===1&&Number(row.cells[0].colSpan||1)>1)return;
       if(!row.querySelector("[data-pest-grid-select-cell]")){
-        const td=el("td","pest-grid-select-cell");td.setAttribute("data-pest-grid-select-cell","true");
+        const td=el("td","pest-grid-select-cell");td.setAttribute("data-pest-grid-select-cell","true");td.setAttribute("data-pest-export-actions","true");
         const check=el("input","");check.type="checkbox";check.setAttribute("aria-label",words().selectRow);
         check.addEventListener("change",()=>{
           const k=row.dataset.pestGridRowKey;if(!k)return;
@@ -1402,7 +1402,7 @@ function installPestSpreadsheetGrid(root){
     const head=table.tHead.rows[0];
     Array.from(head.cells).filter(cell=>!cell.hasAttribute("data-pest-grid-select-head")).forEach((th,index)=>{
       th.dataset.pestGridColumn=String(index);
-      if(!th.querySelector(".pest-grid-sort-icon")){const icon=el("span","pest-grid-sort-icon"," ↕");icon.setAttribute("aria-hidden","true");th.append(icon);}
+      if(!th.querySelector(".pest-grid-sort-icon")){const icon=el("span","pest-grid-sort-icon"," ↕");icon.setAttribute("aria-hidden","true");icon.setAttribute("data-pest-export-actions","true");th.append(icon);}
       if(!th.dataset.pestGridSortBound){
         th.dataset.pestGridSortBound="1";
         th.addEventListener("click",event=>{
@@ -1417,7 +1417,7 @@ function installPestSpreadsheetGrid(root){
     ensureSelectionColumn(state);apply(state,state.prefKey);
   };
   const style=el("style");style.id="pest-spreadsheet-grid-style";
-  style.textContent=".pest-grid-toolbar{display:flex;flex-direction:column;gap:8px;padding:10px 12px;margin:0 0 8px;border:1px solid #dbe3ec;border-radius:12px;background:linear-gradient(180deg,#fff,#f8fafc);color:#334155;font:inherit;direction:rtl;min-width:0}"+
+  style.textContent=".pest-grid-toolbar{display:flex;flex-direction:column;gap:8px;padding:10px 12px;margin:0 0 8px;border:1px solid #dbe3ec;border-radius:12px;background:linear-gradient(180deg,#fff,#f8fafc);color:#334155;font:inherit;direction:inherit;min-width:0}"+
     ".pest-grid-toolbar-main,.pest-grid-toolbar-footer{display:flex;align-items:end;gap:8px;flex-wrap:wrap;min-width:0}"+
     ".pest-grid-control{display:flex;flex-direction:column;gap:4px;min-width:90px;max-width:230px;flex:1 1 115px;font-size:11px;font-weight:700;color:#64748b}"+
     ".pest-grid-label{white-space:nowrap}.pest-grid-input,.pest-grid-select{min-width:0;width:100%;height:34px;padding:5px 9px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a;font-size:12px;font-weight:500}"+
