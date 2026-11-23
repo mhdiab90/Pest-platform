@@ -32,7 +32,7 @@ test("spreadsheet grid supports ascending/descending sorting, pagination, and sa
 });
 
 test("spreadsheet grid supports multi-row selection, select-visible, copy and CSV export", () => {
-  assert.match(app, /state\.selected\.add\(rowKey\)/);
+  assert.match(app, /state\.selected\.add\(k\)/);
   assert.match(app, /state\.visibleRows\.forEach\(row=>/);
   assert.match(app, /exportSelected\(state,"copy"\)/);
   assert.match(app, /exportSelected\(state,"csv"\)/);
