@@ -946,7 +946,7 @@ function FinanceModule(props){
   const onVisibility=()=>{if(document.visibilityState==='visible')void sync();};
   document.addEventListener('visibilitychange',onVisibility);
   return()=>{active=false;window.clearInterval(timer);document.removeEventListener('visibilitychange',onVisibility);};
- },[tab,currentUser&&currentUser.uid]);
+ },[tab,currentUser&&currentUser.uid,period.to]);
  React.useEffect(()=>{
   if(tab!=='journal'||!canFinance('journal','view'))return;
   let active=true;
@@ -965,7 +965,7 @@ function FinanceModule(props){
   Promise.all([api('?resource=accountReviews'),api('?resource=accountReviewFindingDecisions')]).then(([accountsResult,findingsResult])=>{
    if(!active)return;
    setAccountReviewDecisions(accountsResult.items&&typeof accountsResult.items==='object'?accountsResult.items:{});
-   const savedFindingRows=Object.values(findingsResult.items&&typeof findingsResult.items==='object'?findingsResult.items:{}).filter(item=>item&&item.findingId);
+   const savedFindingRows=Object.values(findingsResult.items&&typeof findingsResult.items==='object'?findingsResult.items:{}).filter(item=>item&&item.findingId&&String(item.period||'')===String(period.to||''));
    setAccountReviewFindingDecisions(Object.fromEntries(savedFindingRows.map(item=>[String(item.findingId),item])));
   }).catch(error=>{if(active)setError(error.message||String(error));});
   void refresh().catch(error=>{if(active)setError(error.message||String(error));});
@@ -4219,7 +4219,8 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
     push('OPPOSITE_NATURE_BALANCE','low','رصيد الحساب بعكس طبيعته المعتادة','الحساب '+account.code+' — '+account.name+' يظهر رصيدًا عكسيًا بقيمة '+fmt(Math.abs(normalNet))+'. قد يكون رصيدًا مقدمًا أو تسوية صحيحة، لكنه يستحق الفحص.','راجع كشف الحساب والمستندات؛ لا تعتبر الرصيد العكسي خطأً تلقائيًا قبل استبعاد الدفعات المقدمة والتسويات والعكوس.',{accountCode:account.code,accountName:account.name,amount:Math.abs(normalNet),date:period.to+'-01',category:'طبيعة الرصيد'});
    }
   });
-  return findings.sort((a,b)=>({high:0,medium:1,low:2}[a.severity]-({high:0,medium:1,low:2}[b.severity]||0)||String(a.date).localeCompare(String(b.date))||String(a.journalNumber).localeCompare(String(b.journalNumber)));
+  const severityRank={high:0,medium:1,low:2};
+  return findings.sort((a,b)=>(severityRank[a.severity]??3)-(severityRank[b.severity]??3)||String(a.date).localeCompare(String(b.date))||String(a.journalNumber).localeCompare(String(b.journalNumber)));
  };
  const saveAccountReviewFindingDecision=async(finding,nextStatus)=>{
   if(!finding||!canFinance('reports','edit')){setError('ليس لديك صلاحية تسجيل قرارات المراجع الذكي.');return;}
