@@ -1484,6 +1484,15 @@ function installPestSpreadsheetGrid(root){
     ))return true;
     return false;
   };
+  const disposeState=state=>{
+    if(!state)return;
+    if(state.toolbar&&state.toolbar.parentNode)state.toolbar.remove();
+    if(state.host){
+      state.host.classList.remove("pest-grid-enhanced-host");
+      states.delete(state.host);
+    }
+    activeStates.delete(state);
+  };
   const cleanupRemovedNode=node=>{
     if(!node||node.nodeType!==1)return;
     const tables=[];
@@ -1491,7 +1500,7 @@ function installPestSpreadsheetGrid(root){
     if(node.querySelectorAll)node.querySelectorAll("table").forEach(table=>tables.push(table));
     tables.forEach(table=>{
       const state=table.parentElement&&states.get(table.parentElement);
-      if(state&&!state.host.isConnected)activeStates.delete(state);
+      if(state&&!state.host.isConnected)disposeState(state);
     });
   };
   const observer=new MutationObserver(records=>{
@@ -1515,12 +1524,12 @@ function installPestSpreadsheetGrid(root){
   observer.observe(root,{childList:true,subtree:true,characterData:true});
   window.PEST_REFRESH_SPREADSHEET_GRID_LANGUAGE=()=>{
     activeStates.forEach(state=>{
-      if(!state.host.isConnected){activeStates.delete(state);return;}
+      if(!state.host.isConnected){disposeState(state);return;}
       buildToolbar(state,state.prefKey);state.searchInput.value=state.search;
       renderFilterChips(state,state.prefKey);syncSelection(state);apply(state,state.prefKey);
     });
   };
-  return ()=>{observer.disconnect();activeStates.clear();if(window.PEST_REFRESH_SPREADSHEET_GRID_LANGUAGE)delete window.PEST_REFRESH_SPREADSHEET_GRID_LANGUAGE;const existing=document.getElementById(style.id);if(existing)existing.remove();};
+  return ()=>{observer.disconnect();activeStates.forEach(disposeState);activeStates.clear();if(window.PEST_REFRESH_SPREADSHEET_GRID_LANGUAGE)delete window.PEST_REFRESH_SPREADSHEET_GRID_LANGUAGE;const existing=document.getElementById(style.id);if(existing)existing.remove();};
 }
 
 function App(){
