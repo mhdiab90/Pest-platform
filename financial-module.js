@@ -462,6 +462,7 @@ function FinanceModule(props){
  },[]);
  const [accountAnalysisCode,setAccountAnalysisCode]=React.useState(''),[accountAnalysisGroupKey,setAccountAnalysisGroupKey]=React.useState(''),[accountAnalysisSearch,setAccountAnalysisSearch]=React.useState('');
  const [accountReviewDecisions,setAccountReviewDecisions]=React.useState({}),[accountReviewSelectedCode,setAccountReviewSelectedCode]=React.useState(''),[accountReviewSelectedParty,setAccountReviewSelectedParty]=React.useState(''),[accountReviewSelectedPartyType,setAccountReviewSelectedPartyType]=React.useState(''),[accountReviewSearch,setAccountReviewSearch]=React.useState(''),[accountReviewFilter,setAccountReviewFilter]=React.useState('all'),[accountReviewNote,setAccountReviewNote]=React.useState('');
+ const [accountReviewFindingDecisions,setAccountReviewFindingDecisions]=React.useState({}),[accountReviewFindingFilter,setAccountReviewFindingFilter]=React.useState('open'),[accountReviewSelectedFinding,setAccountReviewSelectedFinding]=React.useState(''),[accountReviewFindingNote,setAccountReviewFindingNote]=React.useState('');
  const [statementAttachmentIndex,setStatementAttachmentIndex]=React.useState({});
  const [statementAttachmentList,setStatementAttachmentList]=React.useState(null),[statementAttachmentPreview,setStatementAttachmentPreview]=React.useState(null);
  const statementAttachmentCacheRef=React.useRef(new Set());
@@ -683,7 +684,7 @@ function FinanceModule(props){
    const [r,d,j]=await Promise.all([
     !initialOnly&&canFinance('review','view')?api('?resource=review'):Promise.resolve({items:{}}),
     !initialOnly&&(['invoices','journal','cash','bank'].some(area=>canFinance(area,'view'))||(tab==='accountReview'&&canFinance('reports','view')))?api('?resource=documents'):Promise.resolve({items:{}}),
-    !initialOnly&&canFinance('journal','view')?api('?resource=journals'):Promise.resolve({items:{}})
+    !initialOnly&&(canFinance('journal','view')||(tab==='accountReview'&&canFinance('reports','view')))?api('?resource=journals').catch(()=>({items:{}})):Promise.resolve({items:{}})
    ]);
    setMaster(previous=>Object.assign({chartOfAccounts:{},costCenters:{},items:{},itemGroups:{},warehouses:{},bankAccounts:{},taxCodes:{},parties:{},settings:{},inventory:{balances:{},movements:{}}},previous,b,{inventory:Object.assign({},previous.inventory||{},{balances:previous.inventory&&previous.inventory.balances||{},movements:previous.inventory&&previous.inventory.movements||{}})}));
    const partyRows=rows(b.parties||{});
@@ -961,7 +962,13 @@ function FinanceModule(props){
  React.useEffect(()=>{
   if(tab!=='accountReview'||!canFinance('reports','view'))return;
   let active=true;
-  api('?resource=accountReviews').then(result=>{if(active)setAccountReviewDecisions(result.items&&typeof result.items==='object'?result.items:{});}).catch(error=>{if(active)setError(error.message||String(error));});
+  Promise.all([api('?resource=accountReviews'),api('?resource=accountReviewFindingDecisions')]).then(([accountsResult,findingsResult])=>{
+   if(!active)return;
+   setAccountReviewDecisions(accountsResult.items&&typeof accountsResult.items==='object'?accountsResult.items:{});
+   const savedFindingRows=Object.values(findingsResult.items&&typeof findingsResult.items==='object'?findingsResult.items:{}).filter(item=>item&&item.findingId);
+   setAccountReviewFindingDecisions(Object.fromEntries(savedFindingRows.map(item=>[String(item.findingId),item])));
+  }).catch(error=>{if(active)setError(error.message||String(error));});
+  void refresh().catch(error=>{if(active)setError(error.message||String(error));});
   return()=>{active=false;};
  },[tab,currentUser&&currentUser.uid]);
  const loadParty=async()=>{
@@ -4038,6 +4045,192 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   }catch(error){setError(error.message||String(error));}
   finally{setBusy(false);}
  };
+ const accountReviewFindingId=(rule,journalId,lineNo)=>{
+  const journalToken=String(journalId||'ACCOUNT').replace(/[^A-Za-z0-9_-]/g,'_').slice(-42);
+  return ('F_'+String(rule||'RULE')+'_'+journalToken+'_'+String(lineNo||0)).slice(0,80);
+ };
+ const buildAccountReviewFindings=()=>{
+  const findings=[],seen=new Set();
+  const push=(rule,severity,title,reason,action,context)=>{
+   const item=context||{},id=accountReviewFindingId(rule,item.journalId||item.accountCode||'GLOBAL',item.lineNo||0);
+   if(seen.has(id))return;
+   seen.add(id);
+   findings.push({
+    id,rule,severity,title,reason,action,
+    journalId:String(item.journalId||''),journalNumber:String(item.journalNumber||item.journalId||''),
+    date:String(item.date||period.to+'-01'),accountCode:String(item.accountCode||''),
+    accountName:String(item.accountName||''),lineNo:Number(item.lineNo||0),amount:n(item.amount||0),
+    partyType:String(item.partyType||''),partyId:String(item.partyId||''),category:String(item.category||'عام')
+   });
+  };
+  const journalMap=new Map();
+  [...(journalRecords||[]),...(periodJournals||[]),...(balanceJournals||[])].forEach(journal=>{
+   if(journal&&journal.status==='posted'&&journal.id)journalMap.set(String(journal.id),journal);
+  });
+  const fromMonth=String(period.from||''),toMonth=String(period.to||'');
+  const allPostedJournals=Array.from(journalMap.values()).filter(journal=>String(journal.date||'').slice(0,7)<=toMonth);
+  const journals=allPostedJournals.filter(journal=>{
+   const monthKey=String(journal.date||'').slice(0,7);
+   return monthKey.length===7&&monthKey>=fromMonth&&monthKey<=toMonth;
+  }).sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))||String(a.id).localeCompare(String(b.id)));
+  const accountMap=new Map(accounts.map(account=>[String(account.code),account]));
+  const documentMap=new Map((documents||[]).filter(item=>item&&item.id).map(item=>[String(item.id),item]));
+  const vendorIds=new Set((allVendors||[]).map(item=>String(item.code||item.id)));
+  const customerIds=new Set((allClients||[]).map(item=>String(item.code||item.id)));
+  const taxCodeRows=rows(master.taxCodes);
+  const withholdingCodes=new Set(['2120']);
+  taxCodeRows.filter(item=>String(item.taxType||'')==='withholding'&&item.accountCode).forEach(item=>withholdingCodes.add(String(item.accountCode)));
+  accountMap.forEach((account,code)=>{
+   if(/خصم|استقطاع|withholding|deducted at source/i.test(String(account.name||'')))withholdingCodes.add(code);
+  });
+  const invoiceById=new Map((documents||[]).filter(item=>item&&item.type==='invoice').map(item=>[String(item.id),item]));
+  const historicalAmounts=new Map();
+  allPostedJournals.filter(journal=>String(journal.date||'').slice(0,7)<fromMonth).forEach(journal=>{
+   (journal.lines||[]).forEach(line=>{
+    const code=String(line.accountCode||''),amount=Math.max(n(line.debit),n(line.credit));
+    if(!code||amount<=0.005)return;
+    if(!historicalAmounts.has(code))historicalAmounts.set(code,[]);
+    historicalAmounts.get(code).push(amount);
+   });
+  });
+  const median=values=>{
+   const sorted=values.slice().sort((a,b)=>a-b),middle=Math.floor(sorted.length/2);
+   return sorted.length?(sorted.length%2?sorted[middle]:(sorted[middle-1]+sorted[middle])/2):0;
+  };
+  const journalSignatures=new Map();
+  journals.forEach(journal=>{
+   const lines=Array.isArray(journal.lines)?journal.lines:[];
+   const debit=lines.reduce((sum,line)=>sum+n(line.debit),0),credit=lines.reduce((sum,line)=>sum+n(line.credit),0);
+   const journalBase={journalId:journal.id,journalNumber:journal.number||journal.id,date:journal.date};
+   if(lines.length<2)push('JOURNAL_LINES','high','قيد مرحّل بعدد سطور غير كافٍ','القيد المرحّل يحتوي على أقل من سطرين؛ راجع اكتمال الطرف المدين والدائن وطبيعة العملية.','افتح القيد وتحقق من اكتمال الحسابات والأطراف والمستند المصدر.',journalBase);
+   if(Math.abs(debit-credit)>0.01)push('JOURNAL_BALANCE','high','القيد المرحّل غير متوازن','إجمالي المدين '+fmt(debit)+' مقابل إجمالي الدائن '+fmt(credit)+'؛ الفرق '+fmt(debit-credit)+'.','أعد فحص القيم والحسابات والسطور المقابلة. لا تنشئ قيد تسوية قبل معرفة سبب الفرق.',Object.assign({amount:Math.abs(debit-credit)},journalBase));
+   const sourceInvoice=journal.sourceType==='invoice'?invoiceById.get(String(journal.sourceId||'')):null;
+   if(journal.sourceType==='invoice'&&!sourceInvoice)push('SOURCE_INVOICE_MISSING','high','قيد فاتورة دون فاتورة مصدر متاحة','القيد مسجل على أنه ناتج من فاتورة، لكن لم يتم العثور على مستند الفاتورة المرتبط به.','راجع رابط المستند المصدر وسجل الفاتورة قبل إقفال الفترة.',journalBase);
+   if(sourceInvoice&&sourceInvoice.status!=='posted')push('SOURCE_INVOICE_STATUS','high','قيد مرحّل وفاتورته المصدر ليست مرحّلة','حالة الفاتورة المرتبطة '+String(sourceInvoice.status||'غير محددة')+' رغم وجود قيد مرحّل.','راجع تسلسل اعتماد الفاتورة والقيد وتأكد من عدم وجود ترحيل يتيم.',journalBase);
+   const partyControlLines=lines.filter(line=>{
+    const code=String(line.accountCode||''),account=accountMap.get(code);
+    return ['vendor','customer'].includes(String(account&&account.subledgerType||''))||code==='281'||code==='1210';
+   });
+   const controlParties=Array.from(new Map(partyControlLines.filter(line=>line.partyId).map(line=>[String(line.partyType||'')+'|'+String(line.partyId),{type:String(line.partyType||''),id:String(line.partyId)}])).values());
+   const expectedParty=sourceInvoice&&sourceInvoice.partyId?{
+    type:sourceInvoice.invoiceType==='purchase'?'vendor':sourceInvoice.invoiceType==='sales'?'customer':'',
+    id:String(sourceInvoice.partyId)
+   }:controlParties.length===1?controlParties[0]:null;
+   if(sourceInvoice&&expectedParty&&expectedParty.type){
+    const expectedControl=partyControlLines.filter(line=>{
+     const account=accountMap.get(String(line.accountCode||''));
+     return String(account&&account.subledgerType||line.partyType||'')===expectedParty.type;
+    });
+    if(!expectedControl.some(line=>String(line.partyId||'')===expectedParty.id)){
+     push('INVOICE_PARTY_MISMATCH','high','الطرف التحليلي لا يطابق طرف الفاتورة','الفاتورة '+String(sourceInvoice.number||sourceInvoice.id)+' تخص '+(expectedParty.type==='vendor'?'المورد':'العميل')+' '+expectedParty.id+'، لكن سطر حساب الطرف في القيد لا يحمل نفس الكود التحليلي.','افتح القيد وتأكد من أن المورد/العميل في الأستاذ المساعد هو نفس الطرف في الفاتورة.',Object.assign({accountCode:expectedParty.type==='vendor'?'281':'1210',amount:n(sourceInvoice.totals&&sourceInvoice.totals.total||sourceInvoice.total||0)},journalBase));
+    }
+    const vatAmount=n(sourceInvoice.totals&&sourceInvoice.totals.vat!==undefined?sourceInvoice.totals.vat:sourceInvoice.taxAmount||0);
+    const vatCode=expectedParty.type==='vendor'?'1410':'2110',vatSide=expectedParty.type==='vendor'?'debit':'credit';
+    if(vatAmount>0.01&&!lines.some(line=>String(line.accountCode)===vatCode&&n(line[vatSide])>0.005)){
+     push('INVOICE_VAT_ACCOUNT','medium','ضريبة الفاتورة غير ظاهرة في حساب الضريبة المتوقع','الفاتورة تحتوي على ضريبة قيمة مضافة بقيمة '+fmt(vatAmount)+'، لكن القيد لا يحتوي على حركة بالاتجاه المتوقع على حساب '+vatCode+'.','راجع كود الضريبة وحساب الضريبة وطبيعة الفاتورة ثم طابق القيد مع المستند.',Object.assign({accountCode:vatCode,amount:vatAmount},journalBase));
+    }
+    const wrongVatCode=expectedParty.type==='vendor'?'2110':'1410';
+    if(lines.some(line=>String(line.accountCode)===wrongVatCode&&Math.max(n(line.debit),n(line.credit))>0.005)){
+     push('VAT_ACCOUNT_DIRECTION','high','حساب ضريبة القيمة المضافة لا يتفق مع نوع الفاتورة','الفاتورة '+(expectedParty.type==='vendor'?'مشتريات':'مبيعات')+' لكن القيد يستخدم حساب ضريبة '+wrongVatCode+' المرتبط بالنوع الآخر.','راجع تصنيف الفاتورة وكود الضريبة وحساب المدخلات/المخرجات قبل اعتماد القيد.',Object.assign({accountCode:wrongVatCode},journalBase));
+    }
+    if(expectedParty.type==='vendor'){
+     const stockLines=(sourceInvoice.lines||[]).filter(line=>line&&line.kind==='stock');
+     const expectedStock=stockLines.reduce((sum,line)=>sum+Math.max(0,n(line.quantity)*n(line.unitPrice)-n(line.discount)),0);
+     if(expectedStock>0.01&&!lines.some(line=>String(line.accountCode)==='1300'&&n(line.debit)>0.005)){
+      push('INVOICE_STOCK_ACCOUNT','medium','أصناف مخزنية دون حركة مقابلة على المخزون','الفاتورة تحتوي على أصناف مخزنية بقيمة تقريبية '+fmt(expectedStock)+' لكن القيد لا يظهر مدينًا على حساب المخزون 1300.','راجع طبيعة بنود الفاتورة وحساب الصنف وحركة المخزون المرتبطة.',Object.assign({accountCode:'1300',amount:expectedStock},journalBase));
+     }
+    }
+   }
+   lines.forEach((line,index)=>{
+    const lineNo=index+1,code=String(line.accountCode||''),account=accountMap.get(code),amount=Math.max(n(line.debit),n(line.credit));
+    const ctx=Object.assign({accountCode:code,accountName:account&&account.name||'',lineNo,amount,partyType:line.partyType,partyId:line.partyId},journalBase);
+    if(!account)push('ACCOUNT_NOT_FOUND','high','قيد يستخدم حسابًا غير موجود بدليل الحسابات','السطر '+lineNo+' يستخدم الكود '+(code||'بدون كود')+' غير الموجود بدليل الحسابات.','حدد الحساب الصحيح ثم راجع أثره على الأستاذ والقوائم.',ctx);
+    else if(account.isGroup)push('POSTING_TO_GROUP','high','ترحيل مباشر على حساب تجميعي','السطر '+lineNo+' مرحّل على الحساب التجميعي '+code+' — '+account.name+'.','انقل الحركة إلى حساب تفصيلي قابل للترحيل، بعد مراجعة طبيعة العملية.',ctx);
+    else if(account.active===false)push('INACTIVE_ACCOUNT','medium','استخدام حساب غير نشط','السطر '+lineNo+' يستخدم الحساب غير النشط '+code+' — '+account.name+'.','تحقق من سبب إيقاف الحساب ومن صحة استخدامه في هذه المعاملة.',ctx);
+    const debit=n(line.debit),credit=n(line.credit);
+    if(debit<0||credit<0||(debit>0.005&&credit>0.005)||(debit<=0.005&&credit<=0.005)){
+     push('LINE_AMOUNT_LOGIC','high','قيمة السطر أو اتجاهه غير منطقي','السطر '+lineNo+' يجب أن يحمل قيمة موجبة في جانب واحد فقط؛ المدين '+fmt(debit)+' والدائن '+fmt(credit)+'.','راجع الإشارة والجانب المدين/الدائن، وتأكد من عدم تكرار القيمة في الجانبين.',ctx);
+    }
+    if(account&&account.subledgerType){
+     const expectedType=String(account.subledgerType);
+     if(!line.partyId)push('ANALYTIC_PARTY_MISSING','high','حساب رقابي بلا طرف تحليلي','الحساب '+code+' — '+account.name+' يتطلب طرفًا من نوع '+expectedType+' لكن السطر '+lineNo+' لا يحمل كود طرف.','حدد المورد/العميل/الموظف/الشريك الصحيح ثم طابق كشف الأستاذ المساعد مع الأستاذ العام.',ctx);
+     else if(String(line.partyType||'')!==expectedType)push('ANALYTIC_TYPE_MISMATCH','high','نوع التحليل لا يطابق طبيعة الحساب','الحساب '+code+' يتطلب تحليل '+expectedType+' بينما القيد يحمل '+String(line.partyType||'بدون نوع تحليل')+'.','صحح نوع الطرف التحليلي إلى النوع المحدد في دليل الحسابات، وتحقق من كود الطرف.',ctx);
+     else if(expectedType==='vendor'&&!vendorIds.has(String(line.partyId)))push('ANALYTIC_VENDOR_UNKNOWN','medium','كود المورد غير موجود في سجل الموردين','السطر '+lineNo+' يحمل كود المورد '+String(line.partyId)+' غير الموجود في بيانات الموردين الحالية.','راجع الكود التحليلي أو استكمل بيانات المورد قبل الإقفال.',ctx);
+     else if(expectedType==='customer'&&!customerIds.has(String(line.partyId)))push('ANALYTIC_CUSTOMER_UNKNOWN','medium','كود العميل غير موجود في سجل العملاء','السطر '+lineNo+' يحمل كود العميل '+String(line.partyId)+' غير الموجود في بيانات العملاء الحالية.','راجع الكود التحليلي أو استكمل بيانات العميل قبل الإقفال.',ctx);
+    }
+    if(['vendor','customer'].includes(String(line.partyType||''))&&line.partyId){
+     const known=line.partyType==='vendor'?vendorIds.has(String(line.partyId)):customerIds.has(String(line.partyId));
+     if(!known)push('ORPHAN_ANALYTIC_PARTY','medium','حركة تحليلية مرتبطة بطرف غير موجود','السطر '+lineNo+' يحمل '+(line.partyType==='vendor'?'موردًا':'عميلًا')+' بالكود '+String(line.partyId)+' غير موجود في سجل الأطراف.','تحقق من كود الطرف وسجل الموردين/العملاء قبل اعتماد المطابقة.',ctx);
+    }
+    const previousAmounts=historicalAmounts.get(code)||[];
+    if(account&&previousAmounts.length>=6&&amount>=100000&&amount>=median(previousAmounts)*10){
+     push('UNUSUAL_ACCOUNT_AMOUNT','low','قيمة استثنائية مقارنة بالحركة السابقة','قيمة السطر '+fmt(amount)+' تزيد على عشرة أمثال الوسيط التاريخي للحساب '+code+' خلال الحركات السابقة المتاحة. قد تكون معاملة كبيرة صحيحة لكنها تحتاج مستندًا مؤيدًا.','قارن القيمة بالعقد/الفاتورة/أمر الشراء وبالحدود المعتمدة قبل إغلاق الفترة.',Object.assign({},ctx,{category:'تحليل القيم'}));
+    }
+   });
+   const withholdingLines=lines.filter(line=>withholdingCodes.has(String(line.accountCode||'')));
+   withholdingLines.forEach(line=>{
+    const lineNo=lines.indexOf(line)+1,code=String(line.accountCode||''),account=accountMap.get(code);
+    const ctx=Object.assign({accountCode:code,accountName:account&&account.name||'',lineNo,amount:Math.max(n(line.debit),n(line.credit)),partyType:line.partyType,partyId:line.partyId,category:'ضرائب وخصم'},journalBase);
+    if(!line.partyId||!['vendor','customer'].includes(String(line.partyType||''))){
+     push('WITHHOLDING_ANALYTIC_MISSING','high','ضريبة الخصم/الاستقطاع بلا تحليل للطرف','قيد الخصم/الاستقطاع على الحساب '+code+' لا يحمل كود المورد أو العميل الذي نشأت عنه الضريبة.','اربط سطر الخصم/الاستقطاع بنفس المورد أو العميل صاحب الفاتورة أو الحركة، ثم راجع كشف الطرفين.',ctx);
+    }else if(expectedParty&&(String(line.partyType)!==expectedParty.type||String(line.partyId)!==expectedParty.id)){
+     push('WITHHOLDING_PARTY_MISMATCH','high','تحليل ضريبة الخصم مختلف عن تحليل المورد/العميل','سطر الخصم/الاستقطاع يحمل '+line.partyType+' / '+line.partyId+' بينما الطرف المقابل في القيد أو الفاتورة هو '+expectedParty.type+' / '+expectedParty.id+'.','وحّد كود الطرف التحليلي لسطر الضريبة مع المورد/العميل الصحيح. افحص احتمال تسجيل الضريبة على طرف آخر بالخطأ.',ctx);
+    }else if(!expectedParty){
+     push('WITHHOLDING_COUNTERPART_UNCLEAR','medium','تعذر تحديد الطرف المقابل لضريبة الخصم','يوجد سطر خصم/استقطاع لكن لم يمكن تحديد مورد أو عميل واحد بوضوح داخل القيد لمقارنة التحليل.','راجع المستند المرجعي وحدد الطرف صاحب الخصم قبل إقفال الحساب.',ctx);
+    }
+   });
+   if(sourceInvoice&&sourceInvoice.invoiceType==='purchase'&&withholdingLines.length){
+    const total=n(sourceInvoice.totals&&sourceInvoice.totals.total!==undefined?sourceInvoice.totals.total:sourceInvoice.total||0);
+    const payableAmount=partyControlLines.filter(line=>String(line.partyId||'')===String(sourceInvoice.partyId||'')).reduce((sum,line)=>sum+n(line.credit),0);
+    const withholdingAmount=withholdingLines.reduce((sum,line)=>sum+n(line.credit)+n(line.debit),0);
+    if(total>0.01&&payableAmount>0.01&&Math.abs(total-payableAmount-withholdingAmount)>1){
+     push('WITHHOLDING_AMOUNT_RECON','medium','قيمة الفاتورة لا تتطابق مع صافي المورد والخصم','إجمالي الفاتورة '+fmt(total)+' مقابل صافي حساب المورد '+fmt(payableAmount)+' والخصم/الاستقطاع '+fmt(withholdingAmount)+'؛ الفرق '+fmt(total-payableAmount-withholdingAmount)+'.','طابق إجمالي الفاتورة مع صافي المورد والخصم والضريبة، وتحقق من عدم تكرار أو إسقاط مبلغ.',Object.assign({accountCode:'2120',amount:Math.abs(total-payableAmount-withholdingAmount),category:'ضرائب وخصم'},journalBase));
+    }
+   }
+   const reference=normalizeMatch(journal.reference||journal.invoiceNumber||journal.documentNumber||'');
+   if(reference){
+    const signature=[String(journal.date||''),reference,lines.map(line=>[String(line.accountCode||''),n(line.debit).toFixed(2),n(line.credit).toFixed(2),String(line.partyType||''),String(line.partyId||'')].join(':')).sort().join('|')].join('~');
+    if(!journalSignatures.has(signature))journalSignatures.set(signature,[]);
+    journalSignatures.get(signature).push(journal);
+   }
+  });
+  journalSignatures.forEach(group=>{
+   if(group.length<2)return;
+   group.slice(1).forEach(journal=>push('POSSIBLE_DUPLICATE','medium','قيد مكرر محتمل بنفس التاريخ والمرجع والقيم','تم العثور على '+group.length+' قيود لها نفس التاريخ والمرجع وتركيبة الحسابات والقيم. قد يكون تكرارًا غير مقصود أو قيدًا صحيحًا مكررًا بمستند تجميعي.','قارن المستندات والمرفقات وأرقام الفواتير قبل الإبقاء على القيد أو طلب عكسه.',{journalId:journal.id,journalNumber:journal.number||journal.id,date:journal.date,category:'تكرار'}));
+  });
+  const controlAccounts=accounts.filter(account=>account.subledgerType&&!account.isGroup);
+  controlAccounts.forEach(account=>{
+   const code=String(account.code),gl=balanceBalances[code]||{debit:0,credit:0};
+   const analytic=balanceFlat.filter(line=>String(line.accountCode)===code&&String(line.partyType||'')===String(account.subledgerType)&&String(line.partyId||''));
+   const subDebit=analytic.reduce((sum,line)=>sum+n(line.debit),0),subCredit=analytic.reduce((sum,line)=>sum+n(line.credit),0);
+   const diffDebit=n(gl.debit)-subDebit,diffCredit=n(gl.credit)-subCredit;
+   if(Math.abs(diffDebit)>0.01||Math.abs(diffCredit)>0.01){
+    push('CONTROL_SUBLEDGER_MISMATCH','high','الأستاذ العام لا يطابق مجموع الأستاذ المساعد','الحساب '+code+' — '+account.name+'؛ فرق المدين '+fmt(diffDebit)+' وفرق الدائن '+fmt(diffCredit)+'. قد يكون هناك قيد بلا طرف تحليلي أو بنوع تحليل خاطئ.','افتح كشف الحساب وقارن القيود ذات الأكواد التحليلية الخاطئة أو الناقصة قبل إقفال رصيد الموردين/العملاء.',{accountCode:code,accountName:account.name,amount:Math.abs(diffDebit)+Math.abs(diffCredit),date:period.to+'-01',category:'مطابقة الأستاذ المساعد'});
+   }
+  });
+  const debitTotal=balanceFlat.reduce((sum,line)=>sum+n(line.debit),0),creditTotal=balanceFlat.reduce((sum,line)=>sum+n(line.credit),0);
+  if(Math.abs(debitTotal-creditTotal)>0.01){
+   push('TRIAL_BALANCE_UNBALANCED','high','ميزان المراجعة التراكمي غير متوازن','إجمالي المدين '+fmt(debitTotal)+' مقابل إجمالي الدائن '+fmt(creditTotal)+'؛ الفرق '+fmt(debitTotal-creditTotal)+'.','ابدأ بفحص القيود ذات فروق المدين والدائن والحسابات غير الموجودة بدليل الحسابات.',{amount:Math.abs(debitTotal-creditTotal),date:period.to+'-01',category:'سلامة الأستاذ'});
+  }
+  accounts.filter(account=>!account.isGroup).forEach(account=>{
+   const totals=balanceBalances[String(account.code)]||{debit:0,credit:0};
+   const normalNet=['asset','expense'].includes(String(account.type||''))?n(totals.debit)-n(totals.credit):n(totals.credit)-n(totals.debit);
+   if(normalNet<-0.01){
+    push('OPPOSITE_NATURE_BALANCE','low','رصيد الحساب بعكس طبيعته المعتادة','الحساب '+account.code+' — '+account.name+' يظهر رصيدًا عكسيًا بقيمة '+fmt(Math.abs(normalNet))+'. قد يكون رصيدًا مقدمًا أو تسوية صحيحة، لكنه يستحق الفحص.','راجع كشف الحساب والمستندات؛ لا تعتبر الرصيد العكسي خطأً تلقائيًا قبل استبعاد الدفعات المقدمة والتسويات والعكوس.',{accountCode:account.code,accountName:account.name,amount:Math.abs(normalNet),date:period.to+'-01',category:'طبيعة الرصيد'});
+   }
+  });
+  return findings.sort((a,b)=>({high:0,medium:1,low:2}[a.severity]-({high:0,medium:1,low:2}[b.severity]||0)||String(a.date).localeCompare(String(b.date))||String(a.journalNumber).localeCompare(String(b.journalNumber)));
+ };
+ const saveAccountReviewFindingDecision=async(finding,nextStatus)=>{
+  if(!finding||!canFinance('reports','edit')){setError('ليس لديك صلاحية تسجيل قرارات المراجع الذكي.');return;}
+  setBusy(true);setError('');
+  try{
+   const result=await api('','POST',{action:'saveAccountReviewFindingDecision',findingId:finding.id,period:String(period.to||''),journalId:finding.journalId||'',accountCode:finding.accountCode||'',status:nextStatus,notes:accountReviewFindingNote||''});
+   if(result.item)setAccountReviewFindingDecisions(old=>Object.assign({},old,{[result.item.findingId]:result.item}));
+   setNotice('تم حفظ قرار المراجع للملاحظة: '+finding.title+'.');
+  }catch(error){setError(error.message||String(error));}
+  finally{setBusy(false);}
+ };
  const renderAccountReview=()=>{
   const rowsForAccounts=accounts.map(account=>{
    const codes=accounts.filter(item=>accountIsInBranch(item,account.code)).map(item=>String(item.code));
@@ -4053,6 +4246,24 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
    return textMatch&&balanceMatch;
   });
   const selected=rowsForAccounts.find(row=>String(row.account.code)===String(accountReviewSelectedCode||''))||null;
+  const smartFindings=buildAccountReviewFindings().map(finding=>Object.assign({},finding,{decision:accountReviewFindingDecisions[finding.id]||null,status:accountReviewFindingDecisions[finding.id]&&accountReviewFindingDecisions[finding.id].status||'open'}));
+  const openFindings=smartFindings.filter(finding=>!['resolved','accepted_risk'].includes(finding.status));
+  const highFindings=openFindings.filter(finding=>finding.severity==='high'),mediumFindings=openFindings.filter(finding=>finding.severity==='medium'),lowFindings=openFindings.filter(finding=>finding.severity==='low');
+  const visibleFindings=smartFindings.filter(finding=>accountReviewFindingFilter==='all'||(accountReviewFindingFilter==='open'&&!['resolved','accepted_risk'].includes(finding.status))||(accountReviewFindingFilter==='high'&&finding.severity==='high'&&!['resolved','accepted_risk'].includes(finding.status))||(accountReviewFindingFilter==='medium'&&finding.severity==='medium'&&!['resolved','accepted_risk'].includes(finding.status))||(accountReviewFindingFilter==='follow_up'&&finding.status==='follow_up')||(accountReviewFindingFilter==='resolved'&&['resolved','accepted_risk'].includes(finding.status)));
+  const selectedFinding=smartFindings.find(finding=>finding.id===accountReviewSelectedFinding)||null;
+  const findingStatusLabel=value=>({open:'مفتوحة',follow_up:'قيد المتابعة',resolved:'تمت المعالجة',accepted_risk:'مقبولة مع توثيق'}[value]||'مفتوحة');
+  const findingSeverityLabel=value=>({high:'عالية',medium:'متوسطة',low:'تنبيه'}[value]||'تنبيه');
+  const findingRows=visibleFindings.map(finding=>h('tr',{key:finding.id,className:'border-t align-top'},
+   h('td',{className:'p-2 whitespace-nowrap'},h('span',{className:'font-bold '+(finding.severity==='high'?'text-rose-700':finding.severity==='medium'?'text-amber-700':'text-slate-600')},findingSeverityLabel(finding.severity))),
+   h('td',{className:'p-2 whitespace-nowrap'},finding.date),
+   h('td',{className:'p-2'},finding.title),
+   h('td',{className:'p-2 whitespace-nowrap'},finding.journalId?h('button',{type:'button',className:'text-blue-700 underline font-bold',onClick:()=>openStatementJournal(finding.journalId)},finding.journalNumber):'—'),
+   h('td',{className:'p-2'},finding.accountCode?(finding.accountCode+' — '+finding.accountName):'—'),
+   h('td',{className:'p-2 min-w-[260px] text-xs'},finding.reason),
+   h('td',{className:'p-2 min-w-[260px] text-xs'},finding.action),
+   h('td',{className:'p-2 whitespace-nowrap'},findingStatusLabel(finding.status)),
+   h('td',{className:'p-2'},button('تفاصيل / قرار',()=>{setAccountReviewSelectedFinding(finding.id);setAccountReviewFindingNote(finding.decision&&finding.decision.notes||'');},'muted'))
+  ));
   const decisionLabel=value=>({matched:'تمت المطابقة',follow_up:'يحتاج متابعة',requires_adjustment:'تسوية / قيد تصحيح مطلوب'}[value]||'لم تتم المراجعة');
   const decisionTone=value=>value==='matched'?'text-emerald-700':value==='follow_up'||value==='requires_adjustment'?'text-amber-700':'text-slate-500';
   const displayParty=party=>String(party&&(party.name||party.companyName||party.partyName||party.code||party.id)||'طرف بدون اسم');
@@ -4158,6 +4369,34 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
     metric('حسابات تمت مراجعتها',String(rowsForAccounts.filter(row=>row.decision&&row.decision.status==='matched').length)),
     metric('حسابات تحتاج متابعة',String(rowsForAccounts.filter(row=>row.decision&&row.decision.status!=='matched').length))
    ),
+   panel('فاحص المراجع الذكي','يفحص القيود المرحلة بمنطق محاسبي قابل للتفسير: سلامة القيد، الحسابات، الأستاذ المساعد، تطابق المورد/العميل، ضريبة الخصم والاستقطاع، الفواتير والضريبة، التكرار، القيم الاستثنائية، وطبيعة الأرصدة. هذه تنبيهات للمراجع وليست أحكامًا آلية؛ لا يتم تعديل أو ترحيل أي قيد تلقائيًا.',h('div',{className:'space-y-3'},
+    h('div',{className:'grid grid-cols-2 md:grid-cols-4 gap-2'},
+     metric('ملاحظات مفتوحة',String(openFindings.length)),
+     metric('مخاطر عالية',String(highFindings.length)),
+     metric('ملاحظات متوسطة',String(mediumFindings.length)),
+     metric('تنبيهات تستحق الفحص',String(lowFindings.length))
+    ),
+    h('div',{className:'flex flex-wrap items-center justify-between gap-2'},
+     h('p',{className:'text-xs text-slate-500'},'نطاق الفحص: القيود المرحلة من '+period.from+' إلى '+period.to+'، والأرصدة التراكمية حتى '+period.to+'.'),
+     select('تصفية الملاحظات',accountReviewFindingFilter,setAccountReviewFindingFilter,[{value:'open',label:'المفتوحة فقط'},{value:'high',label:'المخاطر العالية'},{value:'medium',label:'الملاحظات المتوسطة'},{value:'follow_up',label:'قيد المتابعة'},{value:'resolved',label:'المعالجة / المقبولة'},{value:'all',label:'كل الملاحظات'}])
+    ),
+    visibleFindings.length?table(['الخطورة','التاريخ','الملاحظة','رقم القيد','الحساب / السطر','سبب التنبيه','الإجراء المقترح','الحالة','إجراء'],findingRows):h('div',{className:'rounded-lg border border-dashed p-4 text-center text-sm text-slate-500'},'لا توجد ملاحظات مطابقة لهذا الفلتر في الفترة المحددة.'),
+    selectedFinding?h('div',{className:'rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-2'},
+     h('div',{className:'flex flex-wrap justify-between gap-2 items-center'},h('strong',{className:'text-sm'},selectedFinding.title),button('إغلاق التفاصيل',()=>setAccountReviewSelectedFinding(''),'muted')),
+     h('p',{className:'text-sm'},selectedFinding.reason),
+     h('p',{className:'text-sm text-slate-700'},'الإجراء المقترح: '+selectedFinding.action),
+     h('div',{className:'flex flex-wrap gap-2 text-xs'},h('span',null,'الخطورة: '+findingSeverityLabel(selectedFinding.severity)),h('span',null,'القيد: '+(selectedFinding.journalNumber||'—')),h('span',null,'الحساب: '+(selectedFinding.accountCode||'—'))),
+     selectedFinding.journalId?button('فتح القيد المرتبط',()=>openStatementJournal(selectedFinding.journalId),'primary'):selectedFinding.accountCode?button('فتح كشف الحساب',()=>openStatementAccount(selectedFinding.accountCode),'primary'):null,
+     field('ملاحظة المراجع والإجراء المتخذ',accountReviewFindingNote,setAccountReviewFindingNote),
+     h('div',{className:'flex flex-wrap gap-2'},
+      button('إعادة فتح',()=>void saveAccountReviewFindingDecision(selectedFinding,'open'),'muted',busy||!canFinance('reports','edit')),
+      button('قيد المتابعة',()=>void saveAccountReviewFindingDecision(selectedFinding,'follow_up'),'primary',busy||!canFinance('reports','edit')),
+      button('تمت المعالجة',()=>void saveAccountReviewFindingDecision(selectedFinding,'resolved'),'success',busy||!canFinance('reports','edit')),
+      button('مقبولة مع توثيق',()=>void saveAccountReviewFindingDecision(selectedFinding,'accepted_risk'),'muted',busy||!canFinance('reports','edit'))
+     )
+    ):null,
+    h('p',{className:'text-xs text-slate-500'},'عند اختيار «تمت المعالجة» تُغلق متابعة الملاحظة فقط؛ يظل القيد الأصلي كما هو. التصحيح المحاسبي يتم من شاشة القيد المعتادة ثم يعاد فحص الفترة. «مقبولة مع توثيق» لا تعني أن البرنامج اعتبر المخالفة خطأً أو عدّل البيانات.')
+   )),
    h('div',{className:'grid grid-cols-1 md:grid-cols-4 gap-2 items-end'},
     field('من شهر',period.from,value=>setPeriod(old=>Object.assign({},old,{from:value})),'month'),
     field('حتى شهر',period.to,value=>setPeriod(old=>Object.assign({},old,{to:value})),'month'),
