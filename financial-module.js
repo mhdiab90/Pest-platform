@@ -4111,7 +4111,11 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
     const code=String(line.accountCode||''),account=accountMap.get(code);
     return ['vendor','customer'].includes(String(account&&account.subledgerType||''))||code==='281'||code==='1210';
    });
-   const controlParties=Array.from(new Map(partyControlLines.filter(line=>line.partyId).map(line=>[String(line.partyType||'')+'|'+String(line.partyId),{type:String(line.partyType||''),id:String(line.partyId)}])).values());
+   const controlParties=Array.from(new Map(partyControlLines.filter(line=>line.partyId).map(line=>{
+    const account=accountMap.get(String(line.accountCode||'')),code=String(line.accountCode||'');
+    const inferredType=String(line.partyType||account&&account.subledgerType||(code==='281'?'vendor':code==='1210'?'customer':''));
+    return [inferredType+'|'+String(line.partyId),{type:inferredType,id:String(line.partyId)}];
+   })).values());
    const expectedParty=sourceInvoice&&sourceInvoice.partyId?{
     type:sourceInvoice.invoiceType==='purchase'?'vendor':sourceInvoice.invoiceType==='sales'?'customer':'',
     id:String(sourceInvoice.partyId)
