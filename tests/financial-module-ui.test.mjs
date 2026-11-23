@@ -191,6 +191,19 @@ test("searchable financial dropdowns close when clicking outside their picker", 
   assert.match(source, /data-finance-picker-root':'true'/);
 });
 
+test("journal attachments load in review, support multiple new files, and preserve existing files", () => {
+  assert.match(source, /tab==='review'&&selected&&selected\.type==='journal'\)void loadStatementAttachments\(\[selected\]\)/);
+  assert.match(source, /const appendStatementAttachment=\(entityId,rawAttachment\)=>/);
+  assert.match(source, /const uploadJournalAttachments=async\(files,record\)=>/);
+  assert.match(source, /multiple:true,accept:'image\/\*,\.pdf,\.doc,\.docx,\.xls,\.xlsx,\.csv,\.txt'/);
+  assert.match(source, /setStatementAttachmentIndex\(previous=>\{/);
+  assert.match(source, /const next=current\.filter\(item=>String\(item\.id\)!==String\(attachment\.id\)\)/);
+  assert.match(source, /statementAttachmentAction\(selected\)/);
+  assert.match(source, /journalAttachmentUploadControl\(selected\)/);
+  assert.match(source, /journalAttachmentUploadControl\(draft\)/);
+  assert.match(source, /journalAttachmentUploadControl\(statementJournal\)/);
+});
+
 test("daily journal rows show green posted and red cancelled status badges", () => {
   assert.match(source, /border-emerald-200 bg-emerald-50 text-emerald-700/);
   assert.match(source, /border-rose-200 bg-rose-50 text-rose-700/);
