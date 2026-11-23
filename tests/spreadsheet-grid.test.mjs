@@ -61,6 +61,14 @@ test("spreadsheet grid batches DOM observation and ignores its own row and contr
   assert.doesNotMatch(app, /activeStates\.forEach\(state=>\{if\(!state\.host\.isConnected\)activeStates\.delete\(state\);\}\);/);
 });
 
+test("spreadsheet grid removes the orphaned filter toolbar when its table host is removed", () => {
+  assert.match(app, /const disposeState=state=>\{/);
+  assert.match(app, /state\.toolbar\.remove\(\)/);
+  assert.match(app, /states\.delete\(state\.host\)/);
+  assert.match(app, /if\(state&&!state\.host\.isConnected\)disposeState\(state\)/);
+  assert.match(app, /if\(!state\.host\.isConnected\)\{disposeState\(state\);return;\}/);
+});
+
 test("financial workspace loads review and journal lists only when their sections are opened", () => {
   assert.match(finance, /const initialOnly=Boolean\(options&&options\.initialOnly\)/);
   assert.match(finance, /refresh\(\{initialOnly:true\}\)/);
