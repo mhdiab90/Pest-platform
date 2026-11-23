@@ -525,21 +525,27 @@ function FinanceModule(props){
    setStatementAttachmentList(null);
   }catch(error){setError(error.message||String(error));}finally{setBusy(false);}
  };
+ const canAppPermission=(area,action="view")=>{
+  if(currentUser&&currentUser.role==="admin")return true;
+  if(typeof permissionCheck==="function")return permissionCheck(area,action);
+  const permissions=currentUser&&currentUser.permissions||{},specific=permissions[area];
+  return Boolean(specific&&typeof specific==="object"&&specific[action]===true);
+ };
  const canDeleteStatementAttachment=(attachment,assignedContext=false)=>{
   if(currentUser&&currentUser.role==="admin")return true;
   const type=String(attachment&&attachment.entityType||"");
   if(type==="financial"){
    const record=[...(documents||[]),...(journalRecords||[]),...(review||[]),...(selected?[selected]:[])].find(item=>item&&String(item.id)===String(attachment.entityId));
-   if(attachment.ownerUid&&attachment.ownerUid!==currentUser.uid&&!canFinance("attachments","delete"))return false;
+   if(attachment.ownerUid&&attachment.ownerUid!==(currentUser&&currentUser.uid)&&!canAppPermission("attachments","delete"))return false;
    if(assignedContext&&canFinance("assignments","edit"))return true;
-   if(record&&record.status==="assigned"&&record.assignedTo===currentUser.uid)return canFinance("assignments","edit");
+   if(record&&record.status==="assigned"&&record.assignedTo===(currentUser&&currentUser.uid))return canFinance("assignments","edit");
    if(record&&["pending_review","duplicate_review","needs_correction"].includes(record.status)&&canFinance("review","edit"))return true;
    if(record&&record.type==="journal")return canFinance("journal","delete")||canFinance("journal","edit")||canFinance("financial","delete")||canFinance("financial","edit");
-   return canFinance("invoices","delete")||canFinance("invoices","edit")||(record&&record.createdBy===currentUser.uid&&canFinance("invoices","add"))||canFinance("financial","delete")||canFinance("financial","edit");
+   return canFinance("invoices","delete")||canFinance("invoices","edit")||(record&&record.createdBy===(currentUser&&currentUser.uid)&&canFinance("invoices","add"))||canFinance("financial","delete")||canFinance("financial","edit");
   }
-  if(!canFinance("attachments","delete")&&!hasPermission("attachments","delete"))return false;
-  if(type==="cashCustody"||type==="cashCustodyDraft")return hasPermission("cashCustody","delete")||hasPermission("cashCustody","edit")||(type==="cashCustodyDraft"&&hasPermission("cashCustody","add"));
-  if(type==="projectEvent")return hasPermission("projects","delete")||hasPermission("projects","edit");
+  if(!canAppPermission("attachments","delete"))return false;
+  if(type==="cashCustody"||type==="cashCustodyDraft")return canAppPermission("cashCustody","delete")||canAppPermission("cashCustody","edit")||(type==="cashCustodyDraft"&&canAppPermission("cashCustody","add"));
+  if(type==="projectEvent")return canAppPermission("projects","delete")||canAppPermission("projects","edit");
   return false;
  };
  const invoiceDocumentIdForAttachment=attachment=>{
