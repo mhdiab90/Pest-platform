@@ -1452,6 +1452,7 @@ function installPestSpreadsheetGrid(root){
       });
     });
     candidates.forEach(decorate);
+    activeStates.forEach(state=>{if(!state.host.isConnected)activeStates.delete(state);});
   });
   observer.observe(root,{childList:true,subtree:true,characterData:true});
   window.PEST_REFRESH_SPREADSHEET_GRID_LANGUAGE=()=>{
