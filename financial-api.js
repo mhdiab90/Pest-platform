@@ -656,7 +656,7 @@ export async function handleFinancialRequest(ctx){
    return {items};
   }
   if(res==="journals"){
-    requireFinanceArea("journal","view");
+    if(!hasFinanceArea("journal","view")&&!hasFinanceArea("reports","view"))throw new Error("ليس لديك صلاحية عرض القيود المرحلة للمراجعة.");
     const source=(await adminRead("journals"))||{},documents=(await adminRead("documents"))||{},items={},updates={};
     Object.entries(source).forEach(([key,value])=>{
      if(!value||typeof value!=="object")return;
@@ -700,6 +700,7 @@ export async function handleFinancialRequest(ctx){
   if(res==="audit"){requireFinanceArea("reports","view");return {items:(await adminRead("audit"))||{}};}
   if(res==="bank"){requireFinanceArea("bank","view");return {items:(await adminRead("bankImports"))||{},accounts:(await adminRead("bankAccounts"))||{}};}
   if(res==="accountReviews"){requireFinanceArea("reports","view");return {items:(await adminRead("accountReviewDecisions"))||{}};}
+  if(res==="accountReviewFindingDecisions"){requireFinanceArea("reports","view");return {items:(await adminRead("accountReviewFindingDecisions"))||{}};}
   if(res==="periods"){if(!hasFinanceArea("reports","view")&&!hasFinanceArea("overview","view")&&!hasFinanceArea("centers","view")&&!hasFinanceArea("tax","view"))throw new Error("ليس لديك صلاحية عرض التقارير المالية.");
    const from=txt(url.searchParams.get("from")||new Date().toISOString().slice(0,7),7),to=txt(url.searchParams.get("to")||from,7);
    if(!/^\d{4}-\d{2}$/.test(from)||!/^\d{4}-\d{2}$/.test(to))throw new Error("Invalid financial period.");
@@ -836,6 +837,21 @@ export async function handleFinancialRequest(ctx){
   const record={id:key,accountCode,period,partyType,partyId,status:decision,notes,updatedAt:now,updatedBy:claims.sub,updatedByName:txt(profile.fullName||profile.username||profile.email||claims.sub,120)};
   const updates={};updates["accountReviewDecisions/"+key]=record;
   updates["audit/"+uid("AUD")]={action:"save_account_review_decision",accountCode,period,partyType,partyId,status:decision,uid:claims.sub,createdAt:now};
+  await adminPatch(updates);
+  return {success:true,item:record};
+ }
+ if(action==="saveAccountReviewFindingDecision"){
+  requireFinanceArea("reports","edit");
+  const findingId=txt(body.findingId,80),period=txt(body.period,7),journalId=txt(body.journalId||"",120),accountCode=txt(body.accountCode||"",32),decision=txt(body.status,32),notes=txt(body.notes||"",2000);
+  if(!/^[A-Za-z0-9_-]{6,80}$/.test(findingId))throw new Error("معرّف ملاحظة المراجعة غير صحيح.");
+  if(!/^\\d{4}-\\d{2}$/.test(period))throw new Error("حدد فترة المراجعة بصورة صحيحة.");
+  if(!["open","follow_up","resolved","accepted_risk"].includes(decision))throw new Error("حالة الملاحظة غير صحيحة.");
+  if(journalId){const journal=await adminRead("journals/"+id(journalId));if(!journal||journal.status!=="posted")throw new Error("القيد المرتبط بالملاحظة غير موجود أو غير مرحّل.");}
+  if(accountCode){const account=await adminRead("chartOfAccounts/"+id(accountCode));if(!account)throw new Error("الحساب المرتبط بالملاحظة غير موجود.");}
+  const key=id("ARF_"+period.replace("-","")+"_"+findingId);
+  const record={id:key,findingId,period,journalId,accountCode,status:decision,notes,updatedAt:now,updatedBy:claims.sub,updatedByName:txt(profile.fullName||profile.username||profile.email||claims.sub,120)};
+  const updates={};updates["accountReviewFindingDecisions/"+key]=record;
+  updates["audit/"+uid("AUD")]={action:"save_account_review_finding_decision",findingId,period,journalId,accountCode,status:decision,uid:claims.sub,createdAt:now};
   await adminPatch(updates);
   return {success:true,item:record};
  }
