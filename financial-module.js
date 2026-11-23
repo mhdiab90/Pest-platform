@@ -1198,8 +1198,7 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
  const moneyLabel=value=>fmt(value)+(rtl?' ج.م':' EGP');
  const button=(label,fn,kind,disabled)=>h('button',{type:'button',onClick:fn,disabled:!!disabled,className:'rounded-xl px-3 py-2 text-sm font-bold border '+(kind==='primary'?'bg-blue-700 text-white border-blue-700':kind==='success'?'bg-emerald-600 text-white border-emerald-600':kind==='danger'?'bg-rose-50 text-rose-700 border-rose-200':'bg-white text-slate-700 border-slate-200')},label);
  const field=(label,value,onChange,type,extra)=>h('label',{className:'block text-sm font-bold text-slate-700'},label,h('input',Object.assign({type:type||'text',value:value==null?'':value,onChange:e=>onChange(e.target.value),className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal bg-white',step:'any'},extra||{})));
- let genericPickerSequence=0;
- const select=(label,value,onChange,options)=>searchablePicker(label,value,onChange,options,'finance-select-'+String(++genericPickerSequence)+'-'+normalizeMatch(label));
+ const select=(label,value,onChange,options)=>searchablePicker(label,value,onChange,options,'finance-select-'+normalizeMatch(label)+'-'+(options||[]).map(item=>String(item.value)).join('_'));
  const searchablePicker=(label,value,onChange,options,searchKey)=>{
   const list=Array.isArray(options)?options:[];
   const selected=list.find(item=>String(item.value)===String(value||'')),hasQuery=Object.prototype.hasOwnProperty.call(journalPickerSearch,searchKey);
