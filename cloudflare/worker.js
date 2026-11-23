@@ -2478,15 +2478,23 @@ async function validateAttachmentEntity(type,id,claims,profile,token,action,owne
       // Financial data is private under RTDB Rules. Resolve attachment ownership
       // with the Worker's service account, then apply the caller's module rights below.
       const databaseAccessToken=await getFirebaseDatabaseAccessToken(env);
-      const invoice=await adminDatabaseRequest("financial/documents/"+entityId,databaseAccessToken,"GET");
-      const assignment=invoice&&invoice.status==="assigned"&&invoice.assignedTo===claims.sub&&invoice.assignmentId
-        ?await adminDatabaseRequest("financial/assignments/"+claims.sub+"/"+safeSegment(invoice.assignmentId,"financial assignment id"),databaseAccessToken,"GET"):null;
+      const document=await adminDatabaseRequest("financial/documents/"+entityId,databaseAccessToken,"GET");
+      const journalFallback=!document?await adminDatabaseRequest("financial/journals/"+entityId,databaseAccessToken,"GET"):null;
+      const financialRecord=document||journalFallback;
+      const assignment=financialRecord&&financialRecord.status==="assigned"&&financialRecord.assignedTo===claims.sub&&financialRecord.assignmentId
+        ?await adminDatabaseRequest("financial/assignments/"+claims.sub+"/"+safeSegment(financialRecord.assignmentId,"financial assignment id"),databaseAccessToken,"GET"):null;
       const currentAssignee=!!(assignment&&assignment.status==="open"&&assignment.assigneeUid===claims.sub);
-      const reviewEditor=!!(invoice&&["pending_review","duplicate_review"].includes(invoice.status)&&hasPermission(profile,"financial_review",action==="view"?"view":"edit"));
+      const reviewEditor=!!(financialRecord&&["pending_review","duplicate_review"].includes(financialRecord.status)&&hasPermission(profile,"financial_review",action==="view"?"view":"edit"));
+      const journalRecord=!!(financialRecord&&financialRecord.type==="journal");
       if(currentAssignee){
         requirePermission(profile,"financial_assignments",action==="view"?"view":"edit");
       }else if(reviewEditor){
         requirePermission(profile,"financial_review",action==="view"?"view":"edit");
+      }else if(journalRecord){
+        if(action==="view"&&!hasPermission(profile,"financial_journal","view")&&!hasPermission(profile,"financial_reports","view")&&!hasPermission(profile,"financial_partyStatements","view")&&!hasPermission(profile,"financial","view"))throw new Error("Permission denied: financial journal attachment access.");
+        if(action==="upload"&&!hasPermission(profile,"financial_journal","add")&&!hasPermission(profile,"financial_journal","edit")&&!hasPermission(profile,"financial","add")&&!hasPermission(profile,"financial","edit"))throw new Error("Permission denied: financial journal attachment upload.");
+        if(action==="edit"&&!hasPermission(profile,"financial_journal","edit")&&!hasPermission(profile,"financial","edit"))throw new Error("Permission denied: financial journal attachment edit.");
+        if(action==="delete"&&!hasPermission(profile,"financial_journal","delete")&&!hasPermission(profile,"financial_journal","edit")&&!hasPermission(profile,"financial","edit"))throw new Error("Permission denied: financial journal attachment deletion.");
       }else{
         if(!hasPermission(profile,"financial","view"))throw new Error("Permission denied: financial attachment access.");
         if(action==="upload"&&!hasPermission(profile,"financial_invoices","add")&&!hasPermission(profile,"financial_invoices","edit")&&!hasPermission(profile,"financial","add")&&!hasPermission(profile,"financial","edit"))throw new Error("Permission denied: financial attachment upload.");
