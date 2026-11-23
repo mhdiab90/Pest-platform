@@ -2222,3 +2222,30 @@ test("bulk legacy journal import preserves long entries, source metadata, idempo
   assert.equal(read("journals/"+longId+"/lines").length,208);
   assert.equal(read("ledger/1110/2026-11/"+longId+"_208").credit,1);
 });
+
+
+test("deleting a financial document attachment removes only its metadata and preserves the invoice", async () => {
+  const documentId="ATTACHMENT-DELETE-API-TEST";
+  write("documents/"+documentId,{
+    id:documentId,type:"invoice",status:"pending_review",createdBy:claims.sub,number:"INV-ATT-DEL-01",
+    attachments:{
+      "ATTACH-DELETE":{id:"ATTACH-DELETE",fileName:"wrong-scan.pdf",mimeType:"application/pdf",size:250},
+      "ATTACH-KEEP":{id:"ATTACH-KEEP",fileName:"correct-scan.pdf",mimeType:"application/pdf",size:300}
+    }
+  });
+  write("reviewQueue/"+documentId,{id:documentId,status:"pending_review",type:"invoice"});
+  const result=await invoke("POST","",{action:"deleteAttachment",documentId,attachmentId:"ATTACH-DELETE"});
+  assert.equal(result.success,true);
+  assert.equal(read("documents/"+documentId+"/attachments/ATTACH-DELETE"),null,"only the selected attachment metadata is removed");
+  assert.equal(read("documents/"+documentId+"/attachments/ATTACH-KEEP").fileName,"correct-scan.pdf","other attachments remain linked");
+  assert.equal(read("documents/"+documentId+"/number"),"INV-ATT-DEL-01","invoice details are not changed");
+  assert.equal(read("documents/"+documentId+"/status"),"pending_review","the review status is not changed");
+  assert.ok(read("reviewQueue/"+documentId),"the invoice remains in the review queue");
+
+  await assert.rejects(invoke("POST","",{action:"deleteAttachment",documentId,attachmentId:"ATTACH-KEEP"},{
+    profile:{uid:"TEST-REVIEWER",role:"user",status:"active",fullName:"Test Reviewer"},
+    claims:{sub:"TEST-REVIEWER"},
+    hasPermission:()=>false,
+    requirePermission:(_profile,moduleId,action)=>{throw new Error("Permission denied: "+moduleId+"."+action);}
+  }),/Permission denied/);
+});

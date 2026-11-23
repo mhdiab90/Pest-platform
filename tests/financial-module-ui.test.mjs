@@ -254,3 +254,14 @@ test("inventory movement adjustment journals remain read-only in review and jour
   assert.match(source, /!draft\.inventoryMovementChange/);
   assert.match(source, /inventoryMovementChange:doc\.inventoryMovementChange\|\|null/);
 });
+
+
+test("financial attachments can be deleted from invoice, statement, and partner-custody views", () => {
+  assert.match(source, /const canDeleteStatementAttachment=attachment=>/);
+  assert.match(source, /const deleteStatementAttachment=async\(attachment,invoiceDocumentId=""\)=>/);
+  assert.match(source, /action:"deleteAttachment",documentId,attachmentId:attachment\.id/);
+  assert.match(source, /deleteStatementAttachment\(item,invoiceDocumentIdForAttachment\(item\)\)/);
+  assert.match(source, /deleteStatementAttachment\(Object\.assign\(\{\},attachment,\{entityType:'financial',entityId:selected\.id\}\),selected\.id\)/);
+  assert.match(source, /canDeleteStatementAttachment\(\{entityType:'cashCustody'/);
+  assert.match(source, /canDeleteStatementAttachment\(statementAttachmentPreview\.attachment\)/);
+});

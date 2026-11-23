@@ -2648,6 +2648,30 @@ if(action==="submitCash"){
   const updates={};updates["documents/"+documentId+"/attachments/"+attachmentId]=metadata;updates["audit/"+uid("AUD")]={action:"attach_financial_document",documentId,attachmentId,uid:claims.sub,createdAt:now};
   await adminPatch(updates);return {success:true,attachment:metadata};
  }
+ if(action==="deleteAttachment"){
+  const documentId=id(body.documentId),attachmentId=id(body.attachmentId),document=await adminRead("documents/"+documentId);
+  if(!document)throw new Error("الفاتورة أو المستند غير موجود.");
+  const existing=document.attachments&&document.attachments[attachmentId];
+  if(!existing)return {success:true,documentId,attachmentId,alreadyUnlinked:true};
+  const activeAssignment=document.status==="assigned"&&document.assignedTo===claims.sub&&document.assignmentId&&await adminRead("assignments/"+claims.sub+"/"+id(document.assignmentId));
+  const reviewEditor=["pending_review","duplicate_review","needs_correction"].includes(document.status)&&hasFinanceArea("review","edit");
+  if(activeAssignment)requireFinanceArea("assignments","edit");
+  else if(reviewEditor)requireFinanceArea("review","edit");
+  else if(document.type==="journal"){
+   if(!hasFinanceArea("journal","delete")&&!hasFinanceArea("journal","edit")&&!hasFinanceArea("financial","delete")&&!hasFinanceArea("financial","edit"))requireFinanceArea("journal","edit");
+  }else if(document.type==="invoice"){
+   const ownsDocument=document.createdBy===claims.sub;
+   if(!hasFinanceArea("invoices","delete")&&!hasFinanceArea("invoices","edit")&&!(ownsDocument&&hasFinanceArea("invoices","add")))requireFinanceArea("invoices",ownsDocument?"add":"edit");
+  }else{
+   const area=documentPermissionArea(document);
+   if(!hasFinanceArea(area,"delete")&&!hasFinanceArea(area,"edit"))requireFinanceArea(area,"edit");
+  }
+  const updates={};
+  updates["documents/"+documentId+"/attachments/"+attachmentId]=null;
+  updates["audit/"+uid("AUD")]={action:"delete_financial_document_attachment",documentId,attachmentId,fileName:txt(existing.fileName,240),uid:claims.sub,createdAt:now};
+  await adminPatch(updates);
+  return {success:true,documentId,attachmentId};
+ }
  if(action==="setAttachmentUploadStatus"){
   const documentId=id(body.documentId),document=await adminRead("documents/"+documentId);
   if(!document||document.type!=="invoice")throw new Error("الفاتورة غير موجودة لتحديث حالة المرفق.");

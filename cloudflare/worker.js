@@ -2499,6 +2499,7 @@ async function validateAttachmentEntity(type,id,claims,profile,token,action,owne
         if(!hasPermission(profile,"financial","view"))throw new Error("Permission denied: financial attachment access.");
         if(action==="upload"&&!hasPermission(profile,"financial_invoices","add")&&!hasPermission(profile,"financial_invoices","edit")&&!hasPermission(profile,"financial","add")&&!hasPermission(profile,"financial","edit"))throw new Error("Permission denied: financial attachment upload.");
         if(action==="edit"&&!hasPermission(profile,"financial","edit"))throw new Error("Permission denied: financial attachment edit.");
+        if(action==="delete"&&!hasPermission(profile,"financial_invoices","delete")&&!hasPermission(profile,"financial_invoices","edit")&&!hasPermission(profile,"financial","delete")&&!hasPermission(profile,"financial","edit")&&!(financialRecord&&financialRecord.type==="invoice"&&financialRecord.createdBy===claims.sub&&hasPermission(profile,"financial_invoices","add")))throw new Error("Permission denied: financial invoice attachment deletion.");
       }
     }
   }
@@ -2552,7 +2553,7 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
       try{connection=await getGoogleDriveConnection(env);storage=await driveStorageRequest(env,"/attachment-usage","GET");}
       catch(error){metadataStorageError=String(error.message||error).slice(0,240);}
     }else metadataStorageError="AI_AGENT_SCHEDULER Durable Object binding is missing.";
-    return {workerVersion:"cash-custody-preupload-20261110-4",configured:configuration.ready,configurationMissing:configuration.missing,configuration,metadataStorageError,connected:Boolean(connection&&connection.encryptedRefreshToken),googleEmail:connection&&connection.googleEmail||"",folderReady:Boolean(connection&&connection.folderId),storage,maxFileBytes:ATTACHMENT_MAX_FILE_BYTES,softLimitBytes:ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES};
+    return {workerVersion:"attachment-delete-all-screens-20261123-1",configured:configuration.ready,configurationMissing:configuration.missing,configuration,metadataStorageError,connected:Boolean(connection&&connection.encryptedRefreshToken),googleEmail:connection&&connection.googleEmail||"",folderReady:Boolean(connection&&connection.folderId),storage,maxFileBytes:ATTACHMENT_MAX_FILE_BYTES,softLimitBytes:ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES};
   }
   if(url.pathname==="/drive/connect"&&request.method==="POST"){
     if(profile.role!=="admin")throw new Error("Only a system administrator can connect the company Google Drive account.");

@@ -14,3 +14,10 @@ test("financial journal attachments use review permissions while pending and jou
   assert.match(worker, /hasPermission\(profile,"financial_journal","edit"\)/);
   assert.match(worker, /financial journal attachment upload/);
 });
+
+
+test("financial invoice attachment deletion requires an edit, delete, or own-upload grant", () => {
+  assert.match(worker, /action==="delete"&&!hasPermission\(profile,"financial_invoices","delete"\)&&!hasPermission\(profile,"financial_invoices","edit"\)&&!hasPermission\(profile,"financial","delete"\)&&!hasPermission\(profile,"financial","edit"\)/);
+  assert.match(worker, /financialRecord\.createdBy===claims\.sub&&hasPermission\(profile,"financial_invoices","add"\)/);
+  assert.match(worker, /await validateAttachmentEntity\(type,entityId,claims,profile,token,"delete",attachment\.ownerUid,env\)/);
+});
