@@ -2249,3 +2249,25 @@ test("deleting a financial document attachment removes only its metadata and pre
     requirePermission:(_profile,moduleId,action)=>{throw new Error("Permission denied: "+moduleId+"."+action);}
   }),/Permission denied/);
 });
+
+
+test("smart account review finding decisions persist and remain scoped to a month", async () => {
+  write("journals/JRN-SMART-REVIEW-01",{
+    id:"JRN-SMART-REVIEW-01",type:"journal",status:"posted",date:"2026-11-20",
+    lines:[{accountCode:"2120",debit:0,credit:125,partyType:"vendor",partyId:"VENDOR-01"}]
+  });
+  const saved=await invoke("POST","",{
+    action:"saveAccountReviewFindingDecision",findingId:"WITHHOLDING-TEST-01",
+    period:"2026-11",journalId:"JRN-SMART-REVIEW-01",accountCode:"2120",
+    status:"follow_up",notes:"التحقق من تطابق تحليل ضريبة الخصم مع المورد"
+  });
+  assert.equal(saved.success,true);
+  assert.equal(saved.item.status,"follow_up");
+  assert.equal(saved.item.journalId,"JRN-SMART-REVIEW-01");
+  const fetched=await invoke("GET","?resource=accountReviewFindingDecisions");
+  assert.equal(fetched.items["ARF_202611_WITHHOLDING-TEST-01"].notes,"التحقق من تطابق تحليل ضريبة الخصم مع المورد");
+  await assert.rejects(
+    invoke("POST","",{action:"saveAccountReviewFindingDecision",findingId:"INVALID-01",period:"2026-11",journalId:"MISSING-JOURNAL",status:"resolved"}),
+    /غير موجود أو غير مرحّل/
+  );
+});
