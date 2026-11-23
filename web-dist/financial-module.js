@@ -494,7 +494,14 @@ function FinanceModule(props){
     const token=await auth.getIdToken(),response=await fetch(base+"/attachments/lookup",{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},body:JSON.stringify({references:chunkRefs})});
     const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"تعذر فحص مرفقات كشف الحساب.");
     const found=new Map((Array.isArray(data.items)?data.items:[]).map(item=>[statementAttachmentKey(item),Array.isArray(item.attachments)?item.attachments:[]]));
-    const updates={};chunk.forEach(([key])=>{updates[key]=found.get(key)||[];});setStatementAttachmentIndex(previous=>Object.assign({},previous,updates));
+    setStatementAttachmentIndex(previous=>{
+     const updates={};
+     chunk.forEach(([key])=>{
+      const combined=[...(found.get(key)||[]),...(Array.isArray(previous[key])?previous[key]:[])];
+      updates[key]=Array.from(new Map(combined.map(item=>[String(item.id),item])).values()).sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")));
+     });
+     return Object.assign({},previous,updates);
+    });
    }catch(error){chunk.forEach(([key])=>statementAttachmentCacheRef.current.delete(key));setError(error.message||String(error));return;}
   }
  };
@@ -3278,7 +3285,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
      h('div',{className:'rounded-lg border p-3'},h('span',{className:'text-xs text-slate-500 block'},'المصدر / المستند'),h('b',null,(statementJournal.sourceType||'manual')+' · '+(statementJournal.sourceId||'—'))),
      h('div',{className:'rounded-lg border p-3'},h('span',{className:'text-xs text-slate-500 block'},'الإنشاء / الاعتماد'),h('b',null,(statementJournal.createdByName||statementJournal.createdBy||'—')+' · '+(statementJournal.approvedBy||'—')))
     ),
-     h('div',{className:'flex flex-wrap items-center gap-3 rounded-xl border bg-slate-50 p-3 text-sm'},h('b',null,'مرفقات الحركة / المستند'),statementAttachmentAction(statementJournal)||h('span',{className:'text-slate-500'},'لا توجد مرفقات مرتبطة بهذا القيد')),
+     h('div',{className:'flex flex-wrap items-center gap-3 rounded-xl border bg-slate-50 p-3 text-sm'},h('b',null,'مرفقات الحركة / المستند'),statementAttachmentAction(statementJournal)||h('span',{className:'text-slate-500'},'لا توجد مرفقات مرتبطة بهذا القيد'),journalAttachmentUploadControl(statementJournal)),
     h('div',{className:'overflow-auto border rounded-xl'},
      h('table',{className:'w-full min-w-[950px] text-sm text-right'},
       h('thead',{className:'bg-slate-100'},h('tr',null,['م','الحساب (اضغط لفتح كشف الحساب)','البيان','مركز التكلفة','المشروع','الطرف التحليلي','مدين','دائن'].map(name=>h('th',{key:name,className:'p-2 whitespace-nowrap'},name)))),
