@@ -647,7 +647,7 @@
       .app-workspace .grid-cols-2{grid-template-columns:minmax(0,1fr)!important}
     }
 
-    .app-report-toolbar{position:sticky;top:0;z-index:32;display:flex;align-items:center;justify-content:space-between;gap:12px;margin:-2px -2px 12px;padding:9px 12px;background:rgba(255,255,255,.97);border:1px solid #dbe3ed;border-inline-start:4px solid var(--brand);border-radius:11px;box-shadow:0 5px 15px rgba(15,23,42,.075);backdrop-filter:blur(12px)}
+    .app-report-toolbar{position:static;top:auto;z-index:32;display:flex;align-items:center;justify-content:space-between;gap:12px;margin:-2px -2px 12px;padding:9px 12px;background:rgba(255,255,255,.97);border:1px solid #dbe3ed;border-inline-start:4px solid var(--brand);border-radius:11px;box-shadow:0 5px 15px rgba(15,23,42,.075);backdrop-filter:blur(12px)}
     .app-report-toolbar .report-toolbar-caption{min-width:0;display:flex;flex-direction:column;gap:2px}
     .app-report-toolbar .report-toolbar-caption strong{font-size:12px;color:#243447;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .app-report-toolbar .report-toolbar-caption small{font-size:10px;color:#64748b}
@@ -655,7 +655,7 @@
     .app-report-toolbar button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:35px;padding:7px 12px;border-radius:8px;font-size:11px;font-weight:800;white-space:nowrap;transition:filter .15s,transform .15s}
     .app-report-toolbar button:hover{filter:brightness(.96);transform:translateY(-1px)}
     @media(max-width:767px){
-      .app-report-toolbar{margin:0 0 9px;padding:7px 8px;gap:7px;top:0}
+      .app-report-toolbar{margin:0 0 9px;padding:7px 8px;gap:7px;top:auto}
       .app-report-toolbar .report-toolbar-caption strong{font-size:10px}
       .app-report-toolbar .report-toolbar-caption small{font-size:9px}
       .app-report-toolbar .report-toolbar-actions{gap:5px}
@@ -7164,7 +7164,7 @@ function App(){
         <div className="app-top-navigation-main">{renderNavigation()}</div>
         {renderRecentScreens()}
       </div>}
-      <main className={'flex-1 overflow-auto app-workspace '+(attachmentPreview?.layout==='side'?'attachment-workspace-docked':'')} style={{'--company-watermark':companyInfo.logo?'url("'+companyInfo.logo+'")':'none','--report-toolbar-offset':canExportCurrentScreen()&&tab!=='appLauncher'?'58px':'0px'}}>
+      <main className={'flex-1 overflow-auto app-workspace '+(attachmentPreview?.layout==='side'?'attachment-workspace-docked':'')} style={{'--company-watermark':companyInfo.logo?'url("'+companyInfo.logo+'")':'none','--report-toolbar-offset':'0px'}}>
         {tab!=='appLauncher'&&<div className="app-screen-navigation no-print">
           <div className="app-screen-navigation-actions">
             <button type="button" onClick={goBackScreen} className="app-screen-back"><i className={'fas '+(rtl?'fa-arrow-right':'fa-arrow-left')}></i><span>{rtl?'رجوع':'Back'}</span></button>
