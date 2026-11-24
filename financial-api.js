@@ -2362,6 +2362,187 @@ export async function handleFinancialRequest(ctx){
   }
   return {success:true,id:invoiceId,assignmentId,taskId,status:"assigned",pushNotification:{recipientUid:assigneeUid,eventType:"financialAssignment",eventId:assignmentId,content:{title:"فاتورة محولة إليك",body:"مطلوب: "+instruction}}};
  }
+
+ if(action==="manageInvoiceAssignment"){
+  requireFinanceArea("assignments","edit");
+  const assignmentId=id(body.assignmentId),mode=txt(body.mode,24),scope=txt(body.scope||"",12);
+  if(!assignmentId||!["update","reassign","delete","archive","restore"].includes(mode))throw new Error("إجراء إدارة التحويل غير صحيح.");
+  const received=scope!=="sent"?await adminRead("assignments/"+claims.sub+"/"+assignmentId):null;
+  const sent=scope!=="received"?await adminRead("sentAssignments/"+claims.sub+"/"+assignmentId):null;
+  const isRecipient=Boolean(received&&received.assigneeUid===claims.sub&&received.status==="open");
+  const isSender=Boolean(sent&&sent.createdBy===claims.sub&&!sent.deletedAt);
+  const record=isSender&&scope==="sent"?sent:isRecipient?received:isSender?sent:null;
+  const senderView=record===sent;
+  if(!record)throw new Error("الإجراء غير موجود في قائمتك أو لم تعد تملك صلاحية إدارته.");
+  const invoiceId=id(record.invoiceId),invoice=await adminRead("documents/"+invoiceId);
+  if(!invoice||invoice.type!=="invoice")throw new Error("الفاتورة المرتبطة بالإجراء غير موجودة.");
+  const assigneeUid=id(record.assigneeUid),active=invoice.status==="assigned"&&invoice.assignedTo===assigneeUid&&invoice.assignmentId===assignmentId;
+  const nowManage=Date.now(),actorName=txt(profile.fullName||profile.username||profile.email||claims.sub,120);
+  const audit=(actionName,extra={})=>({action:actionName,documentId:invoiceId,assignmentId,uid:claims.sub,createdAt:nowManage,...extra});
+  if(mode==="archive"||mode==="restore"){
+   const path=(senderView?"sentAssignments/":"assignments/")+claims.sub+"/"+assignmentId;
+   const updates={};
+   if(mode==="archive"){
+    updates[path+"/archivedAt"]=nowManage;updates[path+"/archivedBy"]=claims.sub;
+   }else{
+    updates[path+"/archivedAt"]=null;updates[path+"/archivedBy"]=null;
+   }
+   updates["audit/"+uid("AUD")]=audit(mode==="archive"?"archive_invoice_assignment":"restore_invoice_assignment");
+   await adminPatch(updates);
+   return {success:true,assignmentId,archived:mode==="archive"};
+  }
+  if(mode==="update"){
+   if(senderView){
+    if(!active&&!["draft","returned_to_creator"].includes(invoice.status))throw new Error("يمكن تعديل التحويل الصادر فقط أثناء تنفيذه أو بعد عودته إليك.");
+   }else if(!isRecipient||!active)throw new Error("لا يمكنك تعديل إجراء لم يعد في عهدتك.");
+   const header=body.invoice&&typeof body.invoice==="object"&&!Array.isArray(body.invoice)?body.invoice:{},saved={...invoice};
+   for(const key of ["invoiceType","date","number","partyId","partyName","partyTaxNumber","currency","taxCode","taxType","projectCode"])if(Object.prototype.hasOwnProperty.call(header,key))saved[key]=txt(header[key]||"",key==="partyName"?180:key==="partyTaxNumber"?32:key==="number"?120:key==="date"?10:key==="currency"?3:120);
+   for(const key of ["taxRate","taxAmount","discount"])if(Object.prototype.hasOwnProperty.call(header,key))saved[key]=header[key]===""?"":num(header[key]||0);
+   if(!["purchase","sales"].includes(saved.invoiceType))throw new Error("نوع الفاتورة غير صحيح.");
+   saved.taxCode=saved.invoiceType==="sales"?"VAT-OUT-14":"VAT-IN-14";saved.taxType=saved.invoiceType==="sales"?"vat_output":"vat_input";saved.taxRate=14;
+   if(Object.prototype.hasOwnProperty.call(header,"otherTaxes"))saved.otherTaxes=normalizeInvoiceOtherTaxes(header.otherTaxes);
+   if(Array.isArray(body.lines)){
+    if(body.lines.length>100)throw new Error("لا يمكن أن تتجاوز الفاتورة 100 بند.");
+    saved.lines=body.lines.map((source,index)=>{
+     if(!source||typeof source!=="object"||Array.isArray(source))throw new Error("بيانات البند "+(index+1)+" غير صحيحة.");
+     const line={...(invoice.lines&&invoice.lines[index]||{}),...source};
+     for(const key of ["description","kind","unit","itemCode","groupCode","warehouseCode","itemType","accountCode","incomeAccountCode","costCenterId"])if(line[key]!==undefined)line[key]=txt(line[key]||"",key==="description"?250:120);
+     for(const key of ["quantity","unitPrice","discount"])if(line[key]!==undefined&&line[key]!==""&&line[key]!==null)line[key]=num(line[key]);
+     return line;
+    });
+   }
+   const instruction=txt(body.instruction===undefined?record.instruction:body.instruction,700);
+   saved.assignmentInstruction=instruction;saved.updatedAt=nowManage;
+   try{const totals=invoiceTotals(saved);saved.totals=totals;saved.netTotal=totals.net;saved.total=totals.total;}catch(error){saved.assignmentEditWarning=String(error.message||error).slice(0,300);}
+   const updates={};
+   updates["documents/"+invoiceId]=saved;
+   updates["assignments/"+assigneeUid+"/"+assignmentId+"/instruction"]=instruction;
+   if(record.createdBy)updates["sentAssignments/"+record.createdBy+"/"+assignmentId+"/instruction"]=instruction;
+   updates["audit/"+uid("AUD")]=audit("edit_invoice_assignment",{instruction});
+   const taskUpdate={};if(record.taskId){taskUpdate[assigneeUid+"/"+record.taskId+"/description"]=instruction;}
+   try{if(Object.keys(taskUpdate).length)await patchExternalBranch("tasks",taskUpdate);await adminPatch(updates);}
+   catch(error){throw error;}
+   return {success:true,assignmentId,invoiceId,instruction,status:saved.status};
+  }
+  if(mode==="reassign"){
+   if(!senderView)throw new Error("إعادة التحويل من قائمة التحويلات الصادرة متاحة لصاحب التحويل.");
+   if(!active&&!["draft","returned_to_creator"].includes(invoice.status))throw new Error("لا يمكن إعادة تحويل الفاتورة في حالتها الحالية.");
+   const nextUid=id(body.nextAssigneeUid),nextUser=adminReadRoot?await adminReadRoot("users/"+nextUid):null;
+   if(!nextUid||nextUid===claims.sub||nextUid===assigneeUid)throw new Error("اختر مستخدمًا نشطًا مختلفًا عنك وعن المستلم الحالي.");
+   if(!nextUser||!["active","نشط","مفعل","enabled"].includes(String(nextUser.status||"").toLowerCase()))throw new Error("المستخدم الجديد غير موجود أو غير نشط.");
+   const nextName=txt(nextUser.fullName||nextUser.username||nextUser.email||nextUid,120),instruction=txt(body.instruction||record.instruction||"استكمال ومراجعة بيانات الفاتورة",700),nextId=uid("ASN"),nextTaskId=uid("FIN-TASK");
+   const saved={...invoice};
+   const header=body.invoice&&typeof body.invoice==="object"&&!Array.isArray(body.invoice)?body.invoice:{};
+   for(const key of ["invoiceType","date","number","partyId","partyName","partyTaxNumber","currency","taxCode","taxType","projectCode"])if(Object.prototype.hasOwnProperty.call(header,key))saved[key]=txt(header[key]||"",key==="partyName"?180:key==="partyTaxNumber"?32:key==="number"?120:key==="date"?10:key==="currency"?3:120);
+   for(const key of ["taxRate","taxAmount","discount"])if(Object.prototype.hasOwnProperty.call(header,key))saved[key]=header[key]===""?"":num(header[key]||0);
+   saved.taxCode=saved.invoiceType==="sales"?"VAT-OUT-14":"VAT-IN-14";saved.taxType=saved.invoiceType==="sales"?"vat_output":"vat_input";saved.taxRate=14;
+   if(Object.prototype.hasOwnProperty.call(header,"otherTaxes"))saved.otherTaxes=normalizeInvoiceOtherTaxes(header.otherTaxes);
+   if(Array.isArray(body.lines))saved.lines=body.lines.slice(0,100).map((line,index)=>{if(!line||typeof line!=="object"||Array.isArray(line))throw new Error("بيانات البند "+(index+1)+" غير صحيحة.");return {...(invoice.lines&&invoice.lines[index]||{}),...line};});
+   const item={id:nextId,invoiceId,assigneeUid:nextUid,assigneeName:nextName,createdBy:claims.sub,createdByName:actorName,instruction,status:"open",taskId:nextTaskId,createdAt:nowManage,invoiceNumber:saved.number||"",invoiceType:saved.invoiceType||"purchase",partyName:saved.partyName||"",date:saved.date||"",rootAssignmentId:record.rootAssignmentId||assignmentId,parentAssignmentId:assignmentId,rootSenderUid:record.rootSenderUid||invoice.createdBy};
+   const task={id:nextTaskId,title:"فاتورة محولة إليك: "+(saved.number||invoiceId),description:instruction,status:"open",createdAt:nowManage,createdBy:claims.sub,createdByName:actorName,kind:"financialAssignment",financialAssignmentId:nextId,sourceInvoiceId:invoiceId,assigneeUid:nextUid};
+   const notification={id:nextId,type:"financialAssignment",recipientUid:nextUid,assignmentId:nextId,invoiceId,senderUid:claims.sub,senderName:actorName,title:"فاتورة محولة إليك",description:instruction,createdAt:nowManage,read:false};
+   saved.assignmentChain=(saved.assignmentChain||[]).concat([{assignmentId:nextId,fromUid:claims.sub,fromName:actorName,toUid:nextUid,toName:nextName,at:nowManage,instruction}]);
+   saved.assignmentId=nextId;saved.assignmentSenderUid=claims.sub;saved.assignedTo=nextUid;saved.assignedAt=nowManage;saved.assignmentInstruction=instruction;saved.lastAssignedTo=null;saved.returnedTaskId=null;saved.status="assigned";saved.updatedAt=nowManage;
+   const updates={};
+   updates["documents/"+invoiceId]=saved;
+   if(active){
+    updates["assignments/"+assigneeUid+"/"+assignmentId+"/status"]="forwarded";
+    updates["assignments/"+assigneeUid+"/"+assignmentId+"/completedAt"]=nowManage;
+    updates["assignments/"+assigneeUid+"/"+assignmentId+"/decision"]="reassigned_by_sender";
+    const previousSent={...record,status:"forwarded",forwardedToUid:nextUid,forwardedToName:nextName,completedAt:nowManage,decision:"reassigned_by_sender",latestAssignmentId:nextId};
+    updates["assignments/"+assigneeUid+"/"+assignmentId+"/forwardedToUid"]=nextUid;
+    updates["sentAssignments/"+claims.sub+"/"+assignmentId]=previousSent;
+   }else{
+    updates["sentAssignments/"+claims.sub+"/"+assignmentId+"/status"]="reassigned";
+    updates["sentAssignments/"+claims.sub+"/"+assignmentId+"/completedAt"]=nowManage;
+    updates["sentAssignments/"+claims.sub+"/"+assignmentId+"/decision"]="reassigned_by_sender";
+    updates["sentAssignments/"+claims.sub+"/"+assignmentId+"/latestAssignmentId"]=nextId;
+   }
+   updates["assignments/"+nextUid+"/"+nextId]=item;
+   updates["sentAssignments/"+claims.sub+"/"+nextId]=item;
+   const rootUid=record.rootSenderUid||invoice.createdBy,rootAssignmentId=record.rootAssignmentId||assignmentId;
+   if(rootUid&&rootUid!==claims.sub){
+    updates["sentAssignments/"+rootUid+"/"+rootAssignmentId+"/status"]="forwarded";
+    updates["sentAssignments/"+rootUid+"/"+rootAssignmentId+"/forwardedToUid"]=nextUid;
+    updates["sentAssignments/"+rootUid+"/"+rootAssignmentId+"/forwardedToName"]=nextName;
+    updates["sentAssignments/"+rootUid+"/"+rootAssignmentId+"/latestAssignmentId"]=nextId;
+   }
+   updates["audit/"+uid("AUD")]=audit("reassign_invoice_assignment",{nextAssignmentId:nextId,previousAssigneeUid:assigneeUid,nextAssigneeUid:nextUid});
+   const taskUpdates={};if(active&&record.taskId){taskUpdates[assigneeUid+"/"+record.taskId+"/status"]="completed";taskUpdates[assigneeUid+"/"+record.taskId+"/completedAt"]=nowManage;}taskUpdates[nextUid+"/"+nextTaskId]=task;
+   const notificationUpdates={[nextUid+"/"+nextId]:notification};
+   let tasksSaved=false,notificationsSaved=false;
+   try{
+    await patchExternalBranch("tasks",taskUpdates);tasksSaved=true;
+    await patchExternalBranch("cashCustodyNotifications",notificationUpdates);notificationsSaved=true;
+    await adminPatch(updates);
+   }catch(error){
+    const rollback=[];
+    if(notificationsSaved)try{await removeExternalBranch("cashCustodyNotifications",[nextUid+"/"+nextId]);}catch(e){rollback.push(String(e.message||e));}
+    if(tasksSaved){const restore={};if(active&&record.taskId)restore[assigneeUid+"/"+record.taskId+"/status"]="open";restore[nextUid+"/"+nextTaskId]=null;try{await patchExternalBranch("tasks",restore);}catch(e){rollback.push(String(e.message||e));}}
+    if(rollback.length)throw new Error("تعذر إعادة تحويل الإجراء، وفشل التراجع عن بعض المهام أو الإشعارات: "+rollback.join("؛ ")+". السبب الأصلي: "+String(error.message||error));
+    throw error;
+   }
+   return {success:true,id:invoiceId,assignmentId:nextId,previousAssignmentId:assignmentId,status:"assigned",nextAssigneeUid:nextUid};
+  }
+  if(mode==="delete"){
+   const updates={},taskUpdates={},notificationUpdates={};
+   if(senderView){
+    if(active){
+     updates["documents/"+invoiceId+"/status"]="returned_to_creator";
+     updates["documents/"+invoiceId+"/lastAssignedTo"]=claims.sub;
+     for(const key of ["assignedTo","assignmentId","assignmentSenderUid","assignedAt","assignmentInstruction"])updates["documents/"+invoiceId+"/"+key]=null;
+     updates["assignments/"+assigneeUid+"/"+assignmentId+"/status"]="cancelled";
+     updates["assignments/"+assigneeUid+"/"+assignmentId+"/completedAt"]=nowManage;
+     updates["assignments/"+assigneeUid+"/"+assignmentId+"/decision"]="cancelled_by_sender";
+     if(record.taskId){taskUpdates[assigneeUid+"/"+record.taskId+"/status"]="completed";taskUpdates[assigneeUid+"/"+record.taskId+"/completedAt"]=nowManage;}
+    }
+    updates["sentAssignments/"+claims.sub+"/"+assignmentId+"/status"]="cancelled";
+    updates["sentAssignments/"+claims.sub+"/"+assignmentId+"/deletedAt"]=nowManage;
+    updates["sentAssignments/"+claims.sub+"/"+assignmentId+"/deletedBy"]=claims.sub;
+    updates["sentAssignments/"+claims.sub+"/"+assignmentId+"/deleteReason"]=txt(body.reason||"حذف التحويل من قائمة المرسل",300);
+   }else{
+    if(!isRecipient||!active)throw new Error("لا يمكنك إزالة إجراء لم يعد في عهدتك.");
+    const ownerUid=id(record.createdBy),ownerName=txt(record.createdByName||ownerUid,120),returnedTaskId=uid("FIN-TASK");
+    updates["documents/"+invoiceId+"/status"]="returned_to_creator";
+    updates["documents/"+invoiceId+"/lastAssignedTo"]=ownerUid;
+    updates["documents/"+invoiceId+"/assignedTo"]=null;
+    updates["documents/"+invoiceId+"/assignmentId"]=null;
+    updates["documents/"+invoiceId+"/assignmentSenderUid"]=null;
+    updates["documents/"+invoiceId+"/assignedAt"]=null;
+    updates["documents/"+invoiceId+"/assignmentInstruction"]=null;
+    updates["documents/"+invoiceId+"/returnedTaskId"]=returnedTaskId;
+    updates["documents/"+invoiceId+"/updatedAt"]=nowManage;
+    updates["assignments/"+claims.sub+"/"+assignmentId+"/status"]="returned_to_creator";
+    updates["assignments/"+claims.sub+"/"+assignmentId+"/completedAt"]=nowManage;
+    updates["assignments/"+claims.sub+"/"+assignmentId+"/decision"]="returned_by_recipient";
+    updates["assignments/"+claims.sub+"/"+assignmentId+"/deletedAt"]=nowManage;
+    updates["assignments/"+claims.sub+"/"+assignmentId+"/deletedBy"]=claims.sub;
+    updates["sentAssignments/"+ownerUid+"/"+assignmentId+"/status"]="returned_to_creator";
+    updates["sentAssignments/"+ownerUid+"/"+assignmentId+"/completedAt"]=nowManage;
+    updates["sentAssignments/"+ownerUid+"/"+assignmentId+"/decision"]="returned_by_recipient";
+    const returnedTask={id:returnedTaskId,title:"استكمال ومراجعة فاتورة "+(invoice.number||invoiceId),description:"عاد المستند من "+actorName+" لاستكمال البيانات قبل إرساله للمراجعة.",status:"open",createdAt:nowManage,createdBy:claims.sub,createdByName:actorName,kind:"financialAssignmentReturned",financialAssignmentId:assignmentId,sourceInvoiceId:invoiceId,assigneeUid:ownerUid};
+    taskUpdates[claims.sub+"/"+record.taskId+"/status"]="completed";
+    taskUpdates[claims.sub+"/"+record.taskId+"/completedAt"]=nowManage;
+    taskUpdates[ownerUid+"/"+returnedTaskId]=returnedTask;
+    notificationUpdates[ownerUid+"/"+returnedTaskId]={id:returnedTaskId,type:"financialAssignmentReturned",recipientUid:ownerUid,assignmentId,invoiceId,senderUid:claims.sub,senderName:actorName,title:"عاد المستند لاستكماله",description:"الفاتورة "+(invoice.number||invoiceId)+" عادت إليك ويمكنك مراجعتها أو إعادة تحويلها.",createdAt:nowManage,read:false};
+    updates["audit/"+uid("AUD")]=audit("return_invoice_assignment_by_recipient",{ownerUid,reason:txt(body.reason||"إزالة الإجراء من قائمة المستلم",300)});
+   }
+   if(senderView){
+    updates["audit/"+uid("AUD")]=audit("delete_invoice_assignment_by_sender",{assigneeUid,reason:txt(body.reason||"حذف التحويل من قائمة المرسل",300)});
+   }
+   let tasksSaved=false,notificationsSaved=false;
+   try{
+    if(Object.keys(taskUpdates).length){await patchExternalBranch("tasks",taskUpdates);tasksSaved=true;}
+    if(Object.keys(notificationUpdates).length){await patchExternalBranch("cashCustodyNotifications",notificationUpdates);notificationsSaved=true;}
+    await adminPatch(updates);
+   }catch(error){
+    if(notificationsSaved)try{await removeExternalBranch("cashCustodyNotifications",Object.keys(notificationUpdates));}catch(rollbackError){}
+    if(tasksSaved)try{await patchExternalBranch("tasks",{});}catch(rollbackError){}
+    throw error;
+   }
+   return {success:true,assignmentId,deleted:true,invoicePreserved:true,status:senderView?"cancelled":"returned_to_creator"};
+  }
+ }
  if(action==="completeInvoiceAssignment"){
    requireFinanceArea("assignments","edit");
    const assignmentId=id(body.assignmentId),assignment=await adminRead("assignments/"+claims.sub+"/"+assignmentId);
