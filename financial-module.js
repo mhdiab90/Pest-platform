@@ -960,7 +960,7 @@ const ledgerDebit=auditBalanceFlat.reduce((sum,line)=>sum+Number(line.debit||0),
   setError('');setNotice('');
   try{
    await refresh();
-   await loadPeriod();
+   if(canFinance('reports','view'))await loadPeriod();
    await runIntegrityAudit();
   }catch(error){setError(error.message||String(error));}
  };
@@ -1290,7 +1290,7 @@ const ledgerDebit=auditBalanceFlat.reduce((sum,line)=>sum+Number(line.debit||0),
   }).catch(error=>{if(active)setError(error.message||String(error));}).finally(()=>{if(active)setBusy(false);});
   return()=>{active=false;};
  },[tab,currentUser&&currentUser.uid]);
- React.useEffect(()=>{if(['overview','reports','accountAnalysis','review','accountReview','partyStatements','tax','centers'].includes(tab)&&canFinance(financeTabAreas[tab],"view"))loadPeriod();},[tab,period.from,period.to,currentUser&&currentUser.uid]);
+ React.useEffect(()=>{if((['overview','reports','accountAnalysis','accountReview','partyStatements','tax','centers'].includes(tab)&&canFinance(financeTabAreas[tab],"view"))||(tab==='review'&&canFinance('reports','view')))loadPeriod();},[tab,period.from,period.to,currentUser&&currentUser.uid]);
  React.useEffect(()=>{
   if(!['review','accountReview'].includes(tab)||!canFinance('reports','view'))return;
   let active=true;
@@ -3257,7 +3257,7 @@ const renderReview=()=>panel('مركز المراجعة والفحص والاع�
     ))
    )),
   renderIntegrityAuditPanel(),
-  renderAccountReview(),
+  canFinance('reports','view')?renderAccountReview():null,
   selected?h('div',{className:'space-y-3'},
    h('div',{className:'flex items-center justify-between'},h('strong',null,selected.type==='journal'&&selected.number?'رقم القيد: '+selected.number+(selected.title&&selected.title!=='قيد رقم '+selected.number?' — '+selected.title:''):selected.title||selected.number||selected.id),button('إغلاق',()=>setSelected(null))),
    h('p',{className:'text-sm'},t('النوع: ','Type: ')+(selected.type==='invoice'?(selected.invoiceType==='purchase'?t('فاتورة مشتريات','Purchase Invoice'):t('فاتورة مبيعات','Sales Invoice')):documentType(selected.type))+' · '+t('التاريخ: ','Date: ')+(selected.date||'—')+' · '+t('الحالة: ','Status: ')+status(selected.status)),
