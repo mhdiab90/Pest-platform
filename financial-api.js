@@ -1216,6 +1216,7 @@ export async function handleFinancialRequest(ctx){
   if(kind==="employeeAdvances"||kind==="employeeCustodies"){
    const employeeUid=id(item.employeeUid),employee=employeeUid&&adminReadRoot?await adminReadRoot("users/"+employeeUid):null;
    if(!employeeUid||!employee)throw new Error("يجب ربط كود السلفة أو العهدة بموظف مسجل في المستخدمين.");
+   if(previous&&String(previous.employeeUid||"")!==employeeUid){const usages=await findMasterReferences(ctx,kind,originalCode);if(usages.length)throw new Error("لا يمكن تغيير الموظف المرتبط بالكود لوجود حركات سابقة: "+usages.join("، ")+".");}
    const registry=(await adminRead(kind))||{};
    const duplicate=Object.values(registry).find(record=>record&&record.active!==false&&String(record.employeeUid||"")===employeeUid&&String(record.code||"")!==String(originalCode));
    if(duplicate)throw new Error("يوجد كود نشط لهذا الموظف بالفعل في "+(kind==="employeeAdvances"?"دليل السلف":"دليل العهد")+" ("+String(duplicate.code||"")+"). عدّل الكود الموجود بدلًا من إنشاء سجل مكرر.");
