@@ -501,7 +501,7 @@ test("unlinked employee advance and custody codes appear in their own analytical
 
 test("master directory permissions allow master-data users to load and maintain all master code types", () => {
   assert.match(apiSource, /if\(!hasPermission\(profile,"financial","view"\)&&!hasPermission\(profile,"master","view"\)&&!hasPermission\(profile,"financial_masters","view"\)\)requirePermission\(profile,"financial","view"\)/);
-  assert.match(apiSource, /const requireFinanceMaster=\(kind,action\)=>\{\s*if\(hasPermission\(profile,"master",action\)\)return true;/);
+  assert.match(apiSource, /const requireFinanceMaster=\(kind,action\)=>\{\s*if\(\["parties","financingParties","employeeAdvances","employeeCustodies"\]\.includes\(kind\)&&hasPermission\(profile,"master",action\)\)return true;/);
   assert.match(apiSource, /requireFinanceMaster\(kind,previous\?"edit":"add"\)/);
   assert.match(indexHtml, /tabId==='master'\?\(hasPermission\('master','view'\)\|\|hasPermission\('financial_masters','view'\)\)/);
 });
@@ -519,6 +519,7 @@ test("the global master navigation opens the unified directory instead of the le
   assert.match(indexHtml, /master:'دليل الأكواد والبيانات الأساسية'/);
   assert.match(indexHtml, /id:'masterGroup',label:tr\('master'\)[\s\S]*id:'master',label:rtl\?'دليل الأكواد والبيانات الأساسية'/);
   assert.match(indexHtml, /masterDirectoryOnly=\{tab==='master'\}/);
+  assert.match(indexHtml, /can=\{\(module,action\)=>\{if\(tab==='master'&&module==='financial_masters'\)/);
   assert.match(indexHtml, /externalPartyRequest=\{financialPartyMasterRequest\}/);
   assert.match(indexHtml, /tab==='master'&&financialPartyReturn&&/);
   assert.match(indexHtml, /function openFinancialPartyMaster\(payload\)[\s\S]*setFinancialPartyMasterRequest/);
