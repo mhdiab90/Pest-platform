@@ -486,7 +486,7 @@ export async function handleFinancialRequest(ctx){
  const requireFinanceArea=(area,action)=>requirePermission(profile,"financial_"+area,action);
  const hasFinanceArea=(area,action)=>hasPermission(profile,"financial_"+area,action);
  const requireFinanceMaster=(kind,action)=>{
-  if(kind==="parties"&&hasPermission(profile,"master",action))return true;
+  if(hasPermission(profile,"master",action))return true;
   return requireFinanceArea(financeAreaForMaster(kind),action);
  };
  const documentPermissionArea=document=>document&&document.type==="invoice"?"invoices":
@@ -576,7 +576,7 @@ export async function handleFinancialRequest(ctx){
  if(request.method==="GET"){
   const res=txt(url.searchParams.get("resource")||"bootstrap",40);
   if(res==="bootstrap"){
-   requirePermission(profile,"financial","view");
+   if(!hasPermission(profile,"financial","view")&&!hasPermission(profile,"master","view")&&!hasPermission(profile,"financial_masters","view"))requirePermission(profile,"financial","view");
    let chart=(await adminRead("chartOfAccounts"))||{};
    if(!Object.keys(chart).length){
     if(profile.role!=="admin")throw new Error("يجب على مدير النظام تهيئة دليل الحسابات أولاً.");
@@ -1190,8 +1190,7 @@ export async function handleFinancialRequest(ctx){
   if(target&&!sameKey&&kind!=="parties")throw new Error("هذا الكود مسجل بالفعل. اختر كودًا غير مستخدم.");
   if(kind==="parties"&&target&&target.partyType&&target.partyType!==item.partyType)throw new Error("هذا الكود مسجل بالفعل لنوع طرف مختلف.");
   if(!txt(item.name,180))throw new Error("الاسم مطلوب");
-  if(kind==="parties"&&hasPermission(profile,"master",previous?"edit":"add")){}
-  else requireFinanceArea(permissionArea,previous?"edit":"add");
+  requireFinanceMaster(kind,previous?"edit":"add");
   if(!previous&&target&&kind!=="parties")throw new Error("هذا الكود مسجل بالفعل. اختر كودًا آخر حتى لا يتم استبدال بياناته.");
   if(previous&&!sameKey){
    const usages=await findMasterReferences(ctx,kind,originalCode,previous.partyType||item.partyType||"");
