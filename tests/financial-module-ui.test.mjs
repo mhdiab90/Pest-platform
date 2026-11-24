@@ -499,6 +499,13 @@ test("unlinked employee advance and custody codes appear in their own analytical
   assert.match(source, /record=registry\.find\(item=>String\(item\.employeeUid\|\|item\.code\|\|''\)===String\(line\.partyId\|\|''\)\)/);
 });
 
+test("master directory permissions allow master-data users to load and maintain all master code types", () => {
+  assert.match(apiSource, /if\(!hasPermission\(profile,"financial","view"\)&&!hasPermission\(profile,"master","view"\)&&!hasPermission\(profile,"financial_masters","view"\)\)requirePermission\(profile,"financial","view"\)/);
+  assert.match(apiSource, /const requireFinanceMaster=\(kind,action\)=>\{\s*if\(hasPermission\(profile,"master",action\)\)return true;/);
+  assert.match(apiSource, /requireFinanceMaster\(kind,previous\?"edit":"add"\)/);
+  assert.match(indexHtml, /tabId==='master'\?\(hasPermission\('master','view'\)\|\|hasPermission\('financial_masters','view'\)\)/);
+});
+
 test("master code list appears directly under the type selector before the import section", () => {
   const masterView = source.slice(source.indexOf("const renderMasters="), source.indexOf("const renderTax="));
   assert.match(masterView, /select\("نوع البيانات",activeMasterViewKind/);
