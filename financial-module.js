@@ -728,10 +728,11 @@ function FinanceModule(props){
   setIntegrityAuditBusy(true);setError("");setNotice("");
   try{
    const periodQuery="?resource=periods&from="+encodeURIComponent(period.from)+"&to="+encodeURIComponent(period.to);
-   const [journalResult,documentResult,periodResult]=await Promise.all([
+   const [journalResult,documentResult,periodResult,decisionResult]=await Promise.all([
     api("?resource=journals"),
     api("?resource=documents"),
-    api(periodQuery).catch(()=>null)
+    api(periodQuery).catch(()=>null),
+    canFinance('reports','view')?api("?resource=accountReviewFindingDecisions").catch(()=>({items:{}})):Promise.resolve({items:{}})
    ]);
    const posted=rows(journalResult.items).filter(item=>item&&item.status==="posted");
    const refreshedDocuments=rows(documentResult.items);
@@ -950,7 +951,11 @@ const ledgerDebit=auditBalanceFlat.reduce((sum,line)=>sum+Number(line.debit||0),
     const debitDifference=Math.round((glDebit-subDebit)*100)/100,creditDifference=Math.round((glCredit-subCredit)*100)/100;
     if(Math.abs(debitDifference)>=0.01||Math.abs(creditDifference)>=0.01)pushFinding("error","مطابقة الأستاذ العام مع الأستاذ المساعد","الحساب "+code+" — "+account.name+": فرق المدين "+debitDifference.toFixed(2)+" جنيه وفرق الدائن "+creditDifference.toFixed(2)+" جنيه. السبب المحتمل: سطر بلا طرف تحليلي أو طرف بنوع/كود غير صحيح.",{accountCode:code,debitDifference,creditDifference,amount:Math.max(Math.abs(debitDifference),Math.abs(creditDifference))});
    });
-   const uniqueFindings=Array.from(new Map(findings.map(item=>[item.id,item])).values());
+   const savedAuditDecisions=new Map(rows(decisionResult&&decisionResult.items).map(item=>[String(item.findingId||''),item]));
+   const uniqueFindings=Array.from(new Map(findings.map(item=>[item.id,item])).values()).map(finding=>{
+    const saved=savedAuditDecisions.get(auditDecisionKey(finding));
+    return saved?Object.assign({},finding,{reviewDecision:saved.status,reviewDecisionNote:saved.notes||''}):finding;
+   });
    setIntegrityAudit({createdAt:Date.now(),period:{...period},journalCount:journalMap.size,postedCount:posted.length,findings:uniqueFindings,errors:uniqueFindings.filter(item=>item.severity==="error").length,warnings:uniqueFindings.filter(item=>item.severity==="warning").length});
    setNotice("اكتمل الفحص الذكي: "+uniqueFindings.length+" ملاحظة، منها "+uniqueFindings.filter(item=>item.severity==="error").length+" أخطاء و"+uniqueFindings.filter(item=>item.severity==="warning").length+" تنبيهات.");
   }catch(error){setError(error.message||String(error));}
@@ -3216,6 +3221,7 @@ const renderIntegrityAuditPanel=()=>{
    h('td',{className:'p-2'},[finding.journalNumber||finding.journalId,finding.lineNo?'سطر '+finding.lineNo:'',finding.accountCode?'حساب '+finding.accountCode:''].filter(Boolean).join(' / ')||'—'),
    h('td',{className:'p-2 min-w-[300px]'},finding.reason),
    h('td',{className:'p-2 min-w-[260px] text-xs'},finding.recommendation&&finding.recommendation.summary||'يلزم فحص يدوي قبل التعديل.'),
+   h('td',{className:'p-2 text-xs'},finding.reviewDecision==='accepted_risk'?'تم الإبقاء كما هو':finding.reviewDecision||'لم يُتخذ قرار'),
    h('td',{className:'p-2'},action)
   );
  });
@@ -3229,7 +3235,7 @@ const renderIntegrityAuditPanel=()=>{
     metric('إجمالي النتائج',String(integrityAudit.findings.length)),
     metric('حالة الفحص',integrityAudit.errors?'توجد أخطاء':'لا توجد أخطاء')
    ),
-   table(['الخطورة','نوع الفحص','القيد / السطر / الحساب','سبب المشكلة','المعالجة المقترحة','الإجراء'],rows),
+   table(['الخطورة','نوع الفحص','القيد / السطر / الحساب','سبب المشكلة','المعالجة المقترحة','قرار المراجع','الإجراء'],rows),
    renderIntegrityFindingModal()
   )
  );
