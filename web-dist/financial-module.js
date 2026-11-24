@@ -2417,8 +2417,8 @@ const renderJournal = function() {
     field('الاسم',masterForm.name,v=>setMasterForm(o=>Object.assign({},o,{name:v}))),
     masterForm.kind==='chartOfAccounts'?select('نوع الحساب',masterForm.type,v=>setMasterForm(o=>Object.assign({},o,{type:v})),[{value:'asset',label:'أصول'},{value:'liability',label:'التزامات'},{value:'equity',label:'حقوق ملكية'},{value:'revenue',label:'إيرادات'},{value:'expense',label:'مصروفات'}]):null,
     masterForm.kind==='chartOfAccounts'?select('الطبيعة',masterForm.nature,v=>setMasterForm(o=>Object.assign({},o,{nature:v})),[{value:'debit',label:'مدين'},{value:'credit',label:'دائن'}]):null,
-    masterForm.kind==='chartOfAccounts'?select('الحساب الأب',masterForm.parentCode,v=>setMasterForm(o=>Object.assign({},o,{parentCode:v})),[{value:'',label:'بدون'},...accounts.filter(a=>a.isGroup).map(a=>({value:a.code,label:a.code+' — '+a.name}))]):null,
-    masterForm.kind==='chartOfAccounts'?select('تحليل الطرف',masterForm.subledgerType,v=>setMasterForm(o=>Object.assign({},o,{subledgerType:v})),[{value:'',label:'بدون'},{value:'customer',label:'عميل'},{value:'vendor',label:'مورد'},{value:'employeeCustody',label:'موظف صاحب عهدة'},{value:'employeeAdvance',label:'موظف صاحب سلفة'},{value:'partnerCurrentAccount',label:'شريك — جاري الشركاء'}]):null,
+    masterForm.kind==='chartOfAccounts'?selectWithAdd('الحساب الأب',masterForm.parentCode,v=>setMasterForm(o=>Object.assign({},o,{parentCode:v})),[{value:'',label:'بدون'},...accounts.filter(a=>a.isGroup).map(a=>({value:a.code,label:a.code+' — '+a.name}))],'chartOfAccounts',{type:masterForm.type,nature:masterForm.nature,parentCode:masterForm.parentCode||'',isGroup:true},'master-chart-parent'):null,
+    masterForm.kind==='chartOfAccounts'?select('تحليل الطرف',masterForm.subledgerType,v=>setMasterForm(o=>Object.assign({},o,{subledgerType:v})),[{value:'',label:'بدون'},{value:'customer',label:'عميل'},{value:'vendor',label:'مورد'},{value:'employeeCustody',label:'موظف صاحب عهدة'},{value:'employeeAdvance',label:'موظف صاحب سلفة'},{value:'partnerCurrentAccount',label:'شريك — جاري الشركاء'},{value:'financingParty',label:'جهة تمويل / دائن'}]):null,
     masterForm.kind==='items'?field('الوحدة',masterForm.unit,v=>setMasterForm(o=>Object.assign({},o,{unit:v}))):null,
     masterForm.kind==='items'?selectWithAdd('مجموعة الصنف',masterForm.groupCode,v=>setMasterForm(o=>Object.assign({},o,{groupCode:v})),[{value:'',label:'بدون مجموعة'},...rows(master.itemGroups).map(x=>({value:x.code,label:x.code+' — '+x.name}))],'itemGroups'):null,
     masterForm.kind==='items'?field('Version / الإصدار',masterForm.version,v=>setMasterForm(o=>Object.assign({},o,{version:v}))):null,
@@ -3839,6 +3839,7 @@ const criticalAccountConfiguration=[
   {code:"1410",type:"asset",nature:"debit",label:"ضريبة القيمة المضافة - مدخلات"},
   {code:"2110",type:"liability",nature:"credit",label:"ضريبة القيمة المضافة - مخرجات"},
   {code:"2120",type:"liability",nature:"credit",label:"ضرائب الخصم والإضافة المستحقة"},
+  {code:"2150",type:"liability",nature:"credit",subledgerType:"financingParty",label:"تمويل وقروض من الشركاء والغير"},
   {code:"2130",type:"liability",nature:"credit",subledgerType:"customer",label:"دفعات مقدمة من العملاء"},
   {code:"281",type:"liability",nature:"credit",subledgerType:"vendor",label:"الموردون"}
  ];
@@ -4564,7 +4565,7 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   if(quickAddType==='chartOfAccounts'){
    fields.push(select('نوع الحساب',quickAddForm.type,function(v){change('type',v);},[{value:'asset',label:'أصول'},{value:'liability',label:'التزامات'},{value:'equity',label:'حقوق ملكية'},{value:'revenue',label:'إيرادات'},{value:'expense',label:'مصروفات'}]));
    fields.push(select('الطبيعة',quickAddForm.nature,function(v){change('nature',v);},[{value:'debit',label:'مدين'},{value:'credit',label:'دائن'}]));
-   fields.push(select('الحساب الأب',quickAddForm.parentCode,function(v){change('parentCode',v);},[{value:'',label:'بدون'}].concat(accounts.filter(function(x){return x.isGroup;}).map(function(x){return {value:x.code,label:x.code+' — '+x.name};}))));
+   fields.push(selectWithAdd('الحساب الأب',quickAddForm.parentCode,function(v){change('parentCode',v);},[{value:'',label:'بدون'}].concat(accounts.filter(function(x){return x.isGroup;}).map(function(x){return {value:x.code,label:x.code+' — '+x.name};})),'chartOfAccounts',{type:quickAddForm.type,nature:quickAddForm.nature,parentCode:quickAddForm.parentCode||'',isGroup:true},'quick-chart-parent-'+String(quickAddForm.code||'')));
    fields.push(select('تحليل الطرف',quickAddForm.subledgerType||'',function(v){change('subledgerType',v);},[{value:'',label:'بدون'},{value:'customer',label:'عميل'},{value:'vendor',label:'مورد'},{value:'employeeCustody',label:'موظف صاحب عهدة'},{value:'employeeAdvance',label:'موظف صاحب سلفة'},{value:'partnerCurrentAccount',label:'شريك — جاري الشركاء'},{value:'financingParty',label:'جهة تمويل / دائن — شريك أو جهة خارجية'}]));
    fields.push(h('label',{className:'inline-flex items-center gap-2 text-sm'},h('input',{type:'checkbox',checked:quickAddForm.isGroup,onChange:function(e){change('isGroup',e.target.checked);}}),'حساب تجميعي'));
   }
