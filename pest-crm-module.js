@@ -56,13 +56,29 @@
     h('textarea',{rows:(opts&&opts.rows)||3,value:value||'',onChange:e=>onChange(e.target.value),className:'w-full border border-slate-200 rounded-lg p-2.5 text-sm font-normal bg-white',placeholder:opts&&opts.placeholder||''})
   );
   function CrmSearchableSelect(props){
-    const [open,setOpen]=React.useState(false),[query,setQuery]=React.useState('');
+    const [open,setOpen]=React.useState(false),[query,setQuery]=React.useState(''),[menuStyle,setMenuStyle]=React.useState(null);
     const selected=(props.options||[]).find(item=>String(item[0])===String(props.value==null?'':props.value));
-    const root=React.useRef(null);
+    const root=React.useRef(null),menuRef=React.useRef(null);
+    const updatePosition=React.useCallback(()=>{
+      const input=root.current&&root.current.querySelector('input');if(!input)return;
+      const rect=input.getBoundingClientRect(),vw=window.innerWidth||320,vh=window.innerHeight||480,width=Math.max(120,Math.min(rect.width||280,vw-16));
+      const spaceBelow=Math.max(0,vh-rect.bottom-8),spaceAbove=Math.max(0,rect.top-8),openBelow=spaceBelow>=spaceAbove,available=openBelow?spaceBelow:spaceAbove,maxHeight=Math.max(56,Math.min(280,available||56)),left=Math.max(8,Math.min(rect.left,vw-width-8));
+      const next={position:'fixed',zIndex:10000,left,width,maxHeight};if(openBelow)next.top=Math.max(8,Math.min(rect.bottom+4,vh-maxHeight-8));else next.bottom=Math.max(8,vh-rect.top+4);setMenuStyle(next);
+    },[]);
     React.useEffect(()=>{if(!open)setQuery(selected?String(selected[1]):String(props.value||''));},[props.value,open,selected&&selected[1]]);
-    React.useEffect(()=>{if(!open)return;const close=event=>{if(root.current&&!root.current.contains(event.target))setOpen(false);};document.addEventListener('pointerdown',close,true);return()=>document.removeEventListener('pointerdown',close,true);},[open]);
+    React.useEffect(()=>{
+      if(!open)return;
+      const close=event=>{const target=event.target;if(root.current&&!root.current.contains(target)&&menuRef.current&&!menuRef.current.contains(target))setOpen(false);else if(root.current&&!root.current.contains(target)&&!menuRef.current?.contains(target))setOpen(false);};
+      const reposition=()=>updatePosition();reposition();
+      document.addEventListener('pointerdown',close,true);window.addEventListener('resize',reposition);window.addEventListener('scroll',reposition,true);
+      const viewport=window.visualViewport;if(viewport){viewport.addEventListener('resize',reposition);viewport.addEventListener('scroll',reposition);}
+      return()=>{document.removeEventListener('pointerdown',close,true);window.removeEventListener('resize',reposition);window.removeEventListener('scroll',reposition,true);if(viewport){viewport.removeEventListener('resize',reposition);viewport.removeEventListener('scroll',reposition);}};
+    },[open,updatePosition]);
     const normal=value=>norm(value);
     const matches=(props.options||[]).filter(item=>!normal(query)||normal(item[1]).includes(normal(query))||normal(item[0]).includes(normal(query))).slice(0,60);
+    const menu=open?h('div',{ref:menuRef,'data-crm-picker-menu':'true',role:'listbox',style:menuStyle||{position:'fixed',zIndex:10000,left:8,top:8,width:'min(320px, calc(100vw - 16px))',maxHeight:220},className:'overflow-y-auto overscroll-contain rounded-lg border border-slate-200 bg-white shadow-2xl'},
+      matches.length?matches.map((item,index)=>h('button',{key:String(item[0])+'-'+index,type:'button',role:'option',onMouseDown:event=>event.preventDefault(),onClick:()=>{props.onChange(item[0]);setQuery(String(item[1]));setOpen(false);},className:'block w-full border-b border-slate-100 px-3 py-2 text-start text-sm font-normal text-slate-800 hover:bg-blue-50 last:border-0'},item[1])):h('div',{className:'p-3 text-xs font-normal text-slate-500'},'لا توجد نتائج مطابقة')
+    ):null;
     return h('div',{ref:root,className:cx('relative min-w-0',props.className)},
       h('label',{className:'block text-xs font-bold text-slate-700'},
         h('span',{className:'block mb-1'},props.label),
@@ -72,9 +88,7 @@
           onKeyDown:event=>{if(event.key==='Escape')setOpen(false);else if(event.key==='Enter'&&matches.length){event.preventDefault();props.onChange(matches[0][0]);setQuery(String(matches[0][1]));setOpen(false);}},
           className:'w-full border border-slate-200 rounded-lg p-2.5 text-sm font-normal bg-white'})
       ),
-      open?h('div',{className:'absolute z-[180] top-full left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-2xl'},
-        matches.length?matches.map((item,index)=>h('button',{key:String(item[0])+'-'+index,type:'button',onMouseDown:event=>event.preventDefault(),onClick:()=>{props.onChange(item[0]);setQuery(String(item[1]));setOpen(false);},className:'block w-full border-b border-slate-100 px-3 py-2 text-start text-sm font-normal text-slate-800 hover:bg-blue-50 last:border-0'},item[1])):h('div',{className:'p-3 text-xs font-normal text-slate-500'},'لا توجد نتائج مطابقة')
-      ):null
+      menu&&(typeof ReactDOM!=='undefined'&&ReactDOM.createPortal?ReactDOM.createPortal(menu,document.body):menu)
     );
   }
   const select = (label,value,onChange,options,opts) => h(CrmSearchableSelect,{label,value,onChange,options,disabled:opts&&opts.disabled,className:opts&&opts.className});
