@@ -845,25 +845,53 @@ function FinanceModule(props){
      if(!isWithholding)return;
      const details={journalId:journal.id,journalNumber:journal.number,status:journal.status,lineNo:index+1,accountCode:"2120",partyId:String(line.partyId||"")};
      if(!line.partyId||!["vendor","customer"].includes(String(line.partyType||"")))pushFinding("error","تحليل ضريبة الخصم والإضافة","سطر الخصم/الإضافة على 2120 لا يحمل موردًا أو عميلًا تحليليًا؛ يجب ربطه بالطرف الذي نشأت عنه الضريبة.",details);
-     else if(expectedWithholdingParty&&(String(line.partyType)!==expectedWithholdingParty.type||String(line.partyId)!==expectedWithholdingParty.id))pushFinding("error","اختلاف كود طرف ضريبة الخصم","كود طرف سطر 2120 ("+line.partyType+" / "+line.partyId+") مختلف عن الطرف صاحب الفاتورة/الحساب الرقابي ("+expectedWithholdingParty.type+" / "+expectedWithholdingParty.id+").",{...details,expectedPartyType:expectedWithholdingParty.type,expectedPartyId:expectedWithholdingParty.id});
-     else if(!expectedWithholdingParty)pushFinding("warning","تعذر تحديد طرف ضريبة الخصم","يوجد سطر على 2120 لكن لا يوجد طرف واحد واضح داخل القيد لمقارنة كود المورد/العميل به.",details);
+     else{
+      const withholdingPartyType=String(line.partyType||"");
+      const counterpartAccountCode=withholdingPartyType==="vendor"?"281":withholdingPartyType==="customer"?"1210":"";
+      const counterpartPartyIds=new Set(lines.filter(candidate=>counterpartAccountCode&&String(candidate.accountCode)===counterpartAccountCode&&String(candidate.partyType||"")===withholdingPartyType&&String(candidate.partyId||"").trim()).map(candidate=>String(candidate.partyId)));
+      const inferredCounterpart=counterpartPartyIds.size===1?{type:withholdingPartyType,id:Array.from(counterpartPartyIds)[0]}:null;
+      const expectedPartyForLine=expectedWithholdingParty||inferredCounterpart||(counterpartPartyIds.size===0&&controlParties.length===1?controlParties[0]:null);
+      if(expectedPartyForLine&&(withholdingPartyType!==expectedPartyForLine.type||String(line.partyId)!==expectedPartyForLine.id)){
+       const expectedAccount=withholdingPartyType==="vendor"?"حساب المورد 281":withholdingPartyType==="customer"?"حساب العميل 1210":"الحساب الرقابي";
+       pushFinding("error","اختلاف طرف ضريبة الخصم","سطر ضريبة الخصم/الإضافة على 2120 يجب أن يرتبط بنفس الطرف الموجود في "+expectedAccount+" ("+expectedPartyForLine.type+" / "+expectedPartyForLine.id+")، بينما سطر الضريبة مرتبط بـ ("+withholdingPartyType+" / "+String(line.partyId)+").",{...details,expectedPartyType:expectedPartyForLine.type,expectedPartyId:expectedPartyForLine.id,expectedAccountCode:counterpartAccountCode||undefined});
+      }else if(counterpartPartyIds.size>1&&!counterpartPartyIds.has(String(line.partyId))){
+       pushFinding("error","اختلاف طرف ضريبة الخصم","كود الطرف في سطر 2120 ("+withholdingPartyType+" / "+line.partyId+") غير موجود ضمن أطراف الحساب المقابل "+counterpartAccountCode+" في نفس القيد ("+Array.from(counterpartPartyIds).join("، ")+").",{...details,expectedAccountCode:counterpartAccountCode,expectedPartyIds:Array.from(counterpartPartyIds)});
+      }else if(counterpartPartyIds.size>1){
+       pushFinding("warning","تعدد أطراف القيد الضريبي","سطر 2120 يطابق أحد أطراف الحساب المقابل "+counterpartAccountCode+"، لكن القيد يحتوي أكثر من طرف تحليلي؛ راجع توزيع ضريبة الخصم على كل مورد/عميل.",{...details,expectedAccountCode:counterpartAccountCode,expectedPartyIds:Array.from(counterpartPartyIds)});
+      }else if(!expectedPartyForLine){
+       pushFinding("warning","تعذر تحديد طرف ضريبة الخصم","يوجد سطر على 2120 لكن لا يوجد حساب مورد 281 أو عميل 1210 بطرف تحليلي واضح لمقارنة كود الطرف به.",details);
+      }
+     }
+
     });
     if(!isPosted&&journal.status==="needs_correction")pushFinding("warning","قيد يحتاج تصحيحًا","هذا القيد أعيد للتصحيح ولم يُعتمد بعد.",{journalId:journal.id,journalNumber:journal.number,status:journal.status});
    }
    // Reconcile the period ledger index against the canonical posted journals to the same cut-off.
    const ledgerDates=auditBalanceFlat.map(line=>String(line.date||"")).filter(Boolean).sort();
+   const earliestCanonicalDate=posted.map(journal=>String(journal.date||"")).filter(value=>/^\d{4}-\d{2}-\d{2}$/.test(value)).sort()[0]||"";
+   const lowerBound=accountingStartMonth?accountingStartMonth+"-01":earliestCanonicalDate||ledgerDates[0]||"0000-00-00";
+   const upperBound=(period.to||today().slice(0,7))+"-31";
+   const canonicalScopeJournals=posted.filter(journal=>String(journal.date||"")>=lowerBound&&String(journal.date||"")<=upperBound);
+   const canonicalScopeLines=canonicalScopeJournals.flatMap(journal=>(journal.lines||[]).filter(line=>String(line.accountCode||"")));
+   const indexedScopeLines=auditBalanceFlat.filter(line=>String(line.date||"")>=lowerBound&&String(line.date||"")<=upperBound);
+   if(canonicalScopeLines.length&&!indexedScopeLines.length){
+    const missingIndexAmount=canonicalScopeLines.reduce((sum,line)=>sum+Math.max(Number(line.debit||0),Number(line.credit||0)),0);
+    const firstMissing=canonicalScopeJournals[0];
+    pushFinding("error","غياب فهرس دفتر الأستاذ","يوجد "+canonicalScopeJournals.length+" قيدًا مرحّلًا يحتوي على "+canonicalScopeLines.length+" سطرًا محاسبيًا ضمن الفترة، لكن فهرس الأستاذ العام لا يحتوي على أي حركة. يرجى مراجعة عملية الترحيل وإعادة بناء فهرس الأستاذ قبل الاعتماد على الأرصدة والتقارير.",{journalId:firstMissing&&firstMissing.id,journalNumber:firstMissing&&firstMissing.number,amount:missingIndexAmount});
+   }else if(indexedScopeLines.length&&!ledgerDates.length){
+    pushFinding("error","تاريخ فهرس دفتر الأستاذ","توجد حركات في فهرس الأستاذ لكن تواريخها غير صالحة أو غير متاحة؛ تعذرت مطابقتها مع القيود ضمن الفترة المحددة.",{amount:indexedScopeLines.reduce((sum,line)=>sum+Math.max(Number(line.debit||0),Number(line.credit||0)),0)});
+   }
    if(ledgerDates.length){
-    const lowerBound=accountingStartMonth?accountingStartMonth+"-01":ledgerDates[0],upperBound=(period.to||today().slice(0,7))+"-31";
     const canonicalTotals={},derivedTotals={};
-    posted.filter(j=>String(j.date||"")>=lowerBound&&String(j.date||"")<=upperBound).forEach(j=>(j.lines||[]).forEach(line=>{const code=String(line.accountCode||""),sum=canonicalTotals[code]||(canonicalTotals[code]={debit:0,credit:0});sum.debit+=Number(line.debit||0);sum.credit+=Number(line.credit||0);}));
-    auditBalanceFlat.filter(line=>String(line.date||"")>=lowerBound&&String(line.date||"")<=upperBound).forEach(line=>{const code=String(line.accountCode||""),sum=derivedTotals[code]||(derivedTotals[code]={debit:0,credit:0});sum.debit+=Number(line.debit||0);sum.credit+=Number(line.credit||0);});
+    canonicalScopeJournals.forEach(journal=>(journal.lines||[]).forEach(line=>{const code=String(line.accountCode||""),sum=canonicalTotals[code]||(canonicalTotals[code]={debit:0,credit:0});sum.debit+=Number(line.debit||0);sum.credit+=Number(line.credit||0);}));
+    indexedScopeLines.forEach(line=>{const code=String(line.accountCode||""),sum=derivedTotals[code]||(derivedTotals[code]={debit:0,credit:0});sum.debit+=Number(line.debit||0);sum.credit+=Number(line.credit||0);});
     const accountCodes=new Set([...Object.keys(canonicalTotals),...Object.keys(derivedTotals)]);
     accountCodes.forEach(code=>{
      const a=canonicalTotals[code]||{debit:0,credit:0},b=derivedTotals[code]||{debit:0,credit:0},debitDiff=a.debit-b.debit,creditDiff=a.credit-b.credit;
      if(Math.abs(Math.round(debitDiff*100))>0||Math.abs(Math.round(creditDiff*100))>0)pushFinding("error","مطابقة دفتر الأستاذ","حساب "+code+" به فرق بين القيود المرحّلة وفهرس أرصدة الأستاذ: فرق المدين "+debitDiff.toFixed(4)+" وفرق الدائن "+creditDiff.toFixed(4)+" جنيه.",{accountCode:code,debitDifference:debitDiff,creditDifference:creditDiff,amount:Math.max(Math.abs(debitDiff),Math.abs(creditDiff))});
     });
    }
-   const ledgerDebit=auditBalanceFlat.reduce((sum,line)=>sum+Number(line.debit||0),0),ledgerCredit=auditBalanceFlat.reduce((sum,line)=>sum+Number(line.credit||0),0),ledgerDifference=ledgerDebit-ledgerCredit;
+const ledgerDebit=auditBalanceFlat.reduce((sum,line)=>sum+Number(line.debit||0),0),ledgerCredit=auditBalanceFlat.reduce((sum,line)=>sum+Number(line.credit||0),0),ledgerDifference=ledgerDebit-ledgerCredit;
    if(Math.abs(Math.round(ledgerDifference*100))>0)pushFinding("error","اتزان ميزان المراجعة","إجمالي المدين "+ledgerDebit.toFixed(4)+" مقابل الدائن "+ledgerCredit.toFixed(4)+"، والفرق "+ledgerDifference.toFixed(4)+" جنيه.",{difference:ledgerDifference,amount:Math.abs(ledgerDifference)});
    const accountRules=[
     {code:"1410",type:"asset",nature:"debit",label:"ضريبة القيمة المضافة - مدخلات"},
@@ -1447,9 +1475,20 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
   else onChange(next);
  },(options||[]).concat([{value:'__quick_add__',label:'＋ إضافة كود جديد'}]),searchKey);
  const extractFinancingPartyName=value=>{
-  const raw=String(value||"").trim();
-  const match=raw.match(/(?:جهة التمويل|الممول|المموّل|تمويل من|تمويل|من السيد|من شركة|من شركه)\s*[:：\-]?\s*([^،,;؛\n\|]+)/i);
-  return String(match&&match[1]||raw).replace(/^(?:السيد|الأستاذ|الاستاذ|شركة|شركه)\s+/,"").replace(/[.؛،,]+$/,"").trim().slice(0,180);
+  const raw=String(value||"").replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,"").trim();
+  if(!raw)return "";
+  const patterns=[
+   /(?:اسم\s+(?:جهة\s+)?التمويل|جهة\s+التمويل|اسم\s+المموّل|اسم\s+الممول|المموّل|الممول|الجهة\s+الممولة|جهة\s+ممولة)\s*[:：\-]?\s*(?:من\s+)?([^،,;؛\n\|]+)/i,
+   /(?:تمويل|قرض|سلفة)\s+(?:(?:وارد|مستلم|مستلمة|مقدم|مقدمة)\s+)?من\s+([^،,;؛\n\|]+)/i,
+   /من\s+(?:السيد|الأستاذ|الاستاذ|شركة|شركه|بنك|مصرف)\s+([^،,;؛\n\|]+)/i
+  ];
+  for(const pattern of patterns){
+   const match=raw.match(pattern);
+   if(!match||!match[1])continue;
+   const name=String(match[1]).replace(/^(?:السيد|الأستاذ|الاستاذ)\s+/,"").replace(/\s+(?:بموجب|بمقتضى|رقم|عقد|بتاريخ|تاريخ|دفعة|الدفعة|مرجع|حساب|بقيمة)\b[\s\S]*$/i,"").replace(/[.؛،,]+$/,"").trim();
+   if(name.length>=2&&!/^(?:بنكي|شخصي|تمويل|قرض|سلفة)$/i.test(name))return name.slice(0,180);
+  }
+  return "";
  };
  const analyticPickerWithAdd=(label,type,value,onChange,options,searchKey,description)=>{
   if(type==="financingParty")return searchablePicker(label,value,next=>{
