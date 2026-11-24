@@ -2417,19 +2417,41 @@ const renderJournal = function() {
   );
  };
  const renderAssignments=()=>{
-  const selectedAssignment=assignmentItems.find(item=>item.id===selectedAssignmentId);
-  const inbox=panel('المهام المحولة إليّ','تظهر هنا الفواتير التي حوّلها إليك مستخدم آخر، ويمكنك فتحها من هذه الشاشة أو من شاشة المهام الرئيسية.',h('div',{className:'space-y-2'},assignmentItems.length?assignmentItems.map(item=>h('div',{key:item.id,className:'border rounded-xl p-3 flex flex-wrap items-center justify-between gap-3'},h('div',{className:'min-w-0'},h('b',{className:'block'},'فاتورة '+(item.invoiceNumber||item.invoice&&item.invoice.number||'بدون رقم')),h('p',{className:'text-xs text-slate-600'},(item.invoiceType==='purchase'?'مورد: ':'عميل: ')+(item.partyName||item.invoice&&item.invoice.partyName||'')+' · '+(item.date||item.invoice&&item.invoice.date||'')),h('p',{className:'text-xs text-slate-500 mt-1'},item.instruction||'')),button(selectedAssignmentId===item.id?'مفتوحة':'فتح المهمة واتخاذ القرار',()=>openAssignment(item),selectedAssignmentId===item.id?'primary':'muted'))):h('p',{className:'text-sm text-slate-500'},'لا توجد مهام مالية محولة إليك.')));
-  const sentOutbox=panel('تحويلاتي الصادرة','متابعة كل فاتورة قمت بتحويلها: عند المستكمل، عادت إليك، أو أُرسلت للمراجعة والاعتماد.',h('div',{className:'space-y-2'},sentAssignmentItems.length?sentAssignmentItems.map(item=>{
-   const state=item.status==='returned_to_creator'?'عاد إليك':item.status==='sent_for_review'?'أُرسل للمراجعة والاعتماد':item.status==='open'?'عند المستخدم المستكمل':item.status==='completed'?'مكتمل':item.status||'—';
-   const canOpenReturned=item.status==='returned_to_creator'&&item.invoice;
+  const selectedReceived=assignmentItems.find(item=>item.id===selectedAssignmentId);
+  const selectedSent=sentAssignmentItems.find(item=>item.id===selectedAssignmentId);
+  const selectedAssignment=selectedAssignmentSource==="sent"?(selectedSent||selectedReceived):(selectedReceived||selectedSent);
+  const receivedActive=assignmentItems.filter(item=>!item.archivedAt);
+  const receivedArchived=assignmentItems.filter(item=>Boolean(item.archivedAt));
+  const sentActive=sentAssignmentItems.filter(item=>!item.archivedAt);
+  const sentArchived=sentAssignmentItems.filter(item=>Boolean(item.archivedAt));
+  const assignmentTitle=item=>'فاتورة '+(item.invoiceNumber||item.invoice&&item.invoice.number||item.invoiceId||'بدون رقم');
+  const assignmentSub=item=>(item.invoiceType==='purchase'?'مورد: ':'عميل: ')+(item.partyName||item.invoice&&item.invoice.partyName||'')+' · '+(item.date||item.invoice&&item.invoice.date||'');
+  const inbox=panel('المهام المحولة إليّ','يمكنك تعديل الفاتورة وتعليماتها، أو إعادة تحويلها، أو إرجاعها لصاحب التحويل، أو أرشفتها دون حذف الفاتورة.',h('div',{className:'space-y-2'},receivedActive.length?receivedActive.map(item=>h('div',{key:item.id,className:'border rounded-xl p-3 flex flex-wrap items-center justify-between gap-3'},
+   h('div',{className:'min-w-0'},h('b',{className:'block'},assignmentTitle(item)),h('p',{className:'text-xs text-slate-600'},assignmentSub(item)),h('p',{className:'text-xs text-slate-500 mt-1'},item.instruction||'')),
+   h('div',{className:'flex flex-wrap gap-1'},
+    button(selectedAssignmentId===item.id&&selectedAssignmentSource==='received'?'مفتوحة':'تعديل / فتح',()=>openAssignment(item,'received'),selectedAssignmentId===item.id&&selectedAssignmentSource==='received'?'primary':'muted'),
+    button('أرشفة',()=>manageAssignment('archive','received',item),'muted',assignmentBusy),
+    button('حذف / إرجاع',()=>manageAssignment('delete','received',item),'danger',assignmentBusy)
+   )
+  )):h('p',{className:'text-sm text-slate-500'},'لا توجد مهام مالية محولة إليك.')));
+  const sentOutbox=panel('تحويلاتي الصادرة','تابع كل إجراء قمت بتحويله، وعدّل بياناته أو تعليماته، وأعد تحويله لمستخدم آخر أو احذفه من قائمتك أو أرشفه.',h('div',{className:'space-y-2'},sentActive.length?sentActive.map(item=>{
+   const state=item.status==='returned_to_creator'?'عاد إليك':item.status==='sent_for_review'?'أُرسل للمراجعة والاعتماد':item.status==='open'?'عند المستخدم المستكمل':item.status==='completed'?'مكتمل':item.status==='forwarded'?'أعيد تحويله':item.status==='cancelled'?'ملغى':item.status||'—';
+   const canManage=item.status==='open'||item.status==='returned_to_creator'||item.invoice&&['assigned','returned_to_creator','draft'].includes(item.invoice.status);
    return h('div',{key:item.id,className:'border rounded-xl p-3 flex flex-wrap items-center justify-between gap-3'},
-    h('div',{className:'min-w-0'},h('b',{className:'block'},'فاتورة '+(item.invoice&&item.invoice.number||item.invoiceNumber||item.invoiceId||'بدون رقم')),
-     h('p',{className:'text-xs text-slate-600'},(item.invoiceType==='purchase'?'مورد: ':'عميل: ')+(item.invoice&&item.invoice.partyName||item.partyName||'')+' · '+(item.date||item.invoice&&item.invoice.date||'')),
+    h('div',{className:'min-w-0'},h('b',{className:'block'},assignmentTitle(item)),
+     h('p',{className:'text-xs text-slate-600'},assignmentSub(item)),
      h('p',{className:'text-xs text-slate-500 mt-1'},'المستخدم: '+(item.assigneeName||'—')+' · الحالة: '+state)),
-    canOpenReturned?button('فتح المسودة',()=>{window.PEST_PENDING_FINANCE_INVOICE_ID=item.invoiceId;window.dispatchEvent(new Event('pest-finance-route'));setTab('invoices');},'muted'):null
+    h('div',{className:'flex flex-wrap gap-1'},
+     button(selectedAssignmentId===item.id&&selectedAssignmentSource==='sent'?'مفتوحة':'تعديل',()=>openAssignment(item,'sent'),selectedAssignmentId===item.id&&selectedAssignmentSource==='sent'?'primary':'muted',!canManage),
+     button('إعادة تحويل',()=>openAssignment(item,'sent'),'muted',!canManage||assignmentBusy),
+     button('حذف',()=>manageAssignment('delete','sent',item),'danger',assignmentBusy),
+     button('أرشفة',()=>manageAssignment('archive','sent',item),'muted',assignmentBusy)
+    )
    );
   }):h('p',{className:'text-sm text-slate-500'},'لا توجد تحويلات صادرة حتى الآن.')));
-  if(!selectedAssignment)return h('div',{className:'space-y-4'},inbox,sentOutbox);
+  const archivedInbox=panel('أرشيف المهام الواردة','الإجراءات التي أرشفتها من المهام المحولة إليك. يمكنك إعادتها للقائمة وفتحها مرة أخرى.',h('div',{className:'space-y-2'},receivedArchived.length?receivedArchived.map(item=>h('div',{key:item.id,className:'border rounded-xl p-3 flex flex-wrap items-center justify-between gap-2'},h('div',{className:'min-w-0'},h('b',{className:'block'},assignmentTitle(item)),h('p',{className:'text-xs text-slate-600'},assignmentSub(item)),h('p',{className:'text-xs text-slate-500'},item.instruction||'')),h('div',{className:'flex gap-1'},button('فتح',()=>openAssignment(item,'received'),'muted'),button('إلغاء الأرشفة',()=>manageAssignment('restore','received',item),'primary',assignmentBusy)))):h('p',{className:'text-sm text-slate-500'},'الأرشيف الوارد فارغ.')));
+  const archivedSent=panel('أرشيف التحويلات الصادرة','التحويلات التي أرشفتها من قائمتك الصادرة. يمكنك إعادتها إلى القائمة متى احتجت.',h('div',{className:'space-y-2'},sentArchived.length?sentArchived.map(item=>h('div',{key:item.id,className:'border rounded-xl p-3 flex flex-wrap items-center justify-between gap-2'},h('div',{className:'min-w-0'},h('b',{className:'block'},assignmentTitle(item)),h('p',{className:'text-xs text-slate-600'},assignmentSub(item)),h('p',{className:'text-xs text-slate-500'},'المستخدم: '+(item.assigneeName||'—')+' · '+(item.status||'—'))),h('div',{className:'flex gap-1'},button('فتح',()=>openAssignment(item,'sent'),'muted'),button('إلغاء الأرشفة',()=>manageAssignment('restore','sent',item),'primary',assignmentBusy)))):h('p',{className:'text-sm text-slate-500'},'أرشيف التحويلات الصادرة فارغ.')));
+  if(!selectedAssignment)return h('div',{className:'space-y-4'},inbox,sentOutbox,archivedInbox,archivedSent);
   const inv=assignmentHeader||selectedAssignment.invoice||{},purchase=inv.invoiceType==='purchase';
   const setHeader=(key,value)=>setAssignmentHeader(old=>Object.assign({},old,{[key]:value}));
   // Prevent a circular handoff: do not offer the active assignee or the direct sender as the next recipient.
