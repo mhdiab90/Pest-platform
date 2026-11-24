@@ -3292,9 +3292,10 @@ await adminPatch(u);
    normalizeInvoiceOtherTaxes(inv.otherTaxes).forEach((tax,index)=>{
     const fixed=tax.amount!==""&&tax.amount!==null&&tax.amount!==undefined,amount=rnd(fixed?num(tax.amount):tot.net*num(tax.rate||0)/100);
     if(!amount)return;
+    const taxParty=String(tax.accountCode)==="2120"?{partyType:purchase?"vendor":"customer",partyId}:{};
     lines.push(purchase
-     ?{accountCode:tax.accountCode,debit:amount,credit:0,description:tax.description||("ضريبة/رسم إضافي "+(index+1)),taxCode:tax.taxCode||"",taxType:"other"}
-     :{accountCode:tax.accountCode,debit:0,credit:amount,description:tax.description||("ضريبة/رسم إضافي "+(index+1)),taxCode:tax.taxCode||"",taxType:"other"});
+     ?Object.assign({accountCode:tax.accountCode,debit:amount,credit:0,description:tax.description||("ضريبة/رسم إضافي "+(index+1)),taxCode:tax.taxCode||"",taxType:"other"},taxParty)
+     :Object.assign({accountCode:tax.accountCode,debit:0,credit:amount,description:tax.description||("ضريبة/رسم إضافي "+(index+1)),taxCode:tax.taxCode||"",taxType:"other"},taxParty));
    });
    if(purchase){
     lines.push({accountCode:"281",debit:0,credit:tot.total,description:"فاتورة مشتريات",partyType:"vendor",partyId});
