@@ -2946,9 +2946,39 @@ const renderCostCenterAnalysis = function() {
    )
   );
  };
+const renderIntegrityAuditPanel=()=>{
+ if(!integrityAudit)return null;
+ const rows=integrityAudit.findings.map(finding=>{
+  const action=finding.journalId
+   ?button("فتح القيد",()=>void openReviewItem({id:finding.journalId,type:"journal",number:finding.journalNumber}),"muted")
+   :finding.accountCode
+    ?button("كشف الحساب",()=>openStatementAccount(finding.accountCode),"muted")
+    :"—";
+  return h("tr",{key:finding.id,className:"border-t"},
+   h("td",{className:"p-2"},finding.severity==="error"?h("span",{className:"font-bold text-rose-700"},"خطأ"):h("span",{className:"font-bold text-amber-700"},"تنبيه")),
+   h("td",{className:"p-2"},finding.category),
+   h("td",{className:"p-2"},[finding.journalNumber||finding.journalId,finding.accountCode?"حساب "+finding.accountCode:""].filter(Boolean).join(" / ")||"—"),
+   h("td",{className:"p-2 min-w-[300px]"},finding.reason),
+   h("td",{className:"p-2"},action)
+  );
+ });
+ return panel(
+  "تقرير الفحص الذكي — "+new Date(integrityAudit.createdAt).toLocaleString("ar-EG-u-nu-latn"),
+  "تم فحص "+integrityAudit.journalCount+" قيدًا ("+integrityAudit.postedCount+" مرحّل) للفترة حتى "+(integrityAudit.period.to||"—")+". الفحص لا يغيّر القيود أو الأرصدة تلقائيًا.",
+  h("div",{className:"space-y-3"},
+   h("div",{className:"grid grid-cols-2 md:grid-cols-4 gap-2"},
+    metric("أخطاء واجبة المعالجة",String(integrityAudit.errors)),
+    metric("تنبيهات",String(integrityAudit.warnings)),
+    metric("إجمالي النتائج",String(integrityAudit.findings.length)),
+    metric("حالة الفحص",integrityAudit.errors?"توجد أخطاء":"لا توجد أخطاء")
+   ),
+   table(["الخطورة","نوع الفحص","القيد / الحساب","التفاصيل","الإجراء"],rows)
+  )
+ );
+};
 const renderReview=()=>panel('قائمة المراجعة والاعتماد','تتحدّث القائمة تلقائيًا عند فتح التبويب وكل 15 ثانية أثناء عرضه. أي مستخدم مخوّل يرى المستندات؛ المراجع فقط يعتمدها أو يعيدها أو يرفضها.',h('div',{className:'space-y-3'},
   h('div',{className:'flex flex-wrap items-center justify-between gap-2'},h('strong',null,'مستندات بانتظار القرار: '+review.length),h('div',{className:'flex flex-wrap gap-2'},button(integrityAuditBusy?'جارٍ الفحص...':'فحص',runIntegrityAudit,'primary',integrityAuditBusy||!canFinance("journal","view")),button('تحديث القائمة الآن',()=>refreshReviewQueue(false),'muted'))),
-  integrityAudit?panel("تقرير الفحص الذكي — "+new Date(integrityAudit.createdAt).toLocaleString("ar-EG-u-nu-latn"), "تم فحص "+integrityAudit.journalCount+" قيدًا ("+integrityAudit.postedCount+" مرحّل) للفترة حتى "+(integrityAudit.period.to||"—")+". الفحص لا يغيّر القيود أو الأرصدة تلقائيًا.",h("div",{className:"space-y-3"},h("div",{className:"grid grid-cols-2 md:grid-cols-4 gap-2"},metric("أخطاء واجبة المعالجة",String(integrityAudit.errors)),metric("تنبيهات",String(integrityAudit.warnings)),metric("إجمالي النتائج",String(integrityAudit.findings.length)),metric("حالة الفحص",integrityAudit.errors?"توجد أخطاء":"لا توجد أخطاء")) ,table(["الخطورة","نوع الفحص","القيد / الحساب","التفاصيل","الإجراء"],integrityAudit.findings.map(finding=>h("tr",{key:finding.id,className:"border-t"},h("td",{className:"p-2"},finding.severity==="error"?h("span",{className:"font-bold text-rose-700"},"خطأ"):h("span",{className:"font-bold text-amber-700"},"تنبيه")),h("td",{className:"p-2"},finding.category),h("td",{className:"p-2"},[finding.journalNumber||finding.journalId,finding.accountCode?"حساب "+finding.accountCode:""].filter(Boolean).join(" / ")||"—"),h("td",{className:"p-2 min-w-[300px]"},finding.reason),h("td",{className:"p-2"},finding.journalId?button("فتح القيد",()=>void openReviewItem({id:finding.journalId,type:"journal",number:finding.journalNumber}),"muted"):finding.accountCode?button("كشف الحساب",()=>openStatementAccount(finding.accountCode),"muted"):"—"))))):null,
+  renderIntegrityAuditPanel()
   selected?h('div',{className:'space-y-3'},
    h('div',{className:'flex items-center justify-between'},h('strong',null,selected.type==='journal'&&selected.number?'رقم القيد: '+selected.number+(selected.title&&selected.title!=='قيد رقم '+selected.number?' — '+selected.title:''):selected.title||selected.number||selected.id),button('إغلاق',()=>setSelected(null))),
    h('p',{className:'text-sm'},t('النوع: ','Type: ')+(selected.type==='invoice'?(selected.invoiceType==='purchase'?t('فاتورة مشتريات','Purchase Invoice'):t('فاتورة مبيعات','Sales Invoice')):documentType(selected.type))+' · '+t('التاريخ: ','Date: ')+(selected.date||'—')+' · '+t('الحالة: ','Status: ')+status(selected.status)),
