@@ -311,7 +311,8 @@ function inventoryLedgerControlValue(journals){
 function normalizeJournalAnalyticLines(lines,chart){
  return (Array.isArray(lines)?lines:[]).map(line=>{
   const account=chart[txt(line&&line.accountCode||"",32)];
-  return account&&account.subledgerType?{...line,partyType:account.subledgerType}:{...line};
+  const analyticType=account&&(account.subledgerType||(String(line.accountCode)==="2150"?"financingParty":""));
+  return analyticType?{...line,partyType:analyticType}:{...line};
  });
 }
 function invoiceLineAmounts(inv){
