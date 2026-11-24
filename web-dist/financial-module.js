@@ -419,8 +419,8 @@ function FinanceModule(props){
   return !hasScoped&&Boolean(permissions.financial&&permissions.financial[action]===true);
  };
  const financeAreaForMaster=kind=>financeMasterAreas[kind]||"masters";
- React.useEffect(()=>{if(masterDirectoryOnly){if(tab!=="masters")masterReturnTabRef.current=tab;if(tab!=="masters")setTab("masters");}else if(tab==="masters")setTab(masterReturnTabRef.current||"overview");},[masterDirectoryOnly]);
  const masterDirectoryOnly=props.masterDirectoryOnly===true;
+ React.useEffect(()=>{if(masterDirectoryOnly){if(tab!=="masters")masterReturnTabRef.current=tab;if(tab!=="masters")setTab("masters");}else if(tab==="masters")setTab(masterReturnTabRef.current||"overview");},[masterDirectoryOnly]);
  const [tab,setTab]=React.useState(masterDirectoryOnly?"masters":"overview"),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[notice,setNotice]=React.useState('');
  const masterReturnTabRef=React.useRef("overview");
  const [master,setMaster]=React.useState({chartOfAccounts:{},costCenters:{},items:{},itemGroups:{},warehouses:{},bankAccounts:{},taxCodes:{},parties:{},financingParties:{},employeeAdvances:{},employeeCustodies:{},settings:{},inventory:{balances:{}}});
@@ -5392,5 +5392,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261124-finance-advance-code-fix-v10";
+ window.PEST_FINANCE_MODULE_VERSION="20261124-finance-tdz-fix-v11";
 })();
