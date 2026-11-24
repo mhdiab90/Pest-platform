@@ -352,6 +352,13 @@ test("review screen visibly lists the accounting audit rule catalog", () => {
   assert.match(source,/دفتر الأستاذ وميزان المراجعة/);
 });
 
+test("financing journal audit compares the lender named in the description with the selected financier", () => {
+  assert.match(source,/const statedFinancierName=extractFinancingPartyName/);
+  assert.match(source,/جهة تمويل غير مسجلة/);
+  assert.match(source,/اختلاف الممول مع البيان/);
+  assert.match(source,/expectedPartyId/);
+});
+
 test("manual withholding tax lines are checked against their matching supplier or customer control account", () => {
   assert.match(source,/const counterpartAccountCode=withholdingPartyType==="vendor"\?"281":withholdingPartyType==="customer"\?"1210":""/);
   assert.match(source,/اختلاف طرف ضريبة الخصم/);
