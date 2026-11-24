@@ -650,9 +650,6 @@ test("all cash and bank transfer postings remain balanced and synchronized with 
     {movementType:"tax_payment",amount:40,taxAccountCode:"2110",description:"VAT payment audit"},
     {movementType:"tax_payment",amount:25,taxAccountCode:"2120",description:"Withholding tax payment audit"},
     {movementType:"vat_refund",amount:15,description:"VAT refund audit"},
-    {movementType:"tax_payment",amount:40,taxAccountCode:"2110",description:"VAT payment audit"},
-    {movementType:"tax_payment",amount:25,taxAccountCode:"2120",description:"Withholding tax payment audit"},
-    {movementType:"vat_refund",amount:15,description:"VAT refund audit"},
     {movementType:"cash_to_bank",amount:200,bankAccountCode:"1120",description:"Cash deposited to bank transfer audit"},
     {movementType:"bank_to_cash",amount:150,bankAccountCode:"1120",description:"Bank withdrawal to cash transfer audit"}
   ];
@@ -671,14 +668,6 @@ test("all cash and bank transfer postings remain balanced and synchronized with 
     const credit=journal.lines.reduce((sum,line)=>sum+Number(line.credit||0),0);
     assert.equal(Math.round(debit*100),Math.round(credit*100),movement.movementType+" journal must balance to the cent");
     assert.equal(Math.round(debit*100),Math.round(Number(movement.amount)*100));
-    if(movement.movementType==="tax_payment"){
-      assert.ok(journal.lines.some(line=>line.accountCode===movement.taxAccountCode&&line.debit===movement.amount),"tax payment must debit its selected liability account");
-      assert.ok(journal.lines.some(line=>line.accountCode==="1110"&&line.credit===movement.amount),"tax payment must credit treasury");
-    }
-    if(movement.movementType==="vat_refund"){
-      assert.ok(journal.lines.some(line=>line.accountCode==="1110"&&line.debit===movement.amount),"VAT refund must debit treasury");
-      assert.ok(journal.lines.some(line=>line.accountCode==="1410"&&line.credit===movement.amount),"VAT refund must credit input VAT");
-    }
     if(movement.movementType==="tax_payment"){
       assert.ok(journal.lines.some(line=>line.accountCode===movement.taxAccountCode&&line.debit===movement.amount),"tax payment must debit its selected liability account");
       assert.ok(journal.lines.some(line=>line.accountCode==="1110"&&line.credit===movement.amount),"tax payment must credit treasury");
