@@ -2348,6 +2348,14 @@ test("account 2150 is migrated as an analytical financing control and posted to 
   });
   assert.equal(legacyMissingParty.status,"needs_correction");
   assert.ok(legacyMissingParty.errors.some(error=>error.includes("جهة التمويل أو الدائن")),"2150 must require an analytic party even before account metadata migration");
+  write("parties/VENDOR-2150-TEST",{code:"VENDOR-2150-TEST",name:"Supplier Must Not Be a Financier",partyType:"vendor",active:true});
+  const wrongSupplier=await invoke("POST","",{action:"submitJournal",date:"2026-11-24",description:"Wrong supplier used as lender",lines:[
+    {accountCode:"2150",description:"تمويل من مورد",debit:0,credit:50,partyId:"VENDOR-2150-TEST"},
+    {accountCode:"1110",description:"Cash received",debit:50,credit:0}
+  ]});
+  assert.equal(wrongSupplier.status,"needs_correction");
+  assert.ok(wrongSupplier.errors.some(error=>error.includes("مسجل كمورد وليس جهة تمويل")));
+  write("financingParties/LEGACY-LENDER-2150",{code:"LEGACY-LENDER-2150",name:"Legacy Lender Registered",active:true});
   const legacyWithParty=await invoke("POST","",{
     action:"submitJournal",
     date:"2026-11-24",
@@ -2382,6 +2390,7 @@ test("account 2150 is migrated as an analytical financing control and posted to 
   assert.ok(missingParty.errors.some(error=>error.includes("جهة التمويل أو الدائن")));
 
   const lenderId="LENDER-2150-TEST";
+  write("financingParties/"+lenderId,{code:lenderId,name:"Registered Lender 2150",active:true});
   const journal=await invoke("POST","",{
     action:"submitJournal",
     date:"2026-11-24",
@@ -2445,6 +2454,7 @@ test("account 2150 is migrated as an analytical financing control and posted to 
   assert.ok(missingParty.errors.some(error=>error.includes("جهة التمويل أو الدائن")));
 
   const lenderId="LENDER-2150-TEST";
+  write("financingParties/"+lenderId,{code:lenderId,name:"Registered Lender 2150",active:true});
   const journal=await invoke("POST","",{
     action:"submitJournal",
     date:"2026-11-24",
