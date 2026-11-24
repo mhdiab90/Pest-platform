@@ -435,9 +435,37 @@ test("analytical party selectors support quick creation of customers and financi
 test("opening or closing an analytical picker does not replace its existing value without a selection", () => {
   const picker=source.slice(source.indexOf("const searchablePicker="), source.indexOf("const searchablePickerWithAdd="));
   assert.match(picker, /const choose=item=>\{\s*onChange\(item\.value\)/);
-  assert.match(picker, /onFocus:\(\)=>\{setJournalPickerOpen/);
+  assert.match(picker, /onFocus:e=>\{const rect=e\.currentTarget\.getBoundingClientRect\(\)/);
   assert.match(picker, /setJournalPickerSearch\(old=>Object\.assign\(\{\},old,\{\[searchKey\]:''\}\)\)/);
   assert.match(picker, /if\(e\.key==='Escape'\)setJournalPickerOpen/);
+});
+
+test("employee advance and custody analytic selectors use coded master registries, not the user directory", () => {
+  const options = source.slice(source.indexOf("const analyticPartyOptions="), source.indexOf("const openJournalModal="));
+  assert.match(options, /registry=type==="employeeCustody"\?rows\(master\.employeeCustodies\):rows\(master\.employeeAdvances\)/);
+  assert.doesNotMatch(options, /activeAnalyticUsers\.map\(user/);
+  assert.match(source, /openQuickAdd\(kind,\(code,record\)=>\{if\(record&&record\.employeeUid\)onChange\(String\(record\.employeeUid\)\);\},\{employeeUid:String\(value\|\|""\)\}\)/);
+  assert.match(source, /value:"__quick_add__",label:"＋ إضافة كود "\+labelText\+" جديد"/);
+  assert.match(source, /employeeUid:f\.employeeUid\|\|""/);
+});
+
+test("employee advance and custody codes are maintained in the central master directory", () => {
+  assert.match(source, /employeeAdvances:"masters",employeeCustodies:"masters"/);
+  assert.match(source, /\["employeeAdvances","أكواد السلف"\],\["employeeCustodies","أكواد العهد"\]/);
+  assert.match(source, /employeeAdvances:\{label:'أكواد السلف',kind:'employeeAdvances',columns:\['code','name','employeeUid'\]\}/);
+  assert.match(source, /employeeCustodies:\{label:'أكواد العهد',kind:'employeeCustodies',columns:\['code','name','employeeUid'\]\}/);
+  assert.match(source, /const canViewMasterDirectory=/);
+  assert.doesNotMatch(source, /\['accounts','دليل الحسابات','Chart of Accounts'\]/);
+  assert.doesNotMatch(source, /\['centers','مراكز التكلفة','Cost Centers'\]/);
+});
+
+test("financial dropdowns open above their fields and keep the previous choice visible while searching", () => {
+  const picker = source.slice(source.indexOf("const searchablePicker="), source.indexOf("const searchablePickerWithAdd="));
+  assert.match(picker, /position:'fixed',zIndex:1000/);
+  assert.match(picker, /bottom:Math\.max\(8,window\.innerHeight-rect\.top\+4\)/);
+  assert.match(picker, /const selectedCurrent=selected&&String\(selected\.value\)!==''\?selected:null/);
+  assert.match(picker, /filteredMatches\.filter\(item=>!selectedCurrent\|\|String\(item\.value\)!==String\(selectedCurrent\.value\)\)/);
+  assert.match(picker, /'الاختيار الحالي'/);
 });
 
 test("current screen report toolbar stays in normal document flow", () => {
