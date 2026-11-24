@@ -466,14 +466,14 @@ test("employee advance and custody registries are server-validated and protected
   assert.match(apiSource, /kind==="employeeAdvances"\|\|kind==="employeeCustodies"/);
   assert.match(apiSource, /partyLedger\/"+subledgerType\+"\/"+employeeUid/);
   assert.match(apiSource, /findMasterReferences\(ctx,kind,code\)/);
-  assert.match(apiSource, /employeeUid\['employeeuid'/);
+  assert.match(source, /employeeUid:\['employeeuid'/);
 });
 
 test("unified master directory retains cost center analysis and the same master records feed inline dropdown creation", () => {
   const masterView = source.slice(source.indexOf("const renderMasters="), source.indexOf("const renderTax="));
   assert.match(masterView, /masterViewKind==="costCenters"\?renderCostCenterAnalysis\(\):null/);
   assert.match(source, /financeAreaForMaster\(kind\)/);
-  assert.match(apiSource, /adminRead\(k\).*employeeAdvances.*employeeCustodies/);
+  assert.match(apiSource, /for\(const k of \[[\s\S]*"employeeAdvances","employeeCustodies","settings"\]\)out\[k\]=\(await adminRead\(k\)\)\|\|\{\};/);
 });
 
 test("financial dropdowns open above their fields and keep the previous choice visible while searching", () => {
