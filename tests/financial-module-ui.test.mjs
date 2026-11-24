@@ -471,7 +471,7 @@ test("employee advance and custody registries are server-validated and protected
 
 test("unified master directory retains cost center analysis and the same master records feed inline dropdown creation", () => {
   const masterView = source.slice(source.indexOf("const renderMasters="), source.indexOf("const renderTax="));
-  assert.match(masterView, /masterViewKind==="costCenters"\?renderCostCenterAnalysis\(\):null/);
+  assert.match(masterView, /activeMasterViewKind==="costCenters"\?renderCostCenterAnalysis\(\):null/);
   assert.match(source, /financeAreaForMaster\(kind\)/);
   assert.match(apiSource, /for\(const k of \[[\s\S]*"employeeAdvances","employeeCustodies","settings"\]\)out\[k\]=\(await adminRead\(k\)\)\|\|\{\};/);
 });
