@@ -770,10 +770,19 @@ function FinanceModule(props){
      if(requiredType){
       if(!line.partyId)pushFinding("error","الطرف التحليلي","الحساب "+code+" يتطلب طرفًا تحليليًا من نوع "+analyticPartyLabel(requiredType)+" ولم يتم اختياره.",{...base,expectedPartyType:requiredType});
       else if(line.partyType&&String(line.partyType)!==requiredType)pushFinding("error","نوع الطرف التحليلي","الحساب "+code+" يتطلب "+analyticPartyLabel(requiredType)+" بينما القيد مخزن على نوع "+analyticPartyLabel(String(line.partyType))+".",{...base,partyId:String(line.partyId),expectedPartyType:requiredType,actualPartyType:String(line.partyType)});
-      if(line.partyId&&requiredType==="financingParty"){
-       if(!financierMap.has(String(line.partyId))){
+      if(requiredType==="financingParty"){
+       const statedFinancierName=extractFinancingPartyName([line.description,journal.description,journal.reference].join(" "));
+       const matchedFinancier=statedFinancierName?matchFinancingPartyFromText(statedFinancierName):null;
+       if(line.partyId&&!financierMap.has(String(line.partyId))){
         const isVendor=vendorMap.has(String(line.partyId));
         pushFinding("error","جهة التمويل",isVendor?"تم ربط حساب التمويل 2150 بمورد ("+partyName(vendorMap.get(String(line.partyId)))+")، والمورد ليس جهة تمويل. أنشئ جهة تمويل مستقلة ثم أعد ربط القيد.":"جهة التمويل "+line.partyId+" غير مسجلة في دليل جهات التمويل المستقل.",{...base,partyId:String(line.partyId),expectedPartyType:"financingParty"});
+       }
+       if(statedFinancierName&&!matchedFinancier){
+        pushFinding("error","جهة تمويل غير مسجلة","بيان القيد يذكر الممول («"+statedFinancierName+"») لكنه غير موجود في دليل جهات التمويل؛ أضف الممول إلى الدليل المستقل ثم اربط القيد به.",{...base,partyId:String(line.partyId||""),statedFinancierName,expectedPartyType:"financingParty"});
+       }else if(statedFinancierName&&matchedFinancier&&!line.partyId){
+        pushFinding("error","غياب الطرف التحليلي للممول","الممول المذكور في البيان («"+statedFinancierName+"») موجود في دليل جهات التمويل بالكود "+String(matchedFinancier.code||matchedFinancier.id)+"، لكن سطر 2150 لا يحمل هذا الطرف التحليلي.",{...base,statedFinancierName,expectedPartyId:String(matchedFinancier.code||matchedFinancier.id),expectedPartyType:"financingParty"});
+       }else if(statedFinancierName&&matchedFinancier&&String(matchedFinancier.code||matchedFinancier.id)!==String(line.partyId||"")){
+        pushFinding("error","اختلاف الممول مع البيان","بيان القيد يذكر الممول («"+statedFinancierName+"») وكوده "+String(matchedFinancier.code||matchedFinancier.id)+"، بينما حساب 2150 مربوط بالممول الآخر ذي الكود "+String(line.partyId||"بدون كود")+"؛ صحح الطرف التحليلي ليتطابق مع البيان.",{...base,partyId:String(line.partyId||""),statedFinancierName,expectedPartyId:String(matchedFinancier.code||matchedFinancier.id),expectedPartyType:"financingParty"});
        }
       }
       if(line.partyId&&requiredType==="vendor"&&!vendorMap.has(String(line.partyId)))pushFinding("error","تحليل المورد","كود الطرف "+line.partyId+" غير موجود في دليل الموردين.",{...base,partyId:String(line.partyId),expectedPartyType:"vendor"});
@@ -3112,7 +3121,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
     ...[
      {title:'سلامة القيد والتوازن',description:'وجود سطرين على الأقل، وصحة المبالغ، وعدم وجود قيم سالبة أو تحميل المدين والدائن في السطر نفسه، ومطابقة إجمالي الطرفين حتى مستوى القرش.'},
      {title:'صحة الحساب والتوجيه',description:'التأكد من وجود الحساب في الدليل، وأنه نشط ويقبل الترحيل وليس حسابًا تجميعيًا، وأن كل سطر موجّه إلى كود صحيح.'},
-     {title:'الأطراف التحليلية',description:'التأكد من إلزامية الطرف التحليلي ونوعه وكوده، ومطابقته لدليل العملاء أو الموردين أو الموظفين أو الشركاء أو جهات التمويل حسب طبيعة الحساب.'},
+     {title:'الأطراف التحليلية',description:'التأكد من إلزامية الطرف التحليلي وصحة نوعه وكوده، ومطابقة العملاء والموردين وجهات التمويل مع سجلاتها المستقلة.'},
      {title:'جهات التمويل',description:'حساب 2150 يرتبط بدليل جهات التمويل المستقل فقط، ولا يقبل كود مورد. تتم مطابقة اسم الممول الوارد في بيان القيد مع سجل الممول.'},
      {title:'مراكز التكلفة',description:'التحقق من أن مركز التكلفة المرتبط بكل سطر موجود في دليل مراكز التكلفة.'},
      {title:'توجيه الضرائب',description:'قيمة مضافة مدخلات إلى 1410، ومخرجات إلى 2110، وخصم/إضافة إلى 2120، مع مراجعة توافق نوع الكود الضريبي مع حسابه المحاسبي.'},
