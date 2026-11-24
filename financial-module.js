@@ -3839,6 +3839,7 @@ const criticalAccountConfiguration=[
   {code:"1410",type:"asset",nature:"debit",label:"ضريبة القيمة المضافة - مدخلات"},
   {code:"2110",type:"liability",nature:"credit",label:"ضريبة القيمة المضافة - مخرجات"},
   {code:"2120",type:"liability",nature:"credit",label:"ضرائب الخصم والإضافة المستحقة"},
+  {code:"2150",type:"liability",nature:"credit",subledgerType:"financingParty",label:"تمويل وقروض من الشركاء والغير"},
   {code:"2130",type:"liability",nature:"credit",subledgerType:"customer",label:"دفعات مقدمة من العملاء"},
   {code:"281",type:"liability",nature:"credit",subledgerType:"vendor",label:"الموردون"}
  ];
