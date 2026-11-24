@@ -258,7 +258,7 @@ async function findMasterReferences(ctx,kind,code,partyType="") {
 }
 function validateJournal(j,chart,centers){
  const errors=[],lines=Array.isArray(j.lines)?j.lines:[];if(lines.length<2)errors.push("القيد يجب أن يحتوي على سطرين على الأقل");
- lines.forEach((l,i)=>{const a=chart[txt(l.accountCode,32)];if(!a)errors.push("السطر "+(i+1)+": الحساب غير موجود");else if(a.isGroup||a.active===false)errors.push("السطر "+(i+1)+": الحساب غير قابل للترحيل");const d=Number(l.debit||0),c=Number(l.credit||0);if(!Number.isFinite(d)||!Number.isFinite(c)||d<0||c<0||((d>0)===(c>0)))errors.push("السطر "+(i+1)+": أدخل مدين أو دائن فقط");if(l.costCenterId&&!centers[l.costCenterId])errors.push("السطر "+(i+1)+": مركز التكلفة غير موجود");if(a&&a.subledgerType&&!l.partyId){const analyticLabel={customer:"العميل",vendor:"المورد",employeeCustody:"الموظف صاحب العهدة",employeeAdvance:"الموظف صاحب السلفة",partnerCurrentAccount:"الشريك"}[a.subledgerType]||"الطرف التحليلي";errors.push("السطر "+(i+1)+": يجب اختيار الطرف التحليلي ("+analyticLabel+") للحساب "+txt(a.code||l.accountCode,32)+" — "+txt(a.name||"",120)+".");}});
+ lines.forEach((l,i)=>{const a=chart[txt(l.accountCode,32)];if(!a)errors.push("السطر "+(i+1)+": الحساب غير موجود");else if(a.isGroup||a.active===false)errors.push("السطر "+(i+1)+": الحساب غير قابل للترحيل");const d=Number(l.debit||0),c=Number(l.credit||0);if(!Number.isFinite(d)||!Number.isFinite(c)||d<0||c<0||((d>0)===(c>0)))errors.push("السطر "+(i+1)+": أدخل مدين أو دائن فقط");if(l.costCenterId&&!centers[l.costCenterId])errors.push("السطر "+(i+1)+": مركز التكلفة غير موجود");if(a&&a.subledgerType&&!l.partyId){const analyticLabel={customer:"العميل",vendor:"المورد",employeeCustody:"الموظف صاحب العهدة",employeeAdvance:"الموظف صاحب السلفة",partnerCurrentAccount:"الشريك",financingParty:"جهة التمويل أو الدائن"}[a.subledgerType]||"الطرف التحليلي";errors.push("السطر "+(i+1)+": يجب اختيار الطرف التحليلي ("+analyticLabel+") للحساب "+txt(a.code||l.accountCode,32)+" — "+txt(a.name||"",120)+".");}});
  const b=balance(lines);if(Math.abs(b.difference)>0.01)errors.push("القيد غير متوازن. الفرق: "+b.difference);return {errors,balance:b};
 }
 
@@ -552,7 +552,7 @@ export async function handleFinancialRequest(ctx){
    if(profile.role==="admin"){
     const migrated={};
     const updates={};
-    for(const account of [...DEFAULT_PARTNER_CURRENT_ACCOUNTS,{code:'1300',name:'المخزون',type:'asset',nature:'debit',parentCode:'11',isControl:true},...DEFAULT_EXPENSE_ACCOUNTS,...DEFAULT_STAFF_ACCOUNTS,...DEFAULT_PARTY_ADVANCE_ACCOUNTS,...DEFAULT_CHEQUE_ACCOUNTS]){
+    for(const account of [...DEFAULT_PARTNER_CURRENT_ACCOUNTS,{code:'1300',name:'المخزون',type:'asset',nature:'debit',parentCode:'11',isControl:true},{code:'2150',name:'تمويل وقروض من الشركاء والغير',type:'liability',nature:'credit',parentCode:'21',isControl:true,isGroup:false,subledgerType:'financingParty'},...DEFAULT_EXPENSE_ACCOUNTS,...DEFAULT_STAFF_ACCOUNTS,...DEFAULT_PARTY_ADVANCE_ACCOUNTS,...DEFAULT_CHEQUE_ACCOUNTS]){
      if(chart[account.code])continue;
      const parent=account.parentCode?(chart[account.parentCode]||migrated[account.parentCode]):null;
      if(account.parentCode&&(!parent||!parent.isGroup))continue;
@@ -560,6 +560,18 @@ export async function handleFinancialRequest(ctx){
      migrated[account.code]=saved;
      chart[account.code]=saved;
      updates["chartOfAccounts/"+account.code]=saved;
+    }
+    // Upgrade only the control/subledger metadata of an existing 2150 account.
+    // Preserve its current name, type, nature, parent and all historical balances.
+    if(chart["2150"]&&(
+      chart["2150"].subledgerType!=="financingParty"||
+      chart["2150"].isControl!==true||
+      chart["2150"].isGroup===true
+    )){
+     updates["chartOfAccounts/2150/subledgerType"]="financingParty";
+     updates["chartOfAccounts/2150/isControl"]=true;
+     updates["chartOfAccounts/2150/isGroup"]=false;
+     chart["2150"]={...chart["2150"],subledgerType:"financingParty",isControl:true,isGroup:false};
     }
     if(Object.keys(updates).length)await adminPatch(updates);
    }
@@ -795,7 +807,7 @@ export async function handleFinancialRequest(ctx){
   if(res==="party"){
    requireFinanceArea("partyStatements","view");
    const requested=txt(url.searchParams.get("type")||"customer",32);
-   const allowed=["customer","vendor","employeeCustody","employeeAdvance","partnerCurrentAccount"];
+   const allowed=["customer","vendor","employeeCustody","employeeAdvance","partnerCurrentAccount","financingParty"];
    if(!allowed.includes(requested))throw new Error("Invalid analytic party type.");
    const partyId=id(url.searchParams.get("id"));
    return {entries:await readAnalyticPartyLedger(requested,partyId)};
