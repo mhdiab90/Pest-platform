@@ -1864,11 +1864,18 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
   const source=Array.isArray(data)?data:[];
   const filtered=query?source.filter(row=>screenSearchText(row).toLowerCase().includes(query)):source;
   const exportTitle=Array.isArray(headers)?headers.slice(0,3).join(" - "):"جدول التقرير";
+  const tableScrollStyle=Object.assign({
+   maxHeight:'min(62vh, 620px)',
+   overflowY:'auto',
+   overflowX:'auto',
+   overscrollBehavior:'contain',
+   scrollbarGutter:'stable'
+  },scrollStyle||{});
   return h('div',{'data-pest-export-scope':'table','data-pest-export-title':exportTitle,className:'min-w-0'},
    canExportFinancialReport()?h('div',{className:'flex justify-end mb-1'},exportToolbar(null,exportTitle)):null,
-   h('div',{className:'overflow-auto border rounded-xl',style:scrollStyle||undefined},
+   h('div',{role:'region','aria-label':'جدول '+exportTitle+' — مساحة تمرير مستقلة',tabIndex:0,className:'overflow-auto border rounded-xl max-w-full',style:tableScrollStyle},
     h('table',{dir:rtl?'rtl':'ltr',className:'w-full text-sm text-right'},
-     h('thead',{className:'bg-slate-100'},h('tr',null,headers.map(x=>h('th',{key:x,className:'p-3 whitespace-nowrap text-right align-middle'},x)))),
+     h('thead',{className:'bg-slate-100'},h('tr',null,headers.map(x=>h('th',{key:x,className:'sticky top-0 z-10 bg-slate-100 p-3 whitespace-nowrap text-right align-middle'},x)))),
      h('tbody',null,filtered.length?filtered:h('tr',null,h('td',{colSpan:headers.length,className:'p-4 text-center text-slate-400'},query?'لا توجد نتائج مطابقة للبحث':'لا توجد بيانات')))
     )
    )
