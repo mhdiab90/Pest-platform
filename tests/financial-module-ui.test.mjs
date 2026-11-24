@@ -343,6 +343,15 @@ test("review page exposes a precision accounting audit with actionable findings"
   assert.match(source,/جهة التمويل/);
 });
 
+test("review screen visibly lists the accounting audit rule catalog", () => {
+  assert.match(source,/قواعد الفحص المطبقة/);
+  assert.match(source,/سلامة القيد والتوازن/);
+  assert.match(source,/جهات التمويل/);
+  assert.match(source,/توجيه الضرائب/);
+  assert.match(source,/مطابقة الأستاذ المساعد/);
+  assert.match(source,/دفتر الأستاذ وميزان المراجعة/);
+});
+
 test("manual withholding tax lines are checked against their matching supplier or customer control account", () => {
   assert.match(source,/const counterpartAccountCode=withholdingPartyType==="vendor"\?"281":withholdingPartyType==="customer"\?"1210":""/);
   assert.match(source,/اختلاف طرف ضريبة الخصم/);
