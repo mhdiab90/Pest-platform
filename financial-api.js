@@ -265,8 +265,9 @@ async function financingPartyRegistryErrors(lines,adminRead){
  for(const [index,line] of (Array.isArray(lines)?lines:[]).entries()){
   const code=String(line&&line.accountCode||""),partyType=String(line&&line.partyType||"");
   if(code!=="2150"&&partyType!=="financingParty")continue;
-  const partyId=id(line&&line.partyId||"");
-  if(!partyId)continue;
+  const rawPartyId=String(line&&line.partyId||"").trim();
+  if(!rawPartyId)continue;
+  const partyId=id(rawPartyId);
   const financier=await adminRead("financingParties/"+partyId);
   if(financier&&financier.active!==false)continue;
   const registeredParty=await adminRead("parties/"+partyId);
