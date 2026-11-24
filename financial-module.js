@@ -1587,8 +1587,8 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
    setJournalPickerOpen(old=>Object.assign({},old,{[searchKey]:false}));
   };
   return h('div',{className:'relative min-w-0 text-sm font-bold text-slate-700','data-finance-picker-root':'true','data-finance-picker-key':String(searchKey||'')},label,
-   h('input',{type:'search',value:query,onFocus:e=>{const rect=e.currentTarget.getBoundingClientRect(),width=Math.min(rect.width,window.innerWidth-16);setJournalPickerAnchor(old=>Object.assign({},old,{[searchKey]:{left:Math.max(8,Math.min(rect.left,window.innerWidth-width-8)),width,bottom:Math.max(8,window.innerHeight-rect.top+4),maxHeight:Math.max(48,Math.min(224,rect.top-16))}}));setJournalPickerOpen(old=>Object.assign({},old,{[searchKey]:true}));setJournalPickerSearch(old=>Object.assign({},old,{[searchKey]:''}));},onChange:e=>{setJournalPickerSearch(old=>Object.assign({},old,{[searchKey]:e.target.value}));setJournalPickerOpen(old=>Object.assign({},old,{[searchKey]:true}));},onKeyDown:e=>{if(e.key==='Escape')setJournalPickerOpen(old=>Object.assign({},old,{[searchKey]:false}));else if(e.key==='Enter'&&matches.length){e.preventDefault();choose(matches[0]);}},placeholder:'ابحث بالاسم أو الكود...',autoComplete:'off','aria-autocomplete':'list',className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal bg-white'}),
-   opened?h('div',{className:'overflow-auto rounded-lg border border-slate-200 bg-white shadow-2xl',style:Object.assign({position:'fixed',zIndex:1000},journalPickerAnchor[searchKey]||{left:8,bottom:8,width:'min(320px, calc(100vw - 16px))',maxHeight:224})},matches.length?matches.map((item,index)=>h('button',{key:String(item.value)+'-'+index,type:'button',onMouseDown:e=>e.preventDefault(),onClick:()=>choose(item),className:'block w-full border-b border-slate-100 px-3 py-2 text-start text-xs font-normal last:border-0 '+(String(item.value)===String(value||'')?'bg-blue-50 text-blue-900':'hover:bg-blue-50')},h('span',{className:'flex items-center justify-between gap-2'},h('span',{className:'font-bold'},String(item.label||'')),String(item.value)===String(value||'')?h('span',{className:'shrink-0 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-800'},'الاختيار الحالي'):null))):h('div',{className:'p-3 text-xs font-normal text-slate-500'},'لا توجد نتائج مطابقة')):null
+   h('input',{type:'search',value:query,onFocus:e=>{const rect=e.currentTarget.getBoundingClientRect(),viewportWidth=window.innerWidth,viewportHeight=window.innerHeight,width=Math.min(rect.width,viewportWidth-16),spaceBelow=Math.max(0,viewportHeight-rect.bottom-12),spaceAbove=Math.max(0,rect.top-12),openBelow=spaceBelow>=spaceAbove,available=openBelow?spaceBelow:spaceAbove,anchor={left:Math.max(8,Math.min(rect.left,viewportWidth-width-8)),width,maxHeight:Math.max(48,Math.min(280,available))};if(openBelow)anchor.top=Math.max(8,Math.min(rect.bottom+4,viewportHeight-anchor.maxHeight-8));else anchor.bottom=Math.max(8,viewportHeight-rect.top+4);setJournalPickerAnchor(old=>Object.assign({},old,{[searchKey]:anchor}));setJournalPickerOpen(old=>Object.assign({},old,{[searchKey]:true}));setJournalPickerSearch(old=>Object.assign({},old,{[searchKey]:''}));},onChange:e=>{setJournalPickerSearch(old=>Object.assign({},old,{[searchKey]:e.target.value}));setJournalPickerOpen(old=>Object.assign({},old,{[searchKey]:true}));},onKeyDown:e=>{if(e.key==='Escape')setJournalPickerOpen(old=>Object.assign({},old,{[searchKey]:false}));else if(e.key==='Enter'&&matches.length){e.preventDefault();choose(matches[0]);}},placeholder:'ابحث بالاسم أو الكود...',autoComplete:'off','aria-autocomplete':'list',className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal bg-white'}),
+   opened?h('div',{className:'overflow-auto rounded-lg border border-slate-200 bg-white shadow-2xl',style:Object.assign({position:'fixed',zIndex:1000},journalPickerAnchor[searchKey]||{left:8,top:8,width:'min(320px, calc(100vw - 16px))',maxHeight:224})},matches.length?matches.map((item,index)=>h('button',{key:String(item.value)+'-'+index,type:'button',onMouseDown:e=>e.preventDefault(),onClick:()=>choose(item),className:'block w-full border-b border-slate-100 px-3 py-2 text-start text-xs font-normal last:border-0 '+(String(item.value)===String(value||'')?'bg-blue-50 text-blue-900':'hover:bg-blue-50')},h('span',{className:'flex items-center justify-between gap-2'},h('span',{className:'font-bold'},String(item.label||'')),String(item.value)===String(value||'')?h('span',{className:'shrink-0 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-800'},'الاختيار الحالي'):null))):h('div',{className:'p-3 text-xs font-normal text-slate-500'},'لا توجد نتائج مطابقة')):null
   );
  };
  const searchablePickerWithAdd=(label,value,onChange,options,kind,searchKey,defaults)=>searchablePicker(label,value,next=>{
@@ -1745,6 +1745,12 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
    };
    if(kind==='parties'&&(!item.code||!item.name))throw new Error('أدخل كود واسم المورد/العميل أولاً.');
    if(kind==='parties'&&!['customer','vendor'].includes(item.partyType))throw new Error('حدد نوع الطرف عميل أو مورد.');
+   if(kind==='employeeAdvances'||kind==='employeeCustodies'){
+    item.code=String(item.code||'').trim().replace(/[.#$\/\[\]]/g,'-').replace(/-+/g,'-').replace(/^-+|-+$/g,'');
+    item.name=String(item.name||'').trim();
+    if(!item.code)throw new Error('أدخل كودًا صالحًا للسلفة أو العهدة.');
+    if(!item.name)throw new Error('اسم السلفة أو العهدة مطلوب.');
+   }
    const originalCode=quickAddOriginalCode;
    const result=await api('', 'POST',{action:'saveMaster',kind,item,...(originalCode?{originalCode}:{})});
    if(!result||result.success!==true||!result.item)throw new Error('لم يؤكد الخادم حفظ البيانات. لم يتم إغلاق شاشة الإضافة.');
@@ -5150,8 +5156,8 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   }
   if(quickAddType==='employeeAdvances'||quickAddType==='employeeCustodies'){
    const linkedUsers=(userDirectory||[]).filter(user=>user&&user.uid);
-   fields.push(select('الموظف المرتبط (اختياري)',quickAddForm.employeeUid||'',function(v){const user=linkedUsers.find(item=>String(item.uid)===String(v));setQuickAddForm(old=>Object.assign({},old,{employeeUid:v,name:old.name&&old.name.trim()?old.name:String(user&&(user.fullName||user.username||user.email)||'')}));},[{value:'',label:'بدون ربط بمستخدم'}].concat(linkedUsers.map(user=>({value:String(user.uid),label:(user.fullName||user.username||user.email||user.uid)+' — '+String(user.uid)}))),'quick-employee-'+quickAddType));
-   fields.push(h('p',{className:'text-xs text-slate-500 sm:col-span-2 lg:col-span-3'},'ربط الكود بمستخدم اختياري. يمكن إنشاء كود باسم مستقل، وربطه بمستخدم الآن أو لاحقًا ما دامت لا توجد حركات تمنع تغيير الربط.'));
+   fields.push(select('اسم المستخدم المرتبط (اختياري)',quickAddForm.employeeUid||'',function(v){const user=linkedUsers.find(item=>String(item.uid)===String(v));setQuickAddForm(old=>Object.assign({},old,{employeeUid:v,name:old.name&&old.name.trim()?old.name:String(user&&(user.fullName||user.username||user.email)||'')}));},[{value:'',label:'بدون ربط بمستخدم'}].concat(linkedUsers.map(user=>({value:String(user.uid),label:(user.fullName||user.username||user.email||'مستخدم')+(user.username&&String(user.username)!==String(user.fullName||'')?' — @'+user.username:'')}))),'quick-employee-'+quickAddType));
+   fields.push(h('p',{className:'text-xs text-slate-500 sm:col-span-2 lg:col-span-3'},'ربط الكود باسم مستخدم اختياري؛ يمكن إنشاء كود مستقل بدون مستخدم أو ربطه بحساب النظام الآن أو لاحقًا ما دامت لا توجد حركات تمنع تغيير الربط.'));
   }
   if(quickAddType==='financingParties'){
    fields.push(field('رقم مرجعي / رقم مستند التمويل',quickAddForm.reference||'',function(v){change('reference',v);}));
@@ -5386,5 +5392,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261124-finance-master-codes-v9";
+ window.PEST_FINANCE_MODULE_VERSION="20261124-finance-advance-code-fix-v10";
 })();
