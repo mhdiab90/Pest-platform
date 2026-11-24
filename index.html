@@ -1054,7 +1054,7 @@ function PestCrmModuleSlot(props){
 }
 
 function FinanceModuleSlot(props){
-  const FINANCE_MODULE_BUILD='20261124-finance-master-codes-v9';
+  const FINANCE_MODULE_BUILD='20261124-finance-advance-code-fix-v10';
   const [FinanceModule,setFinanceModule]=useState(()=>window.PEST_FINANCE_MODULE||null);
   const [loadError,setLoadError]=useState('');
   useEffect(()=>{
@@ -6286,7 +6286,7 @@ function App(){
   const custodyStatementStatusLabel=status=>status==='approved'?(rtl?'معتمدة':'Approved'):status==='rejected'?(rtl?'مرفوضة':'Rejected'):(rtl?'معلقة':'Pending');
   const navGroups=[
     {id:'dashboard',label:tr('dashboard'),icon:'fa-gauge',tab:'dashboard'},
-    {id:'masterGroup',label:tr('master'),icon:'fa-database',children:[{id:'master',label:rtl?'دليل الأكواد والبيانات الأساسية':'Master Codes & Master Data',icon:'fa-list-check'}]},
+    {id:'master',label:rtl?'دليل الأكواد والبيانات الأساسية':'Master Codes & Master Data',icon:'fa-database',tab:'master'},
     {id:'pestCrmGroup',label:rtl?'إدارة المبيعات والعملاء':'Sales & Customer CRM',icon:'fa-handshake',children:[{id:'pestCrm',label:rtl?'PEST CRM — العملاء والعروض':'PEST CRM — Customers & Offers',icon:'fa-address-card'}]},
     {id:'projectsGroup',label:tr('projects'),icon:'fa-diagram-project',children:[{id:'projects',label:rtl?'قائمة المشروعات':'Project list',icon:'fa-list'},...(selectedProjectCode?[{id:'projectDetail',label:rtl?'ملف المشروع الحالي':'Current project file',icon:'fa-folder-open'}]:[])]},
     {id:'financeGroup',label:rtl?'المالية':'Finance',icon:'fa-coins',children:[{id:'financial',label:rtl?'النظام المالي والمحاسبي':'Financial Accounting',icon:'fa-calculator'},{id:'statement',label:tr('statement'),icon:'fa-file-invoice-dollar'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody',icon:'fa-wallet'},{id:'custodyStatement',label:rtl?'كشف حساب العهد':'Custody Statement',icon:'fa-book-open'},{id:'reports',label:tr('reportCenter'),icon:'fa-chart-pie'}]},
@@ -6298,7 +6298,7 @@ function App(){
   useEffect(()=>{if(tab==='auditLogs'&&!isAdmin)setTab('appLauncher');},[tab,isAdmin]);
   useEffect(()=>{if(tab==='announcements'&&!hasPermission('announcements','manage'))setTab('appLauncher');},[tab,currentUser?.role,currentUser?.permissions?.announcements?.manage]);
   useEffect(()=>{if(tab==='custodyStatement'&&!hasPermission('cashCustody','view'))setTab('appLauncher');},[tab,currentUser?.role,currentUser?.permissions?.cashCustody?.view]);
-  const navGroupByTab={master:'masterGroup',pestCrm:'pestCrmGroup',attachments:'settingsGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',financial:'financeGroup',cashCustody:'financeGroup',custodyStatement:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',announcements:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',aiSettings:'settingsGroup',userRequests:'adminGroup',userManagement:'adminGroup',userPermissions:'adminGroup',auditLogs:'adminGroup'};
+  const navGroupByTab={pestCrm:'pestCrmGroup',attachments:'settingsGroup',projects:'projectsGroup',projectDetail:'projectsGroup',statement:'financeGroup',financial:'financeGroup',cashCustody:'financeGroup',custodyStatement:'financeGroup',reports:'financeGroup',messages:'communicationGroup',tasks:'communicationGroup',announcements:'communicationGroup',settings:'settingsGroup',profile:'settingsGroup',companySettings:'settingsGroup',aiSettings:'settingsGroup',userRequests:'adminGroup',userManagement:'adminGroup',userPermissions:'adminGroup',auditLogs:'adminGroup'};
   const visibleNavGroups=navGroups.map(group=>group.tab?group:({...group,children:(group.children||[]).filter(item=>canAccessTab(item.id))})).filter(group=>group.tab?canAccessTab(group.tab):(group.children||[]).length>0);
   const navCatalog=visibleNavGroups.flatMap(group=>group.tab?[{id:group.tab,label:group.label,icon:group.icon}]:((group.children||[]).map(item=>({...item}))));
   const navMode=navPreferences.uid===(currentUser&&currentUser.uid)?navPreferences.mode:'side';
