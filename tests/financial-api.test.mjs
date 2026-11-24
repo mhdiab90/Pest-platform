@@ -2337,6 +2337,17 @@ test("account 2150 is migrated as an analytical financing control and posted to 
     isControl:false,
     subledgerType:""
   });
+  const legacyMissingParty=await invoke("POST","",{
+    action:"submitJournal",
+    date:"2026-11-24",
+    description:"Legacy financing account without lender",
+    lines:[
+      {accountCode:"2150",description:"Legacy financing",debit:0,credit:250},
+      {accountCode:"1110",description:"Cash received",debit:250,credit:0}
+    ]
+  });
+  assert.equal(legacyMissingParty.status,"needs_correction");
+  assert.ok(legacyMissingParty.errors.some(error=>error.includes("جهة التمويل أو الدائن")),"2150 must require an analytic party even before account metadata migration");
   await invoke("GET","?resource=bootstrap");
   const migrated=read("chartOfAccounts/2150");
   assert.equal(migrated.subledgerType,"financingParty");
