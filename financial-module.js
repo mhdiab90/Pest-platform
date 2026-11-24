@@ -52,8 +52,8 @@ function FinanceModule(props){
   "دفتر أستاذ مستقل — لا ترحيل قبل المراجعة والاعتماد":"Separate General Ledger — No Posting Before Review & Approval",
   "ملخص مالي":"Financial Overview","القيود اليومية":"Journal Entries","الأرصدة الافتتاحية":"Opening Balances","المراجعة والاعتماد":"Review & Approval",
   "فواتير العملاء والموردين":"Customer & Supplier Invoices","الإجراءات المحولة إليّ":"Tasks Assigned to Me",
-  "كشوف الأطراف والعاملين":"Party & Employee Statements","البيانات الأساسية والاستيراد":"Master Data & Import",
-  "دليل الحسابات":"Chart of Accounts","مراكز التكلفة":"Cost Centers","المخزون والأكواد":"Inventory & Item Codes",
+  "كشوف الأطراف والعاملين":"Party & Employee Statements","البيانات الأساسية والاستيراد":"Master Data & Import","دليل الأكواد والبيانات الأساسية":"Master Codes & Master Data",
+  "دليل الحسابات":"Chart of Accounts","مراكز التكلفة":"Cost Centers","المخزون والأكواد":"Inventory & Item Codes","حركة وأرصدة المخزون":"Inventory Balances & Movements",
   "الخزينة والتحصيل والسداد":"Cash & Receipts / Payments","كشوف البنوك":"Bank Statements","الضرائب":"Taxes",
   "القوائم المالية":"Financial Statements","القوائم والتقارير المالية":"Financial Statements & Reports",
   "إجمالي المدين":"Total Debit","إجمالي الدائن":"Total Credit","إجمالي الكمية":"Total Quantity",
@@ -314,7 +314,7 @@ function FinanceModule(props){
   "الطرف المختار":"Selected Party","نوع كشف الحساب":"Statement Type","عرض كشف الحساب":"View Statement",
   "كشوف الأطراف والعاملين":"Party & Employee Statements","العهد الشخصية للموظفين":"Employee Custody Accounts",
   "السلف الشخصية للموظفين":"Employee Advance Accounts","الرصيد الختامي":"Closing Balance",
-  "دليل الحسابات":"Chart of Accounts","البيانات الأساسية والاستيراد":"Master Data & Import",
+  "دليل الحسابات":"Chart of Accounts","البيانات الأساسية والاستيراد":"Master Data & Import","دليل الأكواد والبيانات الأساسية":"Master Codes & Master Data",
   "استيراد البيانات والأكواد":"Import Data & Codes","الأداء المالي":"Financial Performance",
   "الحد الأقصى 500 سجل في الملف الواحد.":"Maximum 500 records per file.",
   "من":"From","إلى":"To","نعم":"Yes","لا":"No","نشط":"Active","مفعل":"Enabled","موقوف":"Inactive",
@@ -1916,7 +1916,7 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
   }
   const unique=[],seen=new Set();
   records.forEach(item=>{if(item.value&&!seen.has(String(item.value))){seen.add(String(item.value));unique.push(item);}});
-  if(currentPartyId&&!seen.has(String(currentPartyId)))unique.unshift({value:String(currentPartyId),label:"الطرف المسجل حاليًا ("+currentPartyId+") — تحقق من بياناته"});
+  if(currentPartyId&&!seen.has(String(currentPartyId))){const employee=["employeeCustody","employeeAdvance"].includes(type)?(userDirectory||[]).find(user=>String(user.uid)===String(currentPartyId)):null;unique.unshift({value:String(currentPartyId),label:employee?"موظف محفوظ حاليًا دون كود — "+String(employee.fullName||employee.username||employee.email||currentPartyId)+" ("+currentPartyId+")":"الطرف المسجل حاليًا ("+currentPartyId+") — تحقق من بياناته"});}
   return [{value:"",label:"اختر "+analyticPartyLabel(type)},...unique];
  };
  const openingAnalyticOptions=(type,accountCode,currentPartyId)=>{
@@ -1936,7 +1936,7 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
   }
   const unique=[],seen=new Set();
   records.forEach(item=>{if(item.value&&!seen.has(String(item.value))){seen.add(String(item.value));unique.push(item);}});
-  if(currentPartyId&&!seen.has(String(currentPartyId)))unique.unshift({value:String(currentPartyId),label:"طرف محفوظ حاليًا ("+currentPartyId+") — تحقق من بياناته"});
+  if(currentPartyId&&!seen.has(String(currentPartyId))){const employee=["employeeCustody","employeeAdvance"].includes(type)?(userDirectory||[]).find(user=>String(user.uid)===String(currentPartyId)):null;unique.unshift({value:String(currentPartyId),label:employee?"موظف محفوظ حاليًا دون كود — "+String(employee.fullName||employee.username||employee.email||currentPartyId)+" ("+currentPartyId+")":"طرف محفوظ حاليًا ("+currentPartyId+") — تحقق من بياناته"});}
   return [{value:"",label:"اختر "+analyticPartyLabel(type)},...unique];
 };
  const openJournalModal=doc=>{
@@ -2548,7 +2548,7 @@ const submitJournal=async()=>{
    setInvoiceDecisionDoc(doc);setTab('invoices');
   };
   const nav=[
- ['overview','ملخص مالي','Financial Summary'],['journal','القيود اليومية','Journal Entries'],['openingBalances','الأرصدة الافتتاحية','Opening Balances'],['review','المراجعة والفحص والاعتماد','Review, Audit & Approval'],['invoices','فواتير العملاء والموردين','Customer & Supplier Invoices'],['assignments','الإجراءات المحولة إليّ','Tasks Assigned to Me'],['partyStatements','كشوف الحسابات والأطراف','Account & Party Statements'],['partnerCurrent','جاري الشركاء',"Partners' Current Accounts"],['masters','دليل الأكواد والبيانات الأساسية','Master Codes & Master Data'],['inventory','المخزون والأكواد','Inventory & Item Codes'],['inventoryMovements','حركة المخزن','Inventory Movements'],['cash','الخزينة والتحصيل والسداد','Cash, Receipts & Payments'],['bank','كشوف البنوك','Bank Statements'],['tax','الضرائب','Taxes'],['accountAnalysis','تحليل الحسابات','Account Analysis'],['reports','القوائم المالية','Financial Statements'],['legacyImport','استيراد أرشيف القيود','Legacy Journal Archive Import']
+ ['overview','ملخص مالي','Financial Summary'],['journal','القيود اليومية','Journal Entries'],['openingBalances','الأرصدة الافتتاحية','Opening Balances'],['review','المراجعة والفحص والاعتماد','Review, Audit & Approval'],['invoices','فواتير العملاء والموردين','Customer & Supplier Invoices'],['assignments','الإجراءات المحولة إليّ','Tasks Assigned to Me'],['partyStatements','كشوف الحسابات والأطراف','Account & Party Statements'],['partnerCurrent','جاري الشركاء',"Partners' Current Accounts"],['masters','دليل الأكواد والبيانات الأساسية','Master Codes & Master Data'],['inventory','حركة وأرصدة المخزون','Inventory Balances & Movements'],['inventoryMovements','حركة المخزن','Inventory Movements'],['cash','الخزينة والتحصيل والسداد','Cash, Receipts & Payments'],['bank','كشوف البنوك','Bank Statements'],['tax','الضرائب','Taxes'],['accountAnalysis','تحليل الحسابات','Account Analysis'],['reports','القوائم المالية','Financial Statements'],['legacyImport','استيراد أرشيف القيود','Legacy Journal Archive Import']
  ];
  const canViewMasterDirectory=()=>["masters","accounts","centers","inventory","bank","tax"].some(area=>canFinance(area,"view"));
  const visibleNav=nav.filter(item=>item[0]==="legacyImport"?(currentUser&&currentUser.role==="admin"):item[0]==="masters"?canViewMasterDirectory():canFinance(financeTabAreas[item[0]],"view"));
@@ -3835,7 +3835,8 @@ const renderReview=()=>panel('مركز المراجعة والفحص والاع�
   return h("div",{className:"space-y-4"},
    importPanel,
    panel("أنواع البيانات الأساسية","اختر نوع التكويد لعرض السجلات الخاصة به فقط.",h("div",{className:"flex flex-wrap gap-2"},tabs.map(([key,label])=>button(label,()=>{setMasterViewKind(key);setMasterPartySearch("");setSelectedMasterCodes([]);},masterViewKind===key?"primary":"muted")))),
-   listPanel
+   listPanel,
+   masterViewKind==="costCenters"?renderCostCenterAnalysis():null
   );
  };
  const renderTax=()=>{
