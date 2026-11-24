@@ -371,8 +371,9 @@ test("account 2150 remains analytical in the browser while Worker migration is p
   assert.match(source, /subledgerType:"financingParty",isControl:true,isGroup:false/);
   assert.match(source, /const missingAnalytic=\(journal\.lines\|\|\[\]\)\.map/);
   assert.match(source, /account\.subledgerType&&!String\(item\.line\.partyId\|\|""\)\.trim\(\)/);
-  assert.match(source, /const financingParties=Array\.from\(new Map/);
-  assert.match(source, /type==="financingParty"\)\{\s*\/\/ Client-side compatibility while older Worker deployments are being upgraded/);
+  assert.match(source, /const financingParties=registeredFinancingParties\.map/);
+  assert.match(source, /records=registeredFinancingParties\.filter\(item=>item&&item\.active!==false\)/);
+  assert.match(source, /api\('\?resource=party&type='\+encodeURIComponent\(partyStatement\.type\)/);
   assert.match(source, /partyStatement\.type==="financingParty"/);
 });
 
