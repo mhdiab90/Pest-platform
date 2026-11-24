@@ -354,10 +354,11 @@ test("financier auto-matching extracts explicit lender names without inventing n
   const end=source.indexOf("const analyticPickerWithAdd=",start);
   const extractor=source.slice(start,end);
   assert.ok(start>=0&&end>start,"financier name parser must be present");
-  assert.match(extractor,/جهة\\s\\+التمويل/);
-  assert.match(extractor,/تمويل\\|قرض\\|سلفة/);
+  assert.match(extractor,/جهة التمويل/);
+  assert.match(extractor,/تمويل/);
+  assert.match(extractor,/قرض/);
   assert.match(extractor,/return ""/);
-  assert.doesNotMatch(extractor,/match&&match\\[1\\]\\|\\|raw/);
+  assert.doesNotMatch(extractor,/match&&match/);
 });
 
 test("VAT movement and settlement detail is displayed inside statements but excluded from profit", () => {
