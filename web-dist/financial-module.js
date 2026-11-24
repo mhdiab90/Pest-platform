@@ -2978,7 +2978,7 @@ const renderIntegrityAuditPanel=()=>{
 };
 const renderReview=()=>panel('قائمة المراجعة والاعتماد','تتحدّث القائمة تلقائيًا عند فتح التبويب وكل 15 ثانية أثناء عرضه. أي مستخدم مخوّل يرى المستندات؛ المراجع فقط يعتمدها أو يعيدها أو يرفضها.',h('div',{className:'space-y-3'},
   h('div',{className:'flex flex-wrap items-center justify-between gap-2'},h('strong',null,'مستندات بانتظار القرار: '+review.length),h('div',{className:'flex flex-wrap gap-2'},button(integrityAuditBusy?'جارٍ الفحص...':'فحص',runIntegrityAudit,'primary',integrityAuditBusy||!canFinance("journal","view")),button('تحديث القائمة الآن',()=>refreshReviewQueue(false),'muted'))),
-  renderIntegrityAuditPanel()
+  renderIntegrityAuditPanel(),
   selected?h('div',{className:'space-y-3'},
    h('div',{className:'flex items-center justify-between'},h('strong',null,selected.type==='journal'&&selected.number?'رقم القيد: '+selected.number+(selected.title&&selected.title!=='قيد رقم '+selected.number?' — '+selected.title:''):selected.title||selected.number||selected.id),button('إغلاق',()=>setSelected(null))),
    h('p',{className:'text-sm'},t('النوع: ','Type: ')+(selected.type==='invoice'?(selected.invoiceType==='purchase'?t('فاتورة مشتريات','Purchase Invoice'):t('فاتورة مبيعات','Sales Invoice')):documentType(selected.type))+' · '+t('التاريخ: ','Date: ')+(selected.date||'—')+' · '+t('الحالة: ','Status: ')+status(selected.status)),
