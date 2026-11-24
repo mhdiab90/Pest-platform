@@ -353,5 +353,5 @@ test("account 2150 remains analytical in the browser while Worker migration is p
   assert.match(source, /account\.subledgerType&&!String\(item\.line\.partyId\|\|""\)\.trim\(\)/);
   assert.match(source, /const financingParties=Array\.from\(new Map/);
   assert.match(source, /type==="financingParty"\)\{\s*\/\/ Client-side compatibility while older Worker deployments are being upgraded/);
-  assert.match(source, /type:"financingParty"/);
+  assert.match(source, /partyStatement\.type==="financingParty"/);
 });
