@@ -512,3 +512,26 @@ test("review journal editor supports inline coding for analytical parties above 
   assert.match(source, /z-\[240\]/);
   assert.match(source, /w-full min-h-11 flex items-center justify-between/);
 });
+
+
+test("all financial report tables use independent bounded vertical and horizontal scrolling", () => {
+  assert.match(source, /const table=\(headers,data,scrollStyle\)=>/);
+  assert.match(source, /maxHeight:'min\(62vh, 620px\)'/);
+  assert.match(source, /overflowY:'auto'/);
+  assert.match(source, /overflowX:'auto'/);
+  assert.match(source, /overscrollBehavior:'contain'/);
+  assert.match(source, /scrollbarGutter:'stable'/);
+  assert.match(source, /role:'region','aria-label':'جدول '\+exportTitle/);
+  assert.match(source, /sticky top-0 z-10 bg-slate-100/);
+  assert.match(source, /Object\.assign\(\{[\s\S]*\},scrollStyle\|\|\{\}\)/);
+});
+
+test("imported journals needing completion use the shared scrollable report table", () => {
+  const start=source.indexOf("const renderLegacyImport=()=>{");
+  const end=source.indexOf("const renderMasters",start);
+  const archive=source.slice(start,end);
+  assert.ok(start>=0&&end>start,"legacy import screen must exist");
+  assert.match(archive, /panel\("القيود المستوردة التي تحتاج استكمالًا"/);
+  assert.match(archive, /corrections\.length\?table\(/);
+  assert.match(archive, /correctionRows/);
+});
