@@ -4587,7 +4587,7 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
    fields.push(field('بداية السريان',quickAddForm.effectiveFrom,function(v){change('effectiveFrom',v);},'date'));
   }
   if(quickAddType==='bankAccounts'){
-   fields.push(select('الحساب المحاسبي المرتبط',quickAddForm.accountCode||'',function(v){change('accountCode',v);},posting.filter(function(a){return a.type==='asset';}).map(function(a){return {value:a.code,label:a.code+' — '+a.name};})));
+   fields.push(selectWithAdd('الحساب المحاسبي المرتبط',quickAddForm.accountCode||'',function(v){change('accountCode',v);},posting.filter(function(a){return a.type==='asset';}).map(function(a){return {value:a.code,label:a.code+' — '+a.name};}),'chartOfAccounts',{type:'asset',nature:'debit',parentCode:'1'},'quick-bank-account-'+String(quickAddForm.code||'')));
   }
   if(quickAddType==='parties'){
    fields[0]=field('كود '+(quickAddForm.partyType==='vendor'?'المورد':'العميل'),quickAddForm.code,function(v){change('code',v);});
