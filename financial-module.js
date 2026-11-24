@@ -3007,7 +3007,7 @@ const renderJournal = function() {
    const journal=statementJournalMap.get(String(line.journalId||""));
    const journalLabel=line.journalNumber||journal&&(journal.number||journal.journalNumber)||line.journalId||"—";
    const partyLabel=line.partyName||((line.partyType==="vendor"?allVendors:line.partyType==="customer"?allClients:line.partyType==="financingParty"?financingParties:staff)
-    .find(item=>String(item.code||item.uid||item.id)===String(line.partyId||""))||{}).name||line.partyId||"";
+    .find(item=>String(item.uid||item.employeeUid||item.code||item.id)===String(line.partyId||""))||{}).name||line.partyId||"";
    return h("tr",{key:String(line.journalId||"row")+"-"+String(line.lineNo||index)+"-"+index,className:"border-t hover:bg-blue-50"},
     h("td",{className:"p-2 whitespace-nowrap"},line.date||"—"),
     h("td",{className:"p-2"},line.reference||line.invoiceNumber||"—"),
