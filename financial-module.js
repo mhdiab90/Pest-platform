@@ -428,7 +428,7 @@ function FinanceModule(props){
  const [period,setPeriod]=React.useState({from:today().slice(0,7),to:today().slice(0,7)}),[report,setReport]=React.useState('trial');
  const [assignmentItems,setAssignmentItems]=React.useState([]),[sentAssignmentItems,setSentAssignmentItems]=React.useState([]),[selectedAssignmentId,setSelectedAssignmentId]=React.useState(''),[assignmentLines,setAssignmentLines]=React.useState([]),[assignmentHeader,setAssignmentHeader]=React.useState({}),[assignmentBusy,setAssignmentBusy]=React.useState(false),[assignmentInstruction,setAssignmentInstruction]=React.useState('مراجعة تصنيف البنود وتحديد الأكواد المخزنية أو حسابات المصروفات'),[assignmentUserUid,setAssignmentUserUid]=React.useState(''),[forwardUserUid,setForwardUserUid]=React.useState(''),[forwardInstruction,setForwardInstruction]=React.useState('استكمال ومراجعة بيانات الفاتورة'),[selectedAssignmentSource,setSelectedAssignmentSource]=React.useState('received'),[assignmentEditInstruction,setAssignmentEditInstruction]=React.useState('');
  const [selected,setSelected]=React.useState(null),[offset,setOffset]=React.useState('6100');
- const [integrityAudit,setIntegrityAudit]=React.useState(null),[integrityAuditBusy,setIntegrityAuditBusy]=React.useState(false);
+ const [integrityAudit,setIntegrityAudit]=React.useState(null),[integrityAuditBusy,setIntegrityAuditBusy]=React.useState(false),[integrityFindingSelected,setIntegrityFindingSelected]=React.useState('');
  const [invoiceDecisionDoc,setInvoiceDecisionDoc]=React.useState(null);
  const [quickAddType,setQuickAddType]=React.useState(''),[quickAddTarget,setQuickAddTarget]=React.useState(null),[quickAddParent,setQuickAddParent]=React.useState(null),[quickAddOriginalCode,setQuickAddOriginalCode]=React.useState(''),[quickAddForm,setQuickAddForm]=React.useState({code:'',name:'',active:true,type:'expense',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',unit:'قطعة',groupCode:'',groupType:'other',itemType:'stock',version:'',warehouseCode:'default',projectCode:'',taxType:'vat_output',rate:'0',effectiveFrom:today(),partyType:'customer',phone:'',taxNumber:'',email:'',address:''});
  const [masterForm,setMasterForm]=React.useState({kind:'chartOfAccounts',code:'',name:'',type:'asset',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',unit:'قطعة',groupCode:'',groupType:'other',itemType:'stock',version:'',projectCode:'',warehouseCode:'default',taxType:'vat',rate:'0',effectiveFrom:today()});
@@ -1736,13 +1736,11 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
  const panel=(title,sub,child)=>{
   const panelKey=String(tab)+'::'+String(title),collapsed=forceExpandAllFinancialPanels?false:(collapsedPanels[panelKey]===undefined?true:Boolean(collapsedPanels[panelKey]));
   return h('section',{key:panelKey,'data-pest-export-scope':'panel','data-pest-export-title':String(title),className:'rounded-2xl border bg-white p-4 shadow-sm min-w-0'},
-   h('div',{className:'mb-2 flex flex-wrap items-start justify-between gap-2'},
-    h('div',{className:'min-w-0 flex-1'},h('h3',{className:'font-bold text-lg'},title),sub?h('p',{className:'text-xs text-slate-500 mt-1'},sub):null),
-    h('div',{className:'flex flex-wrap items-center gap-2'},!collapsed&&canExportFinancialReport()?exportToolbar(null,title):null,
-     h('button',{type:'button','data-pest-export-actions':'true','aria-expanded':!collapsed,'aria-label':(collapsed?'إظهار القسم: ':'إخفاء القسم: ')+String(title),onClick:()=>setCollapsedPanels(previous=>Object.assign({},previous,{[panelKey]:!collapsed})),className:'shrink-0 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100'},
-      h('span',null,collapsed?t('إظهار القسم','Show section'):t('إخفاء القسم','Hide section')),
-      h('span',{className:'text-base leading-none'},collapsed?'⌄':'⌃')
-     )
+   h('div',{className:'mb-2 flex w-full flex-col gap-2'},
+    !collapsed&&canExportFinancialReport()?h('div',{className:'flex justify-end'},exportToolbar(null,title)):null,
+    h('button',{type:'button','data-pest-export-actions':'true','aria-expanded':!collapsed,'aria-label':(collapsed?'إظهار القسم: ':'إخفاء القسم: ')+String(title),onClick:()=>setCollapsedPanels(previous=>Object.assign({},previous,{[panelKey]:!collapsed})),className:'w-full min-h-11 flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-start text-xs font-bold text-slate-700 hover:bg-slate-100'},
+     h('span',{className:'min-w-0 flex-1'},h('span',{className:'block font-bold text-sm'},title),sub?h('span',{className:'block text-xs font-normal text-slate-500 mt-1 leading-5'},sub):null),
+     h('span',{className:'shrink-0 inline-flex items-center gap-2'},h('span',null,collapsed?t('إظهار القسم','Show section'):t('إخفاء القسم','Hide section')),h('span',{className:'text-base leading-none'},collapsed?'⌄':'⌃'))
     )
    ),
    collapsed?null:h('div',{className:'mt-3 min-w-0'},child)
@@ -1892,7 +1890,7 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
     h("div",{className:"md:col-span-1 pest-resizable-number"},field("مدين",line.debit??"",value=>editLine(index,"debit",value),"number")),
     h("div",{className:"md:col-span-1 pest-resizable-number"},field("دائن",line.credit??"",value=>editLine(index,"credit",value),"number")),
     h("div",{className:"md:col-span-1"},selectWithAdd("مركز التكلفة",line.costCenterId||"",value=>editLine(index,"costCenterId",value),[{value:"",label:"بدون مركز تكلفة"}].concat(activeCenters.map(item=>({value:item.code,label:item.code+" — "+item.name}))),"costCenters",undefined,"review-journal-"+String(draft.id)+"-line-"+index+"-center")),
-    h("div",{className:"md:col-span-2"},analyticType?select("الطرف التحليلي — "+analyticPartyLabel(analyticType),line.partyId||"",value=>{editLine(index,"partyId",value);editLine(index,"partyType",analyticType);},analyticOptions,"review-journal-"+String(draft.id)+"-line-"+index+"-party"):h("div",{className:"rounded-lg border border-dashed border-slate-300 bg-white p-2 text-xs text-slate-500"},"هذا الحساب لا يتطلب طرفًا تحليليًا")),
+    h("div",{className:"md:col-span-2"},analyticType?analyticPickerWithAdd("الطرف التحليلي — "+analyticPartyLabel(analyticType),analyticType,line.partyId||"",value=>{editLine(index,"partyId",value);editLine(index,"partyType",analyticType);},analyticOptions,"review-journal-"+String(draft.id)+"-line-"+index+"-party",[line.description,draft.description,draft.reference].join(" ")):h("div",{className:"rounded-lg border border-dashed border-slate-300 bg-white p-2 text-xs text-slate-500"},"هذا الحساب لا يتطلب طرفًا تحليليًا")),
     h("div",{className:"md:col-span-1"},field("كود المشروع",line.projectCode||"",value=>editLine(index,"projectCode",value))),
     h("div",{className:"md:col-span-1 flex items-end"},button("حذف السطر",()=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).filter((row,i)=>i!==index)})),"danger",!editable))
    );
@@ -4993,7 +4991,7 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   const isParty=quickAddType==='parties';
   const isFinancingParty=quickAddType==='financingParties';
   const closeQuickAdd=()=>{if(busy)return;setQuickAddType('');setQuickAddTarget(null);setQuickAddParent(null);setQuickAddOriginalCode('');};
-  return h('div',{className:'fixed inset-0 z-[100] bg-slate-950/50 flex items-center justify-center p-2 sm:p-3',onClick:closeQuickAdd},
+  return h('div',{className:'fixed inset-0 z-[240] bg-slate-950/70 flex items-center justify-center p-2 sm:p-3',onClick:closeQuickAdd},
    h('section',{className:'bg-white rounded-xl shadow-2xl w-full '+(isParty?'max-w-5xl':'max-w-2xl')+' p-3 sm:p-4 max-h-[94vh] overflow-auto',onClick:function(e){e.stopPropagation();}},
     h('div',{className:'flex items-center justify-between gap-2 mb-2 sticky top-0 bg-white z-10 py-1'},h('h3',{className:'font-bold text-base'},isParty?(quickAddForm.partyType==='vendor'?'بيانات مورد جديد':'بيانات عميل جديد'):isFinancingParty?'بيانات جهة تمويل جديدة':(typeLabels[quickAddType]||'إضافة كود')),button('إغلاق',closeQuickAdd,'muted',busy)),
     h('div',{className:'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2'},...fields),
