@@ -54,6 +54,11 @@
     .app-workspace [class~="space-y-3"]>*+*{margin-top:.5rem!important}
     .app-workspace [class~="space-y-4"]>*+*{margin-top:.65rem!important}
     .app-workspace input:not([type="checkbox"]):not([type="radio"]),.app-workspace select,.app-workspace textarea{font-size:12px!important;line-height:1.3;padding:5px 7px!important;min-height:30px;border-radius:6px}
+    .app-workspace select{-webkit-appearance:none!important;appearance:none!important;background-color:#fff!important;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364758b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")!important;background-repeat:no-repeat!important;background-position:right 10px center!important;background-size:14px!important;padding-right:30px!important;padding-left:8px!important;cursor:pointer}
+    .app-workspace select:dir(rtl){background-position:left 10px center!important;padding-left:30px!important;padding-right:8px!important}
+    .app-workspace select:focus{outline:2px solid rgba(37,99,235,.18);outline-offset:1px;border-color:#64748b!important}
+    .app-workspace select option{background:#fff;color:#0f172a;padding:7px}
+
     .app-workspace button{font-size:12px;line-height:1.25}
     .app-workspace .rounded-2xl{border-radius:.75rem}
     @media(max-width:640px){
@@ -1021,6 +1026,7 @@ const words = {
   }
 };
 
+const PEST_CRM_MODULE_BUILD='20261124-crm-dropdown-portal-v2';
 function PestCrmModuleSlot(props){
   const [PestCrmModule,setPestCrmModule]=useState(()=>window.PEST_CRM_MODULE||null);
   const [loadError,setLoadError]=useState('');
@@ -1028,7 +1034,7 @@ function PestCrmModuleSlot(props){
     if(window.PEST_CRM_MODULE){setPestCrmModule(()=>window.PEST_CRM_MODULE);return;}
     let active=true;
     const script=document.createElement('script');
-    script.src=new URL('./pest-crm-module.js',window.location.href).href;
+    script.src=new URL('./pest-crm-module.js?v='+PEST_CRM_MODULE_BUILD,window.location.href).href;
     script.async=true;
     script.onload=()=>{
       if(!active)return;
@@ -1054,7 +1060,7 @@ function PestCrmModuleSlot(props){
 }
 
 function FinanceModuleSlot(props){
-  const FINANCE_MODULE_BUILD='20261124-finance-tdz-fix-v11';
+  const FINANCE_MODULE_BUILD='20261124-finance-dropdown-portal-v12';
   const [FinanceModule,setFinanceModule]=useState(()=>window.PEST_FINANCE_MODULE||null);
   const [loadError,setLoadError]=useState('');
   useEffect(()=>{
@@ -1555,15 +1561,44 @@ function PestSearchableSelect(props){
   });
   const current=props.value!=null?String(props.value):props.defaultValue!=null?String(props.defaultValue):String(options[0]&&options[0].value||'');
   const selected=options.find(option=>option.value===current);
-  const [open,setOpen]=React.useState(false),[query,setQuery]=React.useState('');
-  const rootRef=React.useRef(null);
+  const [open,setOpen]=React.useState(false),[query,setQuery]=React.useState(''),[menuStyle,setMenuStyle]=React.useState(null);
+  const rootRef=React.useRef(null),menuRef=React.useRef(null);
+  const updateMenuPosition=React.useCallback(()=>{
+    const input=rootRef.current&&rootRef.current.querySelector('input');
+    if(!input)return;
+    const rect=input.getBoundingClientRect(),vw=window.innerWidth||320,vh=window.innerHeight||480;
+    const width=Math.max(120,Math.min(rect.width||280,vw-16));
+    const spaceBelow=Math.max(0,vh-rect.bottom-8),spaceAbove=Math.max(0,rect.top-8);
+    const openBelow=spaceBelow>=spaceAbove,available=openBelow?spaceBelow:spaceAbove;
+    const maxHeight=Math.max(56,Math.min(280,available||56));
+    const left=Math.max(8,Math.min(rect.left,vw-width-8));
+    const next={position:'fixed',zIndex:10000,left,width,maxHeight};
+    if(openBelow)next.top=Math.max(8,Math.min(rect.bottom+4,vh-maxHeight-8));
+    else next.bottom=Math.max(8,vh-rect.top+4);
+    setMenuStyle(next);
+  },[]);
   React.useEffect(()=>{if(!open)setQuery(selected?selected.label:current);},[current,selected&&selected.label,open]);
   React.useEffect(()=>{
     if(!open)return;
-    const close=event=>{if(rootRef.current&&!rootRef.current.contains(event.target))setOpen(false);};
+    const close=event=>{
+      const target=event.target;
+      if(rootRef.current&&!rootRef.current.contains(target)&&menuRef.current&&!menuRef.current.contains(target))setOpen(false);
+      else if(rootRef.current&&!rootRef.current.contains(target)&&!menuRef.current?.contains(target))setOpen(false);
+    };
+    const reposition=()=>updateMenuPosition();
+    reposition();
     document.addEventListener('pointerdown',close,true);
-    return()=>document.removeEventListener('pointerdown',close,true);
-  },[open]);
+    window.addEventListener('resize',reposition);
+    window.addEventListener('scroll',reposition,true);
+    const viewport=window.visualViewport;
+    if(viewport){viewport.addEventListener('resize',reposition);viewport.addEventListener('scroll',reposition);}
+    return()=>{
+      document.removeEventListener('pointerdown',close,true);
+      window.removeEventListener('resize',reposition);
+      window.removeEventListener('scroll',reposition,true);
+      if(viewport){viewport.removeEventListener('resize',reposition);viewport.removeEventListener('scroll',reposition);}
+    };
+  },[open,updateMenuPosition]);
   const normalize=value=>String(value||'').toLowerCase().replace(/[\\s\\-_.،,]+/g,'').trim();
   const matches=options.filter(option=>!normalize(query)||normalize(option.label).includes(normalize(query))||normalize(option.value).includes(normalize(query))).slice(0,80);
   const choose=option=>{
@@ -1571,6 +1606,14 @@ function PestSearchableSelect(props){
     if(typeof props.onChange==='function')props.onChange({target:{value:option.value},currentTarget:{value:option.value}});
     setQuery(option.label);setOpen(false);
   };
+  const menu=open?<div ref={menuRef} role="listbox" data-pest-picker-menu="true" data-pest-picker-key={props.name||props.id||'pest-searchable-select'}
+    style={menuStyle||{position:'fixed',zIndex:10000,left:8,top:8,width:'min(320px, calc(100vw - 16px))',maxHeight:220}}
+    className="overflow-y-auto overscroll-contain rounded-lg border border-slate-200 bg-white shadow-2xl">
+    {matches.length?matches.map((option,index)=><button key={option.value+'-'+index} type="button" role="option" aria-selected={option.value===current} disabled={option.disabled}
+      onMouseDown={event=>event.preventDefault()} onClick={()=>choose(option)}
+      className="block w-full border-b border-slate-100 px-3 py-2 text-start text-sm text-slate-800 hover:bg-blue-50 disabled:opacity-40 last:border-0">{option.label||option.value}</button>)
+      :<div className="p-3 text-xs text-slate-500">لا توجد نتائج مطابقة</div>}
+  </div>:null;
   return <div ref={rootRef} className="relative min-w-0 w-full pest-searchable-select">
     <input type="search" value={open?query:(selected?selected.label:current)} disabled={props.disabled} required={props.required}
       name={props.name} id={props.id} aria-label={props['aria-label']} aria-expanded={open} aria-haspopup="listbox" autoComplete="off"
@@ -1578,15 +1621,9 @@ function PestSearchableSelect(props){
       onChange={event=>{setQuery(event.target.value);setOpen(true);}}
       onKeyDown={event=>{if(event.key==='Escape'){setOpen(false);}else if(event.key==='Enter'&&open&&matches.length){event.preventDefault();choose(matches[0]);}}}
       className={(props.className||'w-full border rounded-lg p-2.5 bg-white')+' pest-searchable-select-input'}/>
-    {open?<div role="listbox" className="absolute z-[180] top-full left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-2xl">
-      {matches.length?matches.map((option,index)=><button key={option.value+'-'+index} type="button" role="option" aria-selected={option.value===current} disabled={option.disabled}
-        onMouseDown={event=>event.preventDefault()} onClick={()=>choose(option)}
-        className="block w-full border-b border-slate-100 px-3 py-2 text-start text-sm text-slate-800 hover:bg-blue-50 disabled:opacity-40 last:border-0">{option.label||option.value}</button>)
-        :<div className="p-3 text-xs text-slate-500">لا توجد نتائج مطابقة</div>}
-    </div>:null}
+    {menu&&(typeof ReactDOM!=='undefined'&&ReactDOM.createPortal?ReactDOM.createPortal(menu,document.body):menu)}
   </div>;
 }
-
 function App(){
   const [lang,setLang] = useState(()=>localStorage.getItem('pestLang') || 'ar');
   const tr = key => words[lang][key] || key;
