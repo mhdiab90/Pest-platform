@@ -2333,7 +2333,7 @@ test("account 2150 is migrated as an analytical financing control and posted to 
     type:"liability",
     nature:"credit",
     parentCode:"21",
-    isGroup:true,
+    isGroup:false,
     isControl:false,
     subledgerType:""
   });
@@ -2348,6 +2348,17 @@ test("account 2150 is migrated as an analytical financing control and posted to 
   });
   assert.equal(legacyMissingParty.status,"needs_correction");
   assert.ok(legacyMissingParty.errors.some(error=>error.includes("جهة التمويل أو الدائن")),"2150 must require an analytic party even before account metadata migration");
+  const legacyWithParty=await invoke("POST","",{
+    action:"submitJournal",
+    date:"2026-11-24",
+    description:"Legacy financing account with lender",
+    lines:[
+      {accountCode:"2150",description:"Legacy financing",debit:0,credit:250,partyId:"LEGACY-LENDER-2150"},
+      {accountCode:"1110",description:"Cash received",debit:250,credit:0}
+    ]
+  });
+  assert.equal(legacyWithParty.status,"pending_review");
+  assert.equal(read("documents/"+legacyWithParty.id+"/lines/0/partyType"),"financingParty","legacy 2150 journal lines must be normalized into the financing party ledger before migration");
   await invoke("GET","?resource=bootstrap");
   const migrated=read("chartOfAccounts/2150");
   assert.equal(migrated.subledgerType,"financingParty");
