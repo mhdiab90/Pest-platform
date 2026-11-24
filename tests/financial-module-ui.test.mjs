@@ -355,3 +355,23 @@ test("account 2150 remains analytical in the browser while Worker migration is p
   assert.match(source, /type==="financingParty"\)\{\s*\/\/ Client-side compatibility while older Worker deployments are being upgraded/);
   assert.match(source, /partyStatement\.type==="financingParty"/);
 });
+
+test("analytical party selectors support quick creation of customers and financing parties", () => {
+  assert.match(source, /const analyticPickerWithAdd=/);
+  assert.match(source, /openQuickAdd\("parties",onChange,\{partyType:partyKind\}\)/);
+  assert.match(source, /analyticPickerWithAdd\('الطرف التحليلي — '\+analyticPartyLabel\(analyticType\)/);
+  assert.match(source, /analyticPickerWithAdd\("الطرف التحليلي",detailAccount\.subledgerType/);
+  assert.match(source, /editable&&analyticType\?analyticPickerWithAdd\(/);
+});
+
+test("opening or closing an analytical picker does not replace its existing value without a selection", () => {
+  const picker=source.slice(source.indexOf("const searchablePicker="), source.indexOf("const searchablePickerWithAdd="));
+  assert.match(picker, /const choose=item=>\{\s*onChange\(item\.value\)/);
+  assert.match(picker, /onFocus:\(\)=>\{setJournalPickerOpen/);
+  assert.match(picker, /setJournalPickerSearch\(old=>Object\.assign\(\{\},old,\{\[searchKey\]:''\}\)\)/);
+  assert.match(picker, /if\(e\.key==='Escape'\)setJournalPickerOpen/);
+});
+
+test("current screen report toolbar stays in normal document flow", () => {
+  assert.match(indexHtml, /\.app-report-toolbar\{position:static!important;top:auto!important;inset:auto!important;z-index:auto!important;transform:none!important;/);
+});
