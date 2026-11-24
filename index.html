@@ -949,7 +949,7 @@ const words = {
     app:'إدارة المشروعات والتدفقات النقدية', login:'تسجيل الدخول', email:'البريد الإلكتروني', password:'كلمة المرور',
     username:'اسم المستخدم', fullName:'الاسم الكامل', jobTitle:'الوظيفة / القسم', loginBtn:'دخول',
     createRequest:'طلب حساب جديد', register:'إرسال طلب الحساب', language:'English', forgot:'نسيت كلمة المرور؟',
-    loading:'جاري التحقق...', dashboard:'لوحة التحكم', statement:'كشف حساب', master:'البيانات الأساسية',
+    loading:'جاري التحقق...', dashboard:'لوحة التحكم', statement:'كشف حساب', master:'دليل الأكواد والبيانات الأساسية',
     projects:'المشروعات', messages:'المراسلات', profile:'الملف الشخصي', logout:'تسجيل الخروج',
     clients:'العملاء', vendors:'الموردون', users:'المستخدمون', pending:'طلبات معلقة', activity:'سجل العمليات',
     accountType:'نوع الحساب', client:'عميل', vendor:'مورد', selectAccount:'اختر الحساب', due:'إجمالي المستحق',
@@ -986,7 +986,7 @@ const words = {
     app:'Projects & Cash Flow Management', login:'Sign in', email:'Email address', password:'Password',
     username:'Username', fullName:'Full name', jobTitle:'Job title / Department', loginBtn:'Sign in',
     createRequest:'Request a new account', register:'Submit account request', language:'العربية', forgot:'Forgot password?',
-    loading:'Verifying...', dashboard:'Dashboard', statement:'Account statement', master:'Master data',
+    loading:'Verifying...', dashboard:'Dashboard', statement:'Account statement', master:'Master Codes & Master Data',
     projects:'Projects', messages:'Messages', profile:'Profile', logout:'Sign out',
     clients:'Clients', vendors:'Vendors', users:'Users', pending:'Pending requests', activity:'Activity log',
     accountType:'Account type', client:'Client', vendor:'Vendor', selectAccount:'Select account', due:'Total due',
@@ -1054,7 +1054,7 @@ function PestCrmModuleSlot(props){
 }
 
 function FinanceModuleSlot(props){
-  const FINANCE_MODULE_BUILD='20261124-finance-master-codes-v8';
+  const FINANCE_MODULE_BUILD='20261124-finance-master-codes-v9';
   const [FinanceModule,setFinanceModule]=useState(()=>window.PEST_FINANCE_MODULE||null);
   const [loadError,setLoadError]=useState('');
   useEffect(()=>{
@@ -1783,8 +1783,9 @@ function App(){
   const [masterFormOpen,setMasterFormOpen] = useState(false);
   const [financialModuleMounted,setFinancialModuleMounted] = useState(false);
   const [financialPartyReturn,setFinancialPartyReturn] = useState(null);
+  const [financialPartyMasterRequest,setFinancialPartyMasterRequest] = useState(null);
   const [masterFilter,setMasterFilter] = useState('');
-  useEffect(()=>{if(tab==='financial')setFinancialModuleMounted(true);},[tab]);
+  useEffect(()=>{if(tab==='financial'||tab==='master')setFinancialModuleMounted(true);},[tab]);
   const blankProject = () => ({code:suggestApplicationCode('PRJ',projects).code,name:'',contractNo:'',purchaseOrderNo:'',projectType:'supply',status:'جاري',clientCode:'',clientCodes:[],vendorCodes:[],projectManager:'',startDate:'',expectedEndDate:'',actualEndDate:'',location:'',deliveryAddress:'',currency:'EGP',amount:'',costBudget:'',paymentTerms:'',scope:'',notes:''});
   const [project,setProject] = useState(blankProject());
   const [editingProjectCode,setEditingProjectCode] = useState('');
@@ -2474,7 +2475,8 @@ function App(){
         subscribe('logs:recent',logQuery,s=>setLogs(toArray(s.val())));
       }
     }else if(tab==='master'){
-      needMaster();needProjects();
+      if(hasPermission('master','view'))needMaster();
+      needProjects();
     }else if(tab==='projects'||tab==='projectDetail'){
       needMaster();needProjects();
     }else if(tab==='statement'||tab==='reports'){
@@ -2704,7 +2706,7 @@ function App(){
   const omarUsername=String(currentUser?.username||'').trim().toLowerCase();
   const omarEmailLocal=String(currentUser?.email||'').split('@')[0].trim().toLowerCase();
   const isOmarProjectUser=omarUsername==='omar'||omarEmailLocal==='omar'||String(currentUser?.fullName||'').trim().toLowerCase()==='omar';
-  const permissionModules=[{id:'dashboard',label:rtl?'لوحة التحكم':'Dashboard'},{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors'},{id:'pestCrm',label:rtl?'إدارة العملاء والمبيعات (PEST CRM)':'Sales & Customer CRM (PEST)'},{id:'projects',label:rtl?'المشروعات وملفاتها':'Projects & Project files'},{id:'attachments',label:rtl?'المرفقات':'Attachments'},{id:'financial_overview',label:rtl?'الملخص المالي':'Financial · Overview',icon:'fa-calculator'},
+  const permissionModules=[{id:'dashboard',label:rtl?'لوحة التحكم':'Dashboard'},{id:'master',label:rtl?'دليل الأكواد والبيانات الأساسية':'Master Codes & Master Data'},{id:'pestCrm',label:rtl?'إدارة العملاء والمبيعات (PEST CRM)':'Sales & Customer CRM (PEST)'},{id:'projects',label:rtl?'المشروعات وملفاتها':'Projects & Project files'},{id:'attachments',label:rtl?'المرفقات':'Attachments'},{id:'financial_overview',label:rtl?'الملخص المالي':'Financial · Overview',icon:'fa-calculator'},
     {id:'financial_journal',label:rtl?'القيود اليومية':'Financial · Journals'},
     {id:'financial_review',label:rtl?'المراجعة والاعتماد':'Financial · Review & Approval'},
     {id:'financial_invoices',label:rtl?'فواتير العملاء والموردين':'Financial · Invoices'},
@@ -2741,7 +2743,7 @@ function App(){
     }
     return permissions[moduleId]?.[action]===true;
   };
-  const canAccessTab=tabId=>tabId==='appLauncher'?true:['companySettings','aiSettings','userRequests','userPermissions','userManagement','auditLogs'].includes(tabId)?Boolean(isAdmin):tabId==='announcements'?hasPermission('announcements','manage'):tabId==='custodyStatement'?hasPermission('cashCustody','view'):hasPermission(tabId==='projectDetail'?'projects':tabId,'view');
+  const canAccessTab=tabId=>tabId==='appLauncher'?true:['companySettings','aiSettings','userRequests','userPermissions','userManagement','auditLogs'].includes(tabId)?Boolean(isAdmin):tabId==='announcements'?hasPermission('announcements','manage'):tabId==='custodyStatement'?hasPermission('cashCustody','view'):tabId==='master'?(hasPermission('master','view')||hasPermission('financial_masters','view')):hasPermission(tabId==='projectDetail'?'projects':tabId,'view');
   const requirePermission=(moduleId,action)=>{if(hasPermission(moduleId,action))return true;alert(rtl?'ليس لديك صلاحية لتنفيذ هذه العملية. يرجى مراجعة مدير النظام.':'You do not have permission to perform this action. Contact your administrator.');return false;};
   async function attachmentWorkerRequest(path,method='GET',body,extraHeaders={},rawBody=false,asBlob=false){
     const user=window.PEST_FIREBASE_AUTH?.currentUser||auth.currentUser;
@@ -5071,14 +5073,7 @@ function App(){
 
   function openFinancialPartyMaster(payload){
     if(!requirePermission('master','add')&&!requirePermission('financial_masters','add'))return;
-    const type=payload&&payload.partyType==='vendor'?'vendor':'client';
-    const defaults=Object.assign({},payload&&payload.defaults||{});
-    delete defaults.partyType;
-    setFinancialPartyReturn(payload||null);
-    setMaster({...blankMaster(type),...defaults,type,code:defaults.code||blankMaster(type).code,name:defaults.name||''});
-    setMasterPendingAttachments([]);
-    setEditingMasterCode('');
-    setMasterFormOpen(true);
+    setFinancialPartyMasterRequest(Object.assign({},payload||{},{requestKey:Date.now()}));
     setFinancialModuleMounted(true);
     setTab('master');
     window.scrollTo({top:0,behavior:'smooth'});
@@ -6291,7 +6286,7 @@ function App(){
   const custodyStatementStatusLabel=status=>status==='approved'?(rtl?'معتمدة':'Approved'):status==='rejected'?(rtl?'مرفوضة':'Rejected'):(rtl?'معلقة':'Pending');
   const navGroups=[
     {id:'dashboard',label:tr('dashboard'),icon:'fa-gauge',tab:'dashboard'},
-    {id:'masterGroup',label:tr('master'),icon:'fa-database',children:[{id:'master',label:rtl?'العملاء والموردون':'Clients & Vendors',icon:'fa-address-book'}]},
+    {id:'masterGroup',label:tr('master'),icon:'fa-database',children:[{id:'master',label:rtl?'دليل الأكواد والبيانات الأساسية':'Master Codes & Master Data',icon:'fa-list-check'}]},
     {id:'pestCrmGroup',label:rtl?'إدارة المبيعات والعملاء':'Sales & Customer CRM',icon:'fa-handshake',children:[{id:'pestCrm',label:rtl?'PEST CRM — العملاء والعروض':'PEST CRM — Customers & Offers',icon:'fa-address-card'}]},
     {id:'projectsGroup',label:tr('projects'),icon:'fa-diagram-project',children:[{id:'projects',label:rtl?'قائمة المشروعات':'Project list',icon:'fa-list'},...(selectedProjectCode?[{id:'projectDetail',label:rtl?'ملف المشروع الحالي':'Current project file',icon:'fa-folder-open'}]:[])]},
     {id:'financeGroup',label:rtl?'المالية':'Finance',icon:'fa-coins',children:[{id:'financial',label:rtl?'النظام المالي والمحاسبي':'Financial Accounting',icon:'fa-calculator'},{id:'statement',label:tr('statement'),icon:'fa-file-invoice-dollar'},{id:'cashCustody',label:rtl?'إدارة العهدة الشخصية':'Personal Cash Custody',icon:'fa-wallet'},{id:'custodyStatement',label:rtl?'كشف حساب العهد':'Custody Statement',icon:'fa-book-open'},{id:'reports',label:tr('reportCenter'),icon:'fa-chart-pie'}]},
@@ -6348,7 +6343,7 @@ function App(){
   function currentScreenReportTitle(){
     const labels={
       dashboard:rtl?'لوحة التحكم والتدفقات النقدية':'Dashboard & Cash Flow',
-      master:rtl?'تقرير العملاء والموردين':'Clients & Vendors Report',
+      master:rtl?'دليل الأكواد والبيانات الأساسية':'Master Codes & Master Data',
       projects:rtl?'تقرير المشروعات':'Projects Report',
       projectDetail:rtl?'تقرير ملف المشروع':'Project File Report',
       statement:rtl?'كشف حساب العميل / المورد':'Customer / Supplier Statement',
@@ -7187,7 +7182,7 @@ function App(){
           </div>}
         </div>}
         {tab==='pestCrm'&&canAccessTab('pestCrm')&&<PestCrmModuleSlot db={db} currentUser={currentUser} rtl={rtl} can={hasPermission} addLog={addLog}/>}
-        {financialModuleMounted&&canAccessTab('financial')&&<div className={tab==='financial'?'':'hidden'}><FinanceModuleSlot db={db} currentUser={currentUser} rtl={rtl} language={lang} workerBase={PUSH_WORKER_BASE} userDirectory={userDirectory} addLog={addLog} can={hasPermission} onOpenPartyMaster={openFinancialPartyMaster}/></div>}
+        {financialModuleMounted&&(canAccessTab('financial')||canAccessTab('master'))&&<div className={tab==='financial'||tab==='master'?'':'hidden'}><FinanceModuleSlot db={db} currentUser={currentUser} rtl={rtl} language={lang} workerBase={PUSH_WORKER_BASE} userDirectory={userDirectory} addLog={addLog} masterDirectoryOnly={tab==='master'} externalPartyRequest={financialPartyMasterRequest} onPartyMasterRequestComplete={()=>setFinancialPartyMasterRequest(null)} can={(module,action)=>{if(tab==='master'&&module==='financial_masters')return hasPermission('master',action)||hasPermission(module,action);return hasPermission(module,action);}} onOpenPartyMaster={openFinancialPartyMaster}/></div>}
         {tab==='dashboard'&&<div className="space-y-5 print-area">
           <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="font-bold text-xl">{tr('dashboard')} · {tr('cashFlow')}</h2><div className="flex gap-2 no-print"><button onClick={()=>setTab('reports')} className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-bold">{tr('reportCenter')}</button><button onClick={()=>window.print()} className="bg-gray-800 text-white rounded-lg px-4 py-2 text-sm">{tr('printPdf')}</button></div></div>
           <section className="app-dashboard-filterbar no-print">
@@ -7338,7 +7333,7 @@ function App(){
         {chosen&&<div className="grid grid-cols-1 md:grid-cols-3 gap-4">{[[tr('due'),totalDue,'blue'],[tr('paid'),totalPaid,'green'],[tr('remaining'),remainingDue,'amber']].map(([label,value,color])=><div key={label} className={`bg-${color}-50 border-r-4 border-${color}-600 p-4 rounded`}><p className="text-sm text-gray-500 font-bold">{label}</p><p className="text-2xl font-bold mt-2">{money(value)} EGP</p></div>)}</div>}
         </div></details>}
 
-        {tab==='master'&&<div className="space-y-5">
+        {tab==='master'&&financialPartyReturn&&<div className="space-y-5">
           <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="font-bold text-xl">{tr('master')}</h2><input className="border rounded-lg p-2 min-w-64" placeholder={tr('searchAll')} value={masterFilter} onChange={e=>setMasterFilter(e.target.value)}/></div>
           <section className="bg-white p-5 rounded-xl border shadow-sm"><div className="flex flex-wrap justify-between items-center gap-3 mb-3"><h3 className="font-bold">{editingMasterCode?(rtl?'تعديل بيانات':'Edit record'):(rtl?'إضافة بيانات عميل أو مورد':'Add client or vendor')}</h3><div className="flex flex-wrap items-center gap-2"><button type="button" onClick={()=>{setMasterPendingAttachments([]);setEditingMasterCode('');setMaster(blankMaster('client'));setMasterFormOpen(true);}} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-bold">{rtl?'إضافة عميل':'Add client'}</button><button type="button" onClick={()=>{setMasterPendingAttachments([]);setEditingMasterCode('');setMaster(blankMaster('vendor'));setMasterFormOpen(true);}} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold">{rtl?'إضافة مورد':'Add vendor'}</button><button type="button" aria-expanded={masterFormOpen} onClick={()=>setMasterFormOpen(old=>!old)} className="w-10 h-10 rounded-lg bg-gray-100 text-gray-700" title={rtl?'فتح أو إغلاق النموذج':'Expand or collapse form'}><i className={masterFormOpen?'fas fa-chevron-up':'fas fa-chevron-down'}></i></button>{financialPartyReturn&&<button type="button" className="px-3 py-2 rounded-lg bg-amber-100 text-amber-900 text-xs font-bold" onClick={()=>{setFinancialPartyReturn(null);setMaster(blankMaster());setMasterPendingAttachments([]);setEditingMasterCode('');setMasterFormOpen(false);setTab('financial');}}>{rtl?'العودة إلى الفاتورة دون حفظ':'Return to invoice without saving'}</button>}{editingMasterCode&&<button type="button" className="text-red-600 text-sm" onClick={()=>{setMasterPendingAttachments([]);setMaster(blankMaster());setEditingMasterCode('');setMasterFormOpen(false);}}>{tr('clear')}</button>}</div></div>
             {masterFormOpen&&<form onSubmit={addMaster} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
