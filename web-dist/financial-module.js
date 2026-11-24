@@ -420,7 +420,7 @@ function FinanceModule(props){
  };
  const financeAreaForMaster=kind=>financeMasterAreas[kind]||"masters";
  const [tab,setTab]=React.useState('overview'),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[notice,setNotice]=React.useState('');
- const [master,setMaster]=React.useState({chartOfAccounts:{},costCenters:{},items:{},itemGroups:{},warehouses:{},bankAccounts:{},taxCodes:{},parties:{},settings:{},inventory:{balances:{}}});
+ const [master,setMaster]=React.useState({chartOfAccounts:{},costCenters:{},items:{},itemGroups:{},warehouses:{},bankAccounts:{},taxCodes:{},parties:{},financingParties:{},settings:{},inventory:{balances:{}}});
  const [inventoryMovements,setInventoryMovements]=React.useState([]),[inventoryMovementModal,setInventoryMovementModal]=React.useState(null);
  const [documents,setDocuments]=React.useState([]),[journalRecords,setJournalRecords]=React.useState([]),[review,setReview]=React.useState([]),[periodJournals,setPeriodJournals]=React.useState([]),[balanceJournals,setBalanceJournals]=React.useState([]),[accountingStartMonth,setAccountingStartMonth]=React.useState('');
  const [journalModal,setJournalModal]=React.useState(null),[journalModalDraft,setJournalModalDraft]=React.useState(null);
@@ -435,7 +435,7 @@ function FinanceModule(props){
  const [journal,setJournal]=React.useState({id:'',date:today(),description:'',reference:'',checkNumber:'',invoiceNumber:'',documentNumber:'',currency:'EGP',lines:[{accountCode:'6100',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''},{accountCode:'1110',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''}]});
  const [invoice,setInvoice]=React.useState({id:'',type:'purchase',date:today(),number:'',partyId:'',partyName:'',partyTaxNumber:'',currency:'EGP',taxCode:'VAT-IN-14',taxRate:'14',taxAmount:'',discount:'',projectCode:'',lines:[{description:'',kind:'stock',itemCode:'',quantity:'1',unit:'قطعة',unitPrice:'',discount:'',accountCode:'6100',incomeAccountCode:'4100',costCenterId:'',warehouseCode:'default'}]});
  const [invoiceTypeManuallySelected,setInvoiceTypeManuallySelected]=React.useState(false);
- const [invoiceFile,setInvoiceFile]=React.useState(null),[invoicePartySearch,setInvoicePartySearch]=React.useState(''),[cashPartySearch,setCashPartySearch]=React.useState(''),[statementPartySearch,setStatementPartySearch]=React.useState(''),[ocrSuggestions,setOcrSuggestions]=React.useState({party:null,items:[]}),[cash,setCash]=React.useState({movementType:'customer_receipt',date:today(),amount:'',description:'',reference:'',partyType:'customer',partyId:'',partyName:'',employeeUid:'',employeeName:'',cashAccountCode:'1110',bankAccountCode:'1120',offsetAccountCode:'6100',projectCode:'',currency:'EGP'});
+ const [invoiceFile,setInvoiceFile]=React.useState(null),[invoicePartySearch,setInvoicePartySearch]=React.useState(''),[cashPartySearch,setCashPartySearch]=React.useState(''),[statementPartySearch,setStatementPartySearch]=React.useState(''),[ocrSuggestions,setOcrSuggestions]=React.useState({party:null,items:[]}),[cash,setCash]=React.useState({movementType:'customer_receipt',date:today(),amount:'',description:'',reference:'',partyType:'customer',partyId:'',partyName:'',employeeUid:'',employeeName:'',cashAccountCode:'1110',bankAccountCode:'1120',offsetAccountCode:'6100',taxAccountCode:'2110',projectCode:'',currency:'EGP'});
  const [cashHistorySearch,setCashHistorySearch]=React.useState(''),[masterViewKind,setMasterViewKind]=React.useState('customers');
  const [bankFile,setBankFile]=React.useState(null),[bankRows,setBankRows]=React.useState([]),[bankAccount,setBankAccount]=React.useState('1120');
  const [search,setSearch]=React.useState(''),[masterPartySearch,setMasterPartySearch]=React.useState(''),[screenTableSearch,setScreenTableSearch]=React.useState('');
@@ -687,7 +687,7 @@ function FinanceModule(props){
     !initialOnly&&(['invoices','journal','cash','bank'].some(area=>canFinance(area,'view'))||(tab==='accountReview'&&canFinance('reports','view')))?api('?resource=documents'):Promise.resolve({items:{}}),
     !initialOnly&&(canFinance('journal','view')||(tab==='accountReview'&&canFinance('reports','view')))?api('?resource=journals').catch(()=>({items:{}})):Promise.resolve({items:{}})
    ]);
-   setMaster(previous=>Object.assign({chartOfAccounts:{},costCenters:{},items:{},itemGroups:{},warehouses:{},bankAccounts:{},taxCodes:{},parties:{},settings:{},inventory:{balances:{},movements:{}}},previous,b,{inventory:Object.assign({},previous.inventory||{},{balances:previous.inventory&&previous.inventory.balances||{},movements:previous.inventory&&previous.inventory.movements||{}})}));
+   setMaster(previous=>Object.assign({chartOfAccounts:{},costCenters:{},items:{},itemGroups:{},warehouses:{},bankAccounts:{},taxCodes:{},parties:{},financingParties:{},settings:{},inventory:{balances:{},movements:{}}},previous,b,{inventory:Object.assign({},previous.inventory||{},{balances:previous.inventory&&previous.inventory.balances||{},movements:previous.inventory&&previous.inventory.movements||{}})}));
    const partyRows=rows(b.parties||{});
    setClients(partyRows.filter(item=>item.partyType==='customer'));
    setVendors(partyRows.filter(item=>item.partyType==='vendor'));
@@ -722,6 +722,108 @@ function FinanceModule(props){
    setReview(list);
    return list;
   }catch(error){if(!silent)setError(error.message||String(error));return null;}
+ };
+ const runIntegrityAudit=async()=>{
+  if(!canFinance("journal","view")){setError("يلزم صلاحية عرض القيود لتشغيل الفحص الشامل.");return;}
+  setIntegrityAuditBusy(true);setError("");setNotice("");
+  try{
+   const [journalResult,documentResult]=await Promise.all([api("?resource=journals"),api("?resource=documents")]);
+   const posted=rows(journalResult.items).filter(item=>item&&item.status==="posted");
+   const refreshedDocuments=rows(documentResult.items);
+   setJournalRecords(posted.slice().sort((a,b)=>n(b.postedAt||b.createdAt)-n(a.postedAt||a.createdAt)));
+   setDocuments(refreshedDocuments);
+   const journalMap=new Map();
+   [...posted,...refreshedDocuments.filter(item=>item&&item.type==="journal"),...review.filter(item=>item&&item.type==="journal")].forEach(item=>{if(item&&item.id)journalMap.set(String(item.id),item);});
+   const sourceMap=new Map(refreshedDocuments.map(item=>[String(item.id),item]));
+   const accountMap=new Map(accounts.map(item=>[String(item.code),item]));
+   const financierMap=new Map(registeredFinancingParties.filter(item=>item&&item.active!==false).map(item=>[String(item.code||item.id),item]));
+   const vendorMap=new Map(allVendors.map(item=>[String(item.code||item.id),item]));
+   const customerMap=new Map(allClients.map(item=>[String(item.code||item.id),item]));
+   const taxCodes=rows(master.taxCodes),centersMap=new Map(centers.map(item=>[String(item.code),item]));
+   const findings=[];
+   const pushFinding=(severity,category,reason,details={})=>findings.push({id:[severity,category,details.journalId||"",details.lineNo||"",details.accountCode||"",findings.length].join("|"),severity,category,reason,...details});
+   const requiredTypeForAccount=(account,line)=>account&&(account.subledgerType||({"1210":"customer","1240":"vendor","1220":"employeeCustody","1230":"employeeAdvance","2130":"customer","281":"vendor","2150":"financingParty","3201":"partnerCurrentAccount","3202":"partnerCurrentAccount"}[String(account.code)]))||"";
+   for(const journal of journalMap.values()){
+    if(!journal||!Array.isArray(journal.lines))continue;
+    const isPosted=journal.status==="posted",lines=journal.lines;
+    if(lines.length<2)pushFinding("error","سلامة القيد","القيد يحتوي على أقل من سطرين.",{journalId:journal.id,journalNumber:journal.number,status:journal.status});
+    let debit=0,credit=0;
+    lines.forEach((line,index)=>{
+     const lineNo=index+1,code=String(line.accountCode||""),account=accountMap.get(code),d=Number(line.debit||0),c=Number(line.credit||0);
+     debit+=Number.isFinite(d)?d:0;credit+=Number.isFinite(c)?c:0;
+     const base={journalId:journal.id,journalNumber:journal.number,status:journal.status,lineNo,accountCode:code,amount:Number.isFinite(d)&&Number.isFinite(c)?Math.max(Math.abs(d),Math.abs(c)):0};
+     if(!account)pushFinding("error","توجيه الحساب","السطر "+lineNo+" موجه إلى كود حساب غير موجود في دليل الحسابات: "+(code||"بدون كود")+".",base);
+     else if(account.active===false||account.isGroup)pushFinding("error","قابلية الترحيل","السطر "+lineNo+" يستخدم حسابًا "+(account.active===false?"موقوفًا":"تجميعيًا لا يقبل الترحيل")+".",base);
+     if(!Number.isFinite(d)||!Number.isFinite(c)||d<0||c<0||((d>0)===(c>0)))pushFinding("error","صحة سطر القيد","السطر "+lineNo+" يجب أن يحتوي مبلغًا صالحًا في جانب واحد فقط (مدين أو دائن) دون قيم سالبة.",base);
+     if(line.costCenterId&&!centersMap.has(String(line.costCenterId)))pushFinding("error","مركز التكلفة","مركز التكلفة "+line.costCenterId+" غير موجود بدليل مراكز التكلفة.",base);
+     const requiredType=requiredTypeForAccount(account,line);
+     if(requiredType){
+      if(!line.partyId)pushFinding("error","الطرف التحليلي","الحساب "+code+" يتطلب طرفًا تحليليًا من نوع "+analyticPartyLabel(requiredType)+" ولم يتم اختياره.",{...base,expectedPartyType:requiredType});
+      else if(line.partyType&&String(line.partyType)!==requiredType)pushFinding("error","نوع الطرف التحليلي","الحساب "+code+" يتطلب "+analyticPartyLabel(requiredType)+" بينما القيد مخزن على نوع "+analyticPartyLabel(String(line.partyType))+".",{...base,partyId:String(line.partyId),expectedPartyType:requiredType,actualPartyType:String(line.partyType)});
+      if(line.partyId&&requiredType==="financingParty"){
+       if(!financierMap.has(String(line.partyId))){
+        const isVendor=vendorMap.has(String(line.partyId));
+        pushFinding("error","جهة التمويل",isVendor?"تم ربط حساب التمويل 2150 بمورد ("+partyName(vendorMap.get(String(line.partyId)))+")، والمورد ليس جهة تمويل. أنشئ جهة تمويل مستقلة ثم أعد ربط القيد.":"جهة التمويل "+line.partyId+" غير مسجلة في دليل جهات التمويل المستقل.",{...base,partyId:String(line.partyId),expectedPartyType:"financingParty"});
+       }
+      }
+      if(line.partyId&&requiredType==="vendor"&&!vendorMap.has(String(line.partyId)))pushFinding("error","تحليل المورد","كود الطرف "+line.partyId+" غير موجود في دليل الموردين.",{...base,partyId:String(line.partyId),expectedPartyType:"vendor"});
+      if(line.partyId&&requiredType==="customer"&&!customerMap.has(String(line.partyId)))pushFinding("error","تحليل العميل","كود الطرف "+line.partyId+" غير موجود في دليل العملاء.",{...base,partyId:String(line.partyId),expectedPartyType:"customer"});
+     }
+     if(line.taxCode){
+      const taxCode=taxCodes.find(item=>String(item.code)===String(line.taxCode));
+      if(!taxCode)pushFinding("warning","كود الضريبة","السطر مرتبط بكود ضريبي غير موجود: "+line.taxCode+".",{...base,taxCode:String(line.taxCode)});
+      else{
+       const expectedAccount=taxCode.taxType==="vat_input"?"1410":taxCode.taxType==="vat_output"?"2110":["withholding","addition"].includes(taxCode.taxType)?"2120":"";
+       if(expectedAccount&&code!==expectedAccount)pushFinding("error","توجيه الضريبة","الكود الضريبي "+taxCode.code+" نوعه "+taxCode.taxType+" ويجب أن يوجّه إلى الحساب "+expectedAccount+" وليس "+code+".",{...base,taxCode:taxCode.code,expectedAccountCode:expectedAccount});
+       const configured=String(taxCode.accountCode||taxCode.glAccountCode||taxCode.accountingAccountCode||"");
+       if(configured&&expectedAccount&&configured!==expectedAccount)pushFinding("error","إعدادات الأكواد الضريبية","الكود "+taxCode.code+" مربوط في الإعدادات بالحساب "+configured+" بينما الحساب المعتمد لهذا النوع هو "+expectedAccount+".",{...base,taxCode:taxCode.code,expectedAccountCode:expectedAccount,actualAccountCode:configured});
+      }
+     }
+     const taxType=String(line.taxType||"");
+     const expectedTaxAccount=taxType==="vat_input"?"1410":taxType==="vat_output"?"2110":["withholding","addition","withholding_addition"].includes(taxType)?"2120":"";
+     if(expectedTaxAccount&&code!==expectedTaxAccount)pushFinding("error","توجيه الضريبة","نوع الضريبة "+taxType+" موجه إلى الحساب "+code+" بدلًا من الحساب الصحيح "+expectedTaxAccount+".",{...base,expectedAccountCode:expectedTaxAccount});
+    });
+    const difference=debit-credit;
+    if(Math.abs(difference)>0.000001)pushFinding("error","عدم اتزان القيد","إجمالي المدين "+debit.toFixed(4)+" مقابل إجمالي الدائن "+credit.toFixed(4)+"، والفرق "+difference.toFixed(4)+" جنيه.",{journalId:journal.id,journalNumber:journal.number,status:journal.status,difference,amount:Math.abs(difference)});
+    const source=sourceMap.get(String(journal.sourceId||""));
+    if(source&&source.type==="invoice"){
+     const purchase=source.invoiceType==="purchase",controlCode=purchase?"281":"1210",controlType=purchase?"vendor":"customer";
+     const controlLine=lines.find(line=>String(line.accountCode)===controlCode);
+     if(!controlLine)pushFinding("error","منطق ترحيل الفاتورة","فاتورة "+(purchase?"المشتريات":"المبيعات")+" مرتبطة بالقيد "+(journal.number||journal.id)+" دون توجيه حساب "+controlCode+" للطرف "+(source.partyName||source.partyId||"المسجل في الفاتورة")+".",{journalId:journal.id,journalNumber:journal.number,documentId:source.id,accountCode:controlCode});
+     else if(source.partyId&&String(controlLine.partyId||"")!==String(source.partyId))pushFinding("error","ربط مستند بالطرف","كود الطرف في الفاتورة ("+source.partyId+") لا يطابق كود الطرف في حساب "+controlCode+" بالقيد ("+(controlLine.partyId||"فارغ")+").",{journalId:journal.id,journalNumber:journal.number,documentId:source.id,accountCode:controlCode,partyId:String(controlLine.partyId||"")});
+     const taxAmount=Number(source.totals&&source.totals.tax!=null?source.totals.tax:source.taxAmount||0);
+     const taxCode=purchase?"1410":"2110";
+     if(taxAmount>0.000001&&!lines.some(line=>String(line.accountCode)===taxCode))pushFinding("error","ترحيل ضريبة الفاتورة","الفاتورة تحتوي ضريبة بقيمة "+taxAmount.toFixed(4)+" جنيه لكن القيد لا يتضمن حساب الضريبة "+taxCode+".",{journalId:journal.id,journalNumber:journal.number,documentId:source.id,accountCode:taxCode,amount:taxAmount});
+    }
+    if(source&&source.type==="cash"){
+     const movement=String(source.movementType||"");
+     if(movement==="supplier_payment"&&!lines.some(line=>String(line.accountCode)==="281"&&String(line.partyId||"")===String(source.partyId||"")))pushFinding("error","توجيه سداد المورد","سند سداد المورد لا يحتوي على حساب المورد 281 مرتبطًا بنفس كود المورد في السند.",{journalId:journal.id,journalNumber:journal.number,documentId:source.id,accountCode:"281",partyId:String(source.partyId||"")});
+     if(movement==="customer_receipt"&&!lines.some(line=>String(line.accountCode)==="1210"&&String(line.partyId||"")===String(source.partyId||"")))pushFinding("error","توجيه تحصيل العميل","سند تحصيل العميل لا يحتوي على حساب العملاء 1210 مرتبطًا بنفس كود العميل في السند.",{journalId:journal.id,journalNumber:journal.number,documentId:source.id,accountCode:"1210",partyId:String(source.partyId||"")});
+     if(movement==="tax_payment"&&!lines.some(line=>String(line.accountCode)===String(source.taxAccountCode||"2110")))pushFinding("error","سداد الضريبة","سند السداد لا يتضمن حساب الالتزام الضريبي المحدد ("+(source.taxAccountCode||"2110")+").",{journalId:journal.id,journalNumber:journal.number,documentId:source.id,accountCode:String(source.taxAccountCode||"2110")});
+     if(movement==="vat_refund"&&!lines.some(line=>String(line.accountCode)==="1410"&&Number(line.credit||0)>0))pushFinding("error","استرداد القيمة المضافة","سند استرداد الضريبة لا يتضمن تخفيض رصيد ضريبة المدخلات 1410.",{journalId:journal.id,journalNumber:journal.number,documentId:source.id,accountCode:"1410"});
+    }
+    if(!isPosted&&journal.status==="needs_correction")pushFinding("warning","قيد يحتاج تصحيحًا","هذا القيد أعيد للتصحيح ولم يُعتمد بعد.",{journalId:journal.id,journalNumber:journal.number,status:journal.status});
+   }
+   // Reconcile the period ledger index against the canonical posted journals to the same cut-off.
+   const ledgerDates=balanceFlat.map(line=>String(line.date||"")).filter(Boolean).sort();
+   if(ledgerDates.length){
+    const lowerBound=accountingStartMonth?accountingStartMonth+"-01":ledgerDates[0],upperBound=(period.to||today().slice(0,7))+"-31";
+    const canonicalTotals={},derivedTotals={};
+    posted.filter(j=>String(j.date||"")>=lowerBound&&String(j.date||"")<=upperBound).forEach(j=>(j.lines||[]).forEach(line=>{const code=String(line.accountCode||""),sum=canonicalTotals[code]||(canonicalTotals[code]={debit:0,credit:0});sum.debit+=Number(line.debit||0);sum.credit+=Number(line.credit||0);}));
+    balanceFlat.filter(line=>String(line.date||"")>=lowerBound&&String(line.date||"")<=upperBound).forEach(line=>{const code=String(line.accountCode||""),sum=derivedTotals[code]||(derivedTotals[code]={debit:0,credit:0});sum.debit+=Number(line.debit||0);sum.credit+=Number(line.credit||0);});
+    const accountCodes=new Set([...Object.keys(canonicalTotals),...Object.keys(derivedTotals)]);
+    accountCodes.forEach(code=>{
+     const a=canonicalTotals[code]||{debit:0,credit:0},b=derivedTotals[code]||{debit:0,credit:0},debitDiff=a.debit-b.debit,creditDiff=a.credit-b.credit;
+     if(Math.abs(debitDiff)>0.00005||Math.abs(creditDiff)>0.00005)pushFinding("error","مطابقة دفتر الأستاذ","حساب "+code+" به فرق بين القيود المرحّلة وفهرس أرصدة الأستاذ: فرق المدين "+debitDiff.toFixed(4)+" وفرق الدائن "+creditDiff.toFixed(4)+" جنيه.",{accountCode:code,debitDifference:debitDiff,creditDifference:creditDiff,amount:Math.max(Math.abs(debitDiff),Math.abs(creditDiff))});
+    });
+   }
+   const ledgerDebit=balanceFlat.reduce((sum,line)=>sum+Number(line.debit||0),0),ledgerCredit=balanceFlat.reduce((sum,line)=>sum+Number(line.credit||0),0),ledgerDifference=ledgerDebit-ledgerCredit;
+   if(Math.abs(ledgerDifference)>0.000001)pushFinding("error","اتزان ميزان المراجعة","إجمالي المدين "+ledgerDebit.toFixed(4)+" مقابل الدائن "+ledgerCredit.toFixed(4)+"، والفرق "+ledgerDifference.toFixed(4)+" جنيه.",{difference:ledgerDifference,amount:Math.abs(ledgerDifference)});
+   const uniqueFindings=Array.from(new Map(findings.map(item=>[item.id,item])).values());
+   setIntegrityAudit({createdAt:Date.now(),period:{...period},journalCount:journalMap.size,postedCount:posted.length,findings:uniqueFindings,errors:uniqueFindings.filter(item=>item.severity==="error").length,warnings:uniqueFindings.filter(item=>item.severity==="warning").length});
+   setNotice("اكتمل الفحص الذكي: "+uniqueFindings.length+" ملاحظة، منها "+uniqueFindings.filter(item=>item.severity==="error").length+" أخطاء و"+uniqueFindings.filter(item=>item.severity==="warning").length+" تنبيهات.");
+  }catch(error){setError(error.message||String(error));}
+  finally{setIntegrityAuditBusy(false);}
  };
  const openReviewItem=async item=>{
   setSelected(documents.find(doc=>doc.id===item.id)||item);
@@ -1282,7 +1384,7 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
    onChange(next);
   },(options||[]).concat([{value:"__quick_add__",label:"＋ إضافة جهة تمويل جديدة"}]),searchKey);
   const partyKind=type==="customer"?"customer":type==="vendor"?"vendor":"";
-  if(!partyKind)return searchablePicker(label,value,options,searchKey);
+  if(!partyKind)return searchablePicker(label,value,onChange,options,searchKey);
   const addLabel=partyKind==="vendor"?"＋ إضافة مورد":"＋ إضافة عميل";
   return searchablePicker(label,value,next=>{
    if(next==="__quick_add__"){openQuickAdd("parties",onChange,{partyType:partyKind});return;}
@@ -1389,7 +1491,7 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
     code:f.code,name:f.name,active:f.active!==false,type:f.type,nature:f.nature,parentCode:f.parentCode,isGroup:f.isGroup,
     subledgerType:f.subledgerType,unit:f.unit,groupCode:f.groupCode,groupType:f.groupType,itemType:f.itemType,
     version:f.version,warehouseCode:f.warehouseCode,projectCode:f.projectCode,taxType:f.taxType,
-    rate:n(f.rate),effectiveFrom:f.effectiveFrom,
+    rate:n(f.rate),effectiveFrom:f.effectiveFrom,reference:f.reference||"",taxNumber:f.taxNumber||"",notes:f.notes||"",
     accountCode:kind==='bankAccounts'?(f.accountCode||f.code):undefined
    };
    if(kind==='parties'&&(!item.code||!item.name))throw new Error('أدخل كود واسم المورد/العميل أولاً.');
@@ -1601,7 +1703,7 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
   setJournalModalDraft({id:doc.id,sourceId:doc.sourceId||"",journalId:doc.journalId||"",type:doc.type||"journal",number:doc.number||doc.journalNumber||'',date:doc.date||today(),description:doc.description||"",reference:doc.reference||"",checkNumber:doc.checkNumber||"",invoiceNumber:doc.invoiceNumber||"",documentNumber:doc.documentNumber||"",currency:doc.currency||"EGP",sourceType:doc.sourceType||"manual",openingBalance:doc.openingBalance===true,inventoryMovementChange:doc.inventoryMovementChange||null,projectCode:doc.projectCode||"",reversalOf:doc.reversalOf||"",revisionOf:doc.revisionOf||"",revisionNotes:doc.revisionNotes||"",reviewReason:doc.reviewReason||doc.reason||"",errors:Array.isArray(doc.errors)?doc.errors.slice():[],warnings:Array.isArray(doc.warnings)?doc.warnings.slice():[],acknowledgeSourceWarnings:Boolean(doc.sourceWarningsAcknowledgedAt),pendingRevisionId:doc.pendingRevisionId||"",revisedByJournalId:doc.revisedByJournalId||"",reversalJournalId:doc.reversalJournalId||"",reversedByJournalId:doc.reversedByJournalId||"",status:doc.status||"posted",lines:normalizedLines});
  };
  const updateJournalModalLine=(index,key,value)=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).map((line,i)=>i===index?Object.assign({},line,{[key]:value}):line)}));
- const updateJournalModalAccount=(index,accountCode)=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).map((line,i)=>{if(i!==index)return line;const currentAccount=posting.find(item=>String(item.code)===String(line.accountCode)),nextAccount=posting.find(item=>String(item.code)===String(accountCode)),currentType=currentAccount&&currentAccount.subledgerType||line.partyType||"",nextType=nextAccount&&nextAccount.subledgerType||"",keepParty=Boolean(nextType&&currentType===nextType&&line.partyId);return Object.assign({},line,{accountCode,partyType:nextType,partyId:keepParty?line.partyId:""});})}));
+ const updateJournalModalAccount=(index,accountCode)=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).map((line,i)=>{if(i!==index)return line;const currentAccount=posting.find(item=>String(item.code)===String(line.accountCode)),nextAccount=posting.find(item=>String(item.code)===String(accountCode)),currentType=currentAccount&&currentAccount.subledgerType||line.partyType||"",nextType=nextAccount&&nextAccount.subledgerType||"",keepParty=Boolean(nextType&&currentType===nextType&&line.partyId),matched=nextType==="financingParty"?matchFinancingPartyFromText([line.description,old.description,old.reference].join(" ")):null;return Object.assign({},line,{accountCode,partyType:nextType,partyId:matched?String(matched.code||matched.id):keepParty?line.partyId:""});})}));
  const saveJournalModal=async()=>{
   if(!journalModalDraft)return;
   const draft=journalModalDraft;
@@ -2294,7 +2396,7 @@ const renderJournal = function() {
       h('div',{className:'md:col-span-1 pest-resizable-number'},field('مدين',line.debit??'',v=>updateJournalModalLine(index,'debit',v),'number',editable?undefined:{disabled:true})),
       h('div',{className:'md:col-span-1 pest-resizable-number'},field('دائن',line.credit??'',v=>updateJournalModalLine(index,'credit',v),'number',editable?undefined:{disabled:true})),
       h('div',{className:'md:col-span-2'},editable?selectWithAdd('مركز التكلفة',line.costCenterId||'',v=>updateJournalModalLine(index,'costCenterId',v),[{value:'',label:'بدون مركز تكلفة'}].concat(activeCenters.map(x=>({value:x.code,label:x.code+' — '+x.name}))),'costCenters',null,'journal-modal-'+String(draft.id)+'-line-'+index+'-center'):field('مركز التكلفة',line.costCenterId||'بدون',()=>{},undefined,{disabled:true})),
-      h('div',{className:'md:col-span-2'},editable&&analyticType?analyticPickerWithAdd('الطرف التحليلي — '+analyticPartyLabel(analyticType),analyticType,line.partyId||'',v=>{setJournalModalDraft(old=>Object.assign({},old,{lines:old.lines.map((x,i)=>i===index?Object.assign({},x,{partyType:analyticType,partyId:v}):x)}));},analyticPartyOptions(analyticType,line.accountCode,line.partyId),'journal-modal-'+String(draft.id)+'-line-'+index+'-party'):field('الطرف التحليلي',analyticType?(line.partyId||'لم يتم اختيار طرف'):'غير مطلوب لهذا الحساب',()=>{},undefined,{disabled:true})),
+      h('div',{className:'md:col-span-2'},editable&&analyticType?analyticPickerWithAdd('الطرف التحليلي — '+analyticPartyLabel(analyticType),analyticType,line.partyId||'',v=>{setJournalModalDraft(old=>Object.assign({},old,{lines:old.lines.map((x,i)=>i===index?Object.assign({},x,{partyType:analyticType,partyId:v}):x)}));},analyticPartyOptions(analyticType,line.accountCode,line.partyId),'journal-modal-'+String(draft.id)+'-line-'+index+'-party',[line.description,draft.description,draft.reference].join(' ')):field('الطرف التحليلي',analyticType?(line.partyId||'لم يتم اختيار طرف'):'غير مطلوب لهذا الحساب',()=>{},undefined,{disabled:true})),
       h('div',{className:'md:col-span-1 flex items-end'},button('حذف',()=>setJournalModalDraft(old=>Object.assign({},old,{lines:old.lines.filter((x,i)=>i!==index)})),'danger',!editable))
      );
     });
@@ -2845,7 +2947,8 @@ const renderCostCenterAnalysis = function() {
   );
  };
 const renderReview=()=>panel('قائمة المراجعة والاعتماد','تتحدّث القائمة تلقائيًا عند فتح التبويب وكل 15 ثانية أثناء عرضه. أي مستخدم مخوّل يرى المستندات؛ المراجع فقط يعتمدها أو يعيدها أو يرفضها.',h('div',{className:'space-y-3'},
-  h('div',{className:'flex flex-wrap items-center justify-between gap-2'},h('strong',null,'مستندات بانتظار القرار: '+review.length),button('تحديث القائمة الآن',()=>refreshReviewQueue(false),'muted')),
+  h('div',{className:'flex flex-wrap items-center justify-between gap-2'},h('strong',null,'مستندات بانتظار القرار: '+review.length),h('div',{className:'flex flex-wrap gap-2'},button(integrityAuditBusy?'جارٍ الفحص...':'فحص',runIntegrityAudit,'primary',integrityAuditBusy||!canFinance("journal","view")),button('تحديث القائمة الآن',()=>refreshReviewQueue(false),'muted'))),
+  integrityAudit?panel("تقرير الفحص الذكي — "+integrityAudit.createdAt?new Date(integrityAudit.createdAt).toLocaleString("ar-EG-u-nu-latn"):"", "تم فحص "+integrityAudit.journalCount+" قيدًا ("+integrityAudit.postedCount+" مرحّل) للفترة حتى "+(integrityAudit.period.to||"—")+". الفحص لا يغيّر القيود أو الأرصدة تلقائيًا.",h("div",{className:"space-y-3"},h("div",{className:"grid grid-cols-2 md:grid-cols-4 gap-2"},metric("أخطاء واجبة المعالجة",String(integrityAudit.errors)),metric("تنبيهات",String(integrityAudit.warnings)),metric("إجمالي النتائج",String(integrityAudit.findings.length)),metric("حالة الفحص",integrityAudit.errors?"توجد أخطاء":"لا توجد أخطاء")) ,table(["الخطورة","نوع الفحص","القيد / الحساب","التفاصيل","الإجراء"],integrityAudit.findings.map(finding=>h("tr",{key:finding.id,className:"border-t"},h("td",{className:"p-2"},finding.severity==="error"?h("span",{className:"font-bold text-rose-700"},"خطأ"):h("span",{className:"font-bold text-amber-700"},"تنبيه")),h("td",{className:"p-2"},finding.category),h("td",{className:"p-2"},[finding.journalNumber||finding.journalId,finding.accountCode?"حساب "+finding.accountCode:""].filter(Boolean).join(" / ")||"—"),h("td",{className:"p-2 min-w-[300px]"},finding.reason),h("td",{className:"p-2"},finding.journalId?button("فتح القيد",()=>void openReviewItem({id:finding.journalId,type:"journal",number:finding.journalNumber}),"muted"):finding.accountCode?button("كشف الحساب",()=>openStatementAccount(finding.accountCode),"muted"):"—"))))):null,
   selected?h('div',{className:'space-y-3'},
    h('div',{className:'flex items-center justify-between'},h('strong',null,selected.type==='journal'&&selected.number?'رقم القيد: '+selected.number+(selected.title&&selected.title!=='قيد رقم '+selected.number?' — '+selected.title:''):selected.title||selected.number||selected.id),button('إغلاق',()=>setSelected(null))),
    h('p',{className:'text-sm'},t('النوع: ','Type: ')+(selected.type==='invoice'?(selected.invoiceType==='purchase'?t('فاتورة مشتريات','Purchase Invoice'):t('فاتورة مبيعات','Sales Invoice')):documentType(selected.type))+' · '+t('التاريخ: ','Date: ')+(selected.date||'—')+' · '+t('الحالة: ','Status: ')+status(selected.status)),
@@ -2909,16 +3012,17 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
    renderReviewJournalEditor()
   ));
  const renderCash=()=>{
-  const movementLabels={customer_receipt:"تحصيل من عميل",supplier_payment:"سداد إلى مورد",other_receipt:"استلام نقدية / إيراد آخر",other_payment:"مصروف / مدفوعات أخرى",cash_to_bank:"إيداع نقدية بالبنك",bank_to_cash:"سحب نقدية من البنك",employee_custody:"تسليم عهدة لموظف",employee_custody_return:"استرداد عهدة من موظف",employee_advance:"صرف سلفة لموظف",employee_advance_recovery:"تحصيل سلفة من موظف"};
+  const movementLabels={customer_receipt:"تحصيل من عميل",supplier_payment:"سداد إلى مورد",other_receipt:"استلام نقدية / إيراد آخر",other_payment:"مصروف / مدفوعات أخرى",tax_payment:"سداد ضريبة (قيمة مضافة / خصم وإضافة)",vat_refund:"استرداد قيمة مضافة",cash_to_bank:"إيداع نقدية بالبنك",bank_to_cash:"سحب نقدية من البنك",employee_custody:"تسليم عهدة لموظف",employee_custody_return:"استرداد عهدة من موظف",employee_advance:"صرف سلفة لموظف",employee_advance_recovery:"تحصيل سلفة من موظف"};
   const movement=cash.movementType;
   const activeEmployees=(userDirectory||[]).filter(u=>u.uid&&u.uid!==currentUser.uid&&["active","نشط","مفعل","enabled"].includes(String(u.status||"").toLowerCase()));
   const accountOptions=posting.map(a=>({value:a.code,label:a.code+" — "+a.name}));
   const bankOptions=[{value:"1120",label:"1120 — البنوك"}].concat(rows(master.bankAccounts).filter(x=>x.active!==false).map(x=>({value:x.accountCode||x.code,label:(x.accountCode||x.code)+" — "+x.name})));
-  const isParty=movement==="customer_receipt"||movement==="supplier_payment",isEmployee=movement.startsWith("employee_"),isOther=movement==="other_receipt"||movement==="other_payment",isTransfer=movement==="cash_to_bank"||movement==="bank_to_cash",isCustody=movement==="employee_custody"||movement==="employee_custody_return",isAdvance=movement==="employee_advance"||movement==="employee_advance_recovery";
+  const isParty=movement==="customer_receipt"||movement==="supplier_payment",isEmployee=movement.startsWith("employee_"),isOther=movement==="other_receipt"||movement==="other_payment",isTransfer=movement==="cash_to_bank"||movement==="bank_to_cash",isCustody=movement==="employee_custody"||movement==="employee_custody_return",isAdvance=movement==="employee_advance"||movement==="employee_advance_recovery",isTaxPayment=movement==="tax_payment",isVatRefund=movement==="vat_refund";
   const counterparty=movement==="customer_receipt"?partyPicker("العميل",activeClients,cash.partyId,p=>setCash(o=>Object.assign({},o,{partyId:p.code||p.id,partyName:partyName(p)})),cashPartySearch,setCashPartySearch,"customer"):movement==="supplier_payment"?partyPicker("المورد",activeVendors,cash.partyId,p=>setCash(o=>Object.assign({},o,{partyId:p.code||p.id,partyName:partyName(p)})),cashPartySearch,setCashPartySearch,"vendor"):null;
   const employeeSelect=isEmployee?select("الموظف المستلم / المسدد",cash.employeeUid,v=>{const user=activeEmployees.find(u=>u.uid===v);setCash(o=>Object.assign({},o,{employeeUid:v,employeeName:user&&(user.fullName||user.username||user.email)||""}));},[{value:"",label:"اختر المستخدم الداخلي"},...activeEmployees.map(u=>({value:u.uid,label:(u.fullName||u.username||u.email)+" — "+(u.jobTitle||"")}))]):null;
   const offsetType=movement==="other_receipt"?"revenue":"expense";
   const offsetSelect=isOther?selectWithAdd(offsetType==="revenue"?"حساب الإيراد المقابل":"حساب المصروف",cash.offsetAccountCode,v=>setCash(o=>Object.assign({},o,{offsetAccountCode:v})),accountOptions.filter(a=>{const x=accounts.find(z=>z.code===a.value);return x&&x.type===offsetType;}),"chartOfAccounts",{type:offsetType,nature:offsetType==="revenue"?"credit":"debit",parentCode:offsetType==="revenue"?"4":"6"}):null;
+  const taxAccountSelect=isTaxPayment?select("حساب الضريبة المطلوب سداده",cash.taxAccountCode||"2110",v=>setCash(o=>Object.assign({},o,{taxAccountCode:v})),[{value:"2110",label:"2110 — ضريبة القيمة المضافة - مخرجات"},{value:"2120",label:"2120 — ضرائب الخصم والإضافة المستحقة"}]):null;
   const bankSelect=isTransfer?selectWithAdd("حساب البنك",cash.bankAccountCode,v=>setCash(o=>Object.assign({},o,{bankAccountCode:v})),bankOptions,"bankAccounts",{code:"BANK-NEW",name:"حساب بنك جديد",accountCode:"1120"}):null;
   const cashAccountSelect=selectWithAdd("حساب النقدية",cash.cashAccountCode,v=>setCash(o=>Object.assign({},o,{cashAccountCode:v})),posting.filter(a=>a.type==="asset"&&(a.code==="1110"||a.code==="1120"||a.isCash)).map(a=>({value:a.code,label:a.code+" — "+a.name})),"chartOfAccounts",{type:"asset",nature:"debit",parentCode:"11"});
   const history=documents.filter(x=>x.type==="cash"&&(!cashHistorySearch||[x.id,x.reference,x.description,x.partyName,x.employeeName,x.movementType,x.partyId,x.employeeUid].join(" ").toLowerCase().includes(cashHistorySearch.toLowerCase()))).sort((a,b)=>n(b.createdAt)-n(a.createdAt));
@@ -2930,13 +3034,15 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
     field("المبلغ",cash.amount,v=>setCash(o=>Object.assign({},o,{amount:v})),"number"),
     select("العملة",cash.currency,v=>setCash(o=>Object.assign({},o,{currency:v})),["EGP"].map(x=>({value:x,label:x+' — الجنيه المصري'}))),
     h("p",{className:"md:col-span-3 text-xs text-amber-700"},"العملات الأجنبية غير مفعّلة محاسبيًا حتى تجهيز أسعار الصرف وفروق العملة؛ الحركات الحالية بالجنيه المصري فقط."),
-    counterparty,employeeSelect,cashAccountSelect,bankSelect,offsetSelect,
+    counterparty,employeeSelect,cashAccountSelect,bankSelect,offsetSelect,taxAccountSelect,
     select("مركز التكلفة / المشروع",cash.projectCode,v=>setCash(o=>Object.assign({},o,{projectCode:v})),[{value:"",label:"بدون مركز تكلفة"},...activeCenters.map(x=>({value:x.code,label:x.code+" — "+x.name}))]),
     field("مرجع / رقم مستند",cash.reference,v=>setCash(o=>Object.assign({},o,{reference:v}))),
     h("div",{className:"md:col-span-3"},area("البيان والتفاصيل",cash.description,v=>setCash(o=>Object.assign({},o,{description:v})))),
     isCustody?h("p",{className:"md:col-span-3 text-xs text-blue-700 bg-blue-50 p-2 rounded"},"التسليم ينشئ حركة مقابلة في عهدة الموظف الشخصية، والاسترداد يخفض رصيد العهدة تلقائيًا بعد الاعتماد."):null,
     isAdvance?h("p",{className:"md:col-span-3 text-xs text-blue-700 bg-blue-50 p-2 rounded"},"السلفة تسجل على حساب السلف للموظف بصورة مستقلة عن العهدة، والتحصيل يخفض رصيد السلفة بعد الاعتماد."):null,
-    button(busy?"جارٍ الحفظ...":"حفظ وإرسال إلى المراجعة",submitCash,"primary",busy||!canFinance("cash","add")||!cash.amount||!cash.description.trim()||(isParty&&!cash.partyId)||(isEmployee&&!cash.employeeUid)||(isOther&&!cash.offsetAccountCode)||(isTransfer&&!cash.bankAccountCode))
+    isTaxPayment?h("p",{className:"md:col-span-3 text-xs text-blue-700 bg-blue-50 p-2 rounded"},"سداد 2110 يُخفض التزام ضريبة القيمة المضافة، وسداد 2120 يُخفض ضريبة الخصم والإضافة. القيد المقابل على الخزينة أو البنك، ولا يُسجل السداد كمصروف."):null,
+    isVatRefund?h("p",{className:"md:col-span-3 text-xs text-blue-700 bg-blue-50 p-2 rounded"},"استرداد ضريبة المدخلات يسجل مدينًا في الخزينة / البنك ودائنًا في 1410 — ضريبة القيمة المضافة مدخلات."):null,
+    button(busy?"جارٍ الحفظ...":"حفظ وإرسال إلى المراجعة",submitCash,"primary",busy||!canFinance("cash","add")||!cash.amount||!cash.description.trim()||(isParty&&!cash.partyId)||(isEmployee&&!cash.employeeUid)||(isOther&&!cash.offsetAccountCode)||(isTransfer&&!cash.bankAccountCode)||(isTaxPayment&&!["2110","2120"].includes(String(cash.taxAccountCode||"2110"))))
    )),
    panel("كشف حركات الخزينة","كل التسجيلات ظاهرة هنا ويمكن البحث فيها، سواء كانت معلقة أو معتمدة أو مرفوضة.",h("div",{className:"space-y-3"},field("بحث برقم المستند أو الطرف أو الموظف أو البيان",cashHistorySearch,setCashHistorySearch),table(["التاريخ","نوع الحركة","الطرف / البيان","المرجع","المبلغ","الحالة","الإجراء"],historyRows)))
   );
@@ -3698,6 +3804,16 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
   :null;
  const balanceLiabilityRows=statementRowsWithBalance(account=>account.type==='liability'&&!account.isGroup&&String(account.code)!=="2110",'credit',true).concat(vatNetLiabilitySheetRow?[vatNetLiabilitySheetRow]:[]);
  const balanceEquityRows=statementRowsWithBalance(account=>account.type==='equity'&&!account.isGroup,'credit',true);
+ const incomeTaxSourceMap=new Map(documents.map(document=>[String(document.id),document]));
+ const incomeTaxLines=periodJournals.flatMap(journal=>(journal.lines||[]).map((line,index)=>({journal,line,index,source:incomeTaxSourceMap.get(String(journal.sourceId||""))})).filter(item=>["1410","2110","2120"].includes(String(item.line.accountCode))));
+ const incomeVatLineSummary=code=>incomeTaxLines.filter(item=>String(item.line.accountCode)===String(code)).reduce((sum,item)=>({debit:sum.debit+n(item.line.debit),credit:sum.credit+n(item.line.credit)}),{debit:0,credit:0});
+ const incomeVatInputCurrent=incomeVatLineSummary("1410"),incomeVatOutputCurrent=incomeVatLineSummary("2110"),incomeWithholdingCurrent=incomeVatLineSummary("2120");
+ const incomeVatTaxRows=incomeTaxLines.sort((a,b)=>String(a.journal.date||"").localeCompare(String(b.journal.date||""))||String(a.journal.number||a.journal.id).localeCompare(String(b.journal.number||b.journal.id))).map(item=>{
+  const code=String(item.line.accountCode),movement=item.source&&item.source.movementType||"",description=item.line.description||item.journal.description||"",label=code==="1410"?(n(item.line.debit)>0?"ضريبة مدخلات":"رد / تسوية ضريبة مدخلات"):code==="2110"?(movement==="tax_payment"?"سداد قيمة مضافة":n(item.line.credit)>0?"ضريبة مخرجات":"تسوية / سداد قيمة مضافة"):movement==="tax_payment"?"سداد خصم وإضافة":"ضريبة خصم وإضافة";
+  return h("tr",{key:String(item.journal.id)+"-"+item.index,className:"border-t hover:bg-blue-50"},h("td",{className:"p-2 whitespace-nowrap"},item.journal.date||"—"),h("td",{className:"p-2"},h("button",{type:"button",className:"font-bold text-blue-700 underline",onClick:()=>openStatementJournal(item.journal.id)},item.journal.number||item.journal.id)),h("td",{className:"p-2"},code+" — "+label),h("td",{className:"p-2"},item.source&&(item.source.number||item.source.reference)||item.journal.reference||"—"),h("td",{className:"p-2 min-w-[220px]"},description),h("td",{className:"p-2 text-end"},fmt(item.line.debit)),h("td",{className:"p-2 text-end"},fmt(item.line.credit)));
+ });
+ const incomeVatOpening=balanceFlat.filter(line=>String(line.date||"")<(period.from||"0000-00")+"-01"&&["1410","2110"].includes(String(line.accountCode))).reduce((sum,line)=>sum+n(line.debit)-n(line.credit),0);
+ const incomeVatClosing=balanceFlat.filter(line=>["1410","2110"].includes(String(line.accountCode))).reduce((sum,line)=>sum+n(line.debit)-n(line.credit),0);
  const incomeStatementContent=()=>h('div',{className:'space-y-3'},
   h('div',{className:'grid grid-cols-2 md:grid-cols-4 gap-2'},
    metric('إجمالي الإيرادات',fmt(revenue)),
@@ -3711,6 +3827,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
    partnerCurrentCorrectionCounts.pending?h('p',{className:'mt-1'},'يوجد '+partnerCurrentCorrectionCounts.pending+' قيد تصحيح بانتظار المراجعة والاعتماد. حدّث القوائم بعد ترحيله.'):null,
    button('فتح جاري الشركاء لمعالجة الحركات',()=>setTab('partnerCurrent'),'muted')
   ):null,
+  panel("موقف الضرائب — إيضاح مستقل داخل القوائم","هذا القسم يعرض ضريبة المدخلات 1410 والمخرجات 2110 وسدادات 2110 و2120 والاستردادات من واقع القيود المرحّلة، ولا تُضاف هذه المبالغ إلى الإيرادات أو المصروفات ولا تؤثر على صافي الربح.",h("div",{className:"space-y-3"},h("div",{className:"grid grid-cols-2 md:grid-cols-5 gap-2"},metric("ضريبة مدخلات بالفترة",fmt(incomeVatInputCurrent.debit)),metric("ضريبة مخرجات بالفترة",fmt(incomeVatOutputCurrent.credit)),metric("سداد قيمة مضافة",fmt(incomeVatOutputCurrent.debit)),metric("سداد خصم وإضافة",fmt(incomeWithholdingCurrent.debit)),metric("صافي موقف القيمة المضافة",fmt(incomeVatClosing)+(incomeVatClosing>=0?" مدين":" دائن"))),h("div",{className:"rounded-lg border p-3 text-sm"},h("div",{className:"font-bold"},"رصيد بداية الفترة: "+fmt(incomeVatOpening)),h("div",null,"الحركة الصافية خلال الفترة: "+fmt(incomeVatClosing-incomeVatOpening)),h("div",{className:"font-extrabold mt-1"},"رصيد الإقفال: "+fmt(incomeVatClosing))),table(["التاريخ","رقم القيد","نوع الحركة / الحساب","المستند المرجعي","البيان","مدين","دائن"],incomeVatTaxRows.length?incomeVatTaxRows:[h("tr",{key:"no-tax"},h("td",{colSpan:7,className:"p-4 text-center text-slate-400"},"لا توجد حركات ضريبية مرحّلة في الفترة المحددة."))]))),
   panel('فواتير مشتريات محمّلة على المخزون','بنود المشتريات المخزنية تُرحّل إلى حساب المخزون 1300 وتظهر ضمن الأصول، ولا تدخل المصروفات التشغيلية أو تكلفة المبيعات عند الشراء.',h('div',{className:'space-y-2'},
    h('div',{className:'grid grid-cols-2 gap-2'},metric('عدد فواتير الشراء المخزني',String(inventoryPurchaseInvoiceCount)),metric('إجمالي الإضافة للمخزون',fmt(inventoryPurchaseTotal))),
    table(['التاريخ','رقم القيد','رقم الفاتورة','الصنف / البيان','قيمة الإضافة للمخزون'],inventoryPurchaseRows)
@@ -4625,6 +4742,11 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   }
   if(quickAddType==='bankAccounts'){
    fields.push(selectWithAdd('الحساب المحاسبي المرتبط',quickAddForm.accountCode||'',function(v){change('accountCode',v);},posting.filter(function(a){return a.type==='asset';}).map(function(a){return {value:a.code,label:a.code+' — '+a.name};}),'chartOfAccounts',{type:'asset',nature:'debit',parentCode:'1'},'quick-bank-account-'+String(quickAddForm.code||'')));
+  }
+  if(quickAddType==='financingParties'){
+   fields.push(field('رقم مرجعي / رقم مستند التمويل',quickAddForm.reference||'',function(v){change('reference',v);}));
+   fields.push(field('رقم تعريف / تسجيل (اختياري)',quickAddForm.taxNumber||'',function(v){change('taxNumber',v);}));
+   fields.push(h('label',{className:'block text-xs font-bold text-slate-700 sm:col-span-2 lg:col-span-3'},'ملاحظات',h('textarea',{rows:2,value:quickAddForm.notes||'',onChange:function(e){change('notes',e.target.value);},className:'mt-1 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs font-normal bg-white'})));
   }
   if(quickAddType==='parties'){
    fields[0]=field('كود '+(quickAddForm.partyType==='vendor'?'المورد':'العميل'),quickAddForm.code,function(v){change('code',v);});
