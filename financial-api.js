@@ -154,6 +154,7 @@ export const DEFAULT_FINANCE_ACCOUNTS = [
 ];
 const txt=(v,n=2000)=>{const s=String(v==null?"":v).trim();if(s.length>n)throw new Error("A financial field is too long.");return s;};
 const id=v=>{const s=txt(v,120);if(!s||/[.#$\/\[\]]/.test(s))throw new Error("Invalid financial identifier.");return s;};
+const masterCodeId=(value,kind)=>{const raw=txt(value,120);if(kind==="employeeAdvances"||kind==="employeeCustodies"){const normalized=raw.replace(/[.#$\/\[\]]/g,"-").replace(/-+/g,"-").replace(/^-+|-+$/g,"");if(!normalized)throw new Error("كود السلفة أو العهدة مطلوب، وتأكد من إدخال رمز صالح.");return id(normalized);}return id(raw);};
 const num=v=>{const n=Number(v);if(!Number.isFinite(n)||n<0||n>1e15)throw new Error("Invalid amount.");return Math.round(n*10000)/10000;};
 const rnd=v=>Math.round((Number(v)||0)*100)/100;
 const month=d=>String(d||"").slice(0,7);
@@ -1178,7 +1179,8 @@ export async function handleFinancialRequest(ctx){
  if(action==="saveMaster"){
   const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties","financingParties","employeeAdvances","employeeCustodies"];
   if(!allowed.includes(kind))throw new Error("Unsupported master data type.");
-  const item=body.item||{},code=id(item.code),originalCode=body.originalCode?id(body.originalCode):code;
+  const item=body.item||{},code=masterCodeId(item.code,kind),originalCode=body.originalCode?id(body.originalCode):code;
+  item.code=code;
   const permissionArea=financeAreaForMaster(kind);
   let previous=body.originalCode?await adminRead(kind+"/"+originalCode):null;
   if(body.originalCode&&!previous&&kind==="parties"&&adminReadRoot){
@@ -1368,7 +1370,8 @@ export async function handleFinancialRequest(ctx){
   const otherLegacy=partyRoot&&adminReadRoot?(await adminReadRoot(partyRoot==="clients"?"vendors":"clients"))||{}:{};
   let count=0,created=0,updated=0,unchanged=0;
   for(let i=0;i<sourceRows.length;i++){
-   const row=sourceRows[i]||{},code=id(row.code),name=txt(row.name,180);
+   const row=sourceRows[i]||{},code=masterCodeId(row.code,kind),name=txt(row.name,180);
+   row.code=code;
    if(!name)throw new Error("الصف "+(i+2)+": الاسم مطلوب.");
    if(seen.has(code))throw new Error("الصف "+(i+2)+": الكود "+code+" مكرر داخل الملف.");
    if(kind==="parties"&&otherLegacy&&otherLegacy[code])throw new Error("الصف "+(i+2)+": الكود "+code+" مسجل بالفعل كنوع طرف مختلف.");
