@@ -256,16 +256,14 @@ async function findMasterReferences(ctx,kind,code,partyType="") {
   if(hasStoredRecords(partyLedger))references.push("دفتر الأستاذ المساعد لجهات التمويل");
   check(entries,["partyId"],"قيود التمويل");
  }else if(kind==="employeeAdvances"||kind==="employeeCustodies"){
-  const employee=await adminRead(kind+"/"+code),employeeUid=String(employee&&employee.employeeUid||"");
-  if(employeeUid){
-   const subledgerType=kind==="employeeAdvances"?"employeeAdvance":"employeeCustody";
-   const ledger=await adminRead("partyLedger/"+subledgerType+"/"+employeeUid);
-   if(hasStoredRecords(ledger))references.push(kind==="employeeAdvances"?"حركات ودفتر الأستاذ المساعد للسلف":"حركات ودفتر الأستاذ المساعد للعهد");
-   const hasJournalReference=Object.values(entries).some(journal=>journal&&Array.isArray(journal.lines)&&journal.lines.some(line=>String(line.partyType||"")===subledgerType&&String(line.partyId||"")===employeeUid));
-   if(hasJournalReference&&!references.length)references.push("قيود اليومية المرتبطة بالموظف");
-   if(kind==="employeeAdvances"&&hasStoredRecords(await adminRead("employeeAdvanceRecords/"+employeeUid)))references.push("سجل حركات السلف");
-   if(kind==="employeeCustodies"&&adminReadRoot&&hasStoredRecords(await adminReadRoot("cashCustodies/"+employeeUid)))references.push("سجل العهد الشخصية");
-  }
+  const employee=await adminRead(kind+"/"+code),employeeUid=String(employee&&employee.employeeUid||""),analyticPartyId=employeeUid||code;
+  const subledgerType=kind==="employeeAdvances"?"employeeAdvance":"employeeCustody";
+  const ledger=await adminRead("partyLedger/"+subledgerType+"/"+id(analyticPartyId));
+  if(hasStoredRecords(ledger))references.push(kind==="employeeAdvances"?"حركات ودفتر الأستاذ المساعد للسلف":"حركات ودفتر الأستاذ المساعد للعهد");
+  const hasJournalReference=Object.values(entries).some(journal=>journal&&Array.isArray(journal.lines)&&journal.lines.some(line=>String(line.partyType||"")===subledgerType&&(String(line.partyId||"")===analyticPartyId||(employeeUid&&String(line.partyId||"")===employeeUid))));
+  if(hasJournalReference&&!references.length)references.push("قيود اليومية المرتبطة بالكود التحليلي");
+  if(employeeUid&&kind==="employeeAdvances"&&hasStoredRecords(await adminRead("employeeAdvanceRecords/"+employeeUid)))references.push("سجل حركات السلف");
+  if(employeeUid&&kind==="employeeCustodies"&&adminReadRoot&&hasStoredRecords(await adminReadRoot("cashCustodies/"+employeeUid)))references.push("سجل العهد الشخصية");
  }else{
   throw new Error("Unsupported master-data type.");
  }
@@ -1214,14 +1212,21 @@ export async function handleFinancialRequest(ctx){
    const rate=Number(item.rate);if(!Number.isFinite(rate)||rate<0||rate>100)throw new Error("نسبة الضريبة يجب أن تكون من 0 إلى 100.");
   }
   if(kind==="employeeAdvances"||kind==="employeeCustodies"){
-   const employeeUid=id(item.employeeUid),employee=employeeUid&&adminReadRoot?await adminReadRoot("users/"+employeeUid):null;
-   if(!employeeUid||!employee)throw new Error("يجب ربط كود السلفة أو العهدة بموظف مسجل في المستخدمين.");
-   if(previous&&String(previous.employeeUid||"")!==employeeUid){const usages=await findMasterReferences(ctx,kind,originalCode);if(usages.length)throw new Error("لا يمكن تغيير الموظف المرتبط بالكود لوجود حركات سابقة: "+usages.join("، ")+".");}
-   const registry=(await adminRead(kind))||{};
-   const duplicate=Object.values(registry).find(record=>record&&record.active!==false&&String(record.employeeUid||"")===employeeUid&&String(record.code||"")!==String(originalCode));
-   if(duplicate)throw new Error("يوجد كود نشط لهذا الموظف بالفعل في "+(kind==="employeeAdvances"?"دليل السلف":"دليل العهد")+" ("+String(duplicate.code||"")+"). عدّل الكود الموجود بدلًا من إنشاء سجل مكرر.");
-   item.employeeUid=employeeUid;
-   item.employeeName=txt(employee.fullName||employee.username||employee.email||employeeUid,180);
+   const employeeUid=String(item.employeeUid||"").trim();
+   if(employeeUid){
+    const employee=adminReadRoot?await adminReadRoot("users/"+id(employeeUid)):null;
+    if(!employee)throw new Error("الموظف المرتبط غير موجود في سجل المستخدمين. اترك الحقل فارغًا أو اختر مستخدمًا صحيحًا.");
+    if(previous&&String(previous.employeeUid||"")!==employeeUid){const usages=await findMasterReferences(ctx,kind,originalCode);if(usages.length)throw new Error("لا يمكن تغيير أو فك ربط الموظف عن الكود لوجود حركات سابقة: "+usages.join("، ")+".");}
+    const registry=(await adminRead(kind))||{};
+    const duplicate=Object.values(registry).find(record=>record&&record.active!==false&&String(record.employeeUid||"")===employeeUid&&String(record.code||"")!==String(originalCode));
+    if(duplicate)throw new Error("يوجد كود نشط لهذا الموظف بالفعل في "+(kind==="employeeAdvances"?"دليل السلف":"دليل العهد")+" ("+String(duplicate.code||"")+"). عدّل الكود الموجود بدلًا من إنشاء سجل مكرر.");
+    item.employeeUid=employeeUid;
+    item.employeeName=txt(employee.fullName||employee.username||employee.email||employeeUid,180);
+   }else{
+    delete item.employeeUid;
+    delete item.employeeName;
+    if(previous&&previous.employeeUid){const usages=await findMasterReferences(ctx,kind,originalCode);if(usages.length)throw new Error("لا يمكن فك ربط الموظف عن الكود لوجود حركات سابقة: "+usages.join("، ")+".");}
+   }
   }
   if(kind==="bankAccounts"){const account=await adminRead("chartOfAccounts/"+id(item.accountCode||code));if(!account||account.isGroup||account.active===false||account.type!=="asset")throw new Error("اربط حساب البنك بحساب أصول نشطًا وقابلًا للترحيل في دليل الحسابات.");}
   let saved={...(previous||{}),...item,code,name:txt(item.name,180),active:item.active!==false,createdAt:(previous&&previous.createdAt)||item.createdAt||now,createdBy:(previous&&previous.createdBy)||item.createdBy||claims.sub,updatedAt:now,updatedBy:claims.sub};
@@ -1386,14 +1391,17 @@ export async function handleFinancialRequest(ctx){
    if(kind==="bankAccounts"){const account=await adminRead("chartOfAccounts/"+id(row.accountCode||code));if(!account||account.isGroup||account.active===false)throw new Error("الصف "+(i+2)+": حساب البنك المحاسبي غير موجود أو غير قابل للترحيل.");}
    if(kind==="taxCodes"&&!["vat_input","vat_output","withholding","addition"].includes(row.taxType))throw new Error("الصف "+(i+2)+": نوع الضريبة غير صحيح.");
    if(kind==="employeeAdvances"||kind==="employeeCustodies"){
-    const employeeUid=id(row.employeeUid),employee=employeeUid&&adminReadRoot?await adminReadRoot("users/"+employeeUid):null;
-    if(!employeeUid||!employee)throw new Error("الصف "+(i+2)+": كود الموظف غير موجود في سجل المستخدمين.");
-    if(seenEmployeeUids.has(employeeUid))throw new Error("الصف "+(i+2)+": الموظف نفسه مكرر داخل الملف.");
-    seenEmployeeUids.add(employeeUid);
-    const duplicate=Object.values(existing).find(record=>record&&record.active!==false&&String(record.employeeUid||"")===employeeUid&&String(record.code||"")!==code);
-    if(duplicate)throw new Error("الصف "+(i+2)+": يوجد كود آخر للموظف نفسه ("+String(duplicate.code||"")+").");
-    if(previous&&String(previous.employeeUid||"")!==employeeUid){const usages=await findMasterReferences(ctx,kind,code);if(usages.length)throw new Error("الصف "+(i+2)+": لا يمكن تغيير الموظف المرتبط بالكود "+code+" لوجود حركات سابقة: "+usages.join("، ")+".");}
-    row.employeeName=txt(employee.fullName||employee.username||employee.email||employeeUid,180);
+    const employeeUid=String(row.employeeUid||"").trim();
+    if(employeeUid){
+     const employee=adminReadRoot?await adminReadRoot("users/"+id(employeeUid)):null;
+     if(!employee)throw new Error("الصف "+(i+2)+": كود الموظف غير موجود. اترك الربط فارغًا أو اختر مستخدمًا صحيحًا.");
+     if(seenEmployeeUids.has(employeeUid))throw new Error("الصف "+(i+2)+": الموظف نفسه مكرر داخل الملف.");
+     seenEmployeeUids.add(employeeUid);
+     const duplicate=Object.values(existing).find(record=>record&&record.active!==false&&String(record.employeeUid||"")===employeeUid&&String(record.code||"")!==code);
+     if(duplicate)throw new Error("الصف "+(i+2)+": يوجد كود آخر للموظف نفسه ("+String(duplicate.code||"")+").");
+     if(previous&&String(previous.employeeUid||"")!==employeeUid){const usages=await findMasterReferences(ctx,kind,code);if(usages.length)throw new Error("الصف "+(i+2)+": لا يمكن تغيير الموظف المرتبط بالكود "+code+" لوجود حركات سابقة: "+usages.join("، ")+".");}
+     row.employeeName=txt(employee.fullName||employee.username||employee.email||employeeUid,180);
+    }
    }
    // Empty spreadsheet cells mean "leave the current value unchanged"; false and zero remain valid updates.
    const supplied=Object.fromEntries(Object.entries(row).filter(([,value])=>value!==undefined&&value!==null&&value!==""));
