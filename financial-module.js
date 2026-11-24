@@ -419,9 +419,10 @@ function FinanceModule(props){
   return !hasScoped&&Boolean(permissions.financial&&permissions.financial[action]===true);
  };
  const financeAreaForMaster=kind=>financeMasterAreas[kind]||"masters";
- React.useEffect(()=>{if(masterDirectoryOnly&&tab!=="masters")setTab("masters");},[masterDirectoryOnly]);
+ React.useEffect(()=>{if(masterDirectoryOnly){if(tab!=="masters")masterReturnTabRef.current=tab;if(tab!=="masters")setTab("masters");}else if(tab==="masters")setTab(masterReturnTabRef.current||"overview");},[masterDirectoryOnly]);
  const masterDirectoryOnly=props.masterDirectoryOnly===true;
  const [tab,setTab]=React.useState(masterDirectoryOnly?"masters":"overview"),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[notice,setNotice]=React.useState('');
+ const masterReturnTabRef=React.useRef("overview");
  const [master,setMaster]=React.useState({chartOfAccounts:{},costCenters:{},items:{},itemGroups:{},warehouses:{},bankAccounts:{},taxCodes:{},parties:{},financingParties:{},employeeAdvances:{},employeeCustodies:{},settings:{},inventory:{balances:{}}});
  const [inventoryMovements,setInventoryMovements]=React.useState([]),[inventoryMovementModal,setInventoryMovementModal]=React.useState(null);
  const [documents,setDocuments]=React.useState([]),[journalRecords,setJournalRecords]=React.useState([]),[review,setReview]=React.useState([]),[periodJournals,setPeriodJournals]=React.useState([]),[balanceJournals,setBalanceJournals]=React.useState([]),[accountingStartMonth,setAccountingStartMonth]=React.useState('');
