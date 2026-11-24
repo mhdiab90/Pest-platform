@@ -1001,19 +1001,27 @@ function FinanceModule(props){
   return()=>{active=false;};
  },[tab,currentUser&&currentUser.uid]);
  const loadParty=async()=>{
-  if(!partyStatement.id){setError('اختر العميل أو المورد أولاً.');return;}
+  if(!partyStatement.id){setError('اختر الطرف التحليلي أولاً.');return;}
   setBusy(true);setError('');
   try{
-   const result=await api('?resource=party&type='+encodeURIComponent(partyStatement.type)+'&id='+encodeURIComponent(partyStatement.id));
-   const entries=[];
-   Object.values(result.entries||{}).forEach(function(periodRows){Object.values(periodRows||{}).forEach(function(entry){entries.push(entry);});});
+   let entries=[];
+   if(partyStatement.type==="financingParty"){
+    // Client-side compatibility while older Worker deployments are being upgraded.
+    // Balances are already loaded from the posted GL journal index.
+    entries=balanceFlat.filter(line=>String(line.partyType||"")==="financingParty"&&String(line.partyId||"")===String(partyStatement.id));
+   }else{
+    const result=await api('?resource=party&type='+encodeURIComponent(partyStatement.type)+'&id='+encodeURIComponent(partyStatement.id));
+    Object.values(result.entries||{}).forEach(function(periodRows){Object.values(periodRows||{}).forEach(function(entry){entries.push(entry);});});
+   }
    entries.sort(function(a,b){return String(a.date||'').localeCompare(String(b.date||''))||String(a.journalId||'').localeCompare(String(b.journalId||''));});
    setPartyRows(entries);
    void loadStatementAttachments(entries);
   }catch(error){setError(error.message||String(error));}
   finally{setBusy(false);}
  };
- const accounts=rows(master.chartOfAccounts).sort((a,b)=>String(a.code).localeCompare(String(b.code),undefined,{numeric:true}));
+ const accounts=rows(master.chartOfAccounts).map(account=>String(account.code)==="2150"
+  ?Object.assign({},account,{subledgerType:"financingParty",isControl:true,isGroup:false})
+  :account).sort((a,b)=>String(a.code).localeCompare(String(b.code),undefined,{numeric:true}));
  const loadPartnerCurrentAccounts=async(silent=false)=>{
  if(!silent)setBusy(true);setError('');
  try{
@@ -1818,6 +1826,8 @@ const unpostJournalDocument=async(doc)=>{
   };
 const submitJournal=async()=>{
   if(!canFinance("journal",journal.id?"edit":"add")){setError("ليس لديك صلاحية حفظ أو تعديل القيود اليومية.");return;}
+  const missingAnalytic=(journal.lines||[]).map((line,index)=>({line,index,account:posting.find(account=>String(account.code)===String(line.accountCode))})).find(item=>item.account&&item.account.subledgerType&&!String(item.line.partyId||"").trim());
+  if(missingAnalytic){setError("السطر "+(missingAnalytic.index+1)+": الحساب "+missingAnalytic.account.code+" — "+missingAnalytic.account.name+" يتطلب اختيار "+analyticPartyLabel(missingAnalytic.account.subledgerType)+". اختر الطرف التحليلي قبل الحفظ.");return;}
   setBusy(true);setError('');try{const payload=Object.assign({},journal);const result=await api('', 'POST',Object.assign({action:'submitJournal'},payload));setNotice(result.status==='pending_review'?'تم إرسال القيد إلى المراجعة':'تم حفظ القيد مع أخطاء: '+(result.errors||[]).join('، '));if(result.status==='pending_review')setJournal({id:'',date:today(),description:'',reference:'',checkNumber:'',invoiceNumber:'',documentNumber:'',currency:'EGP',lines:[{accountCode:'6100',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''},{accountCode:'1110',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''}]});else setJournal(o=>Object.assign({},o,{id:result.id}));await refresh();}catch(e){setError(e.message||String(e));}finally{setBusy(false);}
  };
  const submitInvoice=async()=>{
@@ -2543,16 +2553,24 @@ const renderJournal = function() {
  };
   const renderPartyStatements = function() {
   const staff=(userDirectory||[]).filter(u=>u.uid).map(u=>Object.assign({},u,{id:u.uid,code:u.uid,name:u.fullName||u.username||u.email||u.uid}));
+  const financingParties=Array.from(new Map([
+   ...allVendors.map(item=>[String(item.code||item.id),Object.assign({},item,{id:item.code||item.id,code:item.code||item.id,name:partyName(item)})]),
+   ...(partnerCurrentAccounts||[]).filter(item=>item.uid).map(item=>[String(item.uid),{...item,id:item.uid,code:item.uid,name:item.partnerName||item.name||item.username||item.uid}]),
+   ...staff.map(item=>[String(item.uid),item])
+  ].filter(([key])=>key).map(([key,value])=>[key,value])).values());
   const employeeType=["employeeCustody","employeeAdvance"].includes(partyStatement.type);
-  const partyType=["customer","vendor","employeeCustody","employeeAdvance"].includes(partyStatement.type);
+  const partyType=["customer","vendor","employeeCustody","employeeAdvance","financingParty"].includes(partyStatement.type);
   const entityList=partyStatement.type==="account"?accounts:
    partyStatement.type==="costCenter"?centers:
    partyStatement.type==="vendor"?allVendors:
-   partyStatement.type==="customer"?allClients:staff;
+   partyStatement.type==="customer"?allClients:
+   partyStatement.type==="financingParty"?financingParties:staff;
   const entityCode=item=>String(item&&(item.code||item.uid||item.id)||"");
   const entityName=item=>partyStatement.type==="account"||partyStatement.type==="costCenter"
    ?String(item&&item.name||entityCode(item))
-   :partyName(item||{});
+   :partyStatement.type==="financingParty"
+    ?String(item&&(item.partnerName||item.name||item.companyName||item.fullName||item.username||item.email)||entityCode(item))
+    :partyName(item||{});
   const searchableText=item=>normalizeMatch(Object.entries(item||{}).filter(([,value])=>
    value===null||value===undefined?false:["string","number","boolean"].includes(typeof value)
   ).map(([key,value])=>key+" "+String(value)).join(" "));
@@ -2579,7 +2597,7 @@ const renderJournal = function() {
   const openingRows=orderedRows.filter(line=>String(line.date||"").slice(0,7)<(period.from||"0000-00"));
   const movementRows=orderedRows.filter(inPeriod);
   const selectedAccount=selectedAccountData&&selectedAccountData.account;
-  const normalSide=partyStatement.type==="vendor"?"credit":
+  const normalSide=partyStatement.type==="vendor"||partyStatement.type==="financingParty"?"credit":
    partyStatement.type==="customer"||employeeType?"debit":
    partyStatement.type==="account"
     ?(selectedAccount&&(selectedAccount.nature==="credit"||["liability","equity","revenue"].includes(selectedAccount.type))?"credit":"debit")
@@ -2600,7 +2618,7 @@ const renderJournal = function() {
    const center=centers.find(item=>String(item.code)===String(line.costCenterId));
    const journal=statementJournalMap.get(String(line.journalId||""));
    const journalLabel=line.journalNumber||journal&&(journal.number||journal.journalNumber)||line.journalId||"—";
-   const partyLabel=line.partyName||((line.partyType==="vendor"?allVendors:line.partyType==="customer"?allClients:staff)
+   const partyLabel=line.partyName||((line.partyType==="vendor"?allVendors:line.partyType==="customer"?allClients:line.partyType==="financingParty"?financingParties:staff)
     .find(item=>String(item.code||item.uid||item.id)===String(line.partyId||""))||{}).name||line.partyId||"";
    return h("tr",{key:String(line.journalId||"row")+"-"+String(line.lineNo||index)+"-"+index,className:"border-t hover:bg-blue-50"},
     h("td",{className:"p-2 whitespace-nowrap"},line.date||"—"),
@@ -2635,12 +2653,14 @@ const renderJournal = function() {
    {value:"vendor",label:"مورد"},
    {value:"customer",label:"عميل"},
    {value:"employeeCustody",label:"عهدة موظف"},
-   {value:"employeeAdvance",label:"سلفة موظف"}
+   {value:"employeeAdvance",label:"سلفة موظف"},
+   {value:"financingParty",label:"جهة تمويل / دائن (حساب 2150)"}
   ];
   const pickerLabel=partyStatement.type==="account"?"ابحث عن الحساب بالاسم أو الرقم أو أي بيان":
    partyStatement.type==="costCenter"?"ابحث عن مركز التكلفة بالكود أو الاسم أو المشروع":
    partyStatement.type==="vendor"?"ابحث عن المورد بالاسم أو الكود أو الرقم الضريبي":
    partyStatement.type==="customer"?"ابحث عن العميل بالاسم أو الكود أو الرقم الضريبي":
+   partyStatement.type==="financingParty"?"ابحث عن جهة التمويل أو الشريك أو الدائن":
    "ابحث عن الموظف بالاسم أو رقم المستخدم";
   return h("div",{className:"space-y-4"},
    panel(statementTitle,"كشف موحد يعرض الرصيد الافتتاحي وحركة الفترة والرصيد الختامي، مع إمكانية فتح القيد والمرفقات المرتبطة بكل حركة.",h("div",{className:"space-y-3"},
