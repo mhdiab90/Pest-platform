@@ -2381,3 +2381,66 @@ test("account 2150 is migrated as an analytical financing control and posted to 
   const rows=Object.values(partyView.entries["2026-11"]||{});
   assert.ok(rows.some(row=>row.journalId===journal.id&&row.credit===250));
 });
+
+
+test("account 2150 is migrated as an analytical financing control and posted to its party ledger", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const seeded=read("chartOfAccounts/2150");
+  assert.ok(seeded,"account 2150 is available after finance bootstrap");
+
+  // Simulate a legacy 2150 master with no analytical setup. The migration must
+  // change only the control/subledger metadata, not its identity or balance nature.
+  write("chartOfAccounts/2150",{
+    ...seeded,
+    name:"تمويل وقروض — سجل قديم",
+    type:"liability",
+    nature:"credit",
+    parentCode:"21",
+    isGroup:true,
+    isControl:false,
+    subledgerType:""
+  });
+  await invoke("GET","?resource=bootstrap");
+  const migrated=read("chartOfAccounts/2150");
+  assert.equal(migrated.subledgerType,"financingParty");
+  assert.equal(migrated.isControl,true);
+  assert.equal(migrated.isGroup,false);
+  assert.equal(migrated.name,"تمويل وقروض — سجل قديم","existing account name must be preserved");
+  assert.equal(migrated.type,"liability","existing liability classification must be preserved");
+  assert.equal(migrated.nature,"credit","existing credit nature must be preserved");
+  assert.equal(migrated.parentCode,"21");
+
+  const missingParty=await invoke("POST","",{
+    action:"submitJournal",
+    date:"2026-11-24",
+    description:"Financing control without lender",
+    lines:[
+      {accountCode:"2150",description:"Financing received",debit:0,credit:250,partyType:"financingParty"},
+      {accountCode:"1110",description:"Cash received",debit:250,credit:0}
+    ]
+  });
+  assert.equal(missingParty.status,"needs_correction");
+  assert.ok(missingParty.errors.some(error=>error.includes("جهة التمويل أو الدائن")));
+
+  const lenderId="LENDER-2150-TEST";
+  const journal=await invoke("POST","",{
+    action:"submitJournal",
+    date:"2026-11-24",
+    description:"Financing received from lender",
+    reference:"FIN-2150-TEST",
+    lines:[
+      {accountCode:"2150",description:"تمويل من جهة ممولة",debit:0,credit:250,partyId:lenderId},
+      {accountCode:"1110",description:"استلام التمويل بالخزينة",debit:250,credit:0}
+    ]
+  });
+  assert.equal(journal.status,"pending_review");
+  const posted=await invoke("POST","",{action:"review",id:journal.id,decision:"approve",reason:"2150 analytical posting test"});
+  assert.equal(posted.status,"posted");
+  const indexed=read("partyLedger/financingParty/"+lenderId+"/2026-11/"+journal.id+"_1");
+  assert.equal(indexed.credit,250);
+  assert.equal(indexed.partyType,"financingParty");
+
+  const partyView=await invoke("GET","?resource=party&type=financingParty&id="+encodeURIComponent(lenderId));
+  const rows=Object.values(partyView.entries["2026-11"]||{});
+  assert.ok(rows.some(row=>row.journalId===journal.id&&row.credit===250));
+});
