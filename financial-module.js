@@ -736,7 +736,7 @@ function FinanceModule(props){
    const posted=rows(journalResult.items).filter(item=>item&&item.status==="posted");
    const refreshedDocuments=rows(documentResult.items);
    const collectPostedPeriodEntries=source=>Object.values(source||{}).flatMap(monthEntries=>Object.values(monthEntries||{})).filter(item=>item&&item.status==="posted");
-   const auditPeriodJournals=periodResult?collectPostedPeriodEntries(periodResult.entries):auditPeriodJournals;
+   const auditPeriodJournals=periodResult?collectPostedPeriodEntries(periodResult.entries):periodJournals;
    const auditBalanceJournals=periodResult?collectPostedPeriodEntries(periodResult.balanceEntries||periodResult.entries):balanceJournals;
    const auditBalanceFlat=flattenJournals(auditBalanceJournals);
    if(periodResult){setPeriodJournals(auditPeriodJournals);setBalanceJournals(auditBalanceJournals);}
@@ -5110,5 +5110,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261123-attachment-delete-all-screens-v1";
+ window.PEST_FINANCE_MODULE_VERSION="20261124-finance-audit-financier-v1";
 })();
