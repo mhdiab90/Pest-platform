@@ -323,7 +323,7 @@ test("financing account 2150 uses an isolated financier registry rather than sup
   assert.match(source,/financingParty:"جهة التمويل \/ الدائن"/);
   assert.match(source,/else if\(type==="financingParty"\)/);
   assert.match(source,/records=registeredFinancingParties\.filter\(item=>item&&item\.active!==false\)/);
-  assert.doesNotMatch(source,/else if\(type==="financingParty"\)\{[\s\S]*?activeVendors|else if\(type==="financingParty"\)\{[\s\S]*?partnerCurrentAccounts/);
+  assert.doesNotMatch(source,/label:"جهة ممولة:|label:"شريك:|label:"مستخدم \/ ممول:/);
   assert.match(source,/openQuickAdd\("financingParties",onChange,\{name:extractFinancingPartyName\(description\)\}\)/);
   assert.match(source,/financingParty:'جهة تمويل \/ دائن'/);
   assert.match(source,/\['partnerCurrentAccount','financingParty'\]\.includes\(account\.subledgerType\)/);
