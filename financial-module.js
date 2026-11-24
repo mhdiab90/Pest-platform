@@ -2566,11 +2566,11 @@ const submitJournal=async()=>{
  ['overview','ملخص مالي','Financial Summary'],['journal','القيود اليومية','Journal Entries'],['openingBalances','الأرصدة الافتتاحية','Opening Balances'],['review','المراجعة والفحص والاعتماد','Review, Audit & Approval'],['invoices','فواتير العملاء والموردين','Customer & Supplier Invoices'],['assignments','الإجراءات المحولة إليّ','Tasks Assigned to Me'],['partyStatements','كشوف الحسابات والأطراف','Account & Party Statements'],['partnerCurrent','جاري الشركاء',"Partners' Current Accounts"],['masters','دليل الأكواد والبيانات الأساسية','Master Codes & Master Data'],['inventory','حركة وأرصدة المخزون','Inventory Balances & Movements'],['inventoryMovements','حركة المخزن','Inventory Movements'],['cash','الخزينة والتحصيل والسداد','Cash, Receipts & Payments'],['bank','كشوف البنوك','Bank Statements'],['tax','الضرائب','Taxes'],['accountAnalysis','تحليل الحسابات','Account Analysis'],['reports','القوائم المالية','Financial Statements'],['legacyImport','استيراد أرشيف القيود','Legacy Journal Archive Import']
  ];
  const canViewMasterDirectory=()=>["masters","accounts","centers","inventory","bank","tax"].some(area=>canFinance(area,"view"));
- const visibleNav=masterDirectoryOnly?[]:nav.filter(item=>item[0]==="legacyImport"?(currentUser&&currentUser.role==="admin"):item[0]==="masters"?canViewMasterDirectory():canFinance(financeTabAreas[item[0]],"view"));
+ const visibleNav=masterDirectoryOnly?[]:nav.filter(item=>item[0]!=="masters"&&(item[0]==="legacyImport"?(currentUser&&currentUser.role==="admin"):canFinance(financeTabAreas[item[0]],"view")));
  React.useEffect(()=>{
   const area=financeTabAreas[tab],allowed=tab==="masters"?canViewMasterDirectory():!area||canFinance(area,"view");
   if(!allowed){
-   const first=nav.find(item=>item[0]==="masters"?canViewMasterDirectory():canFinance(financeTabAreas[item[0]],"view"));
+   const first=nav.find(item=>item[0]!=="masters"&&canFinance(financeTabAreas[item[0]],"view"));
    if(first&&first[0]!==tab)setTab(first[0]);
   }
  },[tab,currentUser&&currentUser.uid]);
