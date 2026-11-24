@@ -344,3 +344,14 @@ test("current-screen export toolbar scrolls normally and does not stick to the v
   assert.match(indexHtml,/\.app-report-toolbar\{margin:0 0 9px;padding:7px 8px;gap:7px;top:auto\}/);
   assert.match(indexHtml,/--report-toolbar-offset':'0px'/);
 });
+
+
+test("account 2150 remains analytical in the browser while Worker migration is pending", () => {
+  assert.match(source, /const accounts=rows\(master\.chartOfAccounts\)\.map\(account=>String\(account\.code\)==="2150"/);
+  assert.match(source, /subledgerType:"financingParty",isControl:true,isGroup:false/);
+  assert.match(source, /const missingAnalytic=\(journal\.lines\|\|\[\]\)\.map/);
+  assert.match(source, /account\.subledgerType&&!String\(item\.line\.partyId\|\|""\)\.trim\(\)/);
+  assert.match(source, /const financingParties=Array\.from\(new Map/);
+  assert.match(source, /type==="financingParty"\)\{\s*\/\/ Client-side compatibility while older Worker deployments are being upgraded/);
+  assert.match(source, /type:"financingParty"/);
+});
