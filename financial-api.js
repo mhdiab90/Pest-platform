@@ -2515,8 +2515,6 @@ export async function handleFinancialRequest(ctx){
     updates["assignments/"+claims.sub+"/"+assignmentId+"/status"]="returned_to_creator";
     updates["assignments/"+claims.sub+"/"+assignmentId+"/completedAt"]=nowManage;
     updates["assignments/"+claims.sub+"/"+assignmentId+"/decision"]="returned_by_recipient";
-    updates["assignments/"+claims.sub+"/"+assignmentId+"/deletedAt"]=nowManage;
-    updates["assignments/"+claims.sub+"/"+assignmentId+"/deletedBy"]=claims.sub;
     updates["sentAssignments/"+ownerUid+"/"+assignmentId+"/status"]="returned_to_creator";
     updates["sentAssignments/"+ownerUid+"/"+assignmentId+"/completedAt"]=nowManage;
     updates["sentAssignments/"+ownerUid+"/"+assignmentId+"/decision"]="returned_by_recipient";
