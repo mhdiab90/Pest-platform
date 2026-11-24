@@ -343,6 +343,23 @@ test("review page exposes a precision accounting audit with actionable findings"
   assert.match(source,/جهة التمويل/);
 });
 
+test("manual withholding tax lines are checked against their matching supplier or customer control account", () => {
+  assert.match(source,/const counterpartAccountCode=withholdingPartyType==="vendor"\?"281":withholdingPartyType==="customer"\?"1210":""/);
+  assert.match(source,/اختلاف طرف ضريبة الخصم/);
+  assert.match(source,/غياب فهرس دفتر الأستاذ/);
+});
+
+test("financier auto-matching extracts explicit lender names without inventing names from generic descriptions", () => {
+  const start=source.indexOf("const extractFinancingPartyName=value=>");
+  const end=source.indexOf("const analyticPickerWithAdd=",start);
+  const extractor=source.slice(start,end);
+  assert.ok(start>=0&&end>start,"financier name parser must be present");
+  assert.match(extractor,/جهة\\s\\+التمويل/);
+  assert.match(extractor,/تمويل\\|قرض\\|سلفة/);
+  assert.match(extractor,/return ""/);
+  assert.doesNotMatch(extractor,/match&&match\\[1\\]\\|\\|raw/);
+});
+
 test("VAT movement and settlement detail is displayed inside statements but excluded from profit", () => {
   assert.match(source,/tax_payment:"سداد ضريبة/);
   assert.match(source,/vat_refund:"استرداد قيمة مضافة/);
