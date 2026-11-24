@@ -1356,7 +1356,7 @@ export async function handleFinancialRequest(ctx){
   const sourceRows=Array.isArray(body.rows)?body.rows:[];
   if(!sourceRows.length)throw new Error("ملف الاستيراد لا يحتوي على صفوف.");
   if(sourceRows.length>500)throw new Error("الحد الأقصى 500 سجل في عملية الاستيراد الواحدة.");
-  const existing=(await adminRead(kind))||{},groups=(await adminRead("itemGroups"))||{},seen=new Set(),updates={},rootUpdates={};
+  const existing=(await adminRead(kind))||{},groups=(await adminRead("itemGroups"))||{},seen=new Set(),seenEmployeeUids=new Set(),updates={},rootUpdates={};
   const partyRoot=kind==="parties"?(body.partyType==="customer"?"clients":body.partyType==="vendor"?"vendors":""):"";
   if(kind==="parties"&&!partyRoot)throw new Error("حدد هل ملف الأطراف للعملاء أم الموردين.");
   const legacy=partyRoot&&adminReadRoot?(await adminReadRoot(partyRoot))||{}:{};
@@ -1387,8 +1387,11 @@ export async function handleFinancialRequest(ctx){
    if(kind==="employeeAdvances"||kind==="employeeCustodies"){
     const employeeUid=id(row.employeeUid),employee=employeeUid&&adminReadRoot?await adminReadRoot("users/"+employeeUid):null;
     if(!employeeUid||!employee)throw new Error("الصف "+(i+2)+": كود الموظف غير موجود في سجل المستخدمين.");
+    if(seenEmployeeUids.has(employeeUid))throw new Error("الصف "+(i+2)+": الموظف نفسه مكرر داخل الملف.");
+    seenEmployeeUids.add(employeeUid);
     const duplicate=Object.values(existing).find(record=>record&&record.active!==false&&String(record.employeeUid||"")===employeeUid&&String(record.code||"")!==code);
-    if(duplicate&&!seen.has(String(duplicate.code||"")))throw new Error("الصف "+(i+2)+": يوجد كود آخر للموظف نفسه ("+String(duplicate.code||"")+").");
+    if(duplicate)throw new Error("الصف "+(i+2)+": يوجد كود آخر للموظف نفسه ("+String(duplicate.code||"")+").");
+    if(previous&&String(previous.employeeUid||"")!==employeeUid){const usages=await findMasterReferences(ctx,kind,code);if(usages.length)throw new Error("الصف "+(i+2)+": لا يمكن تغيير الموظف المرتبط بالكود "+code+" لوجود حركات سابقة: "+usages.join("، ")+".");}
     row.employeeName=txt(employee.fullName||employee.username||employee.email||employeeUid,180);
    }
    // Empty spreadsheet cells mean "leave the current value unchanged"; false and zero remain valid updates.
