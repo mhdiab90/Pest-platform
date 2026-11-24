@@ -473,6 +473,7 @@ test("unified master directory retains cost center analysis and the same master 
   const masterView = source.slice(source.indexOf("const renderMasters="), source.indexOf("const renderTax="));
   assert.match(masterView, /activeMasterViewKind==="costCenters"\?renderCostCenterAnalysis\(\):null/);
   assert.match(source, /financeAreaForMaster\(kind\)/);
+  assert.match(source, /const visibleNav=masterDirectoryOnly\?\[\]:nav\.filter\(item=>item\[0\]!==\"masters\"/);
   assert.match(apiSource, /for\(const k of \[[\s\S]*"employeeAdvances","employeeCustodies","settings"\]\)out\[k\]=\(await adminRead\(k\)\)\|\|\{\};/);
 });
 
@@ -488,6 +489,14 @@ test("employee advance and custody codes can be saved and imported without linki
   assert.match(source, /الموظف المرتبط \(اختياري\)/);
   assert.match(source, /بدون ربط بمستخدم/);
   assert.match(source, /item\.employeeUid\|\|item\.code/);
+});
+
+test("unlinked employee advance and custody codes appear in their own analytical statements", () => {
+  const statement = source.slice(source.indexOf("const renderPartyStatements = function()"), source.indexOf("const renderPartnerCurrent"));
+  assert.match(statement, /employeeRegistry=partyStatement\.type==="employeeCustody"\?rows\(master\.employeeCustodies\):partyStatement\.type==="employeeAdvance"\?rows\(master\.employeeAdvances\):\[\]/);
+  assert.match(statement, /const partyId=String\(item\.employeeUid\|\|item\.code\|\|""\)/);
+  assert.match(statement, /employeeType\?\(item\.uid\|\|item\.employeeUid\|\|item\.code\|\|item\.id\)/);
+  assert.match(source, /record=registry\.find\(item=>String\(item\.employeeUid\|\|item\.code\|\|''\)===String\(line\.partyId\|\|''\)\)/);
 });
 
 test("master code list appears directly under the type selector before the import section", () => {
