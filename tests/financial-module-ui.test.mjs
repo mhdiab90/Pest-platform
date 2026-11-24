@@ -22,7 +22,7 @@ test("account analysis drills from account balance to analytical source and post
 
 test("finance module export version must match the version requested by the loader", () => {
   const requestedBuild = /const FINANCE_MODULE_BUILD='([^']+)'/.exec(indexHtml)?.[1];
-  const exportedBuild = /window\\.PEST_FINANCE_MODULE_VERSION="([^"]+)"/.exec(source)?.[1];
+  const exportedBuild = /window\.PEST_FINANCE_MODULE_VERSION="([^"]+)"/.exec(source)?.[1];
   assert.ok(requestedBuild, "finance loader build identifier must be present");
   assert.ok(exportedBuild, "finance module must export its build identifier");
   assert.equal(exportedBuild, requestedBuild, "loader and module build identifiers must match");
