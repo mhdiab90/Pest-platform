@@ -319,13 +319,33 @@ test("VAT input and output plus posted settlements are netted into a single asse
   assert.match(source,/const balanceLiabilityRows=statementRowsWithBalance\(account=>account\.type==='liability'&&!account\.isGroup&&String\(account\.code\)!=="2110"/);
 });
 
-test("financing account 2150 supports a lender, supplier, partner or active user analytical party", () => {
+test("financing account 2150 uses an isolated financier registry rather than suppliers, partners or users", () => {
   assert.match(source,/financingParty:"جهة التمويل \/ الدائن"/);
   assert.match(source,/else if\(type==="financingParty"\)/);
-  assert.match(source,/activeVendors\.map\(item=>\(\{value:String\(item\.code\|\|item\.id\),label:"جهة ممولة:/);
-  assert.match(source,/شريك:/);
+  assert.match(source,/records=registeredFinancingParties\.filter\(item=>item&&item\.active!==false\)/);
+  assert.doesNotMatch(source,/else if\(type==="financingParty"\)\{[\s\S]*?activeVendors|else if\(type==="financingParty"\)\{[\s\S]*?partnerCurrentAccounts/);
+  assert.match(source,/openQuickAdd\("financingParties",onChange,\{name:extractFinancingPartyName\(description\)\}\)/);
   assert.match(source,/financingParty:'جهة تمويل \/ دائن'/);
   assert.match(source,/\['partnerCurrentAccount','financingParty'\]\.includes\(account\.subledgerType\)/);
+});
+
+test("review page exposes a precision accounting audit with actionable findings", () => {
+  assert.match(source,/const runIntegrityAudit=async\(\)=>/);
+  assert.match(source,/Math\.abs\(difference\)>0\.000001/);
+  assert.match(source,/Math\.abs\(debitDiff\)>0\.00005/);
+  assert.match(source,/button\(integrityAuditBusy\?'جارٍ الفحص\.\.\.'\s*:\s*'فحص',runIntegrityAudit/);
+  assert.match(source,/تقرير الفحص الذكي/);
+  assert.match(source,/توجيه الضريبة/);
+  assert.match(source,/جهة التمويل/);
+});
+
+test("VAT movement and settlement detail is displayed inside statements but excluded from profit", () => {
+  assert.match(source,/tax_payment:"سداد ضريبة/);
+  assert.match(source,/vat_refund:"استرداد قيمة مضافة/);
+  assert.match(source,/موقف الضرائب — إيضاح مستقل داخل القوائم/);
+  assert.match(source,/incomeTaxLines=periodJournals\.flatMap/);
+  assert.match(source,/incomeVatClosing/);
+  assert.match(source,/لا تُضاف هذه المبالغ إلى الإيرادات أو المصروفات ولا تؤثر على صافي الربح/);
 });
 
 test("all searchable account pickers support inline coding and canceling search preserves the current value", () => {
