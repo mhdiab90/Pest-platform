@@ -572,8 +572,8 @@ test("financial dropdowns open on the side with more visible space and keep the 
   assert.match(picker, /ReactDOM\.createPortal\(menu,document\.body\)/);
   assert.match(picker, /data-finance-picker-menu/);
   assert.match(source, /window\.addEventListener\('scroll',reposition,true\)/);
-  assert.match(picker, /anchor\.top=/);
-  assert.match(picker, /anchor\.bottom=/);
+  assert.match(source, /if\(openBelow\)anchor\.top=/);
+  assert.match(source, /else anchor\.bottom=/);
   assert.match(picker, /const selectedCurrent=selected&&String\(selected\.value\)!==''\?selected:null/);
   assert.match(picker, /filteredMatches\.filter\(item=>!selectedCurrent\|\|String\(item\.value\)!==String\(selectedCurrent\.value\)\)/);
   assert.match(picker, /'الاختيار الحالي'/);
