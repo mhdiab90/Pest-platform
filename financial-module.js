@@ -3741,9 +3741,11 @@ const renderReview=()=>panel('مركز المراجعة والفحص والاع�
    masterImportRows.length?panel("معاينة أول 12 صفًا","لن يتم الحفظ قبل الضغط على تنفيذ الاستيراد.",h("div",{className:"max-h-64 overflow-y-auto"},table(config.columns,importRows))):null,
    masterImportRows.length?h("div",{className:"flex flex-wrap items-center gap-3"},h("b",{className:"text-sm"},"عدد السجلات: "+masterImportRows.length),button("تنفيذ الاستيراد",submitMasterImport,"primary",busy),button("إلغاء الملف",()=>{setMasterImportRows([]);setMasterImportName("");},"muted")):null
   ));
-  const tabs=[["chartOfAccounts","دليل الحسابات"],["costCenters","مراكز التكلفة"],["employeeAdvances","أكواد السلف"],["employeeCustodies","أكواد العهد"],["customers","العملاء"],["suppliers","الموردون"],["financingParties","جهات التمويل"],["items","الأصناف المخزنية"],["itemGroups","مجموعات الأصناف"],["warehouses","المخازن"],["bankAccounts","حسابات البنوك"],["taxCodes","الأكواد الضريبية"]];
-  const partyType=masterViewKind==="suppliers"?"vendor":"customer";
-  const partyList=masterViewKind==="suppliers"?allVendors:allClients;
+  const allTabs=[["chartOfAccounts","دليل الحسابات"],["costCenters","مراكز التكلفة"],["employeeAdvances","أكواد السلف"],["employeeCustodies","أكواد العهد"],["customers","العملاء"],["suppliers","الموردون"],["financingParties","جهات التمويل"],["items","الأصناف المخزنية"],["itemGroups","مجموعات الأصناف"],["warehouses","المخازن"],["bankAccounts","حسابات البنوك"],["taxCodes","الأكواد الضريبية"]];
+  const tabs=allTabs.filter(([key])=>canFinance(financeMasterAreas[key]||"masters","view"));
+  const activeMasterViewKind=tabs.some(([key])=>key===masterViewKind)?masterViewKind:(tabs[0]&&tabs[0][0]||"chartOfAccounts");
+  const partyType=activeMasterViewKind==="suppliers"?"vendor":"customer";
+  const partyList=activeMasterViewKind==="suppliers"?allVendors:allClients;
   const taxNo=p=>p.taxNumber||p.taxRegistrationNumber||p.registrationNumber||p.registrationNo||p.vatNumber||p.taxId||"—";
   const searchTerm=normalizeMatch(masterPartySearch);
   const matches=row=>!searchTerm||normalizeMatch([row.code,row.name,row.companyName,row.legalName,row.phone,row.mobile,taxNo(row),row.type,row.parentCode,row.projectCode,row.taxType,row.itemType,row.groupCode,row.version].join(" ")).includes(searchTerm);
@@ -3754,10 +3756,10 @@ const renderReview=()=>panel('مركز المراجعة والفحص والاع�
   let title="البيانات الأساسية";
   let headers=["الكود","الاسم","التفاصيل"];
   let visibleRows=[];
-  let quickKind=masterViewKind;
+  let quickKind=activeMasterViewKind;
   let quickDefaults={};
-  if(masterViewKind==="customers"||masterViewKind==="suppliers"){
-   title=masterViewKind==="suppliers"?"دليل الموردين":"دليل العملاء";
+  if(activeMasterViewKind==="customers"||activeMasterViewKind==="suppliers"){
+   title=activeMasterViewKind==="suppliers"?"دليل الموردين":"دليل العملاء";
    headers=["تحديد","الكود","الاسم","الهاتف","رقم التسجيل الضريبي","البريد الإلكتروني","العنوان","الإجراءات"];
    currentMasterItems=partyList;
    visibleItems=currentMasterItems.filter(matches);
@@ -3773,12 +3775,12 @@ const renderReview=()=>panel('مركز المراجعة والفحص والاع�
    ));
    quickKind="parties";
    quickDefaults={code:nextCode(partyType==="vendor"?"VND":"CUS",partyList),partyType};
-  }else if(masterViewKind==="financingParties"){
+  }else if(activeMasterViewKind==="financingParties"){
    title="دليل جهات التمويل";headers=["تحديد","الكود","اسم جهة التمويل","رقم التسجيل / المرجع","الحالة","الإجراءات"];
    currentMasterItems=registeredFinancingParties;visibleItems=currentMasterItems.filter(matches);
    visibleRows=visibleItems.map(x=>h("tr",{key:x.code||x.id,className:"border-t"},selectionCell(x),h("td",{className:"p-2 font-bold"},x.code||x.id),h("td",{className:"p-2"},partyName(x)),h("td",{className:"p-2"},x.reference||x.taxNumber||x.registrationNumber||"—"),h("td",{className:"p-2"},x.active===false?"موقوف":"نشط"),h("td",{className:"p-2"},masterActions("financingParties",x))));
    quickKind="financingParties";quickDefaults={code:nextCode("FIN",registeredFinancingParties)};
-  }else if(masterViewKind==="items"){
+  }else if(activeMasterViewKind==="items"){
    title="الأصناف المخزنية";
    headers=["تحديد","الكود","الاسم","التصنيف","المجموعة","الإصدار","الوحدة","المخزن","الإجراءات"];
    currentMasterItems=items;
@@ -3790,7 +3792,7 @@ const renderReview=()=>panel('مركز المراجعة والفحص والاع�
     h("td",{className:"p-2"},x.groupCode||"—"),h("td",{className:"p-2"},x.version||"—"),h("td",{className:"p-2"},x.unit||"—"),h("td",{className:"p-2"},x.warehouseCode||"default"),h("td",{className:"p-2"},masterActions("items",x))
    ));
    quickKind="items";quickDefaults={code:nextCode("ITM",items),itemType:"stock"};
-  }else if(masterViewKind==="itemGroups"){
+  }else if(activeMasterViewKind==="itemGroups"){
    title="مجموعات الأصناف";headers=["تحديد","الكود","اسم المجموعة","نوع المجموعة","الإجراءات"];
    currentMasterItems=rows(master.itemGroups);
    visibleItems=currentMasterItems.filter(matches);
@@ -3801,19 +3803,19 @@ const renderReview=()=>panel('مركز المراجعة والفحص والاع�
    ));
    quickKind="itemGroups";quickDefaults={code:nextCode("GRP",rows(master.itemGroups)),groupType:"other"};
   }else{
-   const data=masterViewKind==="chartOfAccounts"?accounts:masterViewKind==="costCenters"?centers:rows(master[masterViewKind]);
+   const data=activeMasterViewKind==="chartOfAccounts"?accounts:activeMasterViewKind==="costCenters"?centers:rows(master[activeMasterViewKind]);
    currentMasterItems=data;
    visibleItems=currentMasterItems.filter(matches);
-   title=({chartOfAccounts:"دليل الحسابات",costCenters:"مراكز التكلفة",employeeAdvances:"دليل أكواد السلف",employeeCustodies:"دليل أكواد العهد",warehouses:"المخازن",bankAccounts:"حسابات البنوك",taxCodes:"الأكواد الضريبية"})[masterViewKind]||"البيانات الأساسية";
+   title=({chartOfAccounts:"دليل الحسابات",costCenters:"مراكز التكلفة",employeeAdvances:"دليل أكواد السلف",employeeCustodies:"دليل أكواد العهد",warehouses:"المخازن",bankAccounts:"حسابات البنوك",taxCodes:"الأكواد الضريبية"})[activeMasterViewKind]||"البيانات الأساسية";
    headers=["تحديد","الكود","الاسم","التفاصيل","الحالة","الإجراءات"];
-   if(masterViewKind==="employeeAdvances"||masterViewKind==="employeeCustodies")headers=["تحديد","الكود","اسم الكود","الموظف المرتبط","الحالة","الإجراءات"];
+   if(activeMasterViewKind==="employeeAdvances"||activeMasterViewKind==="employeeCustodies")headers=["تحديد","الكود","اسم الكود","الموظف المرتبط","الحالة","الإجراءات"];
    visibleRows=visibleItems.map(x=>{
-    const employeeRecord=(masterViewKind==="employeeAdvances"||masterViewKind==="employeeCustodies")?(userDirectory||[]).find(user=>String(user.uid)===String(x.employeeUid||"")):null;
-    const details=masterViewKind==="chartOfAccounts"?(x.isGroup?"حساب تجميعي":x.type+" / "+x.nature):masterViewKind==="costCenters"?(x.projectCode||"—"):masterViewKind==="taxCodes"?(x.taxType||"")+" / "+(x.rate||0)+"%":masterViewKind==="bankAccounts"?(x.accountCode||x.code):masterViewKind==="employeeAdvances"||masterViewKind==="employeeCustodies"?(employeeRecord&&(employeeRecord.fullName||employeeRecord.username||employeeRecord.email)||x.employeeName||x.employeeUid||"—"):"—";
-    return h("tr",{key:x.code,className:"border-t"},selectionCell(x),h("td",{className:"p-2 font-bold"},x.code),h("td",{className:"p-2"},x.name),h("td",{className:"p-2"},details),h("td",{className:"p-2"},x.active===false?"موقوف":"نشط"),h("td",{className:"p-2"},masterActions(masterViewKind,x)));
+    const employeeRecord=(activeMasterViewKind==="employeeAdvances"||activeMasterViewKind==="employeeCustodies")?(userDirectory||[]).find(user=>String(user.uid)===String(x.employeeUid||"")):null;
+    const details=activeMasterViewKind==="chartOfAccounts"?(x.isGroup?"حساب تجميعي":x.type+" / "+x.nature):activeMasterViewKind==="costCenters"?(x.projectCode||"—"):activeMasterViewKind==="taxCodes"?(x.taxType||"")+" / "+(x.rate||0)+"%":activeMasterViewKind==="bankAccounts"?(x.accountCode||x.code):activeMasterViewKind==="employeeAdvances"||activeMasterViewKind==="employeeCustodies"?(employeeRecord&&(employeeRecord.fullName||employeeRecord.username||employeeRecord.email)||x.employeeName||x.employeeUid||"—"):"—";
+    return h("tr",{key:x.code,className:"border-t"},selectionCell(x),h("td",{className:"p-2 font-bold"},x.code),h("td",{className:"p-2"},x.name),h("td",{className:"p-2"},details),h("td",{className:"p-2"},x.active===false?"موقوف":"نشط"),h("td",{className:"p-2"},masterActions(activeMasterViewKind,x)));
    });
    const prefixes={chartOfAccounts:"ACC",costCenters:"CC",employeeAdvances:"ADV",employeeCustodies:"CST",warehouses:"WH",bankAccounts:"BANK",taxCodes:"TAX"};
-   quickDefaults={code:nextCode(prefixes[masterViewKind]||"NEW",data)};
+   quickDefaults={code:nextCode(prefixes[activeMasterViewKind]||"NEW",data)};
   }
   const addButton=button("＋ إضافة "+title.replace("دليل ",""),()=>openQuickAdd(quickKind,null,quickDefaults),"primary",!canMasterAction(quickKind,"add"));
   const selectedVisible=visibleItems.map(item=>String(item.code||item.id||"")).filter(code=>selectedMasterCodes.includes(code));
@@ -3834,9 +3836,9 @@ const renderReview=()=>panel('مركز المراجعة والفحص والاع�
   ));
   return h("div",{className:"space-y-4"},
    importPanel,
-   panel("أنواع البيانات الأساسية","اختر نوع التكويد لعرض السجلات الخاصة به فقط.",h("div",{className:"flex flex-wrap gap-2"},tabs.map(([key,label])=>button(label,()=>{setMasterViewKind(key);setMasterPartySearch("");setSelectedMasterCodes([]);},masterViewKind===key?"primary":"muted")))),
+   panel("أنواع البيانات الأساسية","اختر نوع التكويد لعرض السجلات الخاصة به فقط.",h("div",{className:"flex flex-wrap gap-2"},tabs.map(([key,label])=>button(label,()=>{setMasterViewKind(key);setMasterPartySearch("");setSelectedMasterCodes([]);},activeMasterViewKind===key?"primary":"muted")))),
    listPanel,
-   masterViewKind==="costCenters"?renderCostCenterAnalysis():null
+   activeMasterViewKind==="costCenters"?renderCostCenterAnalysis():null
   );
  };
  const renderTax=()=>{
