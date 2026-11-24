@@ -2939,16 +2939,21 @@ const renderJournal = function() {
   return h("div",{className:"space-y-4"},inbox,sentOutbox,archivedInbox,archivedSent,detail);
  };
   const renderPartyStatements = function() {
-  const staff=(userDirectory||[]).filter(u=>u.uid).map(u=>Object.assign({},u,{id:u.uid,code:u.uid,name:u.fullName||u.username||u.email||u.uid}));
-  const financingParties=registeredFinancingParties.map(item=>Object.assign({},item,{id:item.code||item.id,code:item.code||item.id,name:partyName(item)}));
   const employeeType=["employeeCustody","employeeAdvance"].includes(partyStatement.type);
+  const employeeRegistry=partyStatement.type==="employeeCustody"?rows(master.employeeCustodies):partyStatement.type==="employeeAdvance"?rows(master.employeeAdvances):[];
+  const staff=employeeType?employeeRegistry.map(item=>{
+   const user=(userDirectory||[]).find(record=>String(record.uid||"")===String(item.employeeUid||""));
+   const partyId=String(item.employeeUid||item.code||"");
+   return Object.assign({},user||{},item,{id:partyId,uid:partyId,code:item.code||partyId,name:item.name||item.employeeName||(user&&(user.fullName||user.username||user.email))||partyId});
+  }):(userDirectory||[]).filter(u=>u.uid).map(u=>Object.assign({},u,{id:u.uid,code:u.uid,name:u.fullName||u.username||u.email||u.uid}));
+  const financingParties=registeredFinancingParties.map(item=>Object.assign({},item,{id:item.code||item.id,code:item.code||item.id,name:partyName(item)}));
   const partyType=["customer","vendor","employeeCustody","employeeAdvance","financingParty"].includes(partyStatement.type);
   const entityList=partyStatement.type==="account"?accounts:
    partyStatement.type==="costCenter"?centers:
    partyStatement.type==="vendor"?allVendors:
    partyStatement.type==="customer"?allClients:
    partyStatement.type==="financingParty"?financingParties:staff;
-  const entityCode=item=>String(item&&(item.code||item.uid||item.id)||"");
+  const entityCode=item=>String(item&&(employeeType?(item.uid||item.employeeUid||item.code||item.id):(item.code||item.uid||item.id))||"");
   const entityName=item=>partyStatement.type==="account"||partyStatement.type==="costCenter"
    ?String(item&&item.name||entityCode(item))
    :partyStatement.type==="financingParty"
@@ -3140,7 +3145,7 @@ const renderCostCenterAnalysis = function() {
  };
  const reviewPartyLabel=line=>{
   if(!line.partyId)return '—';
-  if(line.partyType==='employeeCustody'||line.partyType==='employeeAdvance')return selected&&selected.sourceDetails&&selected.sourceDetails.employeeName||line.partyId;
+  if(line.partyType==='employeeCustody'||line.partyType==='employeeAdvance'){const registry=line.partyType==='employeeCustody'?rows(master.employeeCustodies):rows(master.employeeAdvances),record=registry.find(item=>String(item.employeeUid||item.code||'')===String(line.partyId||''));return record?String(record.code||'')+' — '+String(record.name||record.employeeName||record.employeeUid||''):(selected&&selected.sourceDetails&&selected.sourceDetails.employeeName||line.partyId);}
   const account=accounts.find(item=>String(item.code)===String(line.accountCode));
   const analyticType=account&&account.subledgerType||line.partyType||'';
   if(analyticType==='financingParty'){
