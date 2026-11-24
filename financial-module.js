@@ -2508,18 +2508,22 @@ const renderJournal = function() {
   const errorsPanel=(inv.errors||[]).length?panel("نواقص الفاتورة المطلوب استكمالها","هذه النواقص لا تمنع إعادة التحويل أو إرسال الملف للمراجعة، لكنها تمنع الاعتماد النهائي حتى تصحيحها.",h("ul",{className:"list-disc pr-5 text-sm text-rose-700"},(inv.errors||[]).map((error,index)=>h("li",{key:index},error)))):null;
   const chainPanel=(inv.assignmentChain||[]).length?panel("سجل التحويلات","المسار السابق للفاتورة.",h("div",{className:"space-y-1 text-sm"},(inv.assignmentChain||[]).map((step,index)=>h("p",{key:index},(index+1)+". "+(step.fromName||step.fromUid)+" ← "+(step.toName||step.toUid)+" · "+new Date(step.at||0).toLocaleString("ar-EG"))))):null;
   const forwardPanel=panel("تحويل لمستخدم آخر","يمكن للمستلم الحالي تحويل الملف مباشرة إلى موظف آخر دون إرجاعه للمرسل الأصلي.",h("div",{className:"grid md:grid-cols-3 gap-2"},select("المستخدم التالي",forwardUserUid,setForwardUserUid,[{value:"",label:"اختر مستخدمًا نشطًا"},...activeForwardUsers.map(user=>({value:user.uid,label:(user.fullName||user.username||user.email)+" — "+(user.jobTitle||"")}))]),field("تعليمات للمستخدم التالي",forwardInstruction,setForwardInstruction),button("تحويل للمستخدم التالي",forwardAssignment,"primary",assignmentBusy||!forwardUserUid||!canFinance("assignments","edit"))));
-  const detail=panel("استكمال فاتورة "+(inv.number||selectedAssignment.invoiceId||""),(purchase?"فاتورة مشتريات من مورد: ":"فاتورة مبيعات لعميل: ")+(inv.partyName||"")+" · "+(selectedAssignment.instruction||""),h("div",{className:"space-y-3"},
+  const senderView=selectedAssignmentSource==="sent";
+  const detail=panel((senderView?"إدارة التحويل الصادر — ":"استكمال الإجراء المحول — ")+(inv.number||selectedAssignment.invoiceId||""),(purchase?"فاتورة مشتريات من مورد: ":"فاتورة مبيعات لعميل: ")+(inv.partyName||"")+" · "+(assignmentEditInstruction||selectedAssignment.instruction||""),h("div",{className:"space-y-3"},
    h("div",{className:"grid md:grid-cols-3 gap-3"},metric("التاريخ",inv.date||"—"),metric("الإجمالي",fmt(inv.total||0)+" ج.م"),metric("عدد البنود",String(assignmentLines.length))),
+   field("تعليمات الإجراء / المطلوب تنفيذه",assignmentEditInstruction,setAssignmentEditInstruction),
    invoiceHead,errorsPanel,chainPanel,...lineCards,addLine,attachmentsPanel,forwardPanel,
-   h("div",{className:"rounded-lg border bg-slate-50 p-3 text-sm text-slate-600"},"بعد الاستكمال يمكنك إرجاع الملف للمرسل المباشر، أو إرساله للمراجعة حتى لو بقيت بعض النواقص. المراجع يستكملها قبل الاعتماد."),
+   senderView?null:h("div",{className:"rounded-lg border bg-slate-50 p-3 text-sm text-slate-600"},"يمكنك حفظ التعديلات ثم إكمال الإجراء أو إرجاعه لصاحب التحويل. لن يتم حذف الفاتورة أو مرفقاتها عند إزالة الإجراء من قائمتك."),
    h("div",{className:"flex flex-wrap items-center gap-2"},
-    button("إعادة الملف للمرسل المباشر",()=>completeAssignment("return_to_creator"),"muted",assignmentBusy||!canFinance("assignments","edit")),
-    button("إرسال للمراجعة والاعتماد",()=>completeAssignment("submit_for_review"),"success",assignmentBusy||!canFinance("assignments","edit")),
-    button("إلغاء الفاتورة",cancelAssignedInvoice,"danger",assignmentBusy||!canFinance("assignments","edit")),
+    button("حفظ التعديلات",saveAssignmentChanges,"primary",assignmentBusy||!canFinance("assignments","edit")),
+    senderView?button("حذف التحويل",()=>manageAssignment("delete","sent",selectedAssignment),"danger",assignmentBusy||!canFinance("assignments","edit")):button("إعادة الملف للمرسل المباشر",()=>completeAssignment("return_to_creator"),"muted",assignmentBusy||!canFinance("assignments","edit")),
+    senderView?button("أرشفة التحويل",()=>manageAssignment("archive","sent",selectedAssignment),"muted",assignmentBusy):button("إرسال للمراجعة والاعتماد",()=>completeAssignment("submit_for_review"),"success",assignmentBusy||!canFinance("assignments","edit")),
+    senderView?null:button("حذف / إرجاع الإجراء",cancelAssignedInvoice,"danger",assignmentBusy||!canFinance("assignments","edit")),
+    !senderView?button("أرشفة المهمة",()=>manageAssignment("archive","received",selectedAssignment),"muted",assignmentBusy):null,
     button("إغلاق التفاصيل",()=>setSelectedAssignmentId(""),"muted")
    )
   ));
-  return h("div",{className:"space-y-4"},inbox,sentOutbox,detail);
+  return h("div",{className:"space-y-4"},inbox,sentOutbox,archivedInbox,archivedSent,detail);
  };
   const renderPartyStatements = function() {
   const staff=(userDirectory||[]).filter(u=>u.uid).map(u=>Object.assign({},u,{id:u.uid,code:u.uid,name:u.fullName||u.username||u.email||u.uid}));
