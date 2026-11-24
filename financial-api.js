@@ -251,6 +251,10 @@ async function findMasterReferences(ctx,kind,code,partyType="") {
   const projects=adminReadRoot?(await adminReadRoot("projects").catch(()=>({})))||{}:{};
   const projectFields=type==="vendor"?["vendorCodes","partyCode"]:["clientCodes","clientCode","partyCode"];
   if(containsMasterReference(projects,new Set(projectFields),code))references.push("المشروعات وأحداثها");
+ }else if(kind==="financingParties"){
+  const partyLedger=await adminRead("partyLedger/financingParty/"+code);
+  if(hasStoredRecords(partyLedger))references.push("دفتر الأستاذ المساعد لجهات التمويل");
+  check(entries,["partyId"],"قيود التمويل");
  }else{
   throw new Error("Unsupported master-data type.");
  }
@@ -446,7 +450,7 @@ export async function handleFinancialRequest(ctx){
  };
 
  const financeAreaForMaster=kind=>({
-  parties:"masters",chartOfAccounts:"accounts",costCenters:"centers",
+  parties:"masters",financingParties:"masters",chartOfAccounts:"accounts",costCenters:"centers",
   items:"inventory",itemGroups:"inventory",warehouses:"inventory",
   bankAccounts:"bank",taxCodes:"tax"
  })[kind]||"masters";
@@ -611,6 +615,7 @@ export async function handleFinancialRequest(ctx){
     }
    }
    if(Object.keys(projectCostCenterUpdates).length)await adminPatch(projectCostCenterUpdates);
+   out.financingParties=(await adminRead("financingParties"))||{};
    const parties=(await adminRead("parties"))||{};
    const crmClients=adminReadRoot?(await adminReadRoot("clients"))||{}:{};
    const crmVendors=adminReadRoot?(await adminReadRoot("vendors"))||{}:{};
@@ -1142,7 +1147,7 @@ export async function handleFinancialRequest(ctx){
   return {success:true,extracted:data,needsHumanReview:true,pageNumber,totalPages,model:"llama-4-scout-17b-16e-instruct"};
  }
  if(action==="saveMaster"){
-  const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties"];
+  const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties","financingParties"];
   if(!allowed.includes(kind))throw new Error("Unsupported master data type.");
   const item=body.item||{},code=id(item.code),originalCode=body.originalCode?id(body.originalCode):code;
   const permissionArea=financeAreaForMaster(kind);
@@ -1226,7 +1231,7 @@ export async function handleFinancialRequest(ctx){
   return {success:true,item:saved,linkedExisting:kind==="parties"&&linkedExisting,created:!previous&&!target};
  }
  if(action==="deleteMasters"){
-  const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties"];
+  const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties","financingParties"];
   if(!allowed.includes(kind))throw new Error("Unsupported master data type.");
   const rawCodes=Array.isArray(body.codes)?body.codes:[];
   const codes=Array.from(new Set(rawCodes.map(value=>id(value))));
@@ -1266,7 +1271,7 @@ export async function handleFinancialRequest(ctx){
   return {success:failed===0,kind,requested:codes.length,deleted,deactivated,notFound,failed,results};
  }
  if(action==="deleteMaster"){
-  const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties"];
+  const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties","financingParties"];
   if(!allowed.includes(kind))throw new Error("Unsupported master data type.");
   const code=id(body.code);
   let existing=await adminRead(kind+"/"+code);
@@ -1305,7 +1310,7 @@ export async function handleFinancialRequest(ctx){
   return {success:true,deleted:true,deactivated:false,code,references:[]};
  }
  if(action==="importMasters"){
-  const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties"];
+  const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties","financingParties"];
   if(!allowed.includes(kind))throw new Error("Unsupported master data import type.");
   requireFinanceMaster(kind,"add");
   const sourceRows=Array.isArray(body.rows)?body.rows:[];
@@ -2813,7 +2818,7 @@ if(action==="forwardInvoiceAssignment"){
   }
 if(action==="submitCash"){
   requireFinanceArea("cash","add");
-  const movementTypes=["customer_receipt","supplier_payment","other_receipt","other_payment","cash_to_bank","bank_to_cash","employee_custody","employee_custody_return","employee_advance","employee_advance_recovery"];
+  const movementTypes=["customer_receipt","supplier_payment","other_receipt","other_payment","tax_payment","vat_refund","cash_to_bank","bank_to_cash","employee_custody","employee_custody_return","employee_advance","employee_advance_recovery"];
   const movementType=txt(body.movementType||"",40);
   if(!movementTypes.includes(movementType))throw new Error("حدد نوع حركة الخزينة.");
   const doc={...body,id:id(body.id||uid("CASH")),type:"cash",movementType,date:date(body.date),amount:num(body.amount),description:txt(body.description,500),reference:txt(body.reference||"",120),cashAccountCode:txt(body.cashAccountCode||"1110",32),createdAt:now,createdBy:claims.sub,status:"pending_review"};
@@ -2840,6 +2845,16 @@ if(action==="submitCash"){
   if(movementType==="other_payment"){
    doc.offsetAccountCode=id(body.offsetAccountCode||"");
    requirePosting(doc.offsetAccountCode,"expense");
+  }
+  if(movementType==="tax_payment"){
+   doc.taxAccountCode=id(body.taxAccountCode||"2110");
+   if(!["2110","2120"].includes(doc.taxAccountCode))throw new Error("سداد الضرائب مسموح فقط من حساب ضريبة القيمة المضافة - مخرجات 2110 أو ضرائب الخصم والإضافة 2120.");
+   requirePosting(doc.taxAccountCode,"liability");
+   doc.taxKind=doc.taxAccountCode==="2110"?"vat_output":"withholding_addition";
+  }
+  if(movementType==="vat_refund"){
+   doc.taxAccountCode="1410";
+   requirePosting("1410","asset");
   }
   if(["cash_to_bank","bank_to_cash"].includes(movementType)){
    doc.bankAccountCode=id(body.bankAccountCode||"1120");
@@ -3158,6 +3173,14 @@ await adminPatch(u);
    }else if(movement==="other_payment"){
     const offset=id(doc.offsetAccountCode);validate(offset,"expense");
     lines=[{accountCode:offset,debit:amount,credit:0,description:doc.description,costCenterId:doc.costCenterId||""},{accountCode:cash,debit:0,credit:amount,description:doc.description}];
+   }else if(movement==="tax_payment"){
+    const taxAccount=id(doc.taxAccountCode||"2110");
+    if(!["2110","2120"].includes(taxAccount))throw new Error("كود حساب الضريبة غير معتمد لسداد الضرائب.");
+    validate(taxAccount,"liability");
+    lines=[{accountCode:taxAccount,debit:amount,credit:0,description:doc.description,reference:doc.reference},{accountCode:cash,debit:0,credit:amount,description:doc.description,reference:doc.reference}];
+   }else if(movement==="vat_refund"){
+    validate("1410","asset");
+    lines=[{accountCode:cash,debit:amount,credit:0,description:doc.description,reference:doc.reference},{accountCode:"1410",debit:0,credit:amount,description:doc.description,reference:doc.reference}];
    }else if(movement==="cash_to_bank"){
     const bank=id(doc.bankAccountCode||"1120");validate(bank,"asset");
     lines=[{accountCode:bank,debit:amount,credit:0,description:doc.description},{accountCode:cash,debit:0,credit:amount,description:doc.description}];
