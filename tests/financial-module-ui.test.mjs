@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const source = readFileSync(new URL("../financial-module.js", import.meta.url), "utf8");
+const indexHtml = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const reportsSource = source.slice(source.indexOf("const renderReports=()=>"), source.indexOf("const accountAnalysisLabelForParty"));
 
 test("account analysis drills from account balance to analytical source and posted journal lines", () => {
   assert.ok(source.includes('accountAnalysis:"reports"'));
@@ -90,7 +92,7 @@ test("financial reports compare control-account debit and credit movements to an
   assert.match(source, /const controlSubledgerAuditRows=accounts\.filter\(account=>account\.subledgerType/);
   assert.match(source, /const controlSubledgerMismatchCount=controlSubledgerAuditRows\.filter/);
   assert.match(source, /مطابقة الحسابات الرقابية مع الأستاذ المساعد/);
-  assert.match(source, /controlSubledgerIntegrityPanel\(\)/);
+  assert.doesNotMatch(reportsSource, /controlSubledgerIntegrityPanel\(\)/);
   assert.match(source, /row\.account\.subledgerType/);
 });
 
@@ -102,7 +104,8 @@ test("financial reports validate critical balance-sheet and tax control account 
   assert.match(source, /\{code:"2110",type:"liability",nature:"credit",label:"ضريبة القيمة المضافة - مخرجات"\}/);
   assert.match(source, /\{code:"281",type:"liability",nature:"credit",subledgerType:"vendor",label:"الموردون"\}/);
   assert.match(source, /const criticalAccountMismatchCount=/);
-  assert.match(source, /criticalAccountIntegrityPanel\(\)/);
+  assert.match(source, /\{code:"2150",type:"liability",nature:"credit",subledgerType:"financingParty",label:"تمويل وقروض من الشركاء والغير"\}/);
+  assert.doesNotMatch(reportsSource, /criticalAccountIntegrityPanel\(\)/);
 });
 
 
@@ -292,4 +295,52 @@ test("transferred invoice actions support edit, reassignment, deletion and perso
   assert.match(source, /أرشيف التحويلات الصادرة/);
   assert.match(source, /حذف \/ إرجاع/);
   assert.match(source, /حفظ التعديلات/);
+});
+
+
+test("financial report summary totals appear directly below report filters and duplicate diagnostics are hidden", () => {
+  const filters=reportsSource.indexOf("field('من شهر'");
+  const summary=reportsSource.indexOf("trialBalanceTotals");
+  const exportNode=reportsSource.indexOf("fullStatementsExportNode()");
+  assert.ok(filters>=0&&summary>filters&&exportNode>summary,"summary metrics must follow the period/list picker and precede the report body");
+  assert.doesNotMatch(reportsSource,/criticalAccountIntegrityPanel\(\)/);
+  assert.doesNotMatch(reportsSource,/controlSubledgerIntegrityPanel\(\)/);
+  assert.doesNotMatch(reportsSource,/trialIntegrityNote/);
+});
+
+test("VAT input and output plus posted settlements are netted into a single asset or liability line", () => {
+  assert.match(source,/const vatInputBalance=balanceTrial\.find\(row=>String\(row\.account\.code\)==="1410"\)/);
+  assert.match(source,/const vatOutputBalance=balanceTrial\.find\(row=>String\(row\.account\.code\)==="2110"\)/);
+  assert.match(source,/const vatNetPosition=/);
+  assert.match(source,/sumFrom\(balanceTrial\.filter\(row=>String\(row\.account\.code\)!=="1410"\),'asset'\)\+vatNetReceivable/);
+  assert.match(source,/String\(x\.account\.code\)!=="2110"/);
+  assert.match(source,/صافي ضريبة القيمة المضافة \(مدخلات ومخرجات وسدادات\)/);
+  assert.match(source,/const balanceAssetRows=statementRowsWithBalance\(account=>account\.type==='asset'&&!account\.isGroup&&String\(account\.code\)!=="1410"/);
+  assert.match(source,/const balanceLiabilityRows=statementRowsWithBalance\(account=>account\.type==='liability'&&!account\.isGroup&&String\(account\.code\)!=="2110"/);
+});
+
+test("financing account 2150 supports a lender, supplier, partner or active user analytical party", () => {
+  assert.match(source,/financingParty:"جهة التمويل \/ الدائن"/);
+  assert.match(source,/else if\(type==="financingParty"\)/);
+  assert.match(source,/activeVendors\.map\(item=>\(\{value:String\(item\.code\|\|item\.id\),label:"جهة ممولة:/);
+  assert.match(source,/شريك:/);
+  assert.match(source,/financingParty:'جهة تمويل \/ دائن'/);
+  assert.match(source,/\['partnerCurrentAccount','financingParty'\]\.includes\(account\.subledgerType\)/);
+});
+
+test("all searchable account pickers support inline coding and canceling search preserves the current value", () => {
+  assert.match(source,/const addItem=list\.find\(item=>String\(item\.value\)==='__quick_add__'\)/);
+  assert.match(source,/const query=opened\?\(hasQuery\?String\(journalPickerSearch\[searchKey\]\|\|''\):''\):String\(selected&&selected\.label\|\|''\)/);
+  assert.doesNotMatch(source,/else if\(value\)onChange\(\{\}\)/);
+  assert.match(source,/selectWithAdd\('الحساب المحاسبي',accountAnalysisCode/);
+  assert.match(source,/selectWithAdd\('الحساب المقابل',offset/);
+  assert.match(source,/selectWithAdd\('الحساب المحاسبي المرتبط',quickAddForm\.accountCode/);
+  assert.match(source,/selectWithAdd\('الحساب الأب',masterForm\.parentCode/);
+  assert.match(source,/selectWithAdd\('الحساب الأب',quickAddForm\.parentCode/);
+});
+
+test("current-screen export toolbar scrolls normally and does not stick to the viewport", () => {
+  assert.match(indexHtml,/\.app-report-toolbar\{position:static;top:auto;/);
+  assert.match(indexHtml,/\.app-report-toolbar\{margin:0 0 9px;padding:7px 8px;gap:7px;top:auto\}/);
+  assert.match(indexHtml,/--report-toolbar-offset':'0px'/);
 });
