@@ -3102,6 +3102,32 @@ const renderIntegrityAuditPanel=()=>{
 };
 const renderReview=()=>panel('قائمة المراجعة والاعتماد','تتحدّث القائمة تلقائيًا عند فتح التبويب وكل 15 ثانية أثناء عرضه. أي مستخدم مخوّل يرى المستندات؛ المراجع فقط يعتمدها أو يعيدها أو يرفضها.',h('div',{className:'space-y-3'},
   h('div',{className:'flex flex-wrap items-center justify-between gap-2'},h('strong',null,'مستندات بانتظار القرار: '+review.length),h('div',{className:'flex flex-wrap gap-2'},button(integrityAuditBusy?'جارٍ الفحص...':'فحص',runIntegrityAudit,'primary',integrityAuditBusy||!canFinance("journal","view")),button('تحديث القائمة الآن',()=>refreshReviewQueue(false),'muted'))),
+
+  h('section',{className:'rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-3'},
+   h('div',{className:'flex flex-wrap items-center justify-between gap-2'},
+    h('strong',{className:'text-sm'},'قواعد الفحص المطبقة'),
+    h('span',{className:'text-xs text-slate-500'},'هذه الضوابط تعمل عند الضغط على زر فحص، ويظهر سبب كل مخالفة في التقرير')
+   ),
+   h('div',{className:'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2'},
+    ...[
+     {title:'سلامة القيد والتوازن',description:'وجود سطرين على الأقل، وصحة المبالغ، وعدم وجود قيم سالبة أو تحميل المدين والدائن في السطر نفسه، ومطابقة إجمالي الطرفين حتى مستوى القرش.'},
+     {title:'صحة الحساب والتوجيه',description:'التأكد من وجود الحساب في الدليل، وأنه نشط ويقبل الترحيل وليس حسابًا تجميعيًا، وأن كل سطر موجّه إلى كود صحيح.'},
+     {title:'الأطراف التحليلية',description:'التأكد من إلزامية الطرف التحليلي ونوعه وكوده، ومطابقته لدليل العملاء أو الموردين أو الموظفين أو الشركاء أو جهات التمويل حسب طبيعة الحساب.'},
+     {title:'جهات التمويل',description:'حساب 2150 يرتبط بدليل جهات التمويل المستقل فقط، ولا يقبل كود مورد. تتم مطابقة اسم الممول الوارد في بيان القيد مع سجل الممول.'},
+     {title:'مراكز التكلفة',description:'التحقق من أن مركز التكلفة المرتبط بكل سطر موجود في دليل مراكز التكلفة.'},
+     {title:'توجيه الضرائب',description:'قيمة مضافة مدخلات إلى 1410، ومخرجات إلى 2110، وخصم/إضافة إلى 2120، مع مراجعة توافق نوع الكود الضريبي مع حسابه المحاسبي.'},
+     {title:'الفواتير وربط الأطراف',description:'مطابقة حساب المورد 281 أو العميل 1210 مع طرف الفاتورة المصدر، والتأكد من عدم سقوط حساب الرقابة أو تغيير كود الطرف.'},
+     {title:'ضريبة الخصم والإضافة',description:'مقارنة الطرف التحليلي على 2120 بالطرف المقابل في حساب المورد 281 أو العملاء 1210، وإظهار اختلاف الكود والسبب.'},
+     {title:'السداد والتحصيل',description:'فحص توجيه مدفوعات الموردين وتحصيلات العملاء، ومطابقة سداد الضرائب واسترداد القيمة المضافة مع مبالغ المستند والحسابات المقابلة.'},
+     {title:'مطابقة الأستاذ المساعد',description:'مقارنة حركة كل حساب رقابي بإجمالي الأطراف التحليلية التابعة له، وإظهار فروق المدين والدائن حتى 0.01 جنيه.'},
+     {title:'دفتر الأستاذ وميزان المراجعة',description:'مطابقة القيود المرحّلة مع فهرس الأستاذ حسب الحساب والفترة، واكتشاف الفهرس المفقود أو غير المؤرخ، وفحص اتزان إجمالي ميزان المراجعة.'},
+     {title:'إعدادات الحسابات الرئيسية',description:'مراجعة نوع الحساب وطبيعته وربطه بالأستاذ المساعد للحسابات 1410 و2110 و2120 و2150 و281 و1210، مع التنبيه للقيود المعادة للتصحيح.'}
+    ].map((rule,index)=>h('div',{key:index,className:'rounded-lg border border-slate-200 bg-white p-3 min-w-0'},
+     h('div',{className:'text-xs font-extrabold text-slate-800 mb-1'},String(index+1)+'. '+rule.title),
+     h('p',{className:'text-xs leading-6 text-slate-600'},rule.description)
+    ))
+   )
+  ),
   renderIntegrityAuditPanel(),
   selected?h('div',{className:'space-y-3'},
    h('div',{className:'flex items-center justify-between'},h('strong',null,selected.type==='journal'&&selected.number?'رقم القيد: '+selected.number+(selected.title&&selected.title!=='قيد رقم '+selected.number?' — '+selected.title:''):selected.title||selected.number||selected.id),button('إغلاق',()=>setSelected(null))),
