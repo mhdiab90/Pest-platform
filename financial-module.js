@@ -1037,7 +1037,12 @@ const ledgerDebit=auditBalanceFlat.reduce((sum,line)=>sum+Number(line.debit||0),
       if(!patch.length)return line;
       const updated=Object.assign({},line);
       patch.forEach(change=>{
-       if(change.key==='accountCode')updated.accountCode=String(change.value);
+       if(change.key==='accountCode'){
+        updated.accountCode=String(change.value);
+        const targetAccount=posting.find(item=>String(item.code)===String(change.value));
+        const targetType=String(targetAccount&&targetAccount.subledgerType||'');
+        if(targetType&&String(updated.partyType||'')!==targetType){updated.partyType=targetType;updated.partyId='';}
+       }
        if(change.key==='party'){updated.partyType=String(change.partyType);updated.partyId=String(change.value);}
       });
       return updated;
@@ -3180,7 +3185,7 @@ const renderCostCenterAnalysis = function() {
 const renderIntegrityFindingModal=()=>{
  const finding=integrityAudit&&integrityAudit.findings.find(item=>item.id===integrityFindingSelected);
  if(!finding)return null;
- const related=[...documents,...journalRecords].find(item=>String(item.id)===String(finding.journalId||''))||{};
+ const related=[...journalRecords,...documents].find(item=>String(item.id)===String(finding.journalId||''))||{};
  const selectedLine=(related.lines||[])[Math.max(0,Number(finding.lineNo||1)-1)]||{};
  const recommendation=finding.recommendation||{changes:[],summary:'لا توجد توصية آلية آمنة لهذه النتيجة.'};
  const currentMasterAccount=accounts.find(item=>String(item.code)===String(finding.accountCode||''))||{};
