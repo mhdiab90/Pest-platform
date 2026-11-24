@@ -354,7 +354,7 @@ test("financier auto-matching extracts explicit lender names without inventing n
   const end=source.indexOf("const analyticPickerWithAdd=",start);
   const extractor=source.slice(start,end);
   assert.ok(start>=0&&end>start,"financier name parser must be present");
-  assert.match(extractor,/جهة التمويل/);
+  assert.match(extractor,/الممول/);
   assert.match(extractor,/تمويل/);
   assert.match(extractor,/قرض/);
   assert.match(extractor,/return ""/);
