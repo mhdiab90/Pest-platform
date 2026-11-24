@@ -464,7 +464,7 @@ test("employee advance and custody registries are server-validated and protected
   assert.match(apiSource, /const employeeUid=String\(item\.employeeUid\|\|""\)\.trim\(\)/);
   assert.match(apiSource, /يوجد كود نشط لهذا الموظف بالفعل/);
   assert.match(apiSource, /kind==="employeeAdvances"\|\|kind==="employeeCustodies"/);
-  assert.match(apiSource, /adminRead\("partyLedger\/"+subledgerType\+"\/"+id\(analyticPartyId\)\)/);
+  assert.ok(apiSource.includes('adminRead("partyLedger/"+subledgerType+"/"+id(analyticPartyId))'));
   assert.match(apiSource, /findMasterReferences\(ctx,kind,code\)/);
   assert.match(source, /employeeUid:\['employeeuid'/);
 });
@@ -493,8 +493,9 @@ test("employee advance and custody codes can be saved and imported without linki
 test("master code list appears directly under the type selector before the import section", () => {
   const masterView = source.slice(source.indexOf("const renderMasters="), source.indexOf("const renderTax="));
   assert.match(masterView, /select\("نوع البيانات",activeMasterViewKind/);
-  assert.ok(masterView.indexOf('panel("دليل الأكواد والبيانات الأساسية"') < masterView.indexOf("const listPanel="));
-  assert.ok(masterView.indexOf("listPanel,") < masterView.indexOf("importPanel,"));
+  const rendered = masterView.slice(masterView.indexOf('return h("div",{className:"space-y-3"}'));
+  assert.ok(rendered.indexOf('panel("دليل الأكواد والبيانات الأساسية"') < rendered.indexOf("listPanel,"));
+  assert.ok(rendered.indexOf("listPanel,") < rendered.indexOf("importPanel,"));
   assert.doesNotMatch(masterView, /panel\("أنواع البيانات الأساسية"/);
 });
 
