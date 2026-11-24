@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 const source = readFileSync(new URL("../financial-module.js", import.meta.url), "utf8");
 const indexHtml = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const apiSource = readFileSync(new URL("../financial-api.js", import.meta.url), "utf8");
+const crmSource = readFileSync(new URL("../pest-crm-module.js", import.meta.url), "utf8");
 const reportsSource = source.slice(source.indexOf("const renderReports=()=>"), source.indexOf("const accountAnalysisLabelForParty"));
 
 test("account analysis drills from account balance to analytical source and posted journal lines", () => {
@@ -504,6 +505,29 @@ test("unlinked employee advance and custody codes appear in their own analytical
   assert.match(source, /record=registry\.find\(item=>String\(item\.employeeUid\|\|item\.code\|\|''\)===String\(line\.partyId\|\|''\)\)/);
 });
 
+test("main searchable dropdown uses a body portal and viewport-aware fixed placement", () => {
+  const picker = indexHtml.slice(indexHtml.indexOf("function PestSearchableSelect(props){"), indexHtml.indexOf("function App(){"));
+  assert.match(picker, /ReactDOM\.createPortal\(menu,document\.body\)/);
+  assert.match(picker, /position:'fixed'/);
+  assert.match(picker, /spaceBelow/);
+  assert.match(picker, /spaceAbove/);
+  assert.match(picker, /window\.addEventListener\('scroll',reposition,true\)/);
+  assert.match(picker, /viewport\.addEventListener\('resize',reposition\)/);
+  assert.match(indexHtml, /\.app-workspace select\{-webkit-appearance:none!important/);
+  assert.match(indexHtml, /PEST_CRM_MODULE_BUILD='20261124-crm-dropdown-portal-v2'/);
+  assert.match(indexHtml, /pest-crm-module\.js\?v='\+PEST_CRM_MODULE_BUILD/);
+});
+
+test("CRM searchable dropdown uses a body portal and repositions instead of being clipped by nested panels", () => {
+  const picker = crmSource.slice(crmSource.indexOf("function CrmSearchableSelect(props){"), crmSource.indexOf("const select = (label,value,onChange,options,opts)"));
+  assert.match(picker, /ReactDOM\.createPortal\(menu,document\.body\)/);
+  assert.match(picker, /position:'fixed'/);
+  assert.match(picker, /spaceBelow/);
+  assert.match(picker, /spaceAbove/);
+  assert.match(picker, /window\.addEventListener\('scroll',reposition,true\)/);
+  assert.match(picker, /data-crm-picker-menu/);
+});
+
 test("master directory flag is initialized before its first effect dependency array is evaluated", () => {
   const flag = source.indexOf("const masterDirectoryOnly=props.masterDirectoryOnly===true;");
   const effect = source.indexOf("React.useEffect(()=>{if(masterDirectoryOnly)");
@@ -541,10 +565,13 @@ test("the global master navigation opens the unified directory instead of the le
 
 test("financial dropdowns open on the side with more visible space and keep the previous choice visible while searching", () => {
   const picker = source.slice(source.indexOf("const searchablePicker="), source.indexOf("const searchablePickerWithAdd="));
-  assert.match(picker, /position:'fixed',zIndex:1000/);
-  assert.match(picker, /const spaceBelow=Math\.max\(0,viewportHeight-rect\.bottom-12\)/);
-  assert.match(picker, /const spaceAbove=Math\.max\(0,rect\.top-12\)/);
+  assert.match(picker, /position:'fixed',zIndex:10000/);
+  assert.match(picker, /const spaceBelow=Math\.max\(0,vh-rect\.bottom-8\)/);
+  assert.match(picker, /const spaceAbove=Math\.max\(0,rect\.top-8\)/);
   assert.match(picker, /openBelow=spaceBelow>=spaceAbove/);
+  assert.match(picker, /ReactDOM\.createPortal\(menu,document\.body\)/);
+  assert.match(picker, /data-finance-picker-menu/);
+  assert.match(source, /window\.addEventListener\('scroll',reposition,true\)/);
   assert.match(picker, /anchor\.top=/);
   assert.match(picker, /anchor\.bottom=/);
   assert.match(picker, /const selectedCurrent=selected&&String\(selected\.value\)!==''\?selected:null/);
