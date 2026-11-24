@@ -1707,6 +1707,18 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
    },className:'mt-2 text-xs font-bold text-blue-700 underline'},'＋ تكويد '+(partyType==='vendor'?'مورد':'عميل')+' جديد'):null
   );
  };
+ React.useEffect(()=>{
+  const request=props.externalPartyRequest;
+  if(!masterDirectoryOnly||!request||!request.requestKey)return;
+  const partyType=request.partyType==="vendor"?"vendor":"customer";
+  const defaults=Object.assign({},request.defaults||{},{partyType});
+  openQuickAdd("parties",(code,record)=>{
+   const saved=Object.assign({},record||{},{code:String(code||record&&record.code||""),partyType,type:partyType});
+   Promise.resolve(typeof request.onSaved==="function"?request.onSaved(saved):undefined)
+    .then(()=>{if(typeof props.onPartyMasterRequestComplete==="function")props.onPartyMasterRequestComplete();})
+    .catch(error=>setError(error&&error.message||String(error)));
+  },defaults);
+ },[masterDirectoryOnly,props.externalPartyRequest&&props.externalPartyRequest.requestKey]);
  const saveQuickAdd=async()=>{
   if(!quickAddType||busy)return;
   const requiredAction=quickAddOriginalCode?"edit":"add";
@@ -5176,7 +5188,7 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   );
   const isParty=quickAddType==='parties';
   const isFinancingParty=quickAddType==='financingParties';
-  const closeQuickAdd=()=>{if(busy)return;setQuickAddType('');setQuickAddTarget(null);setQuickAddParent(null);setQuickAddOriginalCode('');};
+  const closeQuickAdd=()=>{if(busy)return;setQuickAddType('');setQuickAddTarget(null);setQuickAddParent(null);setQuickAddOriginalCode('');if(masterDirectoryOnly&&props.externalPartyRequest&&typeof props.onPartyMasterRequestComplete==="function")props.onPartyMasterRequestComplete();};
   return h('div',{className:'fixed inset-0 z-[240] bg-slate-950/70 flex items-center justify-center p-2 sm:p-3',onClick:closeQuickAdd},
    h('section',{className:'bg-white rounded-xl shadow-2xl w-full '+(isParty?'max-w-5xl':'max-w-2xl')+' p-3 sm:p-4 max-h-[94vh] overflow-auto',onClick:function(e){e.stopPropagation();}},
     h('div',{className:'flex items-center justify-between gap-2 mb-2 sticky top-0 bg-white z-10 py-1'},h('h3',{className:'font-bold text-base'},isParty?(quickAddForm.partyType==='vendor'?'بيانات مورد جديد':'بيانات عميل جديد'):isFinancingParty?'بيانات جهة تمويل جديدة':(typeLabels[quickAddType]||'إضافة كود')),button('إغلاق',closeQuickAdd,'muted',busy)),
