@@ -768,6 +768,11 @@ function FinanceModule(props){
      changes:[],
      createFinancierName:String(details.statedFinancierName),
      summary:"إضافة جهة تمويل مستقلة باسم «"+String(details.statedFinancierName)+"» إلى دليل جهات التمويل ثم اختيارها على حساب 2150. لا يتم استخدام مورد بديل."
+    }:
+    category==="تصنيف الحساب الرئيسي"&&details.expectedAccountType?{
+     changes:[],
+     accountMaster:{code:String(details.accountCode||''),type:String(details.expectedAccountType),nature:String(details.expectedAccountNature||''),subledgerType:String(details.expectedSubledgerType||''),isGroup:false,active:true},
+     summary:"تعديل إعدادات الحساب "+String(details.accountCode||'')+" في دليل الحسابات لتتوافق مع طبيعته: النوع "+String(details.expectedAccountType)+"، الطبيعة "+String(details.expectedAccountNature||'غير محددة')+(details.expectedSubledgerType?"، الأستاذ المساعد "+analyticPartyLabel(details.expectedSubledgerType):"")+"."
     }:{
      changes:[],
      summary:"يلزم فحص مستند المصدر أو دليل الحسابات قبل تحديد التعديل؛ لم تتوافر بيانات كافية لاقتراح تغيير آلي آمن."
@@ -941,7 +946,7 @@ const ledgerDebit=auditBalanceFlat.reduce((sum,line)=>sum+Number(line.debit||0),
     if(rule.subledgerType&&String(account.subledgerType||"")!==rule.subledgerType)issues.push("نوع الأستاذ المساعد "+String(account.subledgerType||"غير محدد")+" بدلًا من "+rule.subledgerType);
     if(account.isGroup)issues.push("الحساب تجميعي ولا يقبل الترحيل المباشر");
     if(account.active===false)issues.push("الحساب موقوف");
-    if(issues.length)pushFinding("error","تصنيف الحساب الرئيسي","الحساب "+rule.code+" — "+rule.label+": "+issues.join("؛ ")+".",{accountCode:rule.code});
+    if(issues.length)pushFinding("error","تصنيف الحساب الرئيسي","الحساب "+rule.code+" — "+rule.label+": "+issues.join("؛ ")+".",{accountCode:rule.code,expectedAccountType:rule.type,expectedAccountNature:rule.nature,expectedSubledgerType:rule.subledgerType||"",expectedIsGroup:false,expectedActive:true});
    });
    accounts.filter(account=>account.subledgerType&&!account.isGroup).forEach(account=>{
     const code=String(account.code),glLines=auditBalanceFlat.filter(line=>String(line.accountCode)===code);
@@ -3178,6 +3183,14 @@ const renderIntegrityFindingModal=()=>{
  const related=[...documents,...journalRecords].find(item=>String(item.id)===String(finding.journalId||''))||{};
  const selectedLine=(related.lines||[])[Math.max(0,Number(finding.lineNo||1)-1)]||{};
  const recommendation=finding.recommendation||{changes:[],summary:'لا توجد توصية آلية آمنة لهذه النتيجة.'};
+ const currentMasterAccount=accounts.find(item=>String(item.code)===String(finding.accountCode||''))||{};
+ const masterAccountRows=recommendation.accountMaster?[ 
+  ['نوع الحساب',String(currentMasterAccount.type||'غير محدد'),recommendation.accountMaster.type],
+  ['طبيعة الحساب',String(currentMasterAccount.nature||'غير محددة'),recommendation.accountMaster.nature],
+  ['الأستاذ المساعد',String(currentMasterAccount.subledgerType||'غير محدد'),recommendation.accountMaster.subledgerType||'بدون'],
+  ['حساب تجميعي',currentMasterAccount.isGroup?'نعم':'لا','لا'],
+  ['حالة الحساب',currentMasterAccount.active===false?'موقوف':'نشط','نشط']
+ ].map((row,index)=>h('tr',{key:'master-'+index,className:'border-t'},row.map((value,column)=>h('td',{key:column,className:'p-2'},value)))):[];
  const changeRows=(recommendation.changes||[]).map(change=>{
   const current=change.key==='accountCode'?String(selectedLine.accountCode||'—'):change.key==='party'?String(selectedLine.partyId||'—')+' ('+String(selectedLine.partyType||'بدون نوع')+')':'—';
   const proposed=change.key==='accountCode'?String(change.value):change.key==='party'?String(change.value)+' ('+analyticPartyLabel(change.partyType)+')':'—';
@@ -3200,6 +3213,8 @@ const renderIntegrityFindingModal=()=>{
    h('div',{className:'rounded-xl border border-rose-200 bg-rose-50 p-3 space-y-1'},h('b',{className:'text-sm text-rose-900'},'الوضع القائم / سبب المشكلة'),h('p',{className:'text-sm text-rose-900 leading-6'},finding.reason)),
    h('div',{className:'rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-1'},h('b',{className:'text-sm text-blue-900'},'المعالجة المقترحة'),h('p',{className:'text-sm text-blue-900 leading-6'},recommendation.summary||'يلزم فحص يدوي قبل التعديل.')),
    changeRows.length?table(['السطر','الحقل','القيمة الحالية','القيمة المقترحة'],changeRows):null,
+   masterAccountRows.length?table(['إعداد الحساب','القيمة الحالية','القيمة المقترحة'],masterAccountRows):null,
+   recommendation.accountMaster?button('فتح بطاقة الحساب لتصحيح الإعدادات',()=>openQuickAdd('chartOfAccounts',()=>{void refresh();}, {code:recommendation.accountMaster.code,type:recommendation.accountMaster.type,nature:recommendation.accountMaster.nature,subledgerType:recommendation.accountMaster.subledgerType,isGroup:recommendation.accountMaster.isGroup,active:recommendation.accountMaster.active},recommendation.accountMaster.code),'primary',busy||!canFinance('accounts','edit')):null,
    recommendation.createFinancierName?h('div',{className:'rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm'},'جهة التمويل المقترح تكويدها: ',h('b',null,recommendation.createFinancierName),' — يتم إنشاؤها من قائمة الطرف التحليلي داخل محرر القيد كجهة تمويل مستقلة، وليس كمورد.'):null,
    h('p',{className:'text-xs text-slate-500'},'لا يتم تعديل السجلات أو الأرصدة من شاشة النتائج. قبول الاقتراح يفتح نسخة مراجعة مستقلة للقيد المرحّل أو محرر القيد المعلّق، ويظل الترحيل خاضعًا لاعتماد المراجع والتحقق المحاسبي.'),
    h('div',{className:'flex flex-wrap gap-2 justify-end'},
