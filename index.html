@@ -2475,7 +2475,8 @@ function App(){
         subscribe('logs:recent',logQuery,s=>setLogs(toArray(s.val())));
       }
     }else if(tab==='master'){
-      needMaster();needProjects();
+      if(hasPermission('master','view'))needMaster();
+      needProjects();
     }else if(tab==='projects'||tab==='projectDetail'){
       needMaster();needProjects();
     }else if(tab==='statement'||tab==='reports'){
