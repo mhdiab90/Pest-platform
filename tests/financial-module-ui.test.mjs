@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 
 const source = readFileSync(new URL("../financial-module.js", import.meta.url), "utf8");
 const indexHtml = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const apiSource = readFileSync(new URL("../financial-api.js", import.meta.url), "utf8");
 const reportsSource = source.slice(source.indexOf("const renderReports=()=>"), source.indexOf("const accountAnalysisLabelForParty"));
 
 test("account analysis drills from account balance to analytical source and posted journal lines", () => {
@@ -395,4 +396,47 @@ test("opening or closing an analytical picker does not replace its existing valu
 
 test("current screen report toolbar stays in normal document flow", () => {
   assert.match(indexHtml, /\.app-report-toolbar\{position:static!important;top:auto!important;inset:auto!important;z-index:auto!important;transform:none!important;/);
+});
+
+
+test("financing-party analytics are resolved from the 2150 account and journal description, never borrowed from suppliers", () => {
+  const openModal = source.slice(source.indexOf("const openJournalModal=doc=>{"), source.indexOf("const updateJournalModalLine="));
+  const partyLabel = source.slice(source.indexOf("const reviewPartyLabel="), source.indexOf("const renderReviewJournalDetails="));
+  assert.match(source, /String\(account\.code\)==="2150"[\s\S]*subledgerType:"financingParty"/);
+  assert.match(openModal, /const analyticType=account&&account\.subledgerType\|\|line\.partyType\|\|""/);
+  assert.match(openModal, /matchFinancingPartyFromText\(\[line\.description,doc\.description,doc\.reference\]\.join\(" "\)\)\|\|saved/);
+  assert.match(openModal, /partyType:"financingParty",partyId:matched\?String\(matched\.code\|\|matched\.id\):""/);
+  assert.match(partyLabel, /registeredFinancingParties\.find/);
+  assert.match(source, /openQuickAdd\("financingParties",onChange,\{name:extractFinancingPartyName\(description\)\}\)/);
+});
+
+test("Review smart audit checks cents, analytical control balances, account mappings and withholding party codes", () => {
+  const audit = source.slice(source.indexOf("const runIntegrityAudit=async()=>{"), source.indexOf("const openReviewItem=async"));
+  assert.match(audit, /api\(periodQuery\)\.catch\(\(\)=>null\)/);
+  assert.match(audit, /auditBalanceFlat=flattenJournals\(auditBalanceJournals\)/);
+  assert.match(audit, /مطابقة الأستاذ العام مع الأستاذ المساعد/);
+  assert.match(audit, /تصنيف الحساب الرئيسي/);
+  assert.match(audit, /اختلاف طرف ضريبة الخصم/);
+  assert.match(audit, /مطابقة قيمة ضريبة الفاتورة/);
+  assert.match(audit, /مطابقة مبلغ السداد الضريبي/);
+  assert.match(audit, /Math\.round\(difference\*100\)/);
+  assert.match(source, /renderIntegrityAuditPanel\(\)/);
+  assert.match(source, /button\(integrityAuditBusy\?'جارٍ الفحص\.\.\.'\s*:\s*'فحص',runIntegrityAudit/);
+});
+
+test("withholding invoice journal lines inherit the same supplier/customer analytical code as their source invoice", () => {
+  assert.match(apiSource, /const taxParty=String\(tax\.accountCode\)==="2120"\?\{partyType:purchase\?"vendor":"customer",partyId\}:\{\}/);
+  assert.match(apiSource, /Object\.assign\(\{accountCode:tax\.accountCode,debit:amount,credit:0,[\s\S]*taxParty\)/);
+  assert.match(apiSource, /Object\.assign\(\{accountCode:tax\.accountCode,debit:0,credit:amount,[\s\S]*taxParty\)/);
+});
+
+test("income statement tax disclosure separates VAT inputs, outputs, settlement, refunds and withholding with drill-through", () => {
+  assert.match(source, /const incomeTaxMetric=\(label,value,accountCode\)=>h\("button"/);
+  assert.match(source, /incomeTaxMetric\("ضريبة مدخلات المشتريات — 1410"/);
+  assert.match(source, /incomeTaxMetric\("ضريبة مخرجات المبيعات — 2110"/);
+  assert.match(source, /incomeTaxMetric\("المسدد من القيمة المضافة — 2110"/);
+  assert.match(source, /incomeTaxMetric\("ضريبة الخصم والإضافة المستحقة — 2120"/);
+  assert.match(source, /incomeTaxMetric\("المسدّد من الخصم والإضافة — 2120"/);
+  assert.match(source, /onClick:\(\)=>openStatementAccount\(accountCode\)/);
+  assert.match(source, /اضغط رقم القيد في الجدول لعرض مستند السداد أو الفاتورة والقيد بالكامل/);
 });
