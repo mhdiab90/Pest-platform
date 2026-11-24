@@ -345,7 +345,7 @@ test("review page exposes a precision accounting audit with actionable findings"
   assert.match(source,/مطابقة الأستاذ العام مع الأستاذ المساعد/);
   assert.match(source,/مطابقة مبلغ السداد الضريبي/);
   assert.match(source,/اختلاف طرف ضريبة الخصم/);
-  assert.match(source,/button\(integrityAuditBusy\?'جارٍ الفحص\.\.\.'\s*:\s*'فحص',runIntegrityAudit/);
+  assert.match(source,/button\(integrityAuditBusy\?'جارٍ الفحص\.\.\.'\s*:\s*'تشغيل الفحص الموحد',runUnifiedReview/);
   assert.match(source,/تقرير الفحص الذكي/);
   assert.match(source,/توجيه الضريبة/);
   assert.match(source,/جهة التمويل/);
@@ -485,4 +485,30 @@ test("income statement tax disclosure separates VAT inputs, outputs, settlement,
   assert.match(source, /incomeTaxMetric\("المسدّد من الخصم والإضافة — 2120"/);
   assert.match(source, /onClick:\(\)=>openStatementAccount\(accountCode\)/);
   assert.match(source, /اضغط رقم القيد في الجدول لعرض مستند السداد أو الفاتورة والقيد بالكامل/);
+});
+
+
+test("review, approval and comprehensive account review share one workspace", () => {
+  assert.match(source, /مركز المراجعة والفحص والاعتماد/);
+  assert.match(source, /renderAccountReview\(\)/);
+  assert.doesNotMatch(source, /\['accountReview','مراجعة شاملة','Comprehensive Review'\]/);
+  assert.match(source, /\['review','المراجعة والفحص والاعتماد','Review, Audit & Approval'\]/);
+  assert.match(source, /panel\('قواعد الفحص المطبقة'/);
+});
+
+test("audit findings present current state, recommendations and user-controlled decisions", () => {
+  assert.match(source, /const renderIntegrityFindingModal=\(\)=>/);
+  assert.match(source, /الوضع القائم \/ سبب المشكلة/);
+  assert.match(source, /المعالجة المقترحة/);
+  assert.match(source, /الإبقاء كما هو وتوثيق القرار/);
+  assert.match(source, /قبول الاقتراح وفتح المعالجة/);
+  assert.match(source, /تعديل يدوي دون تطبيق الاقتراح/);
+  assert.match(source, /إلغاء دون تغيير/);
+  assert.match(source, /createJournalRevision/);
+});
+
+test("review journal editor supports inline coding for analytical parties above the editor", () => {
+  assert.match(source, /analyticPickerWithAdd\("الطرف التحليلي/);
+  assert.match(source, /z-\[240\]/);
+  assert.match(source, /w-full min-h-11 flex items-center justify-between/);
 });
