@@ -504,6 +504,14 @@ test("unlinked employee advance and custody codes appear in their own analytical
   assert.match(source, /record=registry\.find\(item=>String\(item\.employeeUid\|\|item\.code\|\|''\)===String\(line\.partyId\|\|''\)\)/);
 });
 
+test("master directory flag is initialized before its first effect dependency array is evaluated", () => {
+  const flag = source.indexOf("const masterDirectoryOnly=props.masterDirectoryOnly===true;");
+  const effect = source.indexOf("React.useEffect(()=>{if(masterDirectoryOnly)");
+  assert.ok(flag >= 0, "master directory flag must be initialized");
+  assert.ok(effect >= 0, "master directory effect must be present");
+  assert.ok(flag < effect, "masterDirectoryOnly must be declared before useEffect evaluates its dependency array");
+});
+
 test("master directory permissions allow master-data users to load and maintain all master code types", () => {
   assert.match(apiSource, /if\(!hasPermission\(profile,"financial","view"\)&&!hasPermission\(profile,"master","view"\)&&!hasPermission\(profile,"financial_masters","view"\)\)requirePermission\(profile,"financial","view"\)/);
   assert.match(apiSource, /const requireFinanceMaster=\(kind,action\)=>\{\s*if\(\["parties","financingParties","employeeAdvances","employeeCustodies"\]\.includes\(kind\)&&hasPermission\(profile,"master",action\)\)return true;/);
