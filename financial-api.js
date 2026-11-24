@@ -814,7 +814,7 @@ export async function handleFinancialRequest(ctx){
    }
    const sentOutput=[];
    for(const [assignmentId,record] of Object.entries(sent)){
-    if(!record||record.createdBy!==claims.sub)continue;
+    if(!record||record.createdBy!==claims.sub||record.deletedAt)continue;
     const invoice=await adminRead("documents/"+id(record.invoiceId));
     if(!invoice||invoice.type!=="invoice")continue;
     sentOutput.push({...record,id:assignmentId,invoice:toInvoiceSummary(invoice)});
