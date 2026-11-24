@@ -329,7 +329,7 @@ test("financing account 2150 supports a lender, supplier, partner or active user
 });
 
 test("all searchable account pickers support inline coding and canceling search preserves the current value", () => {
-  assert.match(source,/const addItem=list\.find\(item=>String\(item\.value\)==='__quick_add__'\)/);
+  assert.match(source,/needle=normalizeMatch\(query\),addItem=list\.find\(item=>String\(item\.value\)==='__quick_add__'\)/);
   assert.match(source,/const query=opened\?\(hasQuery\?String\(journalPickerSearch\[searchKey\]\|\|''\):''\):String\(selected&&selected\.label\|\|''\)/);
   assert.doesNotMatch(source,/else if\(value\)onChange\(\{\}\)/);
   assert.match(source,/selectWithAdd\('الحساب المحاسبي',accountAnalysisCode/);
