@@ -447,6 +447,10 @@ test("employee advance and custody analytic selectors use coded master registrie
   assert.match(source, /openQuickAdd\(kind,\(code,record\)=>\{if\(record\)onChange\(String\(record\.employeeUid\|\|record\.code\|\|code\|\|""\)\);\},\{\}\)/);
   assert.match(source, /value:"__quick_add__",label:"＋ إضافة كود "\+labelText\+" جديد"/);
   assert.match(source, /employeeUid:f\.employeeUid\|\|""/);
+  assert.match(apiSource, /const masterCodeId=\(value,kind\)=>\{const raw=txt\(value,120\);/);
+  assert.match(apiSource, /code=masterCodeId\(item\.code,kind\)/);
+  assert.match(apiSource, /code=masterCodeId\(row\.code,kind\)/);
+  assert.match(source, /أدخل كودًا صالحًا للسلفة أو العهدة/);
 });
 
 test("employee advance and custody codes are maintained in the central master directory", () => {
@@ -486,7 +490,8 @@ test("employee advance and custody codes can be saved and imported without linki
   assert.doesNotMatch(save, /يجب ربط كود السلفة أو العهدة/);
   assert.match(imported, /const employeeUid=String\(row\.employeeUid\|\|""\)\.trim\(\)/);
   assert.match(imported, /if\(employeeUid\)\{/);
-  assert.match(source, /الموظف المرتبط \(اختياري\)/);
+  assert.match(source, /اسم المستخدم المرتبط \(اختياري\)/);
+  assert.match(source, /' — @'\+user\.username/);
   assert.match(source, /بدون ربط بمستخدم/);
   assert.match(source, /item\.employeeUid\|\|item\.code/);
 });
@@ -517,7 +522,8 @@ test("master code list appears directly under the type selector before the impor
 
 test("the global master navigation opens the unified directory instead of the legacy customer/vendor page", () => {
   assert.match(indexHtml, /master:'دليل الأكواد والبيانات الأساسية'/);
-  assert.match(indexHtml, /id:'masterGroup',label:tr\('master'\)[\s\S]*id:'master',label:rtl\?'دليل الأكواد والبيانات الأساسية'/);
+  assert.match(indexHtml, /id:'master',label:rtl\?'دليل الأكواد والبيانات الأساسية':'Master Codes & Master Data',icon:'fa-database',tab:'master'/);
+  assert.doesNotMatch(indexHtml, /id:'masterGroup'/);
   assert.match(indexHtml, /masterDirectoryOnly=\{tab==='master'\}/);
   assert.match(indexHtml, /can=\{\(module,action\)=>\{if\(tab==='master'&&module==='financial_masters'\)/);
   assert.match(indexHtml, /externalPartyRequest=\{financialPartyMasterRequest\}/);
@@ -525,10 +531,14 @@ test("the global master navigation opens the unified directory instead of the le
   assert.match(indexHtml, /function openFinancialPartyMaster\(payload\)[\s\S]*setFinancialPartyMasterRequest/);
 });
 
-test("financial dropdowns open above their fields and keep the previous choice visible while searching", () => {
+test("financial dropdowns open on the side with more visible space and keep the previous choice visible while searching", () => {
   const picker = source.slice(source.indexOf("const searchablePicker="), source.indexOf("const searchablePickerWithAdd="));
   assert.match(picker, /position:'fixed',zIndex:1000/);
-  assert.match(picker, /bottom:Math\.max\(8,window\.innerHeight-rect\.top\+4\)/);
+  assert.match(picker, /const spaceBelow=Math\.max\(0,viewportHeight-rect\.bottom-12\)/);
+  assert.match(picker, /const spaceAbove=Math\.max\(0,rect\.top-12\)/);
+  assert.match(picker, /openBelow=spaceBelow>=spaceAbove/);
+  assert.match(picker, /anchor\.top=/);
+  assert.match(picker, /anchor\.bottom=/);
   assert.match(picker, /const selectedCurrent=selected&&String\(selected\.value\)!==''\?selected:null/);
   assert.match(picker, /filteredMatches\.filter\(item=>!selectedCurrent\|\|String\(item\.value\)!==String\(selectedCurrent\.value\)\)/);
   assert.match(picker, /'الاختيار الحالي'/);
