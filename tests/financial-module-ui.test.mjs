@@ -459,6 +459,23 @@ test("employee advance and custody codes are maintained in the central master di
   assert.doesNotMatch(source, /\['centers','مراكز التكلفة','Cost Centers'\]/);
 });
 
+test("employee advance and custody registries are server-validated and protected by their historical ledger references", () => {
+  assert.match(apiSource, /employeeAdvances:"masters",employeeCustodies:"masters"/);
+  assert.match(apiSource, /employeeUid=id\(item\.employeeUid\),employee=employeeUid&&adminReadRoot\?await adminReadRoot\("users\/"\+employeeUid\):null/);
+  assert.match(apiSource, /يوجد كود نشط لهذا الموظف بالفعل/);
+  assert.match(apiSource, /kind==="employeeAdvances"\|\|kind==="employeeCustodies"/);
+  assert.match(apiSource, /partyLedger\/"+subledgerType\+"\/"+employeeUid/);
+  assert.match(apiSource, /findMasterReferences\(ctx,kind,code\)/);
+  assert.match(apiSource, /employeeUid\['employeeuid'/);
+});
+
+test("unified master directory retains cost center analysis and the same master records feed inline dropdown creation", () => {
+  const masterView = source.slice(source.indexOf("const renderMasters="), source.indexOf("const renderTax="));
+  assert.match(masterView, /masterViewKind==="costCenters"\?renderCostCenterAnalysis\(\):null/);
+  assert.match(source, /financeAreaForMaster\(kind\)/);
+  assert.match(apiSource, /adminRead\(k\).*employeeAdvances.*employeeCustodies/);
+});
+
 test("financial dropdowns open above their fields and keep the previous choice visible while searching", () => {
   const picker = source.slice(source.indexOf("const searchablePicker="), source.indexOf("const searchablePickerWithAdd="));
   assert.match(picker, /position:'fixed',zIndex:1000/);
