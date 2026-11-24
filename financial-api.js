@@ -486,7 +486,7 @@ export async function handleFinancialRequest(ctx){
  const requireFinanceArea=(area,action)=>requirePermission(profile,"financial_"+area,action);
  const hasFinanceArea=(area,action)=>hasPermission(profile,"financial_"+area,action);
  const requireFinanceMaster=(kind,action)=>{
-  if(hasPermission(profile,"master",action))return true;
+  if(["parties","financingParties","employeeAdvances","employeeCustodies"].includes(kind)&&hasPermission(profile,"master",action))return true;
   return requireFinanceArea(financeAreaForMaster(kind),action);
  };
  const documentPermissionArea=document=>document&&document.type==="invoice"?"invoices":
