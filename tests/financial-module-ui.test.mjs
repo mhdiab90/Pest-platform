@@ -283,7 +283,7 @@ test("review journal account pickers have independent search state and a wider a
 test("transferred invoice actions support edit, reassignment, deletion and personal archives on both lists", () => {
   assert.match(source, /const manageAssignment=async\(mode,source,target\)=>/);
   assert.match(source, /const saveAssignmentChanges=async\(\)=>/);
-  assert.match(source, /action:'manageInvoiceAssignment',mode:'update'/);
+  assert.match(source, /action:"manageInvoiceAssignment",mode:"update"/);
   assert.match(source, /mode:'reassign',scope:'sent'/);
   assert.match(source, /mode,scope:source==="sent"\?"sent":"received"/);
   assert.match(source, /const receivedArchived=assignmentItems\.filter\(item=>Boolean\(item\.archivedAt\)\)/);
