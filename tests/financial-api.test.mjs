@@ -2358,7 +2358,7 @@ test("account 2150 is migrated as an analytical financing control and posted to 
     ]
   });
   assert.equal(legacyWithParty.status,"pending_review");
-  assert.equal(read("documents/"+legacyWithParty.id+"/lines/0/partyType"),"financingParty","legacy 2150 journal lines must be normalized into the financing party ledger before migration");
+  assert.equal(read("documents/"+legacyWithParty.id).lines[0].partyType,"financingParty","legacy 2150 journal lines must be normalized into the financing party ledger before migration");
   await invoke("GET","?resource=bootstrap");
   const migrated=read("chartOfAccounts/2150");
   assert.equal(migrated.subledgerType,"financingParty");
