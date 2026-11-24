@@ -1770,7 +1770,13 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
  const openJournalModal=doc=>{
   const normalizedLines=(doc.lines||[]).map(line=>{
    const account=posting.find(item=>String(item.code)===String(line.accountCode));
-   return Object.assign({},line,{partyType:account&&account.subledgerType||line.partyType||"",partyId:line.partyId||""});
+   const analyticType=account&&account.subledgerType||line.partyType||"";
+   if(analyticType==="financingParty"){
+    const saved=registeredFinancingParties.find(item=>String(item.code||item.id)===String(line.partyId||""));
+    const matched=matchFinancingPartyFromText([line.description,doc.description,doc.reference].join(" "))||saved;
+    return Object.assign({},line,{partyType:"financingParty",partyId:matched?String(matched.code||matched.id):""});
+   }
+   return Object.assign({},line,{partyType:analyticType,partyId:line.partyId||""});
   });
   setJournalModal(Object.assign({},doc));
   setJournalModalDraft({id:doc.id,sourceId:doc.sourceId||"",journalId:doc.journalId||"",type:doc.type||"journal",number:doc.number||doc.journalNumber||'',date:doc.date||today(),description:doc.description||"",reference:doc.reference||"",checkNumber:doc.checkNumber||"",invoiceNumber:doc.invoiceNumber||"",documentNumber:doc.documentNumber||"",currency:doc.currency||"EGP",sourceType:doc.sourceType||"manual",openingBalance:doc.openingBalance===true,inventoryMovementChange:doc.inventoryMovementChange||null,projectCode:doc.projectCode||"",reversalOf:doc.reversalOf||"",revisionOf:doc.revisionOf||"",revisionNotes:doc.revisionNotes||"",reviewReason:doc.reviewReason||doc.reason||"",errors:Array.isArray(doc.errors)?doc.errors.slice():[],warnings:Array.isArray(doc.warnings)?doc.warnings.slice():[],acknowledgeSourceWarnings:Boolean(doc.sourceWarningsAcknowledgedAt),pendingRevisionId:doc.pendingRevisionId||"",revisedByJournalId:doc.revisedByJournalId||"",reversalJournalId:doc.reversalJournalId||"",reversedByJournalId:doc.reversedByJournalId||"",status:doc.status||"posted",lines:normalizedLines});
