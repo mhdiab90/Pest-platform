@@ -166,7 +166,7 @@ test("journal entry account, cost center and analytic party fields support typin
   assert.match(source, /ابحث بالاسم أو الكود/);
   assert.match(source, /searchablePickerWithAdd\('الحساب'/);
   assert.match(source, /searchablePickerWithAdd\('مركز التكلفة'/);
-  assert.match(source, /searchablePicker\('الطرف التحليلي/);
+  assert.match(source, /analyticPickerWithAdd\('الطرف التحليلي — '/);
   assert.match(source, /＋ إضافة سطر جديد/);
   assert.match(source, /journal\.lines\.length<=2/);
 });
@@ -332,8 +332,11 @@ test("financing account 2150 uses an isolated financier registry rather than sup
 
 test("review page exposes a precision accounting audit with actionable findings", () => {
   assert.match(source,/const runIntegrityAudit=async\(\)=>/);
-  assert.match(source,/Math\.abs\(difference\)>0\.000001/);
-  assert.match(source,/Math\.abs\(debitDiff\)>0\.00005/);
+  assert.match(source,/Math\.abs\(Math\.round\(difference\*100\)\)>0/);
+  assert.match(source,/Math\.abs\(Math\.round\(debitDiff\*100\)\)>0/);
+  assert.match(source,/مطابقة الأستاذ العام مع الأستاذ المساعد/);
+  assert.match(source,/مطابقة مبلغ السداد الضريبي/);
+  assert.match(source,/اختلاف طرف ضريبة الخصم/);
   assert.match(source,/button\(integrityAuditBusy\?'جارٍ الفحص\.\.\.'\s*:\s*'فحص',runIntegrityAudit/);
   assert.match(source,/تقرير الفحص الذكي/);
   assert.match(source,/توجيه الضريبة/);
@@ -343,10 +346,10 @@ test("review page exposes a precision accounting audit with actionable findings"
 test("VAT movement and settlement detail is displayed inside statements but excluded from profit", () => {
   assert.match(source,/tax_payment:"سداد ضريبة/);
   assert.match(source,/vat_refund:"استرداد قيمة مضافة/);
-  assert.match(source,/موقف الضرائب — إيضاح مستقل داخل القوائم/);
+  assert.match(source,/موقف الضرائب — إيضاح مستقل داخل قائمة الدخل/);
   assert.match(source,/incomeTaxLines=periodJournals\.flatMap/);
   assert.match(source,/incomeVatClosing/);
-  assert.match(source,/لا تُضاف هذه المبالغ إلى الإيرادات أو المصروفات ولا تؤثر على صافي الربح/);
+  assert.match(source,/لا تُضاف إلى الإيرادات أو المصروفات ولا تغيّر صافي الربح/);
 });
 
 test("all searchable account pickers support inline coding and canceling search preserves the current value", () => {
@@ -361,15 +364,16 @@ test("all searchable account pickers support inline coding and canceling search 
 });
 
 test("current-screen export toolbar scrolls normally and does not stick to the viewport", () => {
-  assert.match(indexHtml,/\.app-report-toolbar\{position:static;top:auto;/);
-  assert.match(indexHtml,/\.app-report-toolbar\{margin:0 0 9px;padding:7px 8px;gap:7px;top:auto\}/);
-  assert.match(indexHtml,/--report-toolbar-offset':'0px'/);
+  assert.match(indexHtml,/\.app-report-toolbar\{position:static!important;top:auto!important;/);
+  assert.match(indexHtml,/box-shadow:none!important/);
 });
 
 
 test("account 2150 remains analytical in the browser while Worker migration is pending", () => {
   assert.match(source, /const accounts=rows\(master\.chartOfAccounts\)\.map\(account=>String\(account\.code\)==="2150"/);
-  assert.match(source, /subledgerType:"financingParty",isControl:true,isGroup:false/);
+  assert.match(source, /subledgerType:"financingParty",isControl:true/);
+  const accountMapping=source.slice(source.indexOf('const accounts=rows(master.chartOfAccounts)'),source.indexOf('const centers=',source.indexOf('const accounts=rows(master.chartOfAccounts)')));
+  assert.doesNotMatch(accountMapping,/isGroup:false/);
   assert.match(source, /const missingAnalytic=\(journal\.lines\|\|\[\]\)\.map/);
   assert.match(source, /account\.subledgerType&&!String\(item\.line\.partyId\|\|""\)\.trim\(\)/);
   assert.match(source, /const financingParties=registeredFinancingParties\.map/);
