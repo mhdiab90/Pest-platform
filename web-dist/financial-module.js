@@ -426,7 +426,7 @@ function FinanceModule(props){
  const [journalModal,setJournalModal]=React.useState(null),[journalModalDraft,setJournalModalDraft]=React.useState(null);
  const [clients,setClients]=React.useState([]),[vendors,setVendors]=React.useState([]),[projects,setProjects]=React.useState([]);
  const [period,setPeriod]=React.useState({from:today().slice(0,7),to:today().slice(0,7)}),[report,setReport]=React.useState('trial');
- const [assignmentItems,setAssignmentItems]=React.useState([]),[sentAssignmentItems,setSentAssignmentItems]=React.useState([]),[selectedAssignmentId,setSelectedAssignmentId]=React.useState(''),[assignmentLines,setAssignmentLines]=React.useState([]),[assignmentHeader,setAssignmentHeader]=React.useState({}),[assignmentBusy,setAssignmentBusy]=React.useState(false),[assignmentInstruction,setAssignmentInstruction]=React.useState('مراجعة تصنيف البنود وتحديد الأكواد المخزنية أو حسابات المصروفات'),[assignmentUserUid,setAssignmentUserUid]=React.useState(''),[forwardUserUid,setForwardUserUid]=React.useState(''),[forwardInstruction,setForwardInstruction]=React.useState('استكمال ومراجعة بيانات الفاتورة');
+ const [assignmentItems,setAssignmentItems]=React.useState([]),[sentAssignmentItems,setSentAssignmentItems]=React.useState([]),[selectedAssignmentId,setSelectedAssignmentId]=React.useState(''),[assignmentLines,setAssignmentLines]=React.useState([]),[assignmentHeader,setAssignmentHeader]=React.useState({}),[assignmentBusy,setAssignmentBusy]=React.useState(false),[assignmentInstruction,setAssignmentInstruction]=React.useState('مراجعة تصنيف البنود وتحديد الأكواد المخزنية أو حسابات المصروفات'),[assignmentUserUid,setAssignmentUserUid]=React.useState(''),[forwardUserUid,setForwardUserUid]=React.useState(''),[forwardInstruction,setForwardInstruction]=React.useState('استكمال ومراجعة بيانات الفاتورة'),[selectedAssignmentSource,setSelectedAssignmentSource]=React.useState('received'),[assignmentEditInstruction,setAssignmentEditInstruction]=React.useState('');
  const [selected,setSelected]=React.useState(null),[offset,setOffset]=React.useState('6100');
  const [invoiceDecisionDoc,setInvoiceDecisionDoc]=React.useState(null);
  const [quickAddType,setQuickAddType]=React.useState(''),[quickAddTarget,setQuickAddTarget]=React.useState(null),[quickAddParent,setQuickAddParent]=React.useState(null),[quickAddOriginalCode,setQuickAddOriginalCode]=React.useState(''),[quickAddForm,setQuickAddForm]=React.useState({code:'',name:'',active:true,type:'expense',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',unit:'قطعة',groupCode:'',groupType:'other',itemType:'stock',version:'',warehouseCode:'default',projectCode:'',taxType:'vat_output',rate:'0',effectiveFrom:today(),partyType:'customer',phone:'',taxNumber:'',email:'',address:''});
@@ -858,11 +858,45 @@ function FinanceModule(props){
   }catch(e){setError(e.message||String(e));}
   finally{setBusy(false);}
  };
- const openAssignment=assignment=>{
+ const openAssignment=(assignment,source="received")=>{
   setSelectedAssignmentId(assignment.id);
+  setSelectedAssignmentSource(source);
   setAssignmentLines((assignment.invoice&&assignment.invoice.lines||[]).map(x=>Object.assign({},x)));
   setAssignmentHeader(Object.assign({},assignment.invoice||{}));
-  setForwardUserUid('');setForwardInstruction('استكمال ومراجعة بيانات الفاتورة');
+  setAssignmentEditInstruction(assignment.instruction||"");
+  setForwardUserUid('');setForwardInstruction(assignment.instruction||'استكمال ومراجعة بيانات الفاتورة');
+ };
+ const manageAssignment=async(mode,source,target)=>{
+  const selectedRow=target||(source==="sent"?sentAssignmentItems:assignmentItems).find(item=>item.id===selectedAssignmentId);
+  if(!selectedRow)return;
+  if(!canFinance("assignments","edit")){setError("ليس لديك صلاحية إدارة الإجراءات المحولة.");return;}
+  if(mode==="delete"){
+   const message=source==="sent"
+    ?"سيتم إلغاء التحويل الحالي من قائمتك. ستظل الفاتورة محفوظة دون حذف بياناتها أو مرفقاتها، ويمكنك استكمالها أو إعادة تحويلها."
+    :"سيتم إرجاع الفاتورة لصاحب التحويل وإزالتها من مهامك. لن يتم حذف الفاتورة أو مرفقاتها.";
+   if(!window.confirm(message+"\nهل تريد المتابعة؟"))return;
+  }
+  setAssignmentBusy(true);setError("");
+  try{
+   await api("","POST",{action:"manageInvoiceAssignment",mode,scope:source==="sent"?"sent":"received",assignmentId:selectedRow.id,reason:mode==="delete"?"إزالة الإجراء من قائمة المستخدم":""});
+   setNotice(mode==="archive"?"تمت أرشفة الإجراء مع الاحتفاظ بسجل التحويل.":mode==="restore"?"تمت إعادة الإجراء من الأرشيف إلى القائمة.":"تمت إزالة الإجراء من قائمتك مع الاحتفاظ بالفاتورة وسجل التحويل.");
+   if(selectedAssignmentId===selectedRow.id){setSelectedAssignmentId("");setAssignmentLines([]);setAssignmentHeader({});}
+   await refreshAssignments();await refresh();
+  }catch(error){setError(error.message||String(error));}
+  finally{setAssignmentBusy(false);}
+ };
+ const saveAssignmentChanges=async()=>{
+  const source=selectedAssignmentSource,assignment=(source==="sent"?sentAssignmentItems:assignmentItems).find(item=>item.id===selectedAssignmentId);
+  if(!assignment)return;
+  if(!canFinance("assignments","edit")){setError("ليس لديك صلاحية تعديل الإجراء المحول.");return;}
+  setAssignmentBusy(true);setError("");
+  try{
+   const lines=assignmentLines.map(line=>Object.assign({},line,{quantity:line.quantity===""?"":n(line.quantity),unitPrice:line.unitPrice===""?"":n(line.unitPrice),discount:line.discount===""?"":n(line.discount)}));
+   await api("","POST",{action:"manageInvoiceAssignment",mode:"update",scope:source==="sent"?"sent":"received",assignmentId:assignment.id,instruction:assignmentEditInstruction,invoice:assignmentHeader,lines});
+   setNotice("تم حفظ تعديلات الإجراء والفاتورة دون إغلاق التحويل أو تغيير المستخدم المسؤول.");
+   await refreshAssignments();await refresh();
+  }catch(error){setError(error.message||String(error));}
+  finally{setAssignmentBusy(false);}
  };
  const completeAssignment=async(decision="return_to_creator")=>{
   if(!canFinance("assignments","edit")){setError("ليس لديك صلاحية استكمال الإجراء واتخاذ القرار.");return;}
@@ -880,30 +914,25 @@ function FinanceModule(props){
  const forwardAssignment=async()=>{
   if(!canFinance("assignments","edit")){setError("ليس لديك صلاحية إعادة تحويل الإجراء.");return;}
   if(!forwardUserUid){setError("اختر المستخدم التالي الذي سيتولى الفاتورة.");return;}
-  const assignment=assignmentItems.find(x=>x.id===selectedAssignmentId);if(!assignment)return;
+  const source=selectedAssignmentSource,assignment=(source==="sent"?sentAssignmentItems:assignmentItems).find(x=>x.id===selectedAssignmentId);if(!assignment)return;
   setAssignmentBusy(true);setError('');
   try{
    const lines=assignmentLines.map(line=>Object.assign({},line,{quantity:line.quantity===''?'':n(line.quantity),unitPrice:line.unitPrice===''?'':n(line.unitPrice),discount:line.discount===''?'':n(line.discount)}));
-   await api('', 'POST',{action:'forwardInvoiceAssignment',assignmentId:assignment.id,nextAssigneeUid:forwardUserUid,instruction:forwardInstruction,invoice:assignmentHeader,lines});
-   setNotice("تم تحويل الفاتورة للمستخدم التالي بنجاح، مع الاحتفاظ بالمرفقات وسجل التحويلات السابقة.");
+   if(source==="sent"){
+    await api('', 'POST',{action:'manageInvoiceAssignment',mode:'reassign',scope:'sent',assignmentId:assignment.id,nextAssigneeUid:forwardUserUid,instruction:forwardInstruction,invoice:assignmentHeader,lines});
+   }else{
+    await api('', 'POST',{action:'forwardInvoiceAssignment',assignmentId:assignment.id,nextAssigneeUid:forwardUserUid,instruction:forwardInstruction,invoice:assignmentHeader,lines});
+   }
+   setNotice("تم إعادة تحويل الفاتورة للمستخدم التالي بنجاح، مع الاحتفاظ بالمرفقات وسجل التحويلات السابقة.");
    setSelectedAssignmentId('');setAssignmentLines([]);setAssignmentHeader({});
    await refreshAssignments();await refresh();
   }catch(e){setError(e.message||String(e));}
   finally{setAssignmentBusy(false);}
  };
  const cancelAssignedInvoice=async()=>{
-  if(!canFinance("assignments","edit")){setError("ليس لديك صلاحية إلغاء المستند المحول.");return;}
   const assignment=assignmentItems.find(x=>x.id===selectedAssignmentId);
   if(!assignment)return;
-  if(!window.confirm("إلغاء الفاتورة المحولة إليك؟ ستُغلق المهمة وتُزال الفاتورة من المراجعة، مع الاحتفاظ بالمرفقات وسجل التحويل."))return;
-  setAssignmentBusy(true);setError("");
-  try{
-   await api("","POST",{action:"deleteInvoice",id:assignment.invoiceId,reason:"إلغاء من المستخدم المحال إليه"});
-   setNotice("تم إلغاء الفاتورة المحولة وإغلاق المهمة. تم الاحتفاظ بالمرفقات وسجل التحويل.");
-   setSelectedAssignmentId("");setAssignmentLines([]);setAssignmentHeader({});
-   await refreshAssignments();await refresh();
-  }catch(error){setError(error.message||String(error));}
-  finally{setAssignmentBusy(false);}
+  await manageAssignment("delete","received",assignment);
  };
  const loadPeriod=async()=>{
   setBusy(true);
