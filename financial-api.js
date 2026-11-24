@@ -260,6 +260,21 @@ async function findMasterReferences(ctx,kind,code,partyType="") {
  }
  return references;
 }
+async function financingPartyRegistryErrors(lines,adminRead){
+ const errors=[];
+ for(const [index,line] of (Array.isArray(lines)?lines:[]).entries()){
+  const code=String(line&&line.accountCode||""),partyType=String(line&&line.partyType||"");
+  if(code!=="2150"&&partyType!=="financingParty")continue;
+  const partyId=id(line&&line.partyId||"");
+  if(!partyId)continue;
+  const financier=await adminRead("financingParties/"+partyId);
+  if(financier&&financier.active!==false)continue;
+  const registeredParty=await adminRead("parties/"+partyId);
+  const vendor=registeredParty&&registeredParty.partyType==="vendor";
+  errors.push("السطر "+(index+1)+": "+(vendor?"الكود "+partyId+" مسجل كمورد وليس جهة تمويل.":"جهة التمويل "+partyId+" غير مسجلة في دليل جهات التمويل.")+" أضف الممول من دليل جهات التمويل ثم اختره في الطرف التحليلي؛ لا تستخدم كود المورد.");
+ }
+ return errors;
+}
 function validateJournal(j,chart,centers){
  const errors=[],lines=Array.isArray(j.lines)?j.lines:[];if(lines.length<2)errors.push("القيد يجب أن يحتوي على سطرين على الأقل");
  lines.forEach((l,i)=>{const a=chart[txt(l.accountCode,32)];if(!a)errors.push("السطر "+(i+1)+": الحساب غير موجود");else if(a.isGroup||a.active===false)errors.push("السطر "+(i+1)+": الحساب غير قابل للترحيل");const d=Number(l.debit||0),c=Number(l.credit||0);if(!Number.isFinite(d)||!Number.isFinite(c)||d<0||c<0||((d>0)===(c>0)))errors.push("السطر "+(i+1)+": أدخل مدين أو دائن فقط");if(l.costCenterId&&!centers[l.costCenterId])errors.push("السطر "+(i+1)+": مركز التكلفة غير موجود");const requiredSubledgerType=a&&(a.subledgerType||(String(l.accountCode)==="2150"?"financingParty":""));if(requiredSubledgerType&&!String(l.partyId||"").trim()){const analyticLabel={customer:"العميل",vendor:"المورد",employeeCustody:"الموظف صاحب العهدة",employeeAdvance:"الموظف صاحب السلفة",partnerCurrentAccount:"الشريك",financingParty:"جهة التمويل أو الدائن"}[requiredSubledgerType]||"الطرف التحليلي";errors.push("السطر "+(i+1)+": يجب اختيار الطرف التحليلي ("+analyticLabel+") للحساب "+txt(a.code||l.accountCode,32)+" — "+txt(a.name||"",120)+".");}});
@@ -377,8 +392,12 @@ function invoiceReviewErrors(inv,taxCodes,chart,items){
   if(!hasData)return;
   if(!tax.description)errors.push("وصف الضريبة أو الرسم الإضافي رقم "+(index+1)+" مطلوب.");
   if(!(Number(tax.rate||0)>=0)||!(tax.amount===""||Number(tax.amount)>=0))errors.push("قيمة الضريبة الإضافية رقم "+(index+1)+" غير صحيحة.");
-  const taxAccount=chart[tax.accountCode];
+  const taxAccount=chart[tax.accountCode],configuredTax=tax.taxCode?taxCodes[tax.taxCode]:null;
   if(!tax.accountCode||!taxAccount||taxAccount.isGroup||taxAccount.active===false)errors.push("اختر حسابًا مرحّلًا ونشطًا للضريبة أو الرسم الإضافي رقم "+(index+1)+".");
+  if(tax.taxCode&&!configuredTax)errors.push("كود الضريبة الإضافية "+tax.taxCode+" غير موجود في دليل الأكواد الضريبية.");
+  if(configuredTax&&["withholding","addition"].includes(configuredTax.taxType)&&String(tax.accountCode)!=="2120")errors.push("كود "+configuredTax.code+" مصنف "+configuredTax.taxType+" ويجب ربطه بحساب ضرائب الخصم والإضافة 2120 وليس الحساب "+tax.accountCode+".");
+  if(configuredTax&&configuredTax.taxType==="vat_input"&&String(tax.accountCode)!=="1410")errors.push("ضريبة المدخلات يجب أن توجه إلى حساب 1410 وليس "+tax.accountCode+".");
+  if(configuredTax&&configuredTax.taxType==="vat_output"&&String(tax.accountCode)!=="2110")errors.push("ضريبة المخرجات يجب أن توجه إلى حساب 2110 وليس "+tax.accountCode+".");
  });
  try{invoiceTotals(inv);}catch(error){errors.push(String(error.message||error));}
  return [...new Set(errors)];
@@ -1574,6 +1593,7 @@ export async function handleFinancialRequest(ctx){
   const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{};
   next.lines=normalizeJournalAnalyticLines(next.lines,chart);
   const validation=validateJournal(next,chart,centers);
+  validation.errors.push(...await financingPartyRegistryErrors(next.lines,adminRead));
   next.balance=validation.balance;next.errors=validation.errors;
   if(previous.sourceType==="legacyImport"&&body.acknowledgeSourceWarnings===true){
    next.sourceWarningsAcknowledgedAt=now;next.sourceWarningsAcknowledgedBy=claims.sub;
@@ -1820,6 +1840,7 @@ export async function handleFinancialRequest(ctx){
    const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{};
    j.lines=normalizeJournalAnalyticLines(j.lines,chart);
    const v=validateJournal(j,chart,centers);
+   v.errors.push(...await financingPartyRegistryErrors(j.lines,adminRead));
    if(previous&&previous.status==="posted"){
     if(v.errors.length)throw new Error(v.errors.join("؛ "));
     j.status="posted";j.approvedAt=previous.approvedAt||now;j.approvedBy=previous.approvedBy||claims.sub;j.postedAt=now;j.updatedAt=now;j.updatedBy=claims.sub;
@@ -3099,6 +3120,7 @@ await adminPatch(u);
   if(doc.type==="journal"){
    if(doc.sourceType==="legacyImport"&&(doc.warnings||[]).length>0&&!doc.sourceWarningsAcknowledgedAt)throw new Error("يجب مراجعة ملاحظات استيراد الأرشيف وتأكيد معالجتها قبل اعتماد القيد.");
    const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{},v=validateJournal(doc,chart,centers);
+   v.errors.push(...await financingPartyRegistryErrors(doc.lines,adminRead));
    if(v.errors.length)throw new Error(v.errors.join("؛ "));
    if(doc.sourceType==="journalRevision"&&doc.revisionOf){
     const originalId=id(doc.revisionOf),original=await adminRead("journals/"+originalId);
