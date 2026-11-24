@@ -464,7 +464,7 @@ test("employee advance and custody registries are server-validated and protected
   assert.match(apiSource, /employeeUid=id\(item\.employeeUid\),employee=employeeUid&&adminReadRoot\?await adminReadRoot\("users\/"\+employeeUid\):null/);
   assert.match(apiSource, /يوجد كود نشط لهذا الموظف بالفعل/);
   assert.match(apiSource, /kind==="employeeAdvances"\|\|kind==="employeeCustodies"/);
-  assert.match(apiSource, /partyLedger\/"+subledgerType\+"\/"+employeeUid/);
+  assert.match(apiSource, /adminRead\("partyLedger\/"\+subledgerType\+"\/"\+employeeUid\)/);
   assert.match(apiSource, /findMasterReferences\(ctx,kind,code\)/);
   assert.match(source, /employeeUid:\['employeeuid'/);
 });
