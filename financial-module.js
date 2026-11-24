@@ -1071,7 +1071,7 @@ const transferPartnerCustodyMovement=async(account,transaction)=>{
  try{const result=await api('','POST',{action:'transferPartnerCurrentAccount',ownerUid:account.uid,transactionId:transaction.id,direction:'toCustody'});setNotice('تم إرسال طلب إعادة الحركة إلى العهدة للمراجعة. لن يتغير الرصيد إلا بعد الاعتماد. رقم القيد: '+(result.journalNumber||result.journalId)+'.');setPartnerCurrentAttachmentView(null);await loadPartnerCurrentAccounts(true);await refresh();}
  catch(error){setError(error.message||String(error));}finally{setBusy(false);}
 };
-React.useEffect(()=>{if(tab==='partnerCurrent'&&canFinance('partyStatements','view'))void loadPartnerCurrentAccounts();if(tab==='openingBalances'&&posting.some(account=>account.subledgerType==='partnerCurrentAccount'))void loadPartnerCurrentAccounts(true);},[tab,currentUser&&currentUser.uid]);
+React.useEffect(()=>{if(tab==='partnerCurrent'&&canFinance('partyStatements','view'))void loadPartnerCurrentAccounts();if(tab==='openingBalances'&&posting.some(account=>['partnerCurrentAccount','financingParty'].includes(account.subledgerType)))void loadPartnerCurrentAccounts(true);},[tab,currentUser&&currentUser.uid]);
 const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
  const centers=rows(master.costCenters),activeCenters=centers.filter(x=>x.active!==false);
  const items=rows(master.items),activeItems=items.filter(x=>x.active!==false);
@@ -1175,7 +1175,12 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
  const expenseCategoryDifference=otherExpenses-operatingExpenses-administrativeExpenses-financeExpenses-unclassifiedExpenses;
  const grossProfit=revenue-costOfSales,profit=grossProfit-otherExpenses;
  const cumulativeRevenue=sumFrom(balanceTrial,'revenue'),cumulativeExpenses=sumFrom(balanceTrial,'expense'),accumulatedProfit=cumulativeRevenue-cumulativeExpenses;
- const assets=sumFrom(balanceTrial,'asset'),liabilities=balanceTrial.filter(x=>x.account.type==='liability').reduce((sum,x)=>sum+x.amount.credit-x.amount.debit,0);
+ const vatInputBalance=balanceTrial.find(row=>String(row.account.code)==="1410");
+ const vatOutputBalance=balanceTrial.find(row=>String(row.account.code)==="2110");
+ const vatNetPosition=(vatInputBalance?n(vatInputBalance.amount.debit)-n(vatInputBalance.amount.credit):0)+(vatOutputBalance?n(vatOutputBalance.amount.debit)-n(vatOutputBalance.amount.credit):0);
+ const vatNetReceivable=Math.max(0,vatNetPosition),vatNetPayable=Math.max(0,-vatNetPosition);
+ const assets=sumFrom(balanceTrial.filter(row=>String(row.account.code)!=="1410"),'asset')+vatNetReceivable;
+ const liabilities=balanceTrial.filter(x=>x.account.type==='liability'&&String(x.account.code)!=="2110").reduce((sum,x)=>sum+x.amount.credit-x.amount.debit,0)+vatNetPayable;
  const equity=balanceTrial.filter(x=>x.account.type==='equity').reduce((sum,x)=>sum+x.amount.credit-x.amount.debit,0)+accumulatedProfit;
  const cashCodeSet=new Set(['1110','1120',...rows(master.bankAccounts).map(x=>String(x.accountCode||x.code||''))]);
  const cashAccounts=balanceTrial.filter(x=>cashCodeSet.has(String(x.account.code))||x.account.isCash);
@@ -1238,9 +1243,11 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
  const searchablePicker=(label,value,onChange,options,searchKey)=>{
   const list=Array.isArray(options)?options:[];
   const selected=list.find(item=>String(item.value)===String(value||'')),hasQuery=Object.prototype.hasOwnProperty.call(journalPickerSearch,searchKey);
-  const query=hasQuery?String(journalPickerSearch[searchKey]||''):String(selected&&selected.label||'');
-  const opened=Boolean(journalPickerOpen[searchKey]),needle=normalizeMatch(query);
-  const matches=list.filter(item=>!needle||normalizeMatch(item.label).includes(needle)).slice(0,10);
+  const opened=Boolean(journalPickerOpen[searchKey]);
+  const query=opened?(hasQuery?String(journalPickerSearch[searchKey]||''):''):String(selected&&selected.label||'');
+  const needle=normalizeMatch(query),addItem=list.find(item=>String(item.value)==='__quick_add__');
+  const ordinaryMatches=list.filter(item=>String(item.value)!=='__quick_add__'&&(!needle||normalizeMatch(item.label).includes(needle))).slice(0,addItem?9:10);
+  const matches=addItem?ordinaryMatches.concat([addItem]):ordinaryMatches;
   const choose=item=>{
    onChange(item.value);
    setJournalPickerSearch(old=>Object.assign({},old,{[searchKey]:String(item.label||'')}));
@@ -1318,11 +1325,12 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
    setQuery(raw);
    const exact=findExactParty(raw);
    if(exact){onChange(exact);setQuery(partyName(exact));}
-   else if(value)onChange({});
   };
   return h('div',{className:'block text-sm font-bold text-slate-700 min-w-0'},label,
    h('input',{type:'search',value:query||'',onChange:e=>updateSearch(e.target.value),onBlur:e=>{
-    if(!showResults){const exact=findExactParty(e.target.value);if(exact){onChange(exact);setQuery(partyName(exact));}}
+    const exact=findExactParty(e.target.value);
+   if(exact){onChange(exact);setQuery(partyName(exact));}
+   else if(value){const prior=(list||[]).find(p=>String(p.code||p.id)===String(value));if(prior)setQuery(partyName(prior));}
    },onKeyDown:e=>{
     if(e.key==='Enter'&&!showResults){e.preventDefault();const exact=findExactParty(e.currentTarget.value);if(exact){onChange(exact);setQuery(partyName(exact));}}
    },placeholder:'ابحث بالاسم أو الكود أو رقم التسجيل الضريبي',className:'mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal bg-white'}),
@@ -1522,7 +1530,7 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
   }catch(e){setError(e.message||String(e));}finally{setBusy(false);}
  };
  const activeAnalyticUsers=(userDirectory||[]).filter(user=>user&&user.uid&&["active","نشط","مفعل","enabled"].includes(String(user.status||"").toLowerCase()));
- const analyticPartyLabel=type=>({customer:"العميل",vendor:"المورد",employeeCustody:"الموظف صاحب العهدة",employeeAdvance:"الموظف صاحب السلفة",partnerCurrentAccount:"الشريك"}[type]||"الطرف التحليلي");
+ const analyticPartyLabel=type=>({customer:"العميل",vendor:"المورد",employeeCustody:"الموظف صاحب العهدة",employeeAdvance:"الموظف صاحب السلفة",partnerCurrentAccount:"الشريك",financingParty:"جهة التمويل / الدائن"}[type]||"الطرف التحليلي");
  const analyticPartyOptions=(type,accountCode,currentPartyId)=>{
   let records=[];
   if(type==="customer")records=activeClients.map(item=>({value:String(item.code||item.id),label:partyName(item)+" ("+(item.code||item.id)+")"}));
@@ -1532,6 +1540,10 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
    records=(partnerCurrentAccounts||[]).filter(item=>item&&item.uid&&(!item.accountCode||String(item.accountCode)===String(accountCode))).map(item=>({value:String(item.uid),label:(item.partnerName||item.name||item.username||item.uid)+" ("+item.uid+")"}));
    const partnerIdentity=String(accountCode)==="3202"?user=>String(user.email||"").toLowerCase()==="thabetrabea@gmail.com"||String(user.username||"").toLowerCase()==="thabetrabea":String(accountCode)==="3201"?user=>String(user.username||"").toLowerCase()==="haitham ibrahim mahmoud":()=>false;
    activeAnalyticUsers.filter(partnerIdentity).forEach(user=>records.push({value:String(user.uid),label:(user.fullName||user.username||user.email||user.uid)+" ("+user.uid+")"}));
+  }else if(type==="financingParty"){
+   records=activeVendors.map(item=>({value:String(item.code||item.id),label:"جهة ممولة: "+partyName(item)+" ("+(item.code||item.id)+")"}));
+   (partnerCurrentAccounts||[]).filter(item=>item&&item.uid).forEach(item=>records.push({value:String(item.uid),label:"شريك: "+(item.partnerName||item.name||item.username||item.uid)+" ("+item.uid+")"}));
+   activeAnalyticUsers.forEach(user=>records.push({value:String(user.uid),label:"مستخدم / ممول: "+(user.fullName||user.username||user.email||user.uid)+" ("+user.uid+")"}));
   }
   const unique=[],seen=new Set();
   records.forEach(item=>{if(item.value&&!seen.has(String(item.value))){seen.add(String(item.value));unique.push(item);}});
@@ -1547,6 +1559,10 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
    records=(partnerCurrentAccounts||[]).filter(item=>item&&item.uid&&(!item.accountCode||String(item.accountCode)===String(accountCode))).map(item=>({value:String(item.uid),label:(item.partnerName||item.name||item.username||item.uid)+" ("+item.uid+")"}));
    const partnerIdentity=String(accountCode)==="3202"?user=>String(user.email||"").toLowerCase()==="thabetrabea@gmail.com"||String(user.username||"").toLowerCase()==="thabetrabea":String(accountCode)==="3201"?user=>String(user.username||"").toLowerCase()==="haitham ibrahim mahmoud":()=>false;
    (userDirectory||[]).filter(user=>user&&user.uid&&partnerIdentity(user)).forEach(user=>records.push({value:String(user.uid),label:(user.fullName||user.username||user.email||user.uid)+" ("+user.uid+")"}));
+  }else if(type==="financingParty"){
+   records=allVendors.map(item=>({value:String(item.code||item.id),label:"جهة ممولة: "+partyName(item)+" ("+(item.code||item.id)+")"}));
+   (partnerCurrentAccounts||[]).filter(item=>item&&item.uid).forEach(item=>records.push({value:String(item.uid),label:"شريك: "+(item.partnerName||item.name||item.username||item.uid)+" ("+item.uid+")"}));
+   (userDirectory||[]).filter(user=>user&&user.uid).forEach(user=>records.push({value:String(user.uid),label:"مستخدم / ممول: "+(user.fullName||user.username||user.email||user.uid)+" ("+user.uid+")"}));
   }
   const unique=[],seen=new Set();
   records.forEach(item=>{if(item.value&&!seen.has(String(item.value))){seen.add(String(item.value));unique.push(item);}});
@@ -2841,7 +2857,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
     )):null,
    selected.type==='invoice'&&(canFinance("review","edit")||canFinance("invoices","edit")||(selected.createdBy===currentUser.uid&&canFinance("invoices","add")))?panel(selected.attachmentUploadStatus==='pending'?'المرفق لم يتم رفعه بعد':'إضافة مرفق للفاتورة',selected.attachmentUploadError||'يمكنك رفع صورة أو ملف الفاتورة وربطه بالمستند من هنا.',h('label',{className:'inline-flex flex-col gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-sm font-bold cursor-pointer'},'اختيار صورة أو ملف وإرفاقه',h('input',{type:'file',accept:'image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt',disabled:busy,className:'text-xs font-normal',onChange:e=>{const file=e.target.files&&e.target.files[0];if(file)void retryInvoiceAttachment(file,selected.id);e.target.value='';}}))):null,
    Object.keys(selected.attachments||{}).length?panel('مرفقات المستند','الملفات محفوظة في مساحة المرفقات المالية المرتبطة بالفاتورة.',table(['اسم الملف','النوع','الحجم','الإجراء'],Object.values(selected.attachments||{}).map(function(attachment){return h('tr',{key:attachment.id,className:'border-t'},h('td',{className:'p-2'},attachment.fileName||'—'),h('td',{className:'p-2'},attachment.mimeType||'—'),h('td',{className:'p-2'},fmt((Number(attachment.size)||0)/1024)+' KB'),h('td',{className:'p-2'},h('div',{className:'flex flex-wrap gap-1'},button('تحميل المرفق',function(){downloadFinancialAttachment(selected.id,attachment);},'muted'),canDeleteStatementAttachment({entityType:'financial',entityId:selected.id})?button('حذف',()=>void deleteStatementAttachment(Object.assign({},attachment,{entityType:'financial',entityId:selected.id}),selected.id),'danger',busy):null)));}))) : null,
-   selected.type==='bankLine'?select('الحساب المقابل',offset,v=>setOffset(v),posting.map(a=>({value:a.code,label:a.code+' — '+a.name}))):null,
+   selected.type==='bankLine'?selectWithAdd('الحساب المقابل',offset,v=>setOffset(v),posting.map(a=>({value:a.code,label:a.code+' — '+a.name})),'chartOfAccounts',{type:'expense',nature:'debit',parentCode:'6'},'review-bank-offset-'+String(selected.id)):null,
    selected.type==='bankLine'?canFinance("bank","edit")?button('حفظ الحساب المقابل',async()=>{try{await api('', 'POST',{action:'setBankOffset',id:selected.id,offsetAccountCode:offset});setNotice('تم حفظ الحساب المقابل');await refreshReviewQueue(true);}catch(e){setError(e.message);}}):null:null,
    h('div',{className:'flex flex-wrap gap-2'},
      canFinance("review","approve")?button('اعتماد وترحيل',()=>reviewAction(selected.status==='duplicate_review'?'approveDuplicate':'approve'),'success',busy):null,
@@ -3617,7 +3633,10 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
   );
  });
  const expenseSourceDifference=otherExpenses-expenseSourceTotal;
- const balanceAssetRows=statementRowsWithBalance(account=>account.type==='asset'&&!account.isGroup,'debit',true);
+ const vatNetBalanceSheetRow=vatNetReceivable>0.005
+  ?h('tr',{key:'vat-net-asset',className:'border-t bg-slate-50 font-bold'},h('td',{className:'p-2'},'صافي ضريبة القيمة المضافة (مدخلات ومخرجات وسدادات)'),h('td',{className:'p-2 text-end'},fmt(vatNetReceivable)),h('td',{className:'p-2 text-end'},fmt(0)),h('td',{className:'p-2 text-end font-bold'},fmt(vatNetReceivable)+' مدين'))
+  :null;
+ const balanceAssetRows=statementRowsWithBalance(account=>account.type==='asset'&&!account.isGroup&&String(account.code)!=="1410",'debit',true).concat(vatNetBalanceSheetRow?[vatNetBalanceSheetRow]:[]);
 
  const inventoryStatementRows=(()=>{
   const balanceTree=master.inventory&&master.inventory.balances||{},names=new Map(items.map(item=>[String(item.code),item.name]));
@@ -3638,7 +3657,10 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
   button("فتح حركة المخزن لتصحيح الرصيد",()=>setTab("inventoryMovements"),"muted",!canFinance("inventory","view"))
  ));
 
- const balanceLiabilityRows=statementRowsWithBalance(account=>account.type==='liability'&&!account.isGroup,'credit',true);
+ const vatNetLiabilitySheetRow=vatNetPayable>0.005
+  ?h('tr',{key:'vat-net-liability',className:'border-t bg-slate-50 font-bold'},h('td',{className:'p-2'},'صافي ضريبة القيمة المضافة (مدخلات ومخرجات وسدادات)'),h('td',{className:'p-2 text-end'},fmt(0)),h('td',{className:'p-2 text-end'},fmt(vatNetPayable)),h('td',{className:'p-2 text-end font-bold'},fmt(vatNetPayable)+' دائن'))
+  :null;
+ const balanceLiabilityRows=statementRowsWithBalance(account=>account.type==='liability'&&!account.isGroup&&String(account.code)!=="2110",'credit',true).concat(vatNetLiabilitySheetRow?[vatNetLiabilitySheetRow]:[]);
  const balanceEquityRows=statementRowsWithBalance(account=>account.type==='equity'&&!account.isGroup,'credit',true);
  const incomeStatementContent=()=>h('div',{className:'space-y-3'},
   h('div',{className:'grid grid-cols-2 md:grid-cols-4 gap-2'},
@@ -3934,10 +3956,9 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('div',{className:'rounded-2xl border bg-slate-50 p-3 space-y-2'},
    h('div',{className:'flex flex-wrap justify-between items-center gap-2'},h('p',{className:'text-xs text-slate-500'},'عملة العرض: جنيه مصري · الفترة: '+period.from+' إلى '+period.to+' · بداية الدفاتر: '+(accountingStartMonth||'غير محددة')),button('تصدير جميع القوائم إلى ملف Excel واحد',()=>{const node=document.querySelector('[data-pest-export-scope="all-statements"]');exportSectionContent(node,'excel');},'success',!canExportFinancialReport())),
    h('div',{className:'grid md:grid-cols-4 gap-3'},field('من شهر',period.from,v=>setPeriod(o=>Object.assign({},o,{from:v})),'month'),field('إلى شهر',period.to,v=>setPeriod(o=>Object.assign({},o,{to:v})),'month'),select('القائمة المالية',report,v=>setReport(v),[{value:'trial',label:'ميزان المراجعة التفصيلي'},{value:'income',label:'قائمة الدخل التفصيلية'},{value:'balance',label:'قائمة المركز المالي التفصيلية'},{value:'cashflow',label:'قائمة التدفقات النقدية'},{value:'ledger',label:'دفتر الأستاذ العام'}]),button('تحديث البيانات',loadPeriod,'primary'))),
+  trialBalanceTotals,
   fullStatementsExportNode(),
-  criticalAccountIntegrityPanel(),
-  controlSubledgerIntegrityPanel(),
-  report==='trial'?h('div',{className:'space-y-3'},trialIntegrityNote,panel('ميزان المراجعة — حسابات تفصيلية وتجميعية','الافتتاحي + حركة الفترة = الختامي. الأرصدة التجميعية تتضمن الأرصدة التابعة ولا تدخل مرتين في الإجماليات.',table(['كود','الحساب (اضغط لفتح الكشف)','افتتاحي مدين','افتتاحي دائن','حركة مدين','حركة دائن','ختامي مدين','ختامي دائن'],trialBalanceRows)),trialBalanceTotals):null,
+  report==='trial'?h('div',{className:'space-y-3'},panel('ميزان المراجعة — حسابات تفصيلية وتجميعية','الافتتاحي + حركة الفترة = الختامي. الأرصدة التجميعية تتضمن الأرصدة التابعة ولا تدخل مرتين في الإجماليات.',table(['كود','الحساب (اضغط لفتح الكشف)','افتتاحي مدين','افتتاحي دائن','حركة مدين','حركة دائن','ختامي مدين','ختامي دائن'],trialBalanceRows))):null,
   report==='income'?incomeStatementContent():null,
   report==='balance'?balanceSheetContent():null,
   report==='cashflow'?cashflowContent():null,
@@ -3960,9 +3981,17 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
    const user=(userDirectory||[]).find(item=>String(item.uid||'')===key);
    return user?(user.fullName||user.username||user.email||key):key;
   }
+  if(type==='financingParty'){
+   const vendor=allVendors.find(item=>String(item.code||item.id)===key);
+   if(vendor)return partyName(vendor);
+   const partner=partnerCurrentAccounts.find(item=>String(item.uid||'')===key);
+   if(partner)return partner.partnerName||partner.username||key;
+   const user=(userDirectory||[]).find(item=>String(item.uid||'')===key);
+   return user?(user.fullName||user.username||user.email||key):key;
+  }
   return key;
  };
- const accountAnalysisTypeLabel=type=>({customer:'عميل',vendor:'مورد',employeeCustody:'موظف صاحب عهدة',employeeAdvance:'موظف صاحب سلفة',partnerCurrentAccount:'شريك'}[type]||type||'طرف تحليلي');
+ const accountAnalysisTypeLabel=type=>({customer:'عميل',vendor:'مورد',employeeCustody:'موظف صاحب عهدة',employeeAdvance:'موظف صاحب سلفة',partnerCurrentAccount:'شريك',financingParty:'جهة تمويل / دائن'}[type]||type||'طرف تحليلي');
  const accountAnalysisSourceLabel=type=>({manual:'قيد يدوي',purchaseInvoice:'فاتورة مشتريات',salesInvoice:'فاتورة مبيعات',cash:'حركة خزينة',bank:'حركة بنكية',bankImport:'استيراد كشف بنك',custody:'حركة عهدة',projectEvent:'حدث مشروع',inventory:'حركة مخزون'}[type]||type||'مصدر غير محدد');
  const accountAnalysisData=accountAnalysisCode?statementAccountByCode.get(String(accountAnalysisCode)):null;
  const accountAnalysisLines=accountAnalysisData?balanceFlat.filter(line=>accountAnalysisData.codes.includes(String(line.accountCode))).slice().sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))||String(a.journalId||'').localeCompare(String(b.journalId||''))||n(a.lineNo)-n(b.lineNo)):[];
@@ -4050,7 +4079,7 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   const totalDifference=accountAnalysisDistributedNet-accountAnalysisTotalNet;
   return panel('تحليل الحسابات','اختر أي حساب من دليل الحسابات لعرض رصيده حتى نهاية الشهر المحدد، ثم تحليل مصادر هذا الرصيد. التوزيع يُبنى على القيود المرحلة فقط، وتظهر الحركات غير المرتبطة بطرف أو مركز تكلفة تحت تصنيف واضح.',h('div',{className:'space-y-3'},
    h('div',{className:'grid md:grid-cols-4 gap-3 items-end'},
-    select('الحساب المحاسبي',accountAnalysisCode,value=>{setAccountAnalysisCode(value);setAccountAnalysisGroupKey('');setAccountAnalysisSearch('');},[{value:'',label:'اختر الحساب'}].concat(accountOptions)),
+    selectWithAdd('الحساب المحاسبي',accountAnalysisCode,value=>{setAccountAnalysisCode(value);setAccountAnalysisGroupKey('');setAccountAnalysisSearch('');},[{value:'',label:'اختر الحساب'}].concat(accountOptions),'chartOfAccounts',{type:'asset',nature:'debit',parentCode:'1'},'account-analysis-account'),
     field('من شهر',period.from,value=>setPeriod(old=>Object.assign({},old,{from:value})),'month'),
     field('حتى شهر',period.to,value=>setPeriod(old=>Object.assign({},old,{to:value})),'month'),
     button('تحديث التحليل',loadPeriod,'primary',busy)
@@ -4536,7 +4565,7 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
    fields.push(select('نوع الحساب',quickAddForm.type,function(v){change('type',v);},[{value:'asset',label:'أصول'},{value:'liability',label:'التزامات'},{value:'equity',label:'حقوق ملكية'},{value:'revenue',label:'إيرادات'},{value:'expense',label:'مصروفات'}]));
    fields.push(select('الطبيعة',quickAddForm.nature,function(v){change('nature',v);},[{value:'debit',label:'مدين'},{value:'credit',label:'دائن'}]));
    fields.push(select('الحساب الأب',quickAddForm.parentCode,function(v){change('parentCode',v);},[{value:'',label:'بدون'}].concat(accounts.filter(function(x){return x.isGroup;}).map(function(x){return {value:x.code,label:x.code+' — '+x.name};}))));
-   fields.push(select('تحليل الطرف',quickAddForm.subledgerType||'',function(v){change('subledgerType',v);},[{value:'',label:'بدون'},{value:'customer',label:'عميل'},{value:'vendor',label:'مورد'},{value:'employeeCustody',label:'موظف صاحب عهدة'},{value:'employeeAdvance',label:'موظف صاحب سلفة'},{value:'partnerCurrentAccount',label:'شريك — جاري الشركاء'}]));
+   fields.push(select('تحليل الطرف',quickAddForm.subledgerType||'',function(v){change('subledgerType',v);},[{value:'',label:'بدون'},{value:'customer',label:'عميل'},{value:'vendor',label:'مورد'},{value:'employeeCustody',label:'موظف صاحب عهدة'},{value:'employeeAdvance',label:'موظف صاحب سلفة'},{value:'partnerCurrentAccount',label:'شريك — جاري الشركاء'},{value:'financingParty',label:'جهة تمويل / دائن — شريك أو جهة خارجية'}]));
    fields.push(h('label',{className:'inline-flex items-center gap-2 text-sm'},h('input',{type:'checkbox',checked:quickAddForm.isGroup,onChange:function(e){change('isGroup',e.target.checked);}}),'حساب تجميعي'));
   }
   if(quickAddType==='costCenters'){
