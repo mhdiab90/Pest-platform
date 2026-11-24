@@ -590,7 +590,7 @@ test("supplier linking, delegated invoice completion, staff custody and advances
   assert.equal(read("sentAssignments/test-admin/"+latestAssignment).status,"returned_to_creator");
   claims.sub=previousUid;profile.role=previousRole;profile.fullName=previousName;
   const senderList=await invoke("GET","?resource=assignments");
-  assert.ok(senderList.sentItems.some(item=>item.id===latestAssignment&&item.status==="returned_to_creator"));
+  assert.ok(senderList.sentItems.some(item=>item.id===latestAssignment&&item.status==="returned_to_creator"),JSON.stringify({raw:read("sentAssignments/test-admin/"+latestAssignment),sentItems:senderList.sentItems.map(item=>({id:item.id,status:item.status,invoiceId:item.invoiceId,createdBy:item.createdBy,deletedAt:item.deletedAt}))}));
   const archivedOutgoing=await invoke("POST","",{action:"manageInvoiceAssignment",mode:"archive",scope:"sent",assignmentId:latestAssignment});
   assert.equal(archivedOutgoing.archived,true);
   const senderArchive=await invoke("GET","?resource=assignments");
