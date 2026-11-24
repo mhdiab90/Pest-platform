@@ -409,7 +409,7 @@ function FinanceModule(props){
  };
 
  const financeTabAreas={legacyImport:"journal",inventoryMovements:'inventory',overview:"overview",journal:"journal",openingBalances:"journal",review:"review",invoices:"invoices",assignments:"assignments",partyStatements:"partyStatements",partnerCurrent:"partyStatements",masters:"masters",accounts:"accounts",centers:"centers",inventory:"inventory",cash:"cash",bank:"bank",tax:"tax",reports:"reports",accountAnalysis:"reports",accountReview:"reports"};
- const financeMasterAreas={parties:"masters",chartOfAccounts:"accounts",costCenters:"centers",items:"inventory",itemGroups:"inventory",warehouses:"inventory",bankAccounts:"bank",taxCodes:"tax"};
+ const financeMasterAreas={parties:"masters",financingParties:"masters",chartOfAccounts:"accounts",costCenters:"centers",items:"inventory",itemGroups:"inventory",warehouses:"inventory",bankAccounts:"bank",taxCodes:"tax"};
  const canFinance=(area,action="view")=>{
   if(currentUser&&currentUser.role==="admin")return true;
   if(typeof permissionCheck==="function")return permissionCheck("financial_"+area,action);
@@ -428,6 +428,7 @@ function FinanceModule(props){
  const [period,setPeriod]=React.useState({from:today().slice(0,7),to:today().slice(0,7)}),[report,setReport]=React.useState('trial');
  const [assignmentItems,setAssignmentItems]=React.useState([]),[sentAssignmentItems,setSentAssignmentItems]=React.useState([]),[selectedAssignmentId,setSelectedAssignmentId]=React.useState(''),[assignmentLines,setAssignmentLines]=React.useState([]),[assignmentHeader,setAssignmentHeader]=React.useState({}),[assignmentBusy,setAssignmentBusy]=React.useState(false),[assignmentInstruction,setAssignmentInstruction]=React.useState('مراجعة تصنيف البنود وتحديد الأكواد المخزنية أو حسابات المصروفات'),[assignmentUserUid,setAssignmentUserUid]=React.useState(''),[forwardUserUid,setForwardUserUid]=React.useState(''),[forwardInstruction,setForwardInstruction]=React.useState('استكمال ومراجعة بيانات الفاتورة'),[selectedAssignmentSource,setSelectedAssignmentSource]=React.useState('received'),[assignmentEditInstruction,setAssignmentEditInstruction]=React.useState('');
  const [selected,setSelected]=React.useState(null),[offset,setOffset]=React.useState('6100');
+ const [integrityAudit,setIntegrityAudit]=React.useState(null),[integrityAuditBusy,setIntegrityAuditBusy]=React.useState(false);
  const [invoiceDecisionDoc,setInvoiceDecisionDoc]=React.useState(null);
  const [quickAddType,setQuickAddType]=React.useState(''),[quickAddTarget,setQuickAddTarget]=React.useState(null),[quickAddParent,setQuickAddParent]=React.useState(null),[quickAddOriginalCode,setQuickAddOriginalCode]=React.useState(''),[quickAddForm,setQuickAddForm]=React.useState({code:'',name:'',active:true,type:'expense',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',unit:'قطعة',groupCode:'',groupType:'other',itemType:'stock',version:'',warehouseCode:'default',projectCode:'',taxType:'vat_output',rate:'0',effectiveFrom:today(),partyType:'customer',phone:'',taxNumber:'',email:'',address:''});
  const [masterForm,setMasterForm]=React.useState({kind:'chartOfAccounts',code:'',name:'',type:'asset',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',unit:'قطعة',groupCode:'',groupType:'other',itemType:'stock',version:'',projectCode:'',warehouseCode:'default',taxType:'vat',rate:'0',effectiveFrom:today()});
@@ -1005,14 +1006,8 @@ function FinanceModule(props){
   setBusy(true);setError('');
   try{
    let entries=[];
-   if(partyStatement.type==="financingParty"){
-    // Client-side compatibility while older Worker deployments are being upgraded.
-    // Balances are already loaded from the posted GL journal index.
-    entries=balanceFlat.filter(line=>String(line.partyType||"")==="financingParty"&&String(line.partyId||"")===String(partyStatement.id));
-   }else{
-    const result=await api('?resource=party&type='+encodeURIComponent(partyStatement.type)+'&id='+encodeURIComponent(partyStatement.id));
-    Object.values(result.entries||{}).forEach(function(periodRows){Object.values(periodRows||{}).forEach(function(entry){entries.push(entry);});});
-   }
+   const result=await api('?resource=party&type='+encodeURIComponent(partyStatement.type)+'&id='+encodeURIComponent(partyStatement.id));
+   Object.values(result.entries||{}).forEach(function(periodRows){Object.values(periodRows||{}).forEach(function(entry){entries.push(entry);});});
    entries.sort(function(a,b){return String(a.date||'').localeCompare(String(b.date||''))||String(a.journalId||'').localeCompare(String(b.journalId||''));});
    setPartyRows(entries);
    void loadStatementAttachments(entries);
@@ -1083,7 +1078,7 @@ React.useEffect(()=>{if(tab==='partnerCurrent'&&canFinance('partyStatements','vi
 const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
  const centers=rows(master.costCenters),activeCenters=centers.filter(x=>x.active!==false);
  const items=rows(master.items),activeItems=items.filter(x=>x.active!==false);
- const financialParties=rows(master.parties);
+ const financialParties=rows(master.parties),registeredFinancingParties=rows(master.financingParties);
  const mergePartyRows=(base,type)=>{const map=new Map((base||[]).map(p=>[String(p.code||p.id),p]));financialParties.filter(p=>p.partyType===type).forEach(p=>map.set(String(p.code||p.id),p));return Array.from(map.values()).filter(p=>p&&(p.code||p.id));};
  const allClients=mergePartyRows(clients,'customer'),allVendors=mergePartyRows(vendors,'vendor');
  const activeClients=allClients.filter(p=>p.active!==false),activeVendors=allVendors.filter(p=>p.active!==false);
@@ -1109,6 +1104,8 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
   if(kind==='parties'){
    const vendor=value.partyType==='vendor';
    records=vendor?allVendors:allClients;fallbackPrefix=vendor?'VND':'CUS';
+  }else if(kind==='financingParties'){
+   records=registeredFinancingParties;fallbackPrefix='FIN';
   }else if(kind==='items'){
    records=items;fallbackPrefix=value.groupCode||'ITM';
    if(value.groupCode)Object.assign(options,{groupBy:'groupCode',groupValue:value.groupCode});
@@ -1132,7 +1129,11 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
  const normalizeMatch=v=>String(v||'').toLowerCase().replace(/[\s\-_.،,]+/g,'').trim();
 
  const updateJ=(i,k,v)=>setJournal(o=>Object.assign({},o,{lines:o.lines.map((x,j)=>j===i?Object.assign({},x,{[k]:v}):x)}));
- const updateJournalLineAccount=(index,accountCode)=>setJournal(old=>Object.assign({},old,{lines:old.lines.map((line,i)=>{if(i!==index)return line;const currentAccount=posting.find(item=>String(item.code)===String(line.accountCode)),nextAccount=posting.find(item=>String(item.code)===String(accountCode)),currentType=currentAccount&&currentAccount.subledgerType||line.partyType||"",nextType=nextAccount&&nextAccount.subledgerType||"",keepParty=Boolean(nextType&&currentType===nextType&&line.partyId);return Object.assign({},line,{accountCode,partyType:nextType,partyId:keepParty?line.partyId:""});})}));
+ const matchFinancingPartyFromText=value=>{
+  const haystack=normalizeMatch(value);if(!haystack)return null;
+  return registeredFinancingParties.find(item=>item&&item.active!==false&&normalizeMatch(partyName(item)).length>=3&&haystack.includes(normalizeMatch(partyName(item))))||null;
+ };
+ const updateJournalLineAccount=(index,accountCode)=>setJournal(old=>Object.assign({},old,{lines:old.lines.map((line,i)=>{if(i!==index)return line;const currentAccount=posting.find(item=>String(item.code)===String(line.accountCode)),nextAccount=posting.find(item=>String(item.code)===String(accountCode)),currentType=currentAccount&&currentAccount.subledgerType||line.partyType||"",nextType=nextAccount&&nextAccount.subledgerType||"",keepParty=Boolean(nextType&&currentType===nextType&&line.partyId),matched=nextType==="financingParty"?matchFinancingPartyFromText([line.description,old.description,old.reference].join(" ")):null;return Object.assign({},line,{accountCode,partyType:nextType,partyId:matched?String(matched.code||matched.id):keepParty?line.partyId:""});})}));
  const updateI=(i,k,v)=>setInvoice(o=>Object.assign({},o,{lines:o.lines.map((x,j)=>j===i?Object.assign({},x,{[k]:v}):x)}));
  const updateInvoiceOtherTax=(i,k,v)=>setInvoice(o=>Object.assign({},o,{otherTaxes:(o.otherTaxes||[]).map((x,j)=>j===i?Object.assign({},x,{[k]:v}):x)}));
  const jDebit=journal.lines.reduce((s,x)=>s+n(x.debit),0),jCredit=journal.lines.reduce((s,x)=>s+n(x.credit),0);
@@ -1270,10 +1271,19 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
   if(next==='__quick_add__')openQuickAdd(kind,onChange,defaults);
   else onChange(next);
  },(options||[]).concat([{value:'__quick_add__',label:'＋ إضافة كود جديد'}]),searchKey);
- const analyticPickerWithAdd=(label,type,value,onChange,options,searchKey)=>{
-  const partyKind=type==="customer"?"customer":(type==="vendor"||type==="financingParty")?"vendor":"";
-  if(!partyKind)return searchablePicker(label,value,onChange,options,searchKey);
-  const addLabel=partyKind==="vendor"?"＋ إضافة جهة ممولة / مورد":"＋ إضافة عميل";
+ const extractFinancingPartyName=value=>{
+  const raw=String(value||"").trim();
+  const match=raw.match(/(?:جهة التمويل|الممول|المموّل|تمويل من|تمويل|من السيد|من شركة|من شركه)\s*[:：\-]?\s*([^،,;؛\n\|]+)/i);
+  return String(match&&match[1]||raw).replace(/^(?:السيد|الأستاذ|الاستاذ|شركة|شركه)\s+/,"").replace(/[.؛،,]+$/,"").trim().slice(0,180);
+ };
+ const analyticPickerWithAdd=(label,type,value,onChange,options,searchKey,description)=>{
+  if(type==="financingParty")return searchablePicker(label,value,next=>{
+   if(next==="__quick_add__"){openQuickAdd("financingParties",onChange,{name:extractFinancingPartyName(description)});return;}
+   onChange(next);
+  },(options||[]).concat([{value:"__quick_add__",label:"＋ إضافة جهة تمويل جديدة"}]),searchKey);
+  const partyKind=type==="customer"?"customer":type==="vendor"?"vendor":"";
+  if(!partyKind)return searchablePicker(label,value,options,searchKey);
+  const addLabel=partyKind==="vendor"?"＋ إضافة مورد":"＋ إضافة عميل";
   return searchablePicker(label,value,next=>{
    if(next==="__quick_add__"){openQuickAdd("parties",onChange,{partyType:partyKind});return;}
    onChange(next);
@@ -1558,9 +1568,7 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
    const partnerIdentity=String(accountCode)==="3202"?user=>String(user.email||"").toLowerCase()==="thabetrabea@gmail.com"||String(user.username||"").toLowerCase()==="thabetrabea":String(accountCode)==="3201"?user=>String(user.username||"").toLowerCase()==="haitham ibrahim mahmoud":()=>false;
    activeAnalyticUsers.filter(partnerIdentity).forEach(user=>records.push({value:String(user.uid),label:(user.fullName||user.username||user.email||user.uid)+" ("+user.uid+")"}));
   }else if(type==="financingParty"){
-   records=activeVendors.map(item=>({value:String(item.code||item.id),label:"جهة ممولة: "+partyName(item)+" ("+(item.code||item.id)+")"}));
-   (partnerCurrentAccounts||[]).filter(item=>item&&item.uid).forEach(item=>records.push({value:String(item.uid),label:"شريك: "+(item.partnerName||item.name||item.username||item.uid)+" ("+item.uid+")"}));
-   activeAnalyticUsers.forEach(user=>records.push({value:String(user.uid),label:"مستخدم / ممول: "+(user.fullName||user.username||user.email||user.uid)+" ("+user.uid+")"}));
+   records=registeredFinancingParties.filter(item=>item&&item.active!==false).map(item=>({value:String(item.code||item.id),label:"جهة تمويل: "+partyName(item)+" ("+(item.code||item.id)+")"}));
   }
   const unique=[],seen=new Set();
   records.forEach(item=>{if(item.value&&!seen.has(String(item.value))){seen.add(String(item.value));unique.push(item);}});
@@ -1577,9 +1585,7 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
    const partnerIdentity=String(accountCode)==="3202"?user=>String(user.email||"").toLowerCase()==="thabetrabea@gmail.com"||String(user.username||"").toLowerCase()==="thabetrabea":String(accountCode)==="3201"?user=>String(user.username||"").toLowerCase()==="haitham ibrahim mahmoud":()=>false;
    (userDirectory||[]).filter(user=>user&&user.uid&&partnerIdentity(user)).forEach(user=>records.push({value:String(user.uid),label:(user.fullName||user.username||user.email||user.uid)+" ("+user.uid+")"}));
   }else if(type==="financingParty"){
-   records=allVendors.map(item=>({value:String(item.code||item.id),label:"جهة ممولة: "+partyName(item)+" ("+(item.code||item.id)+")"}));
-   (partnerCurrentAccounts||[]).filter(item=>item&&item.uid).forEach(item=>records.push({value:String(item.uid),label:"شريك: "+(item.partnerName||item.name||item.username||item.uid)+" ("+item.uid+")"}));
-   (userDirectory||[]).filter(user=>user&&user.uid).forEach(user=>records.push({value:String(user.uid),label:"مستخدم / ممول: "+(user.fullName||user.username||user.email||user.uid)+" ("+user.uid+")"}));
+   records=registeredFinancingParties.map(item=>({value:String(item.code||item.id),label:"جهة تمويل: "+partyName(item)+" ("+(item.code||item.id)+")"+(item.active===false?" — غير نشط":"")}));
   }
   const unique=[],seen=new Set();
   records.forEach(item=>{if(item.value&&!seen.has(String(item.value))){seen.add(String(item.value));unique.push(item);}});
@@ -2239,7 +2245,7 @@ const renderJournal = function() {
     h('div',{className:'md:col-span-1 pest-resizable-number'},field('مدين',line.debit,function(v){updateJ(index,'debit',v);},'number')),
     h('div',{className:'md:col-span-1 pest-resizable-number'},field('دائن',line.credit,function(v){updateJ(index,'credit',v);},'number')),
     h('div',{className:'md:col-span-2'},searchablePickerWithAdd('مركز التكلفة',line.costCenterId,function(v){updateJ(index,'costCenterId',v);},[{value:'',label:'بدون مركز تكلفة'}].concat(activeCenters.map(function(x){return {value:x.code,label:x.code+' — '+x.name};})),'costCenters',pickerKey+'-center')),
-    h('div',{className:'md:col-span-2'},analyticType?analyticPickerWithAdd('الطرف التحليلي — '+analyticPartyLabel(analyticType),analyticType,line.partyId||'',function(v){updateJ(index,'partyType',analyticType);updateJ(index,'partyId',v);},analyticPartyOptions(analyticType,line.accountCode,line.partyId),pickerKey+'-party'):h('div',{className:'rounded-lg border border-dashed border-slate-300 bg-white p-2 text-xs text-slate-500'},'هذا الحساب لا يتطلب طرفًا تحليليًا')),
+    h('div',{className:'md:col-span-2'},analyticType?analyticPickerWithAdd('الطرف التحليلي — '+analyticPartyLabel(analyticType),analyticType,line.partyId||'',function(v){updateJ(index,'partyType',analyticType);updateJ(index,'partyId',v);},analyticPartyOptions(analyticType,line.accountCode,line.partyId),pickerKey+'-party',[line.description,journal.description,journal.reference].join(' ')):h('div',{className:'rounded-lg border border-dashed border-slate-300 bg-white p-2 text-xs text-slate-500'},'هذا الحساب لا يتطلب طرفًا تحليليًا')),
     h('div',{className:'md:col-span-1 flex items-end'},button('حذف',function(){setJournal(function(old){return Object.assign({},old,{lines:old.lines.filter(function(x,j){return j!==index;})});});},'danger',journal.lines.length<=2))
    );
   });
@@ -2562,11 +2568,7 @@ const renderJournal = function() {
  };
   const renderPartyStatements = function() {
   const staff=(userDirectory||[]).filter(u=>u.uid).map(u=>Object.assign({},u,{id:u.uid,code:u.uid,name:u.fullName||u.username||u.email||u.uid}));
-  const financingParties=Array.from(new Map([
-   ...allVendors.map(item=>[String(item.code||item.id),Object.assign({},item,{id:item.code||item.id,code:item.code||item.id,name:partyName(item)})]),
-   ...(partnerCurrentAccounts||[]).filter(item=>item.uid).map(item=>[String(item.uid),{...item,id:item.uid,code:item.uid,name:item.partnerName||item.name||item.username||item.uid}]),
-   ...staff.map(item=>[String(item.uid),item])
-  ].filter(([key])=>key).map(([key,value])=>[key,value])).values());
+  const financingParties=registeredFinancingParties.map(item=>Object.assign({},item,{id:item.code||item.id,code:item.code||item.id,name:partyName(item)}));
   const employeeType=["employeeCustody","employeeAdvance"].includes(partyStatement.type);
   const partyType=["customer","vendor","employeeCustody","employeeAdvance","financingParty"].includes(partyStatement.type);
   const entityList=partyStatement.type==="account"?accounts:
@@ -3273,7 +3275,7 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
    masterImportRows.length?panel("معاينة أول 12 صفًا","لن يتم الحفظ قبل الضغط على تنفيذ الاستيراد.",h("div",{className:"max-h-64 overflow-y-auto"},table(config.columns,importRows))):null,
    masterImportRows.length?h("div",{className:"flex flex-wrap items-center gap-3"},h("b",{className:"text-sm"},"عدد السجلات: "+masterImportRows.length),button("تنفيذ الاستيراد",submitMasterImport,"primary",busy),button("إلغاء الملف",()=>{setMasterImportRows([]);setMasterImportName("");},"muted")):null
   ));
-  const tabs=[["customers","العملاء"],["suppliers","الموردون"],["items","الأصناف المخزنية"],["itemGroups","مجموعات الأصناف"],["chartOfAccounts","دليل الحسابات"],["costCenters","مراكز التكلفة"],["warehouses","المخازن"],["bankAccounts","حسابات البنوك"],["taxCodes","الأكواد الضريبية"]];
+  const tabs=[["customers","العملاء"],["suppliers","الموردون"],["financingParties","جهات التمويل"],["items","الأصناف المخزنية"],["itemGroups","مجموعات الأصناف"],["chartOfAccounts","دليل الحسابات"],["costCenters","مراكز التكلفة"],["warehouses","المخازن"],["bankAccounts","حسابات البنوك"],["taxCodes","الأكواد الضريبية"]];
   const partyType=masterViewKind==="suppliers"?"vendor":"customer";
   const partyList=masterViewKind==="suppliers"?allVendors:allClients;
   const taxNo=p=>p.taxNumber||p.taxRegistrationNumber||p.registrationNumber||p.registrationNo||p.vatNumber||p.taxId||"—";
@@ -3305,6 +3307,11 @@ const renderReview=()=>panel('قائمة المراجعة والاعتماد','�
    ));
    quickKind="parties";
    quickDefaults={code:nextCode(partyType==="vendor"?"VND":"CUS",partyList),partyType};
+  }else if(masterViewKind==="financingParties"){
+   title="دليل جهات التمويل";headers=["تحديد","الكود","اسم جهة التمويل","رقم التسجيل / المرجع","الحالة","الإجراءات"];
+   currentMasterItems=registeredFinancingParties;visibleItems=currentMasterItems.filter(matches);
+   visibleRows=visibleItems.map(x=>h("tr",{key:x.code||x.id,className:"border-t"},selectionCell(x),h("td",{className:"p-2 font-bold"},x.code||x.id),h("td",{className:"p-2"},partyName(x)),h("td",{className:"p-2"},x.reference||x.taxNumber||x.registrationNumber||"—"),h("td",{className:"p-2"},x.active===false?"موقوف":"نشط"),h("td",{className:"p-2"},masterActions("financingParties",x))));
+   quickKind="financingParties";quickDefaults={code:nextCode("FIN",registeredFinancingParties)};
   }else if(masterViewKind==="items"){
    title="الأصناف المخزنية";
    headers=["تحديد","الكود","الاسم","التصنيف","المجموعة","الإصدار","الوحدة","المخزن","الإجراءات"];
@@ -4585,7 +4592,7 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
  const renderQuickAdd = function() {
   if(!quickAddType)return null;
   const change=function(key,value){setQuickAddForm(function(old){return Object.assign({},old,{[key]:value});});};
-  const typeLabels={chartOfAccounts:'حساب جديد',costCenters:'مركز تكلفة جديد',items:'صنف مخزني جديد',itemGroups:'مجموعة أصناف جديدة',warehouses:'مخزن جديد',bankAccounts:'حساب بنك جديد',taxCodes:'كود ضريبي جديد',parties:'عميل / مورد جديد'};
+  const typeLabels={chartOfAccounts:'حساب جديد',costCenters:'مركز تكلفة جديد',items:'صنف مخزني جديد',itemGroups:'مجموعة أصناف جديدة',warehouses:'مخزن جديد',bankAccounts:'حساب بنك جديد',taxCodes:'كود ضريبي جديد',parties:'عميل / مورد جديد',financingParties:'جهة تمويل جديدة'};
   const fields=[
    field('الكود',quickAddForm.code,function(v){change('code',v);}),
    field('الاسم',quickAddForm.name,function(v){change('name',v);}),
@@ -4654,10 +4661,11 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
    h('small',{className:'block text-[11px] text-slate-500 font-normal'},codeHint(currentQuickCodeSuggestion))
   );
   const isParty=quickAddType==='parties';
+  const isFinancingParty=quickAddType==='financingParties';
   const closeQuickAdd=()=>{if(busy)return;setQuickAddType('');setQuickAddTarget(null);setQuickAddParent(null);setQuickAddOriginalCode('');};
   return h('div',{className:'fixed inset-0 z-[100] bg-slate-950/50 flex items-center justify-center p-2 sm:p-3',onClick:closeQuickAdd},
    h('section',{className:'bg-white rounded-xl shadow-2xl w-full '+(isParty?'max-w-5xl':'max-w-2xl')+' p-3 sm:p-4 max-h-[94vh] overflow-auto',onClick:function(e){e.stopPropagation();}},
-    h('div',{className:'flex items-center justify-between gap-2 mb-2 sticky top-0 bg-white z-10 py-1'},h('h3',{className:'font-bold text-base'},isParty?(quickAddForm.partyType==='vendor'?'بيانات مورد جديد':'بيانات عميل جديد'):(typeLabels[quickAddType]||'إضافة كود')),button('إغلاق',closeQuickAdd,'muted',busy)),
+    h('div',{className:'flex items-center justify-between gap-2 mb-2 sticky top-0 bg-white z-10 py-1'},h('h3',{className:'font-bold text-base'},isParty?(quickAddForm.partyType==='vendor'?'بيانات مورد جديد':'بيانات عميل جديد'):isFinancingParty?'بيانات جهة تمويل جديدة':(typeLabels[quickAddType]||'إضافة كود')),button('إغلاق',closeQuickAdd,'muted',busy)),
     h('div',{className:'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2'},...fields),
     h('div',{className:'flex justify-end gap-2 mt-3 pt-2 border-t'},button('إلغاء',closeQuickAdd,'muted',busy),button(quickAddOriginalCode?'حفظ التعديلات':isParty?'حفظ واختيار الطرف':'حفظ الكود',saveQuickAdd,'primary',busy))
    )
