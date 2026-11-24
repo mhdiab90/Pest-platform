@@ -309,6 +309,14 @@ test("financial workflow: bootstrap, double-entry review, invoice stock costing 
   assert.ok(additionalTaxJournal.lines.some(line=>line.accountCode==="6200"&&line.debit===1),"additional tax posts to its selected account");
   assert.ok(additionalTaxJournal.lines.some(line=>line.accountCode==="281"&&line.credit===115),"supplier control includes both taxes");
 
+  write("taxCodes/WHT-TEST",{code:"WHT-TEST",name:"Withholding Tax Test",taxType:"withholding",rate:1,active:true});
+  const wrongWithholdingAccount=await invoke("POST","",{action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-WHT-WRONG-01",
+    partyId:"VENDOR-TAX-01",partyName:"Other Tax Supplier",currency:"EGP",
+    otherTaxes:[{description:"Withholding tax",taxCode:"WHT-TEST",rate:1,accountCode:"6200"}],
+    lines:[{description:"Maintenance service",kind:"service",accountCode:"6100",quantity:1,unitPrice:100}]
+  });
+  await assert.rejects(invoke("POST","",{action:"review",id:wrongWithholdingAccount.id,decision:"approve",reason:"withholding account mapping test"}),/يجب ربطه بحساب ضرائب الخصم والإضافة 2120/);
+
   const fixedOverride=await invoke("POST","",{action:"submitInvoice",type:"purchase",date:"2026-11-18",number:"PUR-VAT-OVERRIDE-01",partyId:"VENDOR-001",partyName:"Supplier Test",currency:"EGP",taxAmount:12,otherTaxes:[],lines:[{description:"Tax override test",kind:"service",accountCode:"6100",quantity:1,unitPrice:100}]});
   assert.equal(fixedOverride.totals.vat,12,"a user-entered fixed primary VAT amount overrides the 14% calculation");
   assert.equal(read("documents/"+fixedOverride.id).taxRate,14,"manual VAT amount does not change the fixed VAT code rate");
