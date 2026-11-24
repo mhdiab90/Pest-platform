@@ -555,6 +555,53 @@ test("supplier linking, delegated invoice completion, staff custody and advances
   assert.equal(resubmitted.status,"pending_review","creator can submit a returned delegated invoice");
   assert.equal(read("tasks/test-admin/"+read("documents/"+draft.id).returnedTaskId+"/status"),"completed");
 
+  // The sender can edit a live assignment, reassign it, and archive its own history.
+  write("users/EMPLOYEE-02",{uid:"EMPLOYEE-02",status:"active",fullName:"Employee Two",username:"employee.two",role:"user"});
+  const managedDraft=await invoke("POST","",{action:"saveInvoiceDraft",type:"purchase",date:"2026-11-19",number:"ASSIGN-MANAGE-01",partyId:"VENDOR-LEGACY",partyName:"Legacy Supplier",lines:[
+    {description:"Office consumables",kind:"service",quantity:1,unitPrice:120,accountCode:"6901"}
+  ]});
+  const managedAssignment=await invoke("POST","",{action:"assignInvoice",invoiceId:managedDraft.id,assigneeUid:"EMPLOYEE-01",instruction:"مراجعة أولية"});
+  const assignmentEdit=await invoke("POST","",{action:"manageInvoiceAssignment",mode:"update",scope:"sent",assignmentId:managedAssignment.assignmentId,instruction:"يرجى مراجعة التصنيف والحساب",invoice:{number:"ASSIGN-MANAGE-EDIT"},lines:[
+    {description:"Office consumables updated",kind:"service",quantity:1,unitPrice:150,accountCode:"6901"}
+  ]});
+  assert.equal(assignmentEdit.success,true);
+  assert.equal(read("documents/"+managedDraft.id).number,"ASSIGN-MANAGE-EDIT");
+  assert.equal(read("documents/"+managedDraft.id).lines[0].description,"Office consumables updated");
+  assert.equal(read("assignments/EMPLOYEE-01/"+managedAssignment.assignmentId).instruction,"يرجى مراجعة التصنيف والحساب");
+  const reassigned=await invoke("POST","",{action:"manageInvoiceAssignment",mode:"reassign",scope:"sent",assignmentId:managedAssignment.assignmentId,nextAssigneeUid:"EMPLOYEE-02",instruction:"استكمل المراجعة النهائية"});
+  assert.equal(reassigned.status,"assigned");
+  assert.equal(read("documents/"+managedDraft.id).assignedTo,"EMPLOYEE-02");
+  assert.equal(read("assignments/EMPLOYEE-01/"+managedAssignment.assignmentId).status,"forwarded");
+  assert.equal(read("tasks/EMPLOYEE-01/"+managedAssignment.taskId+"/status"),"completed");
+  const latestAssignment=reassigned.assignmentId;
+
+  claims.sub="EMPLOYEE-02";profile.role="user";profile.fullName="Employee Two";
+  const receiverList=await invoke("GET","?resource=assignments");
+  assert.ok(receiverList.items.some(item=>item.id===latestAssignment));
+  const archivedIncoming=await invoke("POST","",{action:"manageInvoiceAssignment",mode:"archive",scope:"received",assignmentId:latestAssignment});
+  assert.equal(archivedIncoming.archived,true);
+  const incomingAfterArchive=await invoke("GET","?resource=assignments");
+  assert.equal(incomingAfterArchive.items.find(item=>item.id===latestAssignment).archivedAt>0,true);
+  await invoke("POST","",{action:"manageInvoiceAssignment",mode:"restore",scope:"received",assignmentId:latestAssignment});
+  const removedByReceiver=await invoke("POST","",{action:"manageInvoiceAssignment",mode:"delete",scope:"received",assignmentId:latestAssignment,reason:"لا أستطيع إكمال التكليف"});
+  assert.equal(removedByReceiver.status,"returned_to_creator");
+  assert.equal(read("documents/"+managedDraft.id).status,"returned_to_creator");
+  assert.equal(read("assignments/EMPLOYEE-02/"+latestAssignment).deletedAt>0,true);
+  assert.equal(read("sentAssignments/test-admin/"+latestAssignment).status,"returned_to_creator");
+  claims.sub=previousUid;profile.role=previousRole;profile.fullName=previousName;
+  const senderList=await invoke("GET","?resource=assignments");
+  assert.ok(senderList.sentItems.some(item=>item.id===latestAssignment&&item.status==="returned_to_creator"));
+  const archivedOutgoing=await invoke("POST","",{action:"manageInvoiceAssignment",mode:"archive",scope:"sent",assignmentId:latestAssignment});
+  assert.equal(archivedOutgoing.archived,true);
+  const senderArchive=await invoke("GET","?resource=assignments");
+  assert.equal(senderArchive.sentItems.find(item=>item.id===latestAssignment).archivedAt>0,true);
+  await invoke("POST","",{action:"manageInvoiceAssignment",mode:"restore",scope:"sent",assignmentId:latestAssignment});
+  const removedFromOutbox=await invoke("POST","",{action:"manageInvoiceAssignment",mode:"delete",scope:"sent",assignmentId:latestAssignment,reason:"حذف سجل التحويل من قائمتي"});
+  assert.equal(removedFromOutbox.deleted,true);
+  assert.equal(read("documents/"+managedDraft.id).status,"returned_to_creator","deleting an assignment history item must not delete its invoice");
+  assert.equal(read("sentAssignments/test-admin/"+latestAssignment).deletedAt>0,true);
+  await assert.rejects(invoke("POST","",{action:"manageInvoiceAssignment",mode:"delete",scope:"sent",assignmentId:latestAssignment}),/غير موجودة|صلاحية/);
+
   const custody=await invoke("POST","",{action:"submitCash",movementType:"employee_custody",date:"2026-11-18",amount:500,currency:"EGP",description:"Employee cash custody",employeeUid:"EMPLOYEE-01",cashAccountCode:"1110"});
   const custodyPosted=await invoke("POST","",{action:"review",id:custody.id,decision:"approve",reason:"custody handover"});
   assert.equal(custodyPosted.status,"posted");
