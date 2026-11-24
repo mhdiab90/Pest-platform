@@ -467,7 +467,7 @@ test("Review smart audit checks cents, analytical control balances, account mapp
   assert.match(audit, /مطابقة مبلغ السداد الضريبي/);
   assert.match(audit, /Math\.round\(difference\*100\)/);
   assert.match(source, /renderIntegrityAuditPanel\(\)/);
-  assert.match(source, /button\(integrityAuditBusy\?'جارٍ الفحص\.\.\.'\s*:\s*'فحص',runIntegrityAudit/);
+  assert.match(source, /button\(integrityAuditBusy\?'جارٍ الفحص\.\.\.'\s*:\s*'تشغيل الفحص الموحد',runUnifiedReview/);
 });
 
 test("withholding invoice journal lines inherit the same supplier/customer analytical code as their source invoice", () => {
