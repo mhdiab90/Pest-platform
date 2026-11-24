@@ -1270,6 +1270,15 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
   if(next==='__quick_add__')openQuickAdd(kind,onChange,defaults);
   else onChange(next);
  },(options||[]).concat([{value:'__quick_add__',label:'＋ إضافة كود جديد'}]),searchKey);
+ const analyticPickerWithAdd=(label,type,value,onChange,options,searchKey)=>{
+  const partyKind=type==="customer"?"customer":(type==="vendor"||type==="financingParty")?"vendor":"";
+  if(!partyKind)return searchablePicker(label,value,onChange,options,searchKey);
+  const addLabel=partyKind==="vendor"?"＋ إضافة جهة ممولة / مورد":"＋ إضافة عميل";
+  return searchablePicker(label,value,next=>{
+   if(next==="__quick_add__"){openQuickAdd("parties",onChange,{partyType:partyKind});return;}
+   onChange(next);
+  },(options||[]).concat([{value:"__quick_add__",label:addLabel}]),searchKey);
+ };
  const openQuickAdd=(kind,onCreated,defaults,originalCode)=>{
   if(!canFinance(financeAreaForMaster(kind),originalCode?"edit":"add")){setError("ليس لديك صلاحية إضافة أو تعديل هذا النوع من البيانات.");return;}
   if(quickAddType)setQuickAddParent({type:quickAddType,form:quickAddForm,target:quickAddTarget,originalCode:quickAddOriginalCode});else setQuickAddParent(null);
@@ -2230,7 +2239,7 @@ const renderJournal = function() {
     h('div',{className:'md:col-span-1 pest-resizable-number'},field('مدين',line.debit,function(v){updateJ(index,'debit',v);},'number')),
     h('div',{className:'md:col-span-1 pest-resizable-number'},field('دائن',line.credit,function(v){updateJ(index,'credit',v);},'number')),
     h('div',{className:'md:col-span-2'},searchablePickerWithAdd('مركز التكلفة',line.costCenterId,function(v){updateJ(index,'costCenterId',v);},[{value:'',label:'بدون مركز تكلفة'}].concat(activeCenters.map(function(x){return {value:x.code,label:x.code+' — '+x.name};})),'costCenters',pickerKey+'-center')),
-    h('div',{className:'md:col-span-2'},analyticType?searchablePicker('الطرف التحليلي — '+analyticPartyLabel(analyticType),line.partyId||'',function(v){updateJ(index,'partyType',analyticType);updateJ(index,'partyId',v);},analyticPartyOptions(analyticType,line.accountCode,line.partyId),pickerKey+'-party'):h('div',{className:'rounded-lg border border-dashed border-slate-300 bg-white p-2 text-xs text-slate-500'},'هذا الحساب لا يتطلب طرفًا تحليليًا')),
+    h('div',{className:'md:col-span-2'},analyticType?analyticPickerWithAdd('الطرف التحليلي — '+analyticPartyLabel(analyticType),analyticType,line.partyId||'',function(v){updateJ(index,'partyType',analyticType);updateJ(index,'partyId',v);},analyticPartyOptions(analyticType,line.accountCode,line.partyId),pickerKey+'-party'):h('div',{className:'rounded-lg border border-dashed border-slate-300 bg-white p-2 text-xs text-slate-500'},'هذا الحساب لا يتطلب طرفًا تحليليًا')),
     h('div',{className:'md:col-span-1 flex items-end'},button('حذف',function(){setJournal(function(old){return Object.assign({},old,{lines:old.lines.filter(function(x,j){return j!==index;})});});},'danger',journal.lines.length<=2))
    );
   });
@@ -2279,7 +2288,7 @@ const renderJournal = function() {
       h('div',{className:'md:col-span-1 pest-resizable-number'},field('مدين',line.debit??'',v=>updateJournalModalLine(index,'debit',v),'number',editable?undefined:{disabled:true})),
       h('div',{className:'md:col-span-1 pest-resizable-number'},field('دائن',line.credit??'',v=>updateJournalModalLine(index,'credit',v),'number',editable?undefined:{disabled:true})),
       h('div',{className:'md:col-span-2'},editable?selectWithAdd('مركز التكلفة',line.costCenterId||'',v=>updateJournalModalLine(index,'costCenterId',v),[{value:'',label:'بدون مركز تكلفة'}].concat(activeCenters.map(x=>({value:x.code,label:x.code+' — '+x.name}))),'costCenters',null,'journal-modal-'+String(draft.id)+'-line-'+index+'-center'):field('مركز التكلفة',line.costCenterId||'بدون',()=>{},undefined,{disabled:true})),
-      h('div',{className:'md:col-span-2'},editable&&analyticType?select('الطرف التحليلي — '+analyticPartyLabel(analyticType),line.partyId||'',v=>{setJournalModalDraft(old=>Object.assign({},old,{lines:old.lines.map((x,i)=>i===index?Object.assign({},x,{partyType:analyticType,partyId:v}):x)}));},analyticPartyOptions(analyticType,line.accountCode,line.partyId),'journal-modal-'+String(draft.id)+'-line-'+index+'-party'):field('الطرف التحليلي',analyticType?(line.partyId||'لم يتم اختيار طرف'):'غير مطلوب لهذا الحساب',()=>{},undefined,{disabled:true})),
+      h('div',{className:'md:col-span-2'},editable&&analyticType?analyticPickerWithAdd('الطرف التحليلي — '+analyticPartyLabel(analyticType),analyticType,line.partyId||'',v=>{setJournalModalDraft(old=>Object.assign({},old,{lines:old.lines.map((x,i)=>i===index?Object.assign({},x,{partyType:analyticType,partyId:v}):x)}));},analyticPartyOptions(analyticType,line.accountCode,line.partyId),'journal-modal-'+String(draft.id)+'-line-'+index+'-party'):field('الطرف التحليلي',analyticType?(line.partyId||'لم يتم اختيار طرف'):'غير مطلوب لهذا الحساب',()=>{},undefined,{disabled:true})),
       h('div',{className:'md:col-span-1 flex items-end'},button('حذف',()=>setJournalModalDraft(old=>Object.assign({},old,{lines:old.lines.filter((x,i)=>i!==index)})),'danger',!editable))
      );
     });
@@ -4707,7 +4716,7 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
     ),
     h("div",{className:"space-y-2"},
      ...(openingBalanceDetails[detailAccount.code]||[]).map((detail,index)=>h("div",{key:detailAccount.code+"-"+index,className:"grid grid-cols-1 md:grid-cols-12 gap-2 items-end rounded-xl border bg-slate-50 p-3"},
-      h("div",{className:"md:col-span-6"},searchablePicker("الطرف التحليلي",detail.partyId||"",value=>updateOpeningDetail(detailAccount.code,index,{partyId:value}),openingAnalyticOptions(detailAccount.subledgerType,detailAccount.code,detail.partyId),"opening-balance-"+detailAccount.code+"-"+index)),
+      h("div",{className:"md:col-span-6"},analyticPickerWithAdd("الطرف التحليلي",detailAccount.subledgerType,detail.partyId||"",value=>updateOpeningDetail(detailAccount.code,index,{partyId:value}),openingAnalyticOptions(detailAccount.subledgerType,detailAccount.code,detail.partyId),"opening-balance-"+detailAccount.code+"-"+index)),
       h("div",{className:"md:col-span-2"},select("طبيعة الرصيد",detail.side||detailAccount.nature||"debit",value=>updateOpeningDetail(detailAccount.code,index,{side:value}),[{value:"debit",label:"مدين"},{value:"credit",label:"دائن"}])),
       h("div",{className:"md:col-span-3"},field("المبلغ",detail.amount||"",value=>updateOpeningDetail(detailAccount.code,index,{amount:value}),"number",{min:"0"})),
       h("div",{className:"md:col-span-1 flex items-end"},button("حذف",()=>setOpeningBalanceDetails(previous=>Object.assign({},previous,{[detailAccount.code]:(previous[detailAccount.code]||[]).filter((row,rowIndex)=>rowIndex!==index)})),"danger"))
