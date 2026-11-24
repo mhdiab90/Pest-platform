@@ -444,7 +444,7 @@ test("employee advance and custody analytic selectors use coded master registrie
   const options = source.slice(source.indexOf("const analyticPartyOptions="), source.indexOf("const openJournalModal="));
   assert.match(options, /registry=type==="employeeCustody"\?rows\(master\.employeeCustodies\):rows\(master\.employeeAdvances\)/);
   assert.doesNotMatch(options, /activeAnalyticUsers\.map\(user/);
-  assert.match(source, /openQuickAdd\(kind,\(code,record\)=>\{if\(record&&record\.employeeUid\)onChange\(String\(record\.employeeUid\)\);\},\{employeeUid:String\(value\|\|""\)\}\)/);
+  assert.match(source, /openQuickAdd\(kind,\(code,record\)=>\{if\(record\)onChange\(String\(record\.employeeUid\|\|record\.code\|\|code\|\|""\)\);\},\{\}\)/);
   assert.match(source, /value:"__quick_add__",label:"＋ إضافة كود "\+labelText\+" جديد"/);
   assert.match(source, /employeeUid:f\.employeeUid\|\|""/);
 });
@@ -461,10 +461,10 @@ test("employee advance and custody codes are maintained in the central master di
 
 test("employee advance and custody registries are server-validated and protected by their historical ledger references", () => {
   assert.match(apiSource, /employeeAdvances:"masters",employeeCustodies:"masters"/);
-  assert.match(apiSource, /employeeUid=id\(item\.employeeUid\),employee=employeeUid&&adminReadRoot\?await adminReadRoot\("users\/"\+employeeUid\):null/);
+  assert.match(apiSource, /const employeeUid=String\(item\.employeeUid\|\|""\)\.trim\(\)/);
   assert.match(apiSource, /يوجد كود نشط لهذا الموظف بالفعل/);
   assert.match(apiSource, /kind==="employeeAdvances"\|\|kind==="employeeCustodies"/);
-  assert.match(apiSource, /adminRead\("partyLedger\/"\+subledgerType\+"\/"\+employeeUid\)/);
+  assert.match(apiSource, /adminRead\("partyLedger\/"+subledgerType\+"\/"+id\(analyticPartyId\)\)/);
   assert.match(apiSource, /findMasterReferences\(ctx,kind,code\)/);
   assert.match(source, /employeeUid:\['employeeuid'/);
 });
@@ -474,6 +474,37 @@ test("unified master directory retains cost center analysis and the same master 
   assert.match(masterView, /activeMasterViewKind==="costCenters"\?renderCostCenterAnalysis\(\):null/);
   assert.match(source, /financeAreaForMaster\(kind\)/);
   assert.match(apiSource, /for\(const k of \[[\s\S]*"employeeAdvances","employeeCustodies","settings"\]\)out\[k\]=\(await adminRead\(k\)\)\|\|\{\};/);
+});
+
+test("employee advance and custody codes can be saved and imported without linking a user", () => {
+  const save = apiSource.slice(apiSource.indexOf('if(action==="saveMaster")'), apiSource.indexOf('if(action==="deleteMasters")'));
+  const imported = apiSource.slice(apiSource.indexOf('if(action==="importMasters")'), apiSource.indexOf('if(action==="submitProjectEvent")'));
+  assert.match(save, /const employeeUid=String\(item\.employeeUid\|\|""\)\.trim\(\)/);
+  assert.match(save, /if\(employeeUid\)\{/);
+  assert.match(save, /delete item\.employeeUid/);
+  assert.doesNotMatch(save, /يجب ربط كود السلفة أو العهدة/);
+  assert.match(imported, /const employeeUid=String\(row\.employeeUid\|\|""\)\.trim\(\)/);
+  assert.match(imported, /if\(employeeUid\)\{/);
+  assert.match(source, /الموظف المرتبط \(اختياري\)/);
+  assert.match(source, /بدون ربط بمستخدم/);
+  assert.match(source, /item\.employeeUid\|\|item\.code/);
+});
+
+test("master code list appears directly under the type selector before the import section", () => {
+  const masterView = source.slice(source.indexOf("const renderMasters="), source.indexOf("const renderTax="));
+  assert.match(masterView, /select\("نوع البيانات",activeMasterViewKind/);
+  assert.ok(masterView.indexOf('panel("دليل الأكواد والبيانات الأساسية"') < masterView.indexOf("const listPanel="));
+  assert.ok(masterView.indexOf("listPanel,") < masterView.indexOf("importPanel,"));
+  assert.doesNotMatch(masterView, /panel\("أنواع البيانات الأساسية"/);
+});
+
+test("the global master navigation opens the unified directory instead of the legacy customer/vendor page", () => {
+  assert.match(indexHtml, /master:'دليل الأكواد والبيانات الأساسية'/);
+  assert.match(indexHtml, /id:'masterGroup',label:tr\('master'\)[\s\S]*id:'master',label:rtl\?'دليل الأكواد والبيانات الأساسية'/);
+  assert.match(indexHtml, /masterDirectoryOnly=\{tab==='master'\}/);
+  assert.match(indexHtml, /externalPartyRequest=\{financialPartyMasterRequest\}/);
+  assert.match(indexHtml, /tab==='master'&&financialPartyReturn&&/);
+  assert.match(indexHtml, /function openFinancialPartyMaster\(payload\)[\s\S]*setFinancialPartyMasterRequest/);
 });
 
 test("financial dropdowns open above their fields and keep the previous choice visible while searching", () => {
