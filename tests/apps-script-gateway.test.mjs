@@ -78,6 +78,14 @@ test("gateway client surfaces Apps Script application errors", async () => {
   })), /Gateway signature is invalid/);
 });
 
+test("Cloudflare exposes only an admin-protected connectivity check without changing live attachment routes", () => {
+  const worker = readFileSync(new URL("../cloudflare/worker.js", import.meta.url), "utf8");
+  assert.match(worker, /import \\{ callAppsScriptGateway \\} from "\.\/apps-script-gateway\.js"/);
+  assert.match(worker, /\/drive\/gateway\/test/);
+  assert.match(worker, /profile\.role!==["']admin["']/);
+  assert.match(worker, /productionAttachmentsUnchanged:true/);
+});
+
 test("Apps Script source enforces signed requests, nonce checks, file size and company Drive access", () => {
   const source = readFileSync(new URL("../apps-script/Code.gs", import.meta.url), "utf8");
   assert.match(source, /verifyEnvelope_\(envelope\)/);
