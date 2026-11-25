@@ -19,7 +19,7 @@ test("spreadsheet grid supports full-text search and multiple independent column
   for (const operator of ["contains", "notContains", "equals", "notEquals", "starts", "ends", "greater", "less", "empty", "notEmpty"]) {
     assert.ok(app.includes('["' + operator + '"'), "missing filter operator: " + operator);
   }
-  assert.match(app, /state\.filters\.push\(\{column:index,operator:op,value:filterValue\}\)/);
+  assert.match(app, /state\.filters\.push\(state\.draftFilter\?Object\.assign\(\{\},state\.draftFilter\)/);
   assert.match(app, /activeFilters\.every\(filter=>matches/);
   assert.match(app, /searchPlaceholder:"ابحث في كل بيانات الجدول/);
 });
@@ -31,14 +31,14 @@ test("adding a value filter immediately applies it to the table and Enter submit
   assert.ok(start >= 0 && end > start, "filter add handler must exist");
   const handler = app.slice(start, end);
   assert.match(handler, /renderFilterChips\(state,key\);\s*apply\(state,key\);\s*savePrefs\(state,key\);/);
-  assert.match(handler, /value\.addEventListener\("keydown".*add\.click\(\)/);
+  assert.match(handler, /value\.addEventListener\("keydown"[\s\S]*?add\.click\(\)/);
   assert.match(app, /activeFilters\.every\(filter=>matches/);
 });
 
 test("column value filter applies live while typing and retains its selected column", () => {
-  assert.ok(app.includes('column.addEventListener("change",()=>updateDraftFilter(state,key))'));
-  assert.ok(app.includes('operator.addEventListener("change",()=>{value.disabled=["empty","notEmpty"].includes(operator.value);updateDraftFilter(state,key);})'));
-  assert.ok(app.includes('value.addEventListener("input",()=>updateDraftFilter(state,key))'));
+  assert.match(app, /column\.addEventListener\("change",\(\)=>\{[\s\S]*?updateDraftFilter\(state,key\);\}\)/);
+  assert.match(app, /operator\.addEventListener\("change",\(\)=>\{value\.disabled=\["empty","notEmpty"\]\.includes\(operator\.value\);[\s\S]*?updateDraftFilter\(state,key\);\}\)/);
+  assert.match(app, /value\.addEventListener\("input",\(\)=>\{state\.filterSelection=null;updateDraftFilter\(state,key\);/);
   assert.ok(app.includes('state.draftFilter?[...state.filters,state.draftFilter]:state.filters'));
   assert.ok(app.includes('const preferredColumn=state.draftFilter?String(state.draftFilter.column):selectedColumn'));
 });
@@ -73,6 +73,39 @@ test("value filtering compares localized numeric amounts correctly", () => {
   assert.equal(matches("", { operator: "empty", value: "" }), true);
   assert.equal(matches("0", { operator: "notEmpty", value: "" }), true);
   assert.equal(matches("invoice 123", { operator: "equals", value: "123" }), false);
+});
+
+test("global table filters provide live account and cost center autocomplete with code-or-name matching", () => {
+  assert.match(app, /const filterColumnKind=header=>/);
+  assert.match(app, /window\.PEST_FINANCE_FILTER_LOOKUPS/);
+  assert.match(app, /const renderSuggestions=\(\)=>/);
+  assert.match(app, /operator\.value="contains"/);
+  assert.match(app, /filterSelection=\{code:item\.code,name:item\.name,label:item\.label\}/);
+  assert.match(app, /matchAny:\[selection\.code,selection\.name\]\.filter\(Boolean\)/);
+  assert.match(app, /filterSuggestionMenu/);
+  assert.match(app, /pest-grid-filter-suggestion/);
+  const gridStart = app.indexOf("function installPestSpreadsheetGrid(root)");
+  const helperStart = app.indexOf("  const normalizeFilterText=", gridStart);
+  const helperEnd = app.indexOf("  const hash=", helperStart);
+  const matchesStart = app.indexOf("  const matches=", helperEnd);
+  const matchesEnd = app.indexOf("  const updateDraftFilter=", matchesStart);
+  assert.ok(gridStart >= 0 && helperStart > gridStart && helperEnd > helperStart && matchesEnd > matchesStart);
+  const helpers = app.slice(helperStart, helperEnd) + app.slice(matchesStart, matchesEnd);
+  const sandbox = {};
+  vm.runInNewContext(
+    `const clean=value=>String(value==null?"":value).replace(/\\s+/g," ").trim();
+     const arabic=()=>true;
+     ${helpers}
+     globalThis.gridTest={matches};`,
+    sandbox
+  );
+  const {matches}=sandbox.gridTest;
+  const selected={operator:"contains",value:"4010 — إيرادات المبيعات",matchAny:["4010","إيرادات المبيعات"]};
+  assert.equal(matches("4010 — إيرادات المبيعات",selected),true);
+  assert.equal(matches("إيرادات المبيعات",selected),true);
+  assert.equal(matches("4010",selected),true);
+  assert.equal(matches("4020 — إيرادات أخرى",selected),false);
+  assert.equal(matches("مركز 07", {operator:"contains",value:"07 — مركز الإنتاج",matchAny:["07","مركز الإنتاج"]}),true);
 });
 
 test("spreadsheet grid supports ascending/descending sorting, pagination, and saved column visibility", () => {

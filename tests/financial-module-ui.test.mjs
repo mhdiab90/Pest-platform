@@ -492,6 +492,12 @@ test("employee advance and custody registries are server-validated and protected
   assert.match(source, /employeeUid:\['employeeuid'/);
 });
 
+test("global table filters publish full account and cost center lookup options for the shared grid", () => {
+  assert.match(source, /window\.PEST_FINANCE_FILTER_LOOKUPS=lookups/);
+  assert.match(source, /accounts:accounts\.filter\(account=>account&&account\.code\)/);
+  assert.match(source, /costCenters:centers\.filter\(center=>center&&\(center\.code\|\|center\.id\)\)/);
+});
+
 test("unified master directory retains cost center analysis and the same master records feed inline dropdown creation", () => {
   const masterView = source.slice(source.indexOf("const renderMasters="), source.indexOf("const renderTax="));
   assert.match(masterView, /activeMasterViewKind==="costCenters"\?renderCostCenterAnalysis\(\):null/);
@@ -760,7 +766,7 @@ test("refundable third-party deposits have a separate analytic registry, picker,
   assert.match(source, /value:"securityDepositParty",label:"تأمينات مستردة لدى الغير"/);
   assert.match(source, /securityDepositParty:"كشف حساب تأمينات مستردة لدى الغير"/);
   assert.match(source, /securityDepositParties:\{\}/);
-  assert.match(indexHtml, /20261125-finance-value-filter-journal-attachments-v20/);
+  assert.match(indexHtml, /20261125-finance-value-filter-journal-attachments-v21/);
 });
 
 test("refundable deposit quick coding works in journal entry, review editing, and legacy archive correction", () => {

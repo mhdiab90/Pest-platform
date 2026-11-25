@@ -1060,7 +1060,7 @@ function PestCrmModuleSlot(props){
 }
 
 function FinanceModuleSlot(props){
-  const FINANCE_MODULE_BUILD='20261125-finance-value-filter-journal-attachments-v20';
+  const FINANCE_MODULE_BUILD='20261125-finance-value-filter-journal-attachments-v21';
   const [FinanceModule,setFinanceModule]=useState(()=>window.PEST_FINANCE_MODULE||null);
   const [loadError,setLoadError]=useState('');
   useEffect(()=>{
@@ -1214,6 +1214,44 @@ function installPestSpreadsheetGrid(root){
   const allRows=table=>table.tBodies&&table.tBodies.length?Array.from(table.tBodies[0].rows):[];
   const rowCells=row=>Array.from(row.cells||[]).filter(cell=>!cell.hasAttribute("data-pest-grid-select-cell"));
   const rowTexts=row=>rowCells(row).map(cellText);
+  const filterColumnKind=header=>{
+    const text=normalizeFilterSearchText(header);
+    if(text.includes("مركز التكلفة")||text.includes("مركز تكلفة")||text.includes("cost center")||text.includes("costcenter"))return "costCenters";
+    if(text.includes("حساب")||text.includes("account"))return "accounts";
+    return "";
+  };
+  const filterLookupOptions=(state,column)=>{
+    const kind=filterColumnKind(state.headers[column]||"");
+    if(!kind)return [];
+    const result=new Map(),add=(code,name,label)=>{
+      code=clean(code);name=clean(name);label=clean(label)||(code&&name?code+" — "+name:code||name);
+      if(!label)return;
+      const duplicate=Array.from(result.values()).some(item=>(code&&item.code.toLocaleLowerCase()===code.toLocaleLowerCase())||(name&&item.name.toLocaleLowerCase()===name.toLocaleLowerCase()));
+      if(duplicate)return;
+      const key=(code+"|"+name).toLocaleLowerCase();
+      result.set(key,{code,name,label,searchText:[code,name,label].filter(Boolean).join(" ")});
+    };
+    const globalLookups=window.PEST_FINANCE_FILTER_LOOKUPS||{};
+    (Array.isArray(globalLookups[kind])?globalLookups[kind]:[]).forEach(item=>{
+      if(!item)return;
+      const code=String(item.code||item.id||"");
+      const name=String(item.name||item.label||"");
+      add(code,name,item.label);
+    });
+    state.baseRows.forEach(row=>{
+      const label=clean(getValue(row,column));
+      if(!label)return;
+      const dash=label.match(/^(.+?)\s+[—–-]\s+(.+)$/);
+      if(dash)add(dash[1],dash[2],label);
+      else{
+        const bracket=label.match(/^(.+?)\s*\(([^()]+)\)$/);
+        if(bracket)add(bracket[2],bracket[1],label);
+        else if(/^[A-Za-z0-9._/-]+$/.test(label))add(label,"",label);
+        else add("",label,label);
+      }
+    });
+    return Array.from(result.values()).sort((a,b)=>(a.code||a.label).localeCompare(b.code||b.label,arabic()?"ar":"en",{numeric:true,sensitivity:"base"}));
+  };
   const signature=(table,rows)=>{
     const headers=tableHeaders(table);
     let sum=0,xor=0,count=0;
@@ -1234,6 +1272,9 @@ function installPestSpreadsheetGrid(root){
   };
   const selectControl=()=>el("select","pest-grid-select");
   const buildToolbar=(state,key)=>{
+    if(state.filterSuggestionMenu&&state.filterSuggestionMenu.parentNode)state.filterSuggestionMenu.remove();
+    if(state.filterSuggestionDismiss)document.removeEventListener("mousedown",state.filterSuggestionDismiss);
+    if(state.filterSuggestionScroll)window.removeEventListener("scroll",state.filterSuggestionScroll,true);
     const t=words(),bar=state.toolbar;bar.replaceChildren();
     bar.setAttribute("data-pest-grid-toolbar","true");bar.setAttribute("data-pest-export-actions","true");
     bar.setAttribute("dir",arabic()?"rtl":"ltr");
@@ -1242,23 +1283,85 @@ function installPestSpreadsheetGrid(root){
     search.addEventListener("input",()=>{state.search=search.value;state.page=1;apply(state,key);});
     state.searchInput=search;first.append(labelWrap(t.search,search));
     const column=selectControl(),operator=selectControl(),value=el("input","pest-grid-input");value.type="text";value.placeholder=t.value;
-    state.filterField=column;state.filterOperator=operator;state.filterValue=value;
-    column.addEventListener("change",()=>updateDraftFilter(state,key));
+    const valueWrap=el("div","pest-grid-filter-value-wrap");valueWrap.append(value);
+    const suggestionMenu=el("div","pest-grid-filter-suggestions");suggestionMenu.hidden=true;
+    state.filterField=column;state.filterOperator=operator;state.filterValue=value;state.filterValueWrap=valueWrap;state.filterSuggestionMenu=suggestionMenu;state.filterSelection=null;
+    const closeSuggestions=()=>{suggestionMenu.hidden=true;};
+    const placeSuggestions=()=>{
+      const rect=value.getBoundingClientRect(),width=Math.min(380,Math.max(250,rect.width),Math.max(220,window.innerWidth-16));
+      const height=Math.min(280,Math.max(100,suggestionMenu.scrollHeight||220)),below=window.innerHeight-rect.bottom;
+      const top=below>=height+10?rect.bottom+4:Math.max(8,rect.top-height-4);
+      const left=Math.max(8,Math.min(window.innerWidth-width,arabic()?rect.right-width:rect.left));
+      suggestionMenu.style.position="fixed";suggestionMenu.style.top=top+"px";suggestionMenu.style.left=left+"px";suggestionMenu.style.width=width+"px";suggestionMenu.style.maxHeight=Math.min(280,window.innerHeight-16)+"px";suggestionMenu.style.zIndex="10000";
+    };
+    const renderSuggestions=()=>{
+      const kind=filterColumnKind(state.headers[Number(column.value)]||"");
+      if(!kind){closeSuggestions();return;}
+      const query=normalizeFilterSearchText(value.value),options=filterLookupOptions(state,Number(column.value));
+      const matching=options.filter(item=>!query||normalizeFilterSearchText(item.searchText).includes(query)).slice(0,14);
+      suggestionMenu.replaceChildren();
+      if(matching.length){
+        matching.forEach(item=>{
+          const option=el("button","pest-grid-filter-suggestion");
+          option.type="button";
+          const code=el("strong","pest-grid-filter-suggestion-code",item.code||item.label);
+          const name=item.name&&item.code?el("span","pest-grid-filter-suggestion-name",item.name):null;
+          option.append(code);if(name)option.append(name);
+          option.addEventListener("mousedown",event=>event.preventDefault());
+          option.addEventListener("click",()=>{
+            state.filterSelection={code:item.code,name:item.name,label:item.label};
+            value.value=item.label;
+            closeSuggestions();
+            updateDraftFilter(state,key);
+          });
+          suggestionMenu.append(option);
+        });
+      }else suggestionMenu.append(el("div","pest-grid-filter-suggestion-empty",arabic()?(kind==="accounts"?"لا توجد حسابات مطابقة":"لا توجد مراكز تكلفة مطابقة"):"No matching "+(kind==="accounts"?"accounts":"cost centers")));
+      if(!suggestionMenu.isConnected)document.body.append(suggestionMenu);
+      suggestionMenu.hidden=false;placeSuggestions();
+    };
+    const dismissSuggestions=event=>{
+      if(!valueWrap.contains(event.target)&&!suggestionMenu.contains(event.target))closeSuggestions();
+    };
+    const scrollDismissSuggestions=()=>closeSuggestions();
+    document.addEventListener("mousedown",dismissSuggestions);
+    window.addEventListener("scroll",scrollDismissSuggestions,true);
+    state.filterSuggestionDismiss=dismissSuggestions;state.filterSuggestionScroll=scrollDismissSuggestions;
+    column.addEventListener("change",()=>{
+      state.filterSelection=null;
+      const kind=filterColumnKind(state.headers[Number(column.value)]||"");
+      if(kind==="accounts"){operator.value="contains";value.placeholder=arabic()?"اكتب اسم الحساب أو رقمه...":"Type account name or number...";}
+      else if(kind==="costCenters"){operator.value="contains";value.placeholder=arabic()?"اكتب اسم مركز التكلفة أو رقمه...":"Type cost center name or code...";}
+      else value.placeholder=t.value;
+      closeSuggestions();updateDraftFilter(state,key);
+    });
     const operators=[["contains",t.contains],["notContains",t.notContains],["equals",t.equals],["notEquals",t.notEquals],["starts",t.starts],["ends",t.ends],["greater",t.greater],["less",t.less],["empty",t.empty],["notEmpty",t.notEmpty]];
     operators.forEach(([v,label])=>{const option=el("option","",label);option.value=v;operator.append(option);});
-    operator.addEventListener("change",()=>{value.disabled=["empty","notEmpty"].includes(operator.value);updateDraftFilter(state,key);});
+    operator.addEventListener("change",()=>{value.disabled=["empty","notEmpty"].includes(operator.value);if(value.disabled)closeSuggestions();updateDraftFilter(state,key);});
     const add=button(t.addFilter,()=>{
       const index=Number(column.value),op=operator.value,filterValue=value.value;
       if(!Number.isInteger(index)||index<0||index>=state.headers.length)return;
       if(!["empty","notEmpty"].includes(op)&&!clean(filterValue))return;
-      state.filters.push({column:index,operator:op,value:filterValue});state.draftFilter=null;value.value="";operator.value="contains";value.disabled=false;state.page=1;
+      state.filters.push(state.draftFilter?Object.assign({},state.draftFilter):{column:index,operator:op,value:filterValue});
+      state.draftFilter=null;state.filterSelection=null;value.value="";operator.value="contains";value.disabled=false;state.page=1;closeSuggestions();
       renderFilterChips(state,key);
       apply(state,key);
       savePrefs(state,key);
     });
-    value.addEventListener("input",()=>updateDraftFilter(state,key));
-    value.addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();add.click();}});
-    first.append(labelWrap(t.column,column),labelWrap(t.condition,operator),labelWrap(t.value,value),add);
+    value.addEventListener("focus",()=>{if(filterColumnKind(state.headers[Number(column.value)]||""))renderSuggestions();});
+    value.addEventListener("click",()=>{if(filterColumnKind(state.headers[Number(column.value)]||""))renderSuggestions();});
+    value.addEventListener("input",()=>{state.filterSelection=null;updateDraftFilter(state,key);if(filterColumnKind(state.headers[Number(column.value)]||""))renderSuggestions();else closeSuggestions();});
+    value.addEventListener("keydown",event=>{
+      if(event.key==="Escape"){closeSuggestions();return;}
+      if(event.key==="Enter"){
+        event.preventDefault();
+        if(state.filterSelection){add.click();return;}
+        const firstSuggestion=suggestionMenu.querySelector("button");
+        if(!suggestionMenu.hidden&&firstSuggestion){firstSuggestion.click();return;}
+        add.click();
+      }
+    });
+    first.append(labelWrap(t.column,column),labelWrap(t.condition,operator),labelWrap(t.value,valueWrap),add);
     bar.append(first);
     const chips=el("div","pest-grid-filter-chips");state.filterChips=chips;bar.append(chips);
     const second=el("div","pest-grid-toolbar-footer");
@@ -1290,7 +1393,7 @@ function installPestSpreadsheetGrid(root){
     const pageInfo=el("span","pest-grid-page-info","");state.pageInfo=pageInfo;
     const next=button(t.next+" ›",()=>{state.page+=1;apply(state,key);});
     state.prevButton=prev;state.nextButton=next;second.append(prev,pageInfo,next);
-    second.append(button(t.clearFilters,()=>{state.search="";state.searchInput.value="";state.filters=[];state.draftFilter=null;state.filterValue.value="";state.filterOperator.value="contains";state.filterValue.disabled=false;state.sortColumn=-1;state.page=1;renderFilterChips(state,key);apply(state,key);savePrefs(state,key);}));
+    second.append(button(t.clearFilters,()=>{state.search="";state.searchInput.value="";state.filters=[];state.draftFilter=null;state.filterSelection=null;state.filterValue.value="";state.filterOperator.value="contains";state.filterValue.disabled=false;if(state.filterSuggestionMenu)state.filterSuggestionMenu.hidden=true;state.sortColumn=-1;state.page=1;renderFilterChips(state,key);apply(state,key);savePrefs(state,key);}));
     second.append(button(arabic()?"تطبيق الفلاتر":"Apply filters",()=>{state.page=1;renderFilterChips(state,key);apply(state,key);savePrefs(state,key);}));
     bar.append(second);
     state.sortLabel=el("div","pest-grid-sort-hint",t.sortHint);bar.append(state.sortLabel);
@@ -1308,7 +1411,7 @@ function installPestSpreadsheetGrid(root){
       sortColumn:Number.isInteger(saved.sortColumn)?saved.sortColumn:-1,sortDirection:saved.sortDirection==="desc"?"desc":"asc",
       page:1,pageSize:[25,50,100,250,0].includes(Number(saved.pageSize))?Number(saved.pageSize):25,
       hiddenColumns:new Set(Array.isArray(saved.hiddenColumns)?saved.hiddenColumns:[]),contentSignature:"",columnSignature:"",
-      headerCheck:null,filterField:null,filterOperator:null,filterValue:null,searchInput:null,filterChips:null,
+      headerCheck:null,filterField:null,filterOperator:null,filterValue:null,filterValueWrap:null,filterSuggestionMenu:null,filterSuggestionDismiss:null,filterSuggestionScroll:null,filterSelection:null,searchInput:null,filterChips:null,
       selectionInfo:null,allVisibleCheck:null,pageInfo:null,pageSizeSelect:null,prevButton:null,nextButton:null,
       columnDetails:null,columnList:null,sortLabel:null,copyButton:null,csvButton:null,prefKey:key,toolbarBuilt:false};
     states.set(host,state);activeStates.add(state);host.classList.add("pest-grid-enhanced-host");buildToolbar(state,key);return state;
@@ -1337,6 +1440,8 @@ function installPestSpreadsheetGrid(root){
     state.headers.forEach((header,index)=>{const option=el("option","",header);option.value=String(index);state.filterField.append(option);});
     const preferredColumn=state.draftFilter?String(state.draftFilter.column):selectedColumn;
     if(state.headers.length)state.filterField.value=state.headers.some((_,index)=>String(index)===preferredColumn)?preferredColumn:"0";
+    const lookupKind=filterColumnKind(state.headers[Number(state.filterField.value)]||"");
+    state.filterValue.placeholder=lookupKind==="accounts"?(arabic()?"اكتب اسم الحساب أو رقمه...":"Type account name or number..."):lookupKind==="costCenters"?(arabic()?"اكتب اسم مركز التكلفة أو رقمه...":"Type cost center name or code..."):t.value;
     if(state.draftFilter){state.filterOperator.value=state.draftFilter.operator;state.filterValue.value=state.draftFilter.value||"";state.filterValue.disabled=["empty","notEmpty"].includes(state.draftFilter.operator);}
     state.columnDetails.querySelector("summary").textContent=t.columns+" ▾";
     renderColumns(state,key);
@@ -1376,11 +1481,12 @@ function installPestSpreadsheetGrid(root){
   const getValue=(row,index)=>cellText(rowCells(row)[index]);
   const matches=(text,filter)=>{
     const left=normalizeFilterSearchText(text),right=normalizeFilterSearchText(filter.value);
+    const lookupTerms=Array.isArray(filter.matchAny)?filter.matchAny.map(normalizeFilterSearchText).filter(Boolean):[];
     const leftNumber=parseNumber(text),rightNumber=parseNumber(filter.value);
     const numericMatch=leftNumber!==null&&rightNumber!==null&&Math.abs(leftNumber-rightNumber)<=1e-9*Math.max(1,Math.abs(leftNumber),Math.abs(rightNumber));
     switch(filter.operator){
-      case "contains":return left.includes(right);
-      case "notContains":return !left.includes(right);
+      case "contains":return lookupTerms.length?lookupTerms.some(term=>left.includes(term)):left.includes(right);
+      case "notContains":return lookupTerms.length?!lookupTerms.some(term=>left.includes(term)):!left.includes(right);
       case "equals":return leftNumber!==null&&rightNumber!==null?numericMatch:left===right;
       case "notEquals":return leftNumber!==null&&rightNumber!==null?!numericMatch:left!==right;
       case "starts":return left.startsWith(right);
@@ -1396,7 +1502,10 @@ function installPestSpreadsheetGrid(root){
     const column=Number(state.filterField&&state.filterField.value),operator=state.filterOperator&&state.filterOperator.value,value=state.filterValue&&state.filterValue.value||"";
     const noValueRequired=operator==="empty"||operator==="notEmpty";
     if(!Number.isInteger(column)||column<0||column>=state.headers.length||(!noValueRequired&&!clean(value)))state.draftFilter=null;
-    else state.draftFilter={column,operator,value:noValueRequired?"":value};
+    else{
+      const selection=state.filterSelection;
+      state.draftFilter=Object.assign({column,operator,value:noValueRequired?"":value},selection?{matchAny:[selection.code,selection.name].filter(Boolean)}:{});
+    }
     state.page=1;apply(state,key);
   };
   const apply=(state,key)=>{
@@ -1510,6 +1619,7 @@ function installPestSpreadsheetGrid(root){
     ".pest-grid-control{display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:0;max-width:none;flex:0 0 auto;font-size:9px;font-weight:700;color:#64748b;white-space:nowrap}"+
     ".pest-grid-toolbar-main>.pest-grid-control:nth-child(1){width:145px;flex-basis:145px}.pest-grid-toolbar-main>.pest-grid-control:nth-child(2){width:82px;flex-basis:82px}.pest-grid-toolbar-main>.pest-grid-control:nth-child(3){width:92px;flex-basis:92px}.pest-grid-toolbar-main>.pest-grid-control:nth-child(4){width:95px;flex-basis:95px}"+
     ".pest-grid-label{white-space:nowrap;font-size:9px}.pest-grid-input,.pest-grid-select{min-width:0;width:100%;height:29px;padding:3px 7px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#0f172a;font-size:11px;font-weight:500}"+
+    ".pest-grid-filter-value-wrap{position:relative;width:100%;min-width:0}.pest-grid-filter-suggestions{position:fixed;overflow:auto;background:#fff;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 14px 32px #0f172a30;padding:4px;white-space:normal;max-height:280px}.pest-grid-filter-suggestions[hidden]{display:none}.pest-grid-filter-suggestion{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;border:0;border-bottom:1px solid #f1f5f9;background:#fff;text-align:start;padding:8px 10px;border-radius:6px;color:#1e293b;cursor:pointer}.pest-grid-filter-suggestion:last-child{border-bottom:0}.pest-grid-filter-suggestion:hover{background:#eff6ff}.pest-grid-filter-suggestion-code{font-size:11px;color:#1d4ed8}.pest-grid-filter-suggestion-name{font-size:11px;color:#334155}.pest-grid-filter-suggestion-empty{padding:10px;font-size:11px;color:#64748b}"+
     ".pest-grid-button{min-height:29px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#334155;font-size:9px;font-weight:800;cursor:pointer;white-space:nowrap;flex:0 0 auto}"+
     ".pest-grid-button:hover:not(:disabled){background:#eff6ff;border-color:#93c5fd;color:#1d4ed8}.pest-grid-button:disabled{opacity:.4;cursor:not-allowed}"+
     ".pest-grid-select-visible,.pest-grid-column-option{display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:700;color:#475569;white-space:nowrap;flex:0 0 auto}"+
@@ -1562,6 +1672,9 @@ function installPestSpreadsheetGrid(root){
   const disposeState=state=>{
     if(!state)return;
     if(state.toolbar&&state.toolbar.parentNode)state.toolbar.remove();
+    if(state.filterSuggestionMenu&&state.filterSuggestionMenu.parentNode)state.filterSuggestionMenu.remove();
+    if(state.filterSuggestionDismiss)document.removeEventListener("mousedown",state.filterSuggestionDismiss);
+    if(state.filterSuggestionScroll)window.removeEventListener("scroll",state.filterSuggestionScroll,true);
     if(state.host){
       state.host.classList.remove("pest-grid-enhanced-host");
       states.delete(state.host);
