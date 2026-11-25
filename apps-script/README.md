@@ -23,7 +23,7 @@ The supplied manifest requests the broad `https://www.googleapis.com/auth/drive`
 
 Do not authorize this project in a personal or mixed-use Drive account unless you deliberately accept that level of access. If the company account also contains unrelated private files, stop before authorization and evaluate a separate company storage account with the existing attachments folder explicitly shared to it. The gateway must still be tested against the old files before any switch.
 
-The Web App must allow anonymous network access for Cloudflare to call it without a Google browser session; the HMAC signature is the application-level gate. Deploy as the account owner and choose **Anyone** (not only signed-in Google users), only if your account policy allows it. If anonymous access is blocked by Google Workspace policy, do not weaken the account policy just to force this pilot.
+The Web App must allow anonymous network access for Cloudflare to call it without a Google browser session; the HMAC signature is the application-level gate. In the Apps Script deployment access setting, choose **Anyone** / anonymous access (Google manifest enum: `ANYONE_ANONYMOUS`), not an option that requires a signed-in Google account (`ANYONE`). Google distinguishes these two modes explicitly. If anonymous access is blocked by Google Workspace policy, do not weaken the account policy just to force this pilot.
 
 ## Deploy the pilot
 
@@ -36,7 +36,7 @@ The Web App must allow anonymous network access for Cloudflare to call it withou
 5. Save, then run `runGatewayDriveSelfTest` from the editor and approve the requested Google Drive permission. The test creates a tiny temporary file, validates its bytes, and moves it to Trash.
 6. Deploy → New deployment → Web app:
    - Execute as: **Me**
-   - Who has access: **Anyone**, only if your Google account / Workspace policy allows it.
+   - Who has access: **Anyone** (anonymous access, not “Anyone with a Google account”), only if your Google account / Workspace policy allows it.
    - Deploy and copy the URL ending in `/exec`.
 7. Keep the Web App URL and secret private. The next Cloudflare integration step will store them as Worker configuration/secrets. Never put the secret in this repository, in `index.html`, or in a browser/mobile setting.
 
