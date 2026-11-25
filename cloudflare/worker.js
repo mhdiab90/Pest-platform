@@ -1,4 +1,5 @@
 import { handleFinancialRequest } from "../financial-api.js";
+import { callAppsScriptGateway } from "./apps-script-gateway.js";
 import { isAllowedOrigin } from "./origin.js";
 const PROJECT_ID = "pest-plat-form";
 const DATABASE_URL = "https://pest-plat-form-default-rtdb.europe-west1.firebasedatabase.app";
@@ -2551,6 +2552,11 @@ async function handleGoogleDriveOAuthCallback(request,env){
   }catch(error){console.error("Google Drive OAuth callback:",String(error&&error.message||error).slice(0,220));return driveHtmlPage("تعذر ربط Google Drive",String(error&&error.message||"حدث خطأ أثناء الاتصال.").slice(0,240),false);}
 }
 async function handleGoogleDriveRequest(request,url,body,claims,profile,token,env){
+  if(url.pathname==="/drive/gateway/test"&&request.method==="GET"){
+    if(profile.role!=="admin")throw new Error("Only a system administrator can test the company Drive gateway.");
+    const gateway=await callAppsScriptGateway(env,{action:"ping"});
+    return {gatewayTest:true,gatewayVersion:String(gateway.gatewayVersion||""),effectiveUserEmail:String(gateway.effectiveUserEmail||""),folderReady:Boolean(gateway.folderId),productionAttachmentsUnchanged:true};
+  }
   if(url.pathname==="/drive/status"&&request.method==="GET"){
     requirePermission(profile,"attachments","view");
     const configuration=googleDriveConfigurationStatus(env);
@@ -2804,7 +2810,7 @@ export default {
       }, 200, origin);
     }
     if (!["GET","POST","DELETE"].includes(request.method)) return jsonResponse({ error: "Method not allowed." }, 405, origin);
-    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/lookup", "/attachments/upload", "/attachments/attach", "/attachments/replace", "/attachments/annotate", "/attachments/file", "/attachments/usage", "/push/notify", "/push/request", "/push/badge/sync", "/admin/users/delete", "/finance"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
+    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/gateway/test", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/lookup", "/attachments/upload", "/attachments/attach", "/attachments/replace", "/attachments/annotate", "/attachments/file", "/attachments/usage", "/push/notify", "/push/request", "/push/badge/sync", "/admin/users/delete", "/finance"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
 
     try {
       const authorization = request.headers.get("Authorization") || "";
