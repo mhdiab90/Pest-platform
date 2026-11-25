@@ -141,3 +141,21 @@ test("Apps Script gateway size endurance test covers bounded 256 KiB, 1 MiB and 
   assert.ok(app.includes("Size endurance test results"));
   assert.ok(app.includes("Testing stops at the first failure."));
 });
+
+
+test("Apps Script uploads can be enabled as a reversible admin-only pilot for new files up to 1 MiB", () => {
+  const worker = readFileSync(new URL("../cloudflare/worker.js", import.meta.url), "utf8");
+  assert.ok(worker.includes('"/drive/gateway/upload-mode"'));
+  assert.ok(worker.includes('"/drive-gateway-upload-mode"'));
+  assert.ok(worker.includes('if(profile.role!=="admin")throw new Error("Only a system administrator can change the Apps Script upload pilot setting.")'));
+  assert.ok(worker.includes("useAppsScriptGateway=gatewayMode.enabled===true&&bytes.byteLength<=Number(gatewayMode.maxBytes||0)"));
+  assert.ok(worker.includes("encodeBase64Bytes(new Uint8Array(bytes))"));
+  assert.ok(worker.includes("gatewayFileCreated=true"));
+  assert.ok(worker.includes("googleDriveUpload(driveAccessToken"));
+  assert.ok(worker.includes("effectiveUserEmail"));
+  const app = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.ok(app.includes("updateAppsScriptGatewayUploadMode"));
+  assert.ok(app.includes("Enable upload pilot"));
+  assert.ok(app.includes("Pilot limit: 1 MiB"));
+  assert.ok(app.includes("Disable Apps Script route"));
+});
