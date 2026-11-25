@@ -2483,9 +2483,19 @@ async function googleDriveDelete(accessToken,id){
   const response=await fetch("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(id),{method:"DELETE",headers:{Authorization:"Bearer "+accessToken}});
   if(!response.ok&&response.status!==404)throw new Error("Google Drive file deletion failed (HTTP "+response.status+").");
 }
-function attachmentEntityModule(type){const map={project:"projects",projectEvent:"projects",client:"master",vendor:"master",task:"tasks",message:"messages",cashCustody:"cashCustody",cashCustodyDraft:"cashCustody",financial:"reports",company:"settings"};if(!map[type])throw new Error("Unsupported attachment record type.");return map[type];}
+function attachmentEntityModule(type,entityId=""){
+  const map={project:"projects",projectEvent:"projects",client:"master",vendor:"master",task:"tasks",message:"messages",cashCustody:"cashCustody",cashCustodyDraft:"cashCustody",financial:"reports",company:"settings"};
+  if(type==="screen"){
+    const moduleId=String(entityId||"").split("--",1)[0];
+    const allowed=new Set(["dashboard","master","pestCrm","projects","statement","cashCustody","reports","messages","tasks","announcements","settings","attachments","profile","admin","financial_partyStatements","financial_reports","financial_journal","financial_review","financial_invoices","financial_assignments","financial_masters","financial_accounts","financial_centers","financial_inventory","financial_cash","financial_bank","financial_tax"]);
+    if(!allowed.has(moduleId))throw new Error("Unsupported screen attachment module.");
+    return moduleId;
+  }
+  if(!map[type])throw new Error("Unsupported attachment record type.");
+  return map[type];
+}
 async function validateAttachmentEntity(type,id,claims,profile,token,action,ownerUid,env){
-  const entityType=cleanText(type,24),entityId=entityType==="company"?"company":safeSegment(id,"attachment record id"),moduleId=attachmentEntityModule(entityType);
+  const entityType=cleanText(type,24),entityId=entityType==="company"?"company":safeSegment(id,"attachment record id"),moduleId=attachmentEntityModule(entityType,entityId);
   if(entityType==="company"){if(profile.role!=="admin")throw new Error("Company-wide attachments are restricted to administrators.");}
   else{
     if(entityType!=="financial")requirePermission(profile,"attachments",action==="view"?"view":action==="upload"?"add":action==="edit"?"edit":"delete");
@@ -2560,6 +2570,16 @@ async function validateAttachmentEntity(type,id,claims,profile,token,action,owne
         if(action==="upload"&&!hasPermission(profile,"financial_invoices","add")&&!hasPermission(profile,"financial_invoices","edit")&&!hasPermission(profile,"financial","add")&&!hasPermission(profile,"financial","edit"))throw new Error("Permission denied: financial attachment upload.");
         if(action==="edit"&&!hasPermission(profile,"financial","edit"))throw new Error("Permission denied: financial attachment edit.");
         if(action==="delete"&&!hasPermission(profile,"financial_invoices","delete")&&!hasPermission(profile,"financial_invoices","edit")&&!hasPermission(profile,"financial","delete")&&!hasPermission(profile,"financial","edit")&&!(financialRecord&&financialRecord.type==="invoice"&&financialRecord.createdBy===claims.sub&&hasPermission(profile,"financial_invoices","add")))throw new Error("Permission denied: financial invoice attachment deletion.");
+      }else if(entityType==="screen"){
+        const separator=entityId.indexOf("--");
+        if(separator<=0||separator>=entityId.length-2)throw new Error("Invalid screen attachment reference.");
+        if(moduleId==="admin"){
+          if(profile.role!=="admin")throw new Error("Screen attachments are restricted to administrators.");
+        }else if(moduleId==="announcements"){
+          if(!hasPermission(profile,"announcements","manage"))throw new Error("Permission denied: announcements.manage.");
+        }else{
+          requirePermission(profile,moduleId,"view");
+        }
       }
     }
   }
