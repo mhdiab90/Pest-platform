@@ -478,13 +478,25 @@ function FinanceModule(props){
  const api=async(path,method,body)=>{
   const auth=window.PEST_FIREBASE_AUTH&&window.PEST_FIREBASE_AUTH.currentUser;
   if(!auth)throw new Error(t('جلسة الدخول انتهت. أعد تسجيل الدخول.','Your session expired. Sign in again.'));
-  const token=await auth.getIdToken();
-  const response=await fetch(base+'/finance'+(path||''),{method:method||'GET',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
+  let token='';
+  try{token=await auth.getIdToken();}
+  catch(error){throw new Error(t('تعذر تحديث جلسة الدخول إلى Firebase. تحقق من الاتصال ثم سجّل الدخول مرة أخرى.','Could not refresh the Firebase session. Check the connection and sign in again.')+' ('+String(error&&error.message||error)+')');}
+  const endpoint=String(base||'')+'/finance'+(path||'');
+  const headers={Authorization:'Bearer '+token,Accept:'application/json'};
+  const options={method:method||'GET',headers,cache:'no-store'};
+  if(body!==undefined){headers['Content-Type']='application/json';options.body=JSON.stringify(body);}
+  let response;
+  try{response=await fetch(endpoint,options);}
+  catch(error){
+   let host=String(base||'');
+   try{host=new URL(endpoint,window.location.href).origin;}catch(_){}
+   throw new Error(t('تعذر الاتصال بخادم الحسابات ('+host+'). لم تصل استجابة من الخدمة. قد يكون السبب انقطاع الاتصال أو مشكلة CORS أو عدم استجابة Cloudflare Worker. لا تكرر اعتماد القيد قبل التحقق من حالته.','Could not reach the financial API ('+host+'). No response was received. Check connectivity, CORS and the Cloudflare Worker. Do not repeat journal approval until its current status is verified.')+' ['+String(error&&error.message||error)+']');
+  }
   const data=await response.json().catch(()=>({}));
   if(!response.ok)throw new Error(data.error||('HTTP '+response.status));
   return data;
  };
- const statementAttachmentKey=reference=>String(reference.entityType)+":"+String(reference.entityId);
+  const statementAttachmentKey=reference=>String(reference.entityType)+":"+String(reference.entityId);
  const statementAttachmentReferences=record=>{
   const refs=[],sourceType=String(record&&record.sourceType||""),sourceId=String(record&&record.sourceId||"");
   if(["cashCustody","partnerCurrentAccountTransfer","cashCustodyTransfer"].includes(sourceType)){
@@ -686,8 +698,9 @@ function FinanceModule(props){
   }finally{setBusy(false);}
  };
  const refresh=async(options)=>{
-  const initialOnly=Boolean(options&&options.initialOnly);
-  setBusy(true);setError('');
+  const initialOnly=Boolean(options&&options.initialOnly),silent=Boolean(options&&options.silent),keepBusy=Boolean(options&&options.keepBusy);
+  if(!keepBusy)setBusy(true);
+  if(!silent)setError('');
   try{
    const b=await api('?resource=bootstrap');
    const [r,d,j]=await Promise.all([
@@ -708,10 +721,11 @@ function FinanceModule(props){
     setJournalRecords(rows(j.items).sort((a,b)=>n(b.postedAt||b.createdAt)-n(a.postedAt||a.createdAt)));
    }
    if((tab==='inventory'||tab==='inventoryMovements'||(tab==='reports'&&report==='balance'))&&canFinance('inventory','view'))await loadInventoryMovements();
-  }catch(e){setError(e.message||String(e));}
-  finally{setBusy(false);}
+   return true;
+  }catch(e){if(!silent)setError(e.message||String(e));return false;}
+  finally{if(!keepBusy)setBusy(false);}
  };
- const loadLegacyImportDocuments=async()=>{
+  const loadLegacyImportDocuments=async()=>{
   const request=++legacyImportDocumentsRequestRef.current;
   setLegacyImportDocumentsLoading(true);
   setLegacyImportDocumentsLoaded(false);
@@ -1294,8 +1308,9 @@ const ledgerDebit=auditBalanceFlat.reduce((sum,line)=>sum+Number(line.debit||0),
   if(!assignment)return;
   await manageAssignment("delete","received",assignment);
  };
- const loadPeriod=async()=>{
-  setBusy(true);
+ const loadPeriod=async(options)=>{
+  const silent=Boolean(options&&options.silent),keepBusy=Boolean(options&&options.keepBusy);
+  if(!keepBusy)setBusy(true);
   try{
    const [d,partnerData]=await Promise.all([
     api('?resource=periods&from='+encodeURIComponent(period.from)+'&to='+encodeURIComponent(period.to)),
@@ -1307,11 +1322,12 @@ const ledgerDebit=auditBalanceFlat.reduce((sum,line)=>sum+Number(line.debit||0),
    Object.entries(d.balanceEntries||d.entries||{}).forEach(([m,entries])=>Object.values(entries||{}).forEach(j=>{if(j&&j.status==='posted')cumulative.push(j);}));
    setPeriodJournals(selected);setBalanceJournals(cumulative);
    if(d.accountingStartMonth)setAccountingStartMonth(d.accountingStartMonth);
+   return true;
   }
-  catch(e){setError(e.message||String(e));}
-  finally{setBusy(false);}
+  catch(e){if(!silent)setError(e.message||String(e));return false;}
+  finally{if(!keepBusy)setBusy(false);}
  };
- React.useEffect(()=>{void refresh({initialOnly:true});if(db){db.ref('projects').once('value').then(snapshot=>setProjects(rows(snapshot.val()))).catch(e=>console.warn(e));}},[]);
+  React.useEffect(()=>{void refresh({initialOnly:true});if(db){db.ref('projects').once('value').then(snapshot=>setProjects(rows(snapshot.val()))).catch(e=>console.warn(e));}},[]);
  React.useEffect(()=>{
   if(tab!=='review'||!canFinance("review","view"))return;
   let active=true,loading=false;
@@ -2025,29 +2041,58 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
    const result=await api("","POST",{action:"updateReviewJournal",id:draft.id,acknowledgeSourceWarnings:draft.acknowledgeSourceWarnings===true,journal:{date:draft.date,description:draft.description,reference:draft.reference,checkNumber:draft.checkNumber||"",invoiceNumber:draft.invoiceNumber||"",documentNumber:draft.documentNumber||"",revisionNotes:draft.revisionNotes||""},lines:draft.lines});
    const archiveMoved=archiveCorrection&&result.status==="pending_review";
    const archiveStillNeedsCorrection=archiveCorrection&&result.status==="needs_correction";
-   setNotice(result.status==="posted"?"تم تصحيح القيد وترحيله بنجاح وتحديث الأستاذ والفترات.":archiveMoved?"تم تصحيح قيد الأرشيف ونقله إلى قائمة المراجعة والاعتماد؛ لن يعود إلى قائمة الاستكمال.":archiveStillNeedsCorrection?"ما زالت هناك أسباب تصحيح: "+(result.errors||[]).join("، "):"تم حفظ التعديلات. حالة القيد الحالية: "+status(result.status||"pending_review")+".");
+   const operationNotice=result.status==="posted"?"تم تصحيح القيد وترحيله بنجاح وتحديث الأستاذ والفترات.":archiveMoved?"تم تصحيح قيد الأرشيف ونقله إلى قائمة المراجعة والاعتماد؛ لن يعود إلى قائمة الاستكمال.":archiveStillNeedsCorrection?"ما زالت هناك أسباب تصحيح: "+(result.errors||[]).join("، "):"تم حفظ التعديلات. حالة القيد الحالية: "+status(result.status||"pending_review")+".";
+   setNotice(operationNotice);
    setJournalModal(null);setJournalModalDraft(null);
-   await refresh();
-   if(result.status==="posted"){
-    setTab("journal");
-    await loadPeriod();
-   }else if(archiveMoved||result.status==="pending_review"&&openedFromReview){
-    setTab("review");
-    const queue=await refreshReviewQueue(true);
-    const queued=(queue||[]).find(row=>String(row.id)===String(draft.id));
-    await openReviewItem(queued||{id:draft.id});
-   }else if(archiveStillNeedsCorrection){
-    setTab("legacyImport");
-   }else if(result.status==="needs_correction"){
-    setTab("journal");
-    const detail=await api("?resource=document&id="+encodeURIComponent(draft.id));
-    if(detail.item)openJournalModal(detail.item);
+   let screenRefreshOk=true;
+   try{
+    if(!await refresh({silent:true,keepBusy:true}))screenRefreshOk=false;
+    if(result.status==="posted"){
+     setTab("journal");
+    }else if(archiveMoved||result.status==="pending_review"&&openedFromReview){
+     setTab("review");
+     const queue=await refreshReviewQueue(true);
+     if(queue){
+      const queued=queue.find(row=>String(row.id)===String(draft.id));
+      await openReviewItem(queued||{id:draft.id});
+     }else screenRefreshOk=false;
+    }else if(archiveStillNeedsCorrection){
+     setTab("legacyImport");
+    }else if(result.status==="needs_correction"){
+     setTab("journal");
+     const detail=await api("?resource=document&id="+encodeURIComponent(draft.id));
+     if(detail.item)openJournalModal(detail.item);
+    }
+    if(!await loadPeriod({silent:true,keepBusy:true}))screenRefreshOk=false;
+   }catch(refreshError){
+    screenRefreshOk=false;
+    console.warn("Journal edit succeeded, but refreshing the displayed data failed:",String(refreshError&&refreshError.message||refreshError));
    }
-   await loadPeriod();
-  }catch(error){setError(error.message||String(error));}
+   if(!screenRefreshOk)setNotice(operationNotice+" تم حفظ التعديلات على الخادم، لكن تعذر تحديث بعض بيانات الشاشة بعد الحفظ. لا تكرر العملية؛ اضغط «تحديث البيانات» بعد عودة الاتصال.");
+  }catch(error){
+   let recovered=false;
+   if(/تعذر الاتصال بخادم الحسابات|Could not reach the financial API/i.test(String(error&&error.message||error))){
+    try{
+     const verification=await api("?resource=document&id="+encodeURIComponent(draft.id));
+     const current=verification&&verification.item;
+     const previousUpdatedAt=Number(draft.updatedAt||draft.createdAt||0),currentUpdatedAt=Number(current&&current.updatedAt||0);
+     if(current&&String(current.id||"")===String(draft.id)&&currentUpdatedAt>previousUpdatedAt){
+      const recoveredNotice="تم التحقق من الخادم: تم حفظ تعديل القيد بالفعل. الحالة الحالية: "+status(current.status||"غير محددة")+". لا تعِد الحفظ مرة أخرى.";
+      setJournalModal(null);setJournalModalDraft(null);
+      setTab(current.status==="posted"?"journal":archiveCorrection&&current.status==="needs_correction"?"legacyImport":openedFromReview?"review":"journal");
+      setNotice(recoveredNotice);
+      let refreshed=await refresh({silent:true,keepBusy:true});
+      if(!await loadPeriod({silent:true,keepBusy:true}))refreshed=false;
+      if(!refreshed)setNotice(recoveredNotice+" تعذر تحديث الشاشة؛ استخدم «تحديث البيانات» بعد عودة الاتصال.");
+      recovered=true;
+     }
+    }catch(verificationError){console.warn("Could not verify journal edit after a transport failure:",String(verificationError&&verificationError.message||verificationError));}
+   }
+   if(!recovered)setError(error.message||String(error));
+  }
   finally{setBusy(false);}
  };
- const renderReviewJournalEditor=()=>{
+  const renderReviewJournalEditor=()=>{
   if(tab!=="review"||!journalModal||!journalModalDraft)return null;
   const draft=journalModalDraft,editable=draft.type==="journal"&&["pending_review","needs_correction"].includes(draft.status)&&canFinance("review","edit")&&!draft.inventoryMovementChange;
   const lines=Array.isArray(draft.lines)?draft.lines:[];
@@ -2416,11 +2461,44 @@ const submitJournal=async()=>{
   if(decision==="approve"||decision==="approveDuplicate"||decision==="reject"){
    if(!canFinance("review","approve")){setError("ليس لديك صلاحية اعتماد أو رفض مستندات المراجعة.");return;}
   }else if(!canFinance("review","edit")){setError("ليس لديك صلاحية إعادة المستند للتصحيح.");return;}
+  const documentId=selected.id;
   setBusy(true);setError('');
-  try{const r=await api('', 'POST',{action:'review',id:selected.id,decision,reason:decision==='approve'?'تمت المراجعة والاعتماد':decision==='return'?'إعادة للتصحيح':'رفض المستند',allowDuplicate:decision==='approveDuplicate'});setNotice(r.status==='posted'?'تم الاعتماد والترحيل': 'تم تحديث المستند');setSelected(null);await refresh();await loadPeriod();}
-  catch(e){setError(e.message||String(e));}finally{setBusy(false);}
+  try{
+   const r=await api('', 'POST',{action:'review',id:documentId,decision,reason:decision==='approve'?'تمت المراجعة والاعتماد':decision==='return'?'إعادة للتصحيح':'رفض المستند',allowDuplicate:decision==='approveDuplicate'});
+   const operationNotice=r.status==='posted'?'تم الاعتماد والترحيل': 'تم تحديث المستند';
+   setNotice(operationNotice);
+   setSelected(null);
+   let screenRefreshOk=true;
+   try{
+    if(!await refresh({silent:true,keepBusy:true}))screenRefreshOk=false;
+    if(!await loadPeriod({silent:true,keepBusy:true}))screenRefreshOk=false;
+   }catch(refreshError){
+    screenRefreshOk=false;
+    console.warn("Journal review decision succeeded, but refreshing the displayed data failed:",String(refreshError&&refreshError.message||refreshError));
+   }
+   if(!screenRefreshOk)setNotice(operationNotice+" تم تنفيذ القرار وحفظه على الخادم، لكن تعذر تحديث بعض بيانات الشاشة. لا تكرر الاعتماد؛ اضغط «تحديث البيانات» بعد عودة الاتصال.");
+  }catch(error){
+   let recovered=false;
+   if(/تعذر الاتصال بخادم الحسابات|Could not reach the financial API/i.test(String(error&&error.message||error))){
+    try{
+     const verification=await api("?resource=document&id="+encodeURIComponent(documentId));
+     const current=verification&&verification.item;
+     const expectedStatus=decision==="approve"||decision==="approveDuplicate"?"posted":decision==="reject"?"rejected":decision==="return"?"needs_correction":"";
+     if(current&&expectedStatus&&current.status===expectedStatus){
+      const recoveredNotice=expectedStatus==="posted"?"تم التحقق من الخادم: تم اعتماد وترحيل القيد بالفعل. لا تكرر الاعتماد.":"تم التحقق من الخادم: تم تنفيذ قرار المراجعة بالفعل. لا تكرر الإجراء.";
+      setSelected(null);
+      setNotice(recoveredNotice);
+      let refreshed=await refresh({silent:true,keepBusy:true});
+      if(!await loadPeriod({silent:true,keepBusy:true}))refreshed=false;
+      if(!refreshed)setNotice(recoveredNotice+" تعذر تحديث الشاشة؛ استخدم «تحديث البيانات» بعد عودة الاتصال.");
+      recovered=true;
+     }
+    }catch(verificationError){console.warn("Could not verify journal review decision after a transport failure:",String(verificationError&&verificationError.message||verificationError));}
+   }
+   if(!recovered)setError(error.message||String(error));
+  }finally{setBusy(false);}
  };
- const submitCash=async()=>{
+  const submitCash=async()=>{
   setBusy(true);setError('');
   try{const r=await api('', 'POST',Object.assign({action:'submitCash'},cash,{amount:n(cash.amount)}));setNotice('تم تسجيل الحركة وإرسالها للمراجعة. لا تؤثر على الأرصدة قبل الاعتماد.');setCash(o=>Object.assign({},o,{amount:'',description:'',reference:''}));await refresh();}
   catch(e){setError(e.message||String(e));}finally{setBusy(false);}
@@ -5430,5 +5508,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261125-finance-picker-null-guard-v14";
+ window.PEST_FINANCE_MODULE_VERSION="20261125-finance-save-refresh-safe-v15";
 })();
