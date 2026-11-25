@@ -674,3 +674,16 @@ test("imported journals needing completion use the shared scrollable report tabl
   assert.match(archive, /corrections\.length\?table\(/);
   assert.match(archive, /correctionRows/);
 });
+
+test("legacy imported journal completion list loads documents when its tab opens and avoids false zero counts", () => {
+  assert.match(source, /const loadLegacyImportDocuments=async\(\)=>\{/);
+  assert.match(source, /api\('\?resource=documents'\)/);
+  assert.match(source, /if\(tab!=='legacyImport'\|\|!currentUser\|\|currentUser\.role!=='admin'\)return/);
+  assert.match(source, /void loadLegacyImportDocuments\(\)/);
+  const start=source.indexOf("const renderLegacyImport=()=>{");
+  const end=source.indexOf("const renderMasters",start);
+  const archive=source.slice(start,end);
+  assert.match(archive, /loadLegacyImportDocuments/);
+  assert.match(archive, /legacyImportDocumentsLoaded\?imported\.length:"جارٍ التحميل\.\.\."/);
+  assert.match(archive, /legacyImportDocumentsLoading\?"جارٍ تحميل القيود المستوردة\.\.\."/);
+});
