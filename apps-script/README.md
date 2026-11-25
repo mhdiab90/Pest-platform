@@ -1,6 +1,6 @@
 # Pest Platform — Google Apps Script Drive Gateway (Pilot)
 
-This is an isolated gateway prototype. It does **not** replace the live Cloudflare/Google Drive attachment flow yet.
+This gateway remains a controlled, reversible upload pilot. It does not replace the complete live Cloudflare/Google Drive attachment flow. The administrator can opt new uploads up to 1 MiB into the gateway from Pest Platform; all other attachment operations continue on the existing direct Google Drive API route.
 
 ## What it does
 
@@ -15,7 +15,7 @@ This is an isolated gateway prototype. It does **not** replace the live Cloudfla
 
 The current app supports files up to 20 MiB. This prototype uses Base64 JSON for binary transfer because Apps Script `ContentService` returns text output. A 20 MiB file becomes roughly 26.7 MiB of Base64 before JSON overhead.
 
-Google documents a six-minute Apps Script execution ceiling, but that is **not** a guarantee that a Web App request/response of this size will be accepted or fast. Google does not publish a clear end-to-end Web App request/response size guarantee for this exact pattern. Therefore, do not switch production attachment traffic until we measure upload and preview round-trips with representative image, PDF, and 20 MiB files.
+Google documents a six-minute Apps Script execution ceiling, but that is **not** a guarantee that a Web App request/response of this size will be accepted or fast. Google does not publish a clear end-to-end Web App request/response size guarantee for this exact pattern. Therefore, do not route the full attachment workload through this gateway. The application pilot is deliberately limited to new uploads up to 1 MiB. Files larger than the selected pilot limit and all existing attachments continue to use the current direct Google Drive API. Download, preview, replace, delete, annotation, and attachment linking remain on the existing route. The administrator can disable the pilot immediately from the same settings panel.
 
 ## Security and Google Drive permission
 
@@ -67,7 +67,9 @@ The authenticated `ping` action returns the Apps Script effective account email 
 
 - Existing attachment records and their `driveFileId` values.
 - Existing files in Google Drive.
-- Current attachment upload, preview, replace, delete, annotation, and linking routes.
+- Existing attachment records and their Drive file IDs.
+- Direct Google Drive API handling for files above the pilot size limit and for download, preview, replace, delete, annotation, and entity linking.
+- A silent automatic fallback after a gateway upload failure. This is intentionally not performed because the gateway could have created the file even if its response was lost; a silent second upload could create duplicates.
 - Web and Android user interfaces.
 - Current production OAuth connection and its encrypted refresh-token record.
 
@@ -76,3 +78,18 @@ The gateway pilot includes an administrator-only size-endurance test with three 
 ## Operational note
 
 The prototype moves deleted/replaced Drive files to Trash rather than immediately purging them. This is intentionally recoverable during testing. The gateway's web-app deployment is publicly reachable at the network layer, so its HMAC secret must remain private and must be rotated if it is ever exposed.
+
+
+## Controlled in-app upload pilot
+
+The production Worker exposes an administrator-only setting at `/drive/gateway/upload-mode`, persisted in the existing Durable Object storage. It defaults to **disabled** and can be toggled from Settings → Attachments → Google Drive connection.
+
+When enabled:
+- New files no larger than **1 MiB** are sent as signed Base64 requests to Apps Script.
+- The Worker checks the gateway effective account and exact company folder against the existing Google Drive connection before each gateway upload.
+- The returned Drive file ID is saved in the same existing attachment metadata store. The file is created inside the same company folder, so no migration or rewrite of old attachment metadata is needed.
+- Larger files continue on the direct Google Drive API upload route.
+- Downloads/previews, replacement, deletion, annotations and cash-custody/entity linking continue on the current direct route.
+- If the gateway upload fails, the Worker does not silently retry through the direct API because the gateway might have created a file before a response was lost. Disable the pilot before retrying after an ambiguous failure.
+
+The in-app control verifies the company account and folder before enabling the mode. It is disabled by default after deployment; an administrator must explicitly enable it. The pilot ceiling can be selected internally as 256 KiB or 1 MiB, with the current UI setting it to 1 MiB. Existing attachment records and Drive IDs are not rewritten.
