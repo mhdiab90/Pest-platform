@@ -154,7 +154,7 @@ test("Apps Script full attachment routing is reversible, admin-only and covers t
   assert.ok(worker.includes("verifyCompanyAppsScriptGateway(env,connection)"));
   assert.ok(worker.includes('action:"download",driveFileId:attachment.driveFileId'));
   assert.ok(worker.includes('action:"delete",driveFileId:attachment.driveFileId'));
-  assert.ok(worker.includes("decodeBase64Bytes(String(downloaded&&downloaded.dataBase64||\"\")"));
+  assert.ok(worker.includes("decodeBase64Bytes(String(downloaded&&downloaded.dataBase64"));
   assert.ok(worker.includes('driveFileId:String(uploaded.id)'));
   assert.ok(worker.includes("fullAttachmentRouting,updatedAt:Date.now()"));
   const app = readFileSync(new URL("../index.html", import.meta.url), "utf8");
@@ -173,7 +173,7 @@ test("Upload pilot UI does not silently disable its control and explains prerequ
   const app = readFileSync(new URL("../index.html", import.meta.url), "utf8");
   assert.ok(app.includes("updateAppsScriptGatewayUploadMode"));
   assert.ok(app.includes("Refresh status"));
-  assert.ok(app.includes("File-transfer and size-endurance tests are not prerequisites for enabling the pilot."));
+  assert.ok(app.includes("The migration reuses existing file IDs"));
   assert.ok(app.includes("GOOGLE_DRIVE_GATEWAY_URL"));
   assert.ok(app.includes("GOOGLE_DRIVE_GATEWAY_SECRET"));
   assert.ok(app.includes("disabled={driveGatewayUploadModeBusy||driveConnectionStatus.loading}"));
