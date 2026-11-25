@@ -1510,8 +1510,9 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
    accounts:accounts.filter(account=>account&&account.code).map(account=>({code:String(account.code),name:String(account.name||"")})),
    costCenters:centers.filter(center=>center&&(center.code||center.id)).map(center=>({code:String(center.code||center.id),name:String(center.name||"")}))
   };
+  // Keep the latest lightweight master lookups available to the shared table filters
+  // when this screen is hidden or unmounted while the user works in another module.
   window.PEST_FINANCE_FILTER_LOOKUPS=lookups;
-  return ()=>{if(window.PEST_FINANCE_FILTER_LOOKUPS===lookups)delete window.PEST_FINANCE_FILTER_LOOKUPS;};
  },[master.chartOfAccounts,master.costCenters]);
  const items=rows(master.items),activeItems=items.filter(x=>x.active!==false);
  const financialParties=rows(master.parties),registeredFinancingParties=rows(master.financingParties),registeredSecurityDepositParties=rows(master.securityDepositParties);
@@ -2017,17 +2018,17 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
  };
  const tableFieldText=(row,headers,kind)=>{
   const cells=Array.isArray(row&&row.props&&row.props.children)?row.props.children:[row&&row.props?row.props.children:null];
-  const labels=(headers||[]).map(value=>String(screenSearchText(value)||'').toLowerCase());
+  const labels=(headers||[]).map(value=>normalizeMatch(screenSearchText(value)||''));
   const indices=new Set();
   labels.forEach((label,index)=>{
-   const accountColumn=kind==='account'&&(label.includes('حساب')||label.includes('account'));
-   const centerColumn=kind==='costCenter'&&(label.includes('مركز التكلفة')||label.includes('مركز تكلفة')||label.includes('cost center')||label.includes('المشروع')||label.includes('project'));
+   const accountColumn=kind==='account'&&(/حساب|account|دليل الحسابات|gl account|ledger account/.test(label));
+   const centerColumn=kind==='costCenter'&&(/مركز.*تكلف|تكلف.*مركز|cost.?cent(er|re)|المشروع|project/.test(label)||label==='مركز'||label==='المركز');
    if(accountColumn||centerColumn)indices.add(index);
   });
-  if(kind==='account'){
+  if(kind==='account'||kind==='costCenter'){
    Array.from(indices).forEach(index=>{
-    if(index>0&&/(كود|code)/.test(labels[index-1]))indices.add(index-1);
-    if(index+1<labels.length&&/(كود|code)/.test(labels[index+1]))indices.add(index+1);
+    if(index>0&&/(كود|code|رقم|number)/.test(labels[index-1]))indices.add(index-1);
+    if(index+1<labels.length&&/(كود|code|رقم|number)/.test(labels[index+1]))indices.add(index+1);
    });
   }
   if(!indices.size)return null;
@@ -5697,5 +5698,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261125-finance-value-filter-journal-attachments-v24";
+ window.PEST_FINANCE_MODULE_VERSION="20261125-finance-attachment-manager-filter-fix-v25";
 })();
