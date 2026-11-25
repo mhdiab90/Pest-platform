@@ -6623,6 +6623,14 @@ function App(){
   const navMode=navPreferences.uid===(currentUser&&currentUser.uid)?navPreferences.mode:'side';
   const recentNavItems=(navPreferences.uid===(currentUser&&currentUser.uid)?navPreferences.recent:[]).map(id=>navCatalog.find(item=>item.id===id)).filter(Boolean).slice(0,5);
   const activeNavItem=navCatalog.find(item=>item.id===tab);
+  const mainScreenAttachmentModules={dashboard:'dashboard',pestCrm:'pestCrm',projects:'projects',projectDetail:'projects',statement:'statement',cashCustody:'cashCustody',custodyStatement:'cashCustody',reports:'reports',messages:'messages',tasks:'tasks',announcements:'announcements',settings:'settings',attachments:'attachments',profile:'profile',companySettings:'admin',aiSettings:'admin',userRequests:'admin',userManagement:'admin',userPermissions:'admin',auditLogs:'admin'};
+  useEffect(()=>{
+    if(tab==='financial'||tab==='master'){setScreenAttachmentContext(null);return;}
+    const moduleId=mainScreenAttachmentModules[tab];
+    if(!moduleId){setScreenAttachmentContext(null);return;}
+    const screenKey=String(tab==='projectDetail'?'projectDetail_'+(selectedProjectCode||'current'):tab).replace(/[^a-zA-Z0-9_-]+/g,'_').slice(0,84);
+    setScreenAttachmentContext({entityType:'screen',entityId:moduleId+'--'+screenKey,label:activeNavItem?.label||String(tab||'')});
+  },[tab,activeNavItem?.label,selectedProjectCode]);
   useEffect(()=>{
     const previous=previousTabRef.current;
     if(previous===tab)return;
@@ -7486,6 +7494,7 @@ function App(){
           </div>
           <div className="app-screen-current"><small>{rtl?'مساحة العمل':'WORKSPACE'}</small><strong>{activeNavItem?.label||(tab==='projectDetail'?(rtl?'ملف المشروع':'Project file'):String(tab||''))}</strong></div>
         </div>}
+        {tab!=='appLauncher'&&screenAttachmentContext&&renderRecordAttachments(screenAttachmentContext.entityType,screenAttachmentContext.entityId,screenAttachmentContext.label)}
         {tab!=='appLauncher'&&canExportCurrentScreen()&&<div className="app-report-toolbar no-print"><div className="report-toolbar-caption"><strong><i className="fas fa-file-invoice me-2 text-slate-500"></i>{rtl?'تقرير الشاشة الحالية':'Current screen report'}</strong><small>{rtl?'ملخص تنفيذي + تفاصيل في Excel و PDF':'Executive summary + detailed sheets in Excel and PDF'}</small></div><div className="report-toolbar-actions"><button type="button" onClick={exportCurrentScreenExcel} className="bg-emerald-600 text-white hover:bg-emerald-700"><i className="fas fa-file-excel"></i>{rtl?'تصدير Excel':'Excel'}</button><button type="button" onClick={exportCurrentScreenPdf} className="bg-slate-800 text-white hover:bg-slate-900"><i className="fas fa-file-pdf"></i>{rtl?'تصدير PDF':'PDF'}</button></div></div>}
         {tab==='appLauncher'&&<div className="app-launcher">
           <div className="app-launcher-heading"><strong>{rtl?'التطبيقات':'Applications'}</strong><span>{rtl?'اختر القسم لعرض شاشاته':'Choose a section to view its screens'}</span></div>
@@ -7501,7 +7510,7 @@ function App(){
           </div>}
         </div>}
         {tab==='pestCrm'&&canAccessTab('pestCrm')&&<PestCrmModuleSlot db={db} currentUser={currentUser} rtl={rtl} can={hasPermission} addLog={addLog}/>}
-        {financialModuleMounted&&(canAccessTab('financial')||canAccessTab('master'))&&<div className={tab==='financial'||tab==='master'?'':'hidden'}><FinanceModuleSlot db={db} currentUser={currentUser} rtl={rtl} language={lang} workerBase={PUSH_WORKER_BASE} userDirectory={userDirectory} addLog={addLog} masterDirectoryOnly={tab==='master'} externalPartyRequest={financialPartyMasterRequest} onPartyMasterRequestComplete={()=>setFinancialPartyMasterRequest(null)} can={(module,action)=>{if(tab==='master'&&module==='financial_masters')return hasPermission('master',action)||hasPermission(module,action);return hasPermission(module,action);}} onOpenPartyMaster={openFinancialPartyMaster}/></div>}
+        {financialModuleMounted&&(canAccessTab('financial')||canAccessTab('master'))&&<div className={tab==='financial'||tab==='master'?'':'hidden'}><FinanceModuleSlot db={db} currentUser={currentUser} rtl={rtl} language={lang} workerBase={PUSH_WORKER_BASE} userDirectory={userDirectory} addLog={addLog} masterDirectoryOnly={tab==='master'} activeHostTab={tab} onAttachmentScreenChange={context=>{if(context)setScreenAttachmentContext(context);}} onOpenAttachment={(attachment,onDelete)=>void openAttachmentFile(attachment,false,attachment.entityType,attachment.entityId,'side',onDelete)} onManageRecordAttachments={(entityType,entityId,label)=>setScreenAttachmentContext({entityType,entityId,label})} externalPartyRequest={financialPartyMasterRequest} onPartyMasterRequestComplete={()=>setFinancialPartyMasterRequest(null)} can={(module,action)=>{if(tab==='master'&&module==='financial_masters')return hasPermission('master',action)||hasPermission(module,action);return hasPermission(module,action);}} onOpenPartyMaster={openFinancialPartyMaster}/></div>}
         {tab==='dashboard'&&<div className="space-y-5 print-area">
           <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="font-bold text-xl">{tr('dashboard')} · {tr('cashFlow')}</h2><div className="flex gap-2 no-print"><button onClick={()=>setTab('reports')} className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-bold">{tr('reportCenter')}</button><button onClick={()=>window.print()} className="bg-gray-800 text-white rounded-lg px-4 py-2 text-sm">{tr('printPdf')}</button></div></div>
           <section className="app-dashboard-filterbar no-print">
