@@ -2570,7 +2570,7 @@ async function validateAttachmentEntity(type,id,claims,profile,token,action,owne
         if(action==="upload"&&!hasPermission(profile,"financial_invoices","add")&&!hasPermission(profile,"financial_invoices","edit")&&!hasPermission(profile,"financial","add")&&!hasPermission(profile,"financial","edit"))throw new Error("Permission denied: financial attachment upload.");
         if(action==="edit"&&!hasPermission(profile,"financial","edit"))throw new Error("Permission denied: financial attachment edit.");
         if(action==="delete"&&!hasPermission(profile,"financial_invoices","delete")&&!hasPermission(profile,"financial_invoices","edit")&&!hasPermission(profile,"financial","delete")&&!hasPermission(profile,"financial","edit")&&!(financialRecord&&financialRecord.type==="invoice"&&financialRecord.createdBy===claims.sub&&hasPermission(profile,"financial_invoices","add")))throw new Error("Permission denied: financial invoice attachment deletion.");
-      }else if(entityType==="screen"){
+      }}else if(entityType==="screen"){
         const separator=entityId.indexOf("--");
         if(separator<=0||separator>=entityId.length-2)throw new Error("Invalid screen attachment reference.");
         if(moduleId==="admin"){
