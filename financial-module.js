@@ -409,7 +409,7 @@ function FinanceModule(props){
  };
 
  const financeTabAreas={legacyImport:"journal",inventoryMovements:'inventory',overview:"overview",journal:"journal",openingBalances:"journal",review:"review",invoices:"invoices",assignments:"assignments",partyStatements:"partyStatements",partnerCurrent:"partyStatements",masters:"masters",accounts:"accounts",centers:"centers",inventory:"inventory",cash:"cash",bank:"bank",tax:"tax",reports:"reports",accountAnalysis:"reports",accountReview:"reports"};
- const financeMasterAreas={parties:"masters",financingParties:"masters",employeeAdvances:"masters",employeeCustodies:"masters",chartOfAccounts:"accounts",costCenters:"centers",items:"inventory",itemGroups:"inventory",warehouses:"inventory",bankAccounts:"bank",taxCodes:"tax"};
+ const financeMasterAreas={parties:"masters",financingParties:"masters",securityDepositParties:"masters",employeeAdvances:"masters",employeeCustodies:"masters",chartOfAccounts:"accounts",costCenters:"centers",items:"inventory",itemGroups:"inventory",warehouses:"inventory",bankAccounts:"bank",taxCodes:"tax"};
  const canFinance=(area,action="view")=>{
   if(currentUser&&currentUser.role==="admin")return true;
   if(typeof permissionCheck==="function")return permissionCheck("financial_"+area,action);
@@ -423,7 +423,7 @@ function FinanceModule(props){
  React.useEffect(()=>{if(masterDirectoryOnly){if(tab!=="masters")masterReturnTabRef.current=tab;if(tab!=="masters")setTab("masters");}else if(tab==="masters")setTab(masterReturnTabRef.current||"overview");},[masterDirectoryOnly]);
  const [tab,setTab]=React.useState(masterDirectoryOnly?"masters":"overview"),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[notice,setNotice]=React.useState('');
  const masterReturnTabRef=React.useRef("overview");
- const [master,setMaster]=React.useState({chartOfAccounts:{},costCenters:{},items:{},itemGroups:{},warehouses:{},bankAccounts:{},taxCodes:{},parties:{},financingParties:{},employeeAdvances:{},employeeCustodies:{},settings:{},inventory:{balances:{}}});
+ const [master,setMaster]=React.useState({chartOfAccounts:{},costCenters:{},items:{},itemGroups:{},warehouses:{},bankAccounts:{},taxCodes:{},parties:{},financingParties:{},securityDepositParties:{},employeeAdvances:{},employeeCustodies:{},settings:{},inventory:{balances:{}}});
  const [inventoryMovements,setInventoryMovements]=React.useState([]),[inventoryMovementModal,setInventoryMovementModal]=React.useState(null);
  const [documents,setDocuments]=React.useState([]),[journalRecords,setJournalRecords]=React.useState([]),[review,setReview]=React.useState([]),[periodJournals,setPeriodJournals]=React.useState([]),[balanceJournals,setBalanceJournals]=React.useState([]),[accountingStartMonth,setAccountingStartMonth]=React.useState('');
  const [legacyImportDocumentsLoading,setLegacyImportDocumentsLoading]=React.useState(false),[legacyImportDocumentsLoaded,setLegacyImportDocumentsLoaded]=React.useState(false);
@@ -708,7 +708,7 @@ function FinanceModule(props){
     !initialOnly&&(['invoices','journal','cash','bank'].some(area=>canFinance(area,'view'))||((tab==='accountReview'||tab==='review')&&canFinance('reports','view')))?api('?resource=documents'):Promise.resolve({items:{}}),
     !initialOnly&&(canFinance('journal','view')||((tab==='accountReview'||tab==='review')&&canFinance('reports','view')))?api('?resource=journals').catch(()=>({items:{}})):Promise.resolve({items:{}})
    ]);
-   setMaster(previous=>Object.assign({chartOfAccounts:{},costCenters:{},items:{},itemGroups:{},warehouses:{},bankAccounts:{},taxCodes:{},parties:{},financingParties:{},employeeAdvances:{},employeeCustodies:{},settings:{},inventory:{balances:{},movements:{}}},previous,b,{inventory:Object.assign({},previous.inventory||{},{balances:previous.inventory&&previous.inventory.balances||{},movements:previous.inventory&&previous.inventory.movements||{}})}));
+   setMaster(previous=>Object.assign({chartOfAccounts:{},costCenters:{},items:{},itemGroups:{},warehouses:{},bankAccounts:{},taxCodes:{},parties:{},financingParties:{},securityDepositParties:{},employeeAdvances:{},employeeCustodies:{},settings:{},inventory:{balances:{},movements:{}}},previous,b,{inventory:Object.assign({},previous.inventory||{},{balances:previous.inventory&&previous.inventory.balances||{},movements:previous.inventory&&previous.inventory.movements||{}})}));
    const partyRows=rows(b.parties||{});
    setClients(partyRows.filter(item=>item.partyType==='customer'));
    setVendors(partyRows.filter(item=>item.partyType==='vendor'));
@@ -1453,7 +1453,7 @@ React.useEffect(()=>{if(tab==='partnerCurrent'&&canFinance('partyStatements','vi
 const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
  const centers=rows(master.costCenters),activeCenters=centers.filter(x=>x.active!==false);
  const items=rows(master.items),activeItems=items.filter(x=>x.active!==false);
- const financialParties=rows(master.parties),registeredFinancingParties=rows(master.financingParties);
+ const financialParties=rows(master.parties),registeredFinancingParties=rows(master.financingParties),registeredSecurityDepositParties=rows(master.securityDepositParties);
  const mergePartyRows=(base,type)=>{const map=new Map((base||[]).map(p=>[String(p.code||p.id),p]));financialParties.filter(p=>p.partyType===type).forEach(p=>map.set(String(p.code||p.id),p));return Array.from(map.values()).filter(p=>p&&(p.code||p.id));};
  const allClients=mergePartyRows(clients,'customer'),allVendors=mergePartyRows(vendors,'vendor');
  const activeClients=allClients.filter(p=>p.active!==false),activeVendors=allVendors.filter(p=>p.active!==false);
@@ -1481,7 +1481,8 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
    records=vendor?allVendors:allClients;fallbackPrefix=vendor?'VND':'CUS';
   }else if(kind==='financingParties'){
    records=registeredFinancingParties;fallbackPrefix='FIN';
-  }else if(kind==='employeeAdvances'){records=rows(master.employeeAdvances);fallbackPrefix='ADV';}
+  }else if(kind==='securityDepositParties'){records=registeredSecurityDepositParties;fallbackPrefix='DEP';}
+  else if(kind==='employeeAdvances'){records=rows(master.employeeAdvances);fallbackPrefix='ADV';}
   else if(kind==='employeeCustodies'){records=rows(master.employeeCustodies);fallbackPrefix='CST';}
   else if(kind==='items'){
    records=items;fallbackPrefix=value.groupCode||'ITM';
@@ -1670,6 +1671,10 @@ const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
    if(next==="__quick_add__"){openQuickAdd("financingParties",onChange,{name:extractFinancingPartyName(description)});return;}
    onChange(next);
   },(options||[]).concat([{value:"__quick_add__",label:"＋ إضافة جهة تمويل جديدة"}]),searchKey);
+  if(type==="securityDepositParty")return searchablePicker(label,value,next=>{
+   if(next==="__quick_add__"){openQuickAdd("securityDepositParties",onChange,{});return;}
+   onChange(next);
+  },(options||[]).concat([{value:"__quick_add__",label:"＋ إضافة جهة تأمينات مستردة جديدة"}]),searchKey);
   const partyKind=type==="customer"?"customer":type==="vendor"?"vendor":"";
   if(!partyKind)return searchablePicker(label,value,onChange,options,searchKey);
   const addLabel=partyKind==="vendor"?"＋ إضافة مورد":"＋ إضافة عميل";
@@ -1969,7 +1974,7 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
   }catch(e){setError(e.message||String(e));}finally{setBusy(false);}
  };
  const activeAnalyticUsers=(userDirectory||[]).filter(user=>user&&user.uid&&["active","نشط","مفعل","enabled"].includes(String(user.status||"").toLowerCase()));
- const analyticPartyLabel=type=>({customer:"العميل",vendor:"المورد",employeeCustody:"الموظف صاحب العهدة",employeeAdvance:"الموظف صاحب السلفة",partnerCurrentAccount:"الشريك",financingParty:"جهة التمويل / الدائن"}[type]||"الطرف التحليلي");
+ const analyticPartyLabel=type=>({customer:"العميل",vendor:"المورد",employeeCustody:"الموظف صاحب العهدة",employeeAdvance:"الموظف صاحب السلفة",partnerCurrentAccount:"الشريك",financingParty:"جهة التمويل / الدائن",securityDepositParty:"جهة التأمينات المستردة"}[type]||"الطرف التحليلي");
  const analyticPartyOptions=(type,accountCode,currentPartyId)=>{
   let records=[];
   if(type==="customer")records=activeClients.map(item=>({value:String(item.code||item.id),label:partyName(item)+" ("+(item.code||item.id)+")"}));
@@ -1984,6 +1989,8 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
    activeAnalyticUsers.filter(partnerIdentity).forEach(user=>records.push({value:String(user.uid),label:(user.fullName||user.username||user.email||user.uid)+" ("+user.uid+")"}));
   }else if(type==="financingParty"){
    records=registeredFinancingParties.filter(item=>item&&item.active!==false).map(item=>({value:String(item.code||item.id),label:"جهة تمويل: "+partyName(item)+" ("+(item.code||item.id)+")"}));
+  }else if(type==="securityDepositParty"){
+   records=registeredSecurityDepositParties.filter(item=>item&&item.active!==false).map(item=>({value:String(item.code||item.id),label:"جهة تأمينات: "+partyName(item)+" ("+(item.code||item.id)+")"}));
   }
   const unique=[],seen=new Set();
   records.forEach(item=>{if(item.value&&!seen.has(String(item.value))){seen.add(String(item.value));unique.push(item);}});
@@ -2004,6 +2011,8 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
    (userDirectory||[]).filter(user=>user&&user.uid&&partnerIdentity(user)).forEach(user=>records.push({value:String(user.uid),label:(user.fullName||user.username||user.email||user.uid)+" ("+user.uid+")"}));
   }else if(type==="financingParty"){
    records=registeredFinancingParties.map(item=>({value:String(item.code||item.id),label:"جهة تمويل: "+partyName(item)+" ("+(item.code||item.id)+")"+(item.active===false?" — غير نشط":"")}));
+  }else if(type==="securityDepositParty"){
+   records=registeredSecurityDepositParties.map(item=>({value:String(item.code||item.id),label:"جهة تأمينات: "+partyName(item)+" ("+(item.code||item.id)+")"+(item.active===false?" — غير نشط":"")}));
   }
   const unique=[],seen=new Set();
   records.forEach(item=>{if(item.value&&!seen.has(String(item.value))){seen.add(String(item.value));unique.push(item);}});
@@ -2548,6 +2557,7 @@ const submitJournal=async()=>{
  };
  const masterImportConfig={
   customers:{label:'العملاء',kind:'parties',partyType:'customer',columns:['code','name','phone','taxNumber','email','address']},
+  securityDepositParties:{label:'جهات التأمينات المستردة',kind:'securityDepositParties',columns:['code','name','reference','taxNumber','notes']},
   employeeAdvances:{label:'أكواد السلف',kind:'employeeAdvances',columns:['code','name','employeeUid']},
   employeeCustodies:{label:'أكواد العهد',kind:'employeeCustodies',columns:['code','name','employeeUid']},
   suppliers:{label:'الموردون',kind:'parties',partyType:'vendor',columns:['code','name','phone','taxNumber','email','address']},
@@ -2577,6 +2587,8 @@ const submitJournal=async()=>{
     name:['name','الاسم','اسم','اسم العميل','اسم المورد','اسم الصنف','اسم الحساب'],
     phone:['phone','mobile','الهاتف','تليفون','موبايل','رقم الهاتف'],
     taxNumber:['taxnumber','taxno','الرقم الضريبي','رقم التسجيل الضريبي','التسجيل الضريبي'],
+    reference:['reference','رقم مرجعي','المرجع','رقم العقد','رقم الإيصال','رقم المستند'],
+    notes:['notes','ملاحظات','بيان إضافي'],
     email:['email','البريد الالكتروني','البريد الإلكتروني'],
     address:['address','العنوان'],
     itemType:['itemtype','تصنيف الصنف','نوع الصنف','تصنيف مخزني'],
@@ -3071,16 +3083,18 @@ const renderJournal = function() {
    return Object.assign({},user||{},item,{id:partyId,uid:partyId,code:item.code||partyId,name:item.name||item.employeeName||(user&&(user.fullName||user.username||user.email))||partyId});
   }):(userDirectory||[]).filter(u=>u.uid).map(u=>Object.assign({},u,{id:u.uid,code:u.uid,name:u.fullName||u.username||u.email||u.uid}));
   const financingParties=registeredFinancingParties.map(item=>Object.assign({},item,{id:item.code||item.id,code:item.code||item.id,name:partyName(item)}));
-  const partyType=["customer","vendor","employeeCustody","employeeAdvance","financingParty"].includes(partyStatement.type);
+  const securityDepositParties=registeredSecurityDepositParties.map(item=>Object.assign({},item,{id:item.code||item.id,code:item.code||item.id,name:partyName(item)}));
+  const partyType=["customer","vendor","employeeCustody","employeeAdvance","financingParty","securityDepositParty"].includes(partyStatement.type);
   const entityList=partyStatement.type==="account"?accounts:
    partyStatement.type==="costCenter"?centers:
    partyStatement.type==="vendor"?allVendors:
    partyStatement.type==="customer"?allClients:
-   partyStatement.type==="financingParty"?financingParties:staff;
+   partyStatement.type==="financingParty"?financingParties:
+   partyStatement.type==="securityDepositParty"?securityDepositParties:staff;
   const entityCode=item=>String(item&&(employeeType?(item.uid||item.employeeUid||item.code||item.id):(item.code||item.uid||item.id))||"");
   const entityName=item=>partyStatement.type==="account"||partyStatement.type==="costCenter"
    ?String(item&&item.name||entityCode(item))
-   :partyStatement.type==="financingParty"
+   :partyStatement.type==="financingParty"||partyStatement.type==="securityDepositParty"
     ?String(item&&(item.partnerName||item.name||item.companyName||item.fullName||item.username||item.email)||entityCode(item))
     :partyName(item||{});
   const searchableText=item=>normalizeMatch(Object.entries(item||{}).filter(([,value])=>
@@ -3130,7 +3144,7 @@ const renderJournal = function() {
    const center=centers.find(item=>String(item.code)===String(line.costCenterId));
    const journal=statementJournalMap.get(String(line.journalId||""));
    const journalLabel=line.journalNumber||journal&&(journal.number||journal.journalNumber)||line.journalId||"—";
-   const partyLabel=line.partyName||((line.partyType==="vendor"?allVendors:line.partyType==="customer"?allClients:line.partyType==="financingParty"?financingParties:staff)
+   const partyLabel=line.partyName||((line.partyType==="vendor"?allVendors:line.partyType==="customer"?allClients:line.partyType==="financingParty"?financingParties:line.partyType==="securityDepositParty"?securityDepositParties:staff)
     .find(item=>String(item.uid||item.employeeUid||item.code||item.id)===String(line.partyId||""))||{}).name||line.partyId||"";
    return h("tr",{key:String(line.journalId||"row")+"-"+String(line.lineNo||index)+"-"+index,className:"border-t hover:bg-blue-50"},
     h("td",{className:"p-2 whitespace-nowrap"},line.date||"—"),
@@ -3146,7 +3160,7 @@ const renderJournal = function() {
   });
   const statementTitle=partyStatement.type==="account"?"كشف حساب أستاذ عام":
    partyStatement.type==="costCenter"?"كشف حساب مركز تكلفة":
-   ({customer:"كشف حساب عميل",vendor:"كشف حساب مورد",employeeCustody:"كشف حساب عهدة موظف",employeeAdvance:"كشف حساب سلفة موظف"}[partyStatement.type]||"كشف حساب");
+   ({customer:"كشف حساب عميل",vendor:"كشف حساب مورد",employeeCustody:"كشف حساب عهدة موظف",employeeAdvance:"كشف حساب سلفة موظف",securityDepositParty:"كشف حساب تأمينات مستردة لدى الغير"}[partyStatement.type]||"كشف حساب");
   const entitySummary=selectedEntity
    ?(partyStatement.type==="account"||partyStatement.type==="costCenter"
       ?entityCode(selectedEntity)+" — "+entityName(selectedEntity)
@@ -3166,13 +3180,15 @@ const renderJournal = function() {
    {value:"customer",label:"عميل"},
    {value:"employeeCustody",label:"عهدة موظف"},
    {value:"employeeAdvance",label:"سلفة موظف"},
-   {value:"financingParty",label:"جهة تمويل / دائن (حساب 2150)"}
+   {value:"financingParty",label:"جهة تمويل / دائن (حساب 2150)"},
+   {value:"securityDepositParty",label:"تأمينات مستردة لدى الغير"}
   ];
   const pickerLabel=partyStatement.type==="account"?"ابحث عن الحساب بالاسم أو الرقم أو أي بيان":
    partyStatement.type==="costCenter"?"ابحث عن مركز التكلفة بالكود أو الاسم أو المشروع":
    partyStatement.type==="vendor"?"ابحث عن المورد بالاسم أو الكود أو الرقم الضريبي":
    partyStatement.type==="customer"?"ابحث عن العميل بالاسم أو الكود أو الرقم الضريبي":
    partyStatement.type==="financingParty"?"ابحث عن جهة التمويل أو الشريك أو الدائن":
+   partyStatement.type==="securityDepositParty"?"ابحث عن جهة التأمينات المستردة بالاسم أو الكود":
    "ابحث عن الموظف بالاسم أو رقم المستخدم";
   return h("div",{className:"space-y-4"},
    panel(statementTitle,"كشف موحد يعرض الرصيد الافتتاحي وحركة الفترة والرصيد الختامي، مع إمكانية فتح القيد والمرفقات المرتبطة بكل حركة.",h("div",{className:"space-y-3"},
@@ -3893,7 +3909,7 @@ const renderReview=()=>panel('مركز المراجعة والفحص والاع�
    masterImportRows.length?panel("معاينة أول 12 صفًا","لن يتم الحفظ قبل الضغط على تنفيذ الاستيراد.",h("div",{className:"max-h-64 overflow-y-auto"},table(config.columns,importRows))):null,
    masterImportRows.length?h("div",{className:"flex flex-wrap items-center gap-3"},h("b",{className:"text-sm"},"عدد السجلات: "+masterImportRows.length),button("تنفيذ الاستيراد",submitMasterImport,"primary",busy),button("إلغاء الملف",()=>{setMasterImportRows([]);setMasterImportName("");},"muted")):null
   ));
-  const allTabs=[["chartOfAccounts","دليل الحسابات"],["costCenters","مراكز التكلفة"],["employeeAdvances","أكواد السلف"],["employeeCustodies","أكواد العهد"],["customers","العملاء"],["suppliers","الموردون"],["financingParties","جهات التمويل"],["items","الأصناف المخزنية"],["itemGroups","مجموعات الأصناف"],["warehouses","المخازن"],["bankAccounts","حسابات البنوك"],["taxCodes","الأكواد الضريبية"]];
+  const allTabs=[["chartOfAccounts","دليل الحسابات"],["costCenters","مراكز التكلفة"],["employeeAdvances","أكواد السلف"],["employeeCustodies","أكواد العهد"],["customers","العملاء"],["suppliers","الموردون"],["financingParties","جهات التمويل"],["securityDepositParties","جهات التأمينات المستردة"],["items","الأصناف المخزنية"],["itemGroups","مجموعات الأصناف"],["warehouses","المخازن"],["bankAccounts","حسابات البنوك"],["taxCodes","الأكواد الضريبية"]];
   const tabs=allTabs.filter(([key])=>canFinance(financeMasterAreas[key]||"masters","view"));
   const activeMasterViewKind=tabs.some(([key])=>key===masterViewKind)?masterViewKind:(tabs[0]&&tabs[0][0]||"chartOfAccounts");
   const partyType=activeMasterViewKind==="suppliers"?"vendor":"customer";
@@ -3932,6 +3948,11 @@ const renderReview=()=>panel('مركز المراجعة والفحص والاع�
    currentMasterItems=registeredFinancingParties;visibleItems=currentMasterItems.filter(matches);
    visibleRows=visibleItems.map(x=>h("tr",{key:x.code||x.id,className:"border-t"},selectionCell(x),h("td",{className:"p-2 font-bold"},x.code||x.id),h("td",{className:"p-2"},partyName(x)),h("td",{className:"p-2"},x.reference||x.taxNumber||x.registrationNumber||"—"),h("td",{className:"p-2"},x.active===false?"موقوف":"نشط"),h("td",{className:"p-2"},masterActions("financingParties",x))));
    quickKind="financingParties";quickDefaults={code:nextCode("FIN",registeredFinancingParties)};
+  }else if(activeMasterViewKind==="securityDepositParties"){
+   title="دليل جهات التأمينات المستردة";headers=["تحديد","الكود","اسم الجهة","رقم مرجعي / تسجيل","الحالة","الإجراءات"];
+   currentMasterItems=registeredSecurityDepositParties;visibleItems=currentMasterItems.filter(matches);
+   visibleRows=visibleItems.map(x=>h("tr",{key:x.code||x.id,className:"border-t"},selectionCell(x),h("td",{className:"p-2 font-bold"},x.code||x.id),h("td",{className:"p-2"},partyName(x)),h("td",{className:"p-2"},x.reference||x.taxNumber||x.registrationNumber||"—"),h("td",{className:"p-2"},x.active===false?"موقوف":"نشط"),h("td",{className:"p-2"},masterActions("securityDepositParties",x))));
+   quickKind="securityDepositParties";quickDefaults={code:nextCode("DEP",registeredSecurityDepositParties)};
   }else if(activeMasterViewKind==="items"){
    title="الأصناف المخزنية";
    headers=["تحديد","الكود","الاسم","التصنيف","المجموعة","الإصدار","الوحدة","المخزن","الإجراءات"];
@@ -5246,7 +5267,7 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
  const renderQuickAdd = function() {
   if(!quickAddType)return null;
   const change=function(key,value){setQuickAddForm(function(old){return Object.assign({},old,{[key]:value});});};
-  const typeLabels={chartOfAccounts:'حساب جديد',costCenters:'مركز تكلفة جديد',items:'صنف مخزني جديد',itemGroups:'مجموعة أصناف جديدة',warehouses:'مخزن جديد',bankAccounts:'حساب بنك جديد',taxCodes:'كود ضريبي جديد',parties:'عميل / مورد جديد',financingParties:'جهة تمويل جديدة',employeeAdvances:'كود سلفة موظف جديد',employeeCustodies:'كود عهدة موظف جديد'};
+  const typeLabels={chartOfAccounts:'حساب جديد',costCenters:'مركز تكلفة جديد',items:'صنف مخزني جديد',itemGroups:'مجموعة أصناف جديدة',warehouses:'مخزن جديد',bankAccounts:'حساب بنك جديد',taxCodes:'كود ضريبي جديد',parties:'عميل / مورد جديد',financingParties:'جهة تمويل جديدة',securityDepositParties:'جهة تأمينات مستردة جديدة',employeeAdvances:'كود سلفة موظف جديد',employeeCustodies:'كود عهدة موظف جديد'};
   const fields=[
    field('الكود',quickAddForm.code,function(v){change('code',v);}),
    field('الاسم',quickAddForm.name,function(v){change('name',v);}),
@@ -5287,6 +5308,11 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   }
   if(quickAddType==='financingParties'){
    fields.push(field('رقم مرجعي / رقم مستند التمويل',quickAddForm.reference||'',function(v){change('reference',v);}));
+   fields.push(field('رقم تعريف / تسجيل (اختياري)',quickAddForm.taxNumber||'',function(v){change('taxNumber',v);}));
+   fields.push(h('label',{className:'block text-xs font-bold text-slate-700 sm:col-span-2 lg:col-span-3'},'ملاحظات',h('textarea',{rows:2,value:quickAddForm.notes||'',onChange:function(e){change('notes',e.target.value);},className:'mt-1 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs font-normal bg-white'})));
+  }
+  if(quickAddType==='securityDepositParties'){
+   fields.push(field('رقم مرجعي / رقم عقد أو إيصال',quickAddForm.reference||'',function(v){change('reference',v);}));
    fields.push(field('رقم تعريف / تسجيل (اختياري)',quickAddForm.taxNumber||'',function(v){change('taxNumber',v);}));
    fields.push(h('label',{className:'block text-xs font-bold text-slate-700 sm:col-span-2 lg:col-span-3'},'ملاحظات',h('textarea',{rows:2,value:quickAddForm.notes||'',onChange:function(e){change('notes',e.target.value);},className:'mt-1 w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs font-normal bg-white'})));
   }
@@ -5518,5 +5544,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261125-finance-journal-delete-shortcut-v16";
+ window.PEST_FINANCE_MODULE_VERSION="20261125-finance-refundable-deposit-analytics-v17";
 })();
