@@ -3566,16 +3566,27 @@ const renderReview=()=>panel('مركز المراجعة والفحص والاع�
      selected.type==='journal'&&canFinance("journal","delete")?button('مسح القيد',()=>void deleteJournalDocument(selected),'danger',busy):null,
      selected.type==='invoice'&&canFinance('invoices','delete')?button('حذف الفاتورة',()=>void deleteInvoiceRecord(selected),'danger',busy):null
     )
-  ):table(['المستند','النوع','التاريخ','الطرف','المبلغ','الحالة','المرفق','مراجعة'],review.map(x=>h('tr',{key:x.id,className:'border-t'},
-   h('td',{className:'p-2'},x.title||x.id),
-   h('td',{className:'p-2'},x.type==='invoice'?(x.invoiceType==='purchase'?'مشتريات':'مبيعات'):x.type==='cash'?'الخزينة':x.type),
-   h('td',{className:'p-2'},x.date||'—'),
-   h('td',{className:'p-2'},x.partyName||'—'),
-   h('td',{className:'p-2'},fmt(x.total||x.amount||0)),
-   h('td',{className:'p-2'},status(x.status)),
-   h('td',{className:'p-2'},x.attachmentUploadStatus==='pending'?'المرفق يحتاج إعادة رفع':x.attachmentFileName||'—'),
-   h('td',{className:'p-2'},button('فتح',()=>{void openReviewItem(x);},'muted'))
-  ))),
+  ):table(['رقم المستند / القيد','البيان والمرجع','النوع','التاريخ','الطرف','المشروع','المبلغ','مقدم الطلب','الحالة','ملاحظات الفحص','المرفق','مراجعة'],review.map(x=>{
+   const title=String(x.title||''),number=String(x.number||x.invoiceNumber||x.documentNumber||x.id||'—');
+   const party=x.partyName||x.counterpartyName||x.supplierName||x.customerName||(Array.isArray(x.analyticParties)?x.analyticParties.join('، '):'')||'—';
+   const project=x.projectName||x.projectCode||'—',amount=Number(x.total||x.amount||0),currency=x.currency||'EGP';
+   const errors=Array.isArray(x.errors)?x.errors:[],warnings=Array.isArray(x.warnings)?x.warnings:[];
+   const typeLabel=x.type==='journal'?'قيد يومية':x.type==='invoice'?(x.invoiceType==='purchase'?'فاتورة مشتريات':'فاتورة مبيعات'):x.type==='cash'?'الخزينة':x.type==='bank'?'البنوك':x.type||'—';
+   return h('tr',{key:x.id,className:'border-t align-top'},
+    h('td',{className:'p-2 min-w-[170px]'},h('div',{className:'font-bold text-slate-800'},number),title&&title!==number?h('div',{className:'text-[10px] text-slate-500 mt-1'},title):null),
+    h('td',{className:'p-2 min-w-[210px]'},h('div',{className:'whitespace-normal font-medium'},x.description||title||'—'),x.reference?h('div',{className:'text-[10px] text-slate-500 mt-1'},'المرجع: '+x.reference):null,Number(x.lineCount||0)>0?h('div',{className:'text-[10px] text-slate-500 mt-1'},'عدد السطور: '+x.lineCount):null),
+    h('td',{className:'p-2 whitespace-nowrap'},typeLabel),
+    h('td',{className:'p-2 whitespace-nowrap'},x.date||'—'),
+    h('td',{className:'p-2 min-w-[130px]'},party),
+    h('td',{className:'p-2 whitespace-nowrap'},project),
+    h('td',{className:'p-2 whitespace-nowrap text-end font-extrabold tabular-nums'},fmt(amount)+' '+currency),
+    h('td',{className:'p-2 min-w-[110px]'},x.createdByName||'—'),
+    h('td',{className:'p-2 whitespace-nowrap'},status(x.status)),
+    h('td',{className:'p-2 min-w-[110px]'},errors.length?h('div',{className:'text-rose-700 font-bold'},'أخطاء: '+errors.length):null,warnings.length?h('div',{className:'text-amber-700 font-bold'},'تنبيهات: '+warnings.length):null,!errors.length&&!warnings.length?'—':null),
+    h('td',{className:'p-2 min-w-[120px]'},x.attachmentUploadStatus==='pending'?'المرفق يحتاج إعادة رفع':x.attachmentFileName||'—'),
+    h('td',{className:'p-2'},button('فتح',()=>{void openReviewItem(x);},'muted'))
+   );
+  })),
    renderReviewJournalEditor()
   ));
  const renderCash=()=>{
