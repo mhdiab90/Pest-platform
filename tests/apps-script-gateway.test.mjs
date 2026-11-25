@@ -78,12 +78,18 @@ test("gateway client surfaces Apps Script application errors", async () => {
   })), /Gateway signature is invalid/);
 });
 
-test("Cloudflare exposes only an admin-protected connectivity check without changing live attachment routes", () => {
+test("Cloudflare gateway test pins the existing company folder and enforces account identity", () => {
   const worker = readFileSync(new URL("../cloudflare/worker.js", import.meta.url), "utf8");
-  assert.match(worker, /import \{ callAppsScriptGateway \} from "\.\/apps-script-gateway\.js"/);
-  assert.match(worker, /\/drive\/gateway\/test/);
-  assert.match(worker, /profile\.role!==["']admin["']/);
-  assert.match(worker, /productionAttachmentsUnchanged:true/);
+  assert.ok(worker.includes('import { callAppsScriptGateway } from "./apps-script-gateway.js"'));
+  assert.ok(worker.includes('/drive/gateway/test'));
+  assert.ok(worker.includes('profile.role!=="admin"'));
+  assert.ok(worker.includes('folderId:String(companyDriveConnection&&companyDriveConnection.folderId||"")'));
+  assert.ok(worker.includes("effectiveUserEmail!==expectedCompanyEmail"));
+  assert.ok(worker.includes("productionAttachmentsUnchanged:true"));
+  const app = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.ok(app.includes("testAppsScriptDriveGateway"));
+  assert.ok(app.includes("/drive/gateway/test"));
+  assert.ok(app.includes("Google Apps Script gateway test"));
 });
 
 test("Apps Script source enforces signed requests, nonce checks, file size and company Drive access", () => {
@@ -92,6 +98,8 @@ test("Apps Script source enforces signed requests, nonce checks, file size and c
   assert.match(source, /computeHmacSha256Signature/);
   assert.match(source, /getScriptLock/);
   assert.match(source, /properties\.setProperty\(nonceKey, timestamp\)/);
+  assert.ok(source.includes("ensureAttachmentFolder_(request.folderId)"));
+  assert.ok(source.includes("preferredFolderId"));
   assert.match(source, /MAX_FILE_BYTES = 20 \* 1024 \* 1024/);
   assert.match(source, /Session\.getEffectiveUser\(\)\.getEmail\(\)/);
   assert.match(source, /DriveApp\.getFoldersByName\("Pest Platform Attachments"\)/);
