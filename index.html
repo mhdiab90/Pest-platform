@@ -1226,8 +1226,10 @@ function installPestSpreadsheetGrid(root){
     const result=new Map(),add=(code,name,label)=>{
       code=clean(code);name=clean(name);label=clean(label)||(code&&name?code+" — "+name:code||name);
       if(!label)return;
+      const duplicate=Array.from(result.values()).some(item=>(code&&item.code.toLocaleLowerCase()===code.toLocaleLowerCase())||(name&&item.name.toLocaleLowerCase()===name.toLocaleLowerCase()));
+      if(duplicate)return;
       const key=(code+"|"+name).toLocaleLowerCase();
-      if(!result.has(key))result.set(key,{code,name,label,searchText:[code,name,label].filter(Boolean).join(" ")});
+      result.set(key,{code,name,label,searchText:[code,name,label].filter(Boolean).join(" ")});
     };
     const globalLookups=window.PEST_FINANCE_FILTER_LOOKUPS||{};
     (Array.isArray(globalLookups[kind])?globalLookups[kind]:[]).forEach(item=>{
