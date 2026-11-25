@@ -2030,7 +2030,7 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
     if(index+1<labels.length&&/(كود|code)/.test(labels[index+1]))indices.add(index+1);
    });
   }
-  if(!indices.size)return '';
+  if(!indices.size)return null;
   return Array.from(indices).map(index=>screenSearchText(cells[index])).join(' ');
  };
  const table=(headers,data,scrollStyle)=>{
@@ -2042,14 +2042,18 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
    const rowText=normalizeMatch(screenSearchText(row));
    if(query&&!rowText.includes(query))return false;
    if(accountOption&&accountOption.value){
-    const accountText=normalizeMatch(tableFieldText(row,headers,'account'));
-    const accountNeedles=[accountOption.value,accountOption.label.split(' — ').slice(1).join(' — ')].map(normalizeMatch).filter(Boolean);
-    if(!accountNeedles.some(needle=>accountText.includes(needle)))return false;
+    const rawAccountText=tableFieldText(row,headers,'account');
+    if(rawAccountText!==null){
+     const accountText=normalizeMatch(rawAccountText),accountNeedles=[accountOption.value,accountOption.label.split(' — ').slice(1).join(' — ')].map(normalizeMatch).filter(Boolean);
+     if(!accountNeedles.some(needle=>accountText.includes(needle)))return false;
+    }
    }
    if(centerOption&&centerOption.value){
-    const centerText=normalizeMatch(tableFieldText(row,headers,'costCenter'));
-    const centerNeedles=[centerOption.value,centerOption.label.split(' — ').slice(1).join(' — ')].map(normalizeMatch).filter(Boolean);
-    if(!centerNeedles.some(needle=>centerText.includes(needle)))return false;
+    const rawCenterText=tableFieldText(row,headers,'costCenter');
+    if(rawCenterText!==null){
+     const centerText=normalizeMatch(rawCenterText),centerNeedles=[centerOption.value,centerOption.label.split(' — ').slice(1).join(' — ')].map(normalizeMatch).filter(Boolean);
+     if(!centerNeedles.some(needle=>centerText.includes(needle)))return false;
+    }
    }
    return true;
   });
