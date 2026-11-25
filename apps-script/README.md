@@ -17,6 +17,14 @@ The current app supports files up to 20 MiB. This prototype uses Base64 JSON for
 
 Google documents a six-minute Apps Script execution ceiling, but that is **not** a guarantee that a Web App request/response of this size will be accepted or fast. Google does not publish a clear end-to-end Web App request/response size guarantee for this exact pattern. Therefore, do not switch production attachment traffic until we measure upload and preview round-trips with representative image, PDF, and 20 MiB files.
 
+## Security and Google Drive permission
+
+The supplied manifest requests the broad `https://www.googleapis.com/auth/drive` scope. This pilot uses Apps Script `DriveApp` to reopen files that were created by the older, separate OAuth integration; the permission is not restricted to the `Pest Platform Attachments` folder. The script therefore runs with broad access to the deploying account's Drive files.
+
+Do not authorize this project in a personal or mixed-use Drive account unless you deliberately accept that level of access. If the company account also contains unrelated private files, stop before authorization and evaluate a separate company storage account with the existing attachments folder explicitly shared to it. The gateway must still be tested against the old files before any switch.
+
+The Web App must allow anonymous network access for Cloudflare to call it without a Google browser session; the HMAC signature is the application-level gate. Deploy as the account owner and choose **Anyone** (not only signed-in Google users), only if your account policy allows it. If anonymous access is blocked by Google Workspace policy, do not weaken the account policy just to force this pilot.
+
 ## Deploy the pilot
 
 1. Open [Google Apps Script](https://script.google.com/) while signed in to the **same company Google account that owns the existing Pest Platform attachments**.
