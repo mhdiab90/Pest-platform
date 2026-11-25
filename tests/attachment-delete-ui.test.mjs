@@ -42,3 +42,13 @@ test("Google Drive status detects invalid refresh tokens and asks for reauthoriz
   assert.match(app, /connected:false,needsReauthorization:true,authorizationStatus:'reauthorization_required'/);
   assert.match(app, /attachment-appsscript-gateway-20261125-4/);
 });
+
+
+test("financial attachment manager supports finance view grants and metadata-aware deletes", () => {
+  assert.match(app, /function canViewRecordAttachment\(entityType,entityId\)/);
+  assert.match(app, /financialScreenPermissionModule\(entityType,entityId\)/);
+  assert.match(app, /screenAttachmentContext\.onDelete/);
+  assert.match(app, /onManageRecordAttachments=\{\(entityType,entityId,label,onDelete\)=>setScreenAttachmentContext\(\{entityType,entityId,label,onDelete\}\)\}/);
+  assert.match(app, /typeof onDelete==='function'\?await onDelete\(item\):await removeRecordAttachment\(entityType,entityId,item\)/);
+  assert.doesNotMatch(app, /remove duplicate custody add control/);
+});
