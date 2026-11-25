@@ -566,8 +566,8 @@ test("the global master navigation opens the unified directory instead of the le
 test("financial dropdowns open on the side with more visible space and keep the previous choice visible while searching", () => {
   const picker = source.slice(source.indexOf("const searchablePicker="), source.indexOf("const searchablePickerWithAdd="));
   assert.match(picker, /position:'fixed',zIndex:10000/);
-  assert.match(source, /const spaceBelow=Math\.max\(0,vh-rect\.bottom-8\)/);
-  assert.match(source, /const spaceAbove=Math\.max\(0,rect\.top-8\)/);
+  assert.match(source, /spaceBelow=Math\.max\(0,vh-rect\.bottom-8\)/);
+  assert.match(source, /spaceAbove=Math\.max\(0,rect\.top-8\)/);
   assert.match(source, /openBelow=spaceBelow>=spaceAbove/);
   assert.match(picker, /ReactDOM\.createPortal\(menu,document\.body\)/);
   assert.match(picker, /data-finance-picker-menu/);
