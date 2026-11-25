@@ -7,7 +7,7 @@ This is an isolated gateway prototype. It does **not** replace the live Cloudfla
 - Runs as the Google account that deploys the Apps Script Web App.
 - Exposes signed server-to-server operations: `ping`, `upload`, `download`, `replace`, and `delete`.
 - Stores no Firebase token, Google refresh token, or application user credentials.
-- Reuses the existing `Pest Platform Attachments` folder when it can find it in the deploying account's Drive.
+- Uses the exact folder ID already recorded by Pest Platform whenever it is available; only falls back to exact-name discovery when no folder ID exists.
 - Uses an HMAC-SHA256 signature, a five-minute timestamp window, and a locked nonce replay check.
 - Keeps all application permissions and attachment metadata in the existing Cloudflare Worker/Durable Object design. The browser/mobile app must never call this Apps Script URL directly.
 
@@ -38,7 +38,13 @@ The Web App must allow anonymous network access for Cloudflare to call it withou
    - Execute as: **Me**
    - Who has access: **Anyone** (anonymous access, not “Anyone with a Google account”), only if your Google account / Workspace policy allows it.
    - Deploy and copy the URL ending in `/exec`.
-7. Keep the Web App URL and secret private. The next Cloudflare integration step will store them as Worker configuration/secrets. Never put the secret in this repository, in `index.html`, or in a browser/mobile setting.
+7. In the Cloudflare dashboard, open Workers & Pages → `pest-platform` → Settings → Variables and Secrets, then add:
+   - `GOOGLE_DRIVE_GATEWAY_URL` as a Text variable containing the deployed Web App URL ending in `/exec`.
+   - `GOOGLE_DRIVE_GATEWAY_SECRET` as a Secret containing the same random value as the Apps Script `GATEWAY_SECRET` Script Property.
+8. Deploy the Worker after adding those two values. Do not put the secret in GitHub, Firebase, `index.html`, the Android app, or this chat.
+9. Open Pest Platform → Attachments → Google Drive connection → **Test connection** (administrator only). A successful result must show the same company email and confirm the existing attachments folder. If the email differs, stop and redeploy Apps Script as the original company Drive account.
+
+The Web App URL is not itself a secret, but treat it as internal configuration. Keep the HMAC secret private.
 
 Generate a secret locally in PowerShell without sharing it:
 
@@ -65,7 +71,7 @@ The authenticated `ping` action returns the Apps Script effective account email 
 - Web and Android user interfaces.
 - Current production OAuth connection and its encrypted refresh-token record.
 
-The first gateway integration will be a protected connectivity check only. After that succeeds, the next step is to test small image/PDF transfers, then 1 MiB and 20 MiB files. Only after those results are acceptable should we route production operations through the gateway.
+The first gateway integration is a protected connectivity check only. After the account and existing folder are verified, the next step is to test small image/PDF transfers, then 1 MiB and 20 MiB files. Only after those results are acceptable should we route production operations through the gateway.
 
 ## Operational note
 

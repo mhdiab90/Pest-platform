@@ -64,7 +64,7 @@ function verifyEnvelope_(envelope) {
 function dispatchRequest_(request) {
   if (!request || typeof request !== "object" || Array.isArray(request)) throw new Error("Invalid gateway operation.");
   switch (String(request.action || "")) {
-    case "ping": return { gatewayVersion: GATEWAY_VERSION, effectiveUserEmail: Session.getEffectiveUser().getEmail() || "", folderId: ensureAttachmentFolder_().getId() };
+    case "ping": return { gatewayVersion: GATEWAY_VERSION, effectiveUserEmail: Session.getEffectiveUser().getEmail() || "", folderId: ensureAttachmentFolder_(request.folderId).getId() };
     case "upload": return uploadFile_(request);
     case "download": return downloadFile_(request);
     case "replace": return replaceFile_(request);
@@ -73,8 +73,14 @@ function dispatchRequest_(request) {
   }
 }
 
-function ensureAttachmentFolder_() {
+function ensureAttachmentFolder_(preferredFolderId) {
   const properties = PropertiesService.getScriptProperties();
+  if (preferredFolderId) {
+    const preferredId = safeIdentifier_(preferredFolderId, "company attachment folder ID");
+    const preferredFolder = DriveApp.getFolderById(preferredId);
+    properties.setProperty(ATTACHMENT_FOLDER_PROPERTY, preferredId);
+    return preferredFolder;
+  }
   const savedId = properties.getProperty(ATTACHMENT_FOLDER_PROPERTY);
   if (savedId) { try { return DriveApp.getFolderById(savedId); } catch (error) { properties.deleteProperty(ATTACHMENT_FOLDER_PROPERTY); } }
   const matchingFolders = DriveApp.getFoldersByName("Pest Platform Attachments");
