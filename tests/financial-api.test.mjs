@@ -2523,3 +2523,78 @@ test("legacy imported journals can be deleted from archive with an audit snapsho
     item.snapshot&&item.snapshot.sourceType==="legacyImport"
   ),"the full imported journal snapshot remains available in the audit log");
 });
+
+
+test("refundable deposits with third parties use a dedicated analytic subledger and party ledger", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const accountCode="1459";
+  write("chartOfAccounts/"+accountCode,{
+    code:accountCode,name:"تأمينات مسترده لدي الغير",type:"asset",nature:"debit",
+    parentCode:"11",isGroup:false,isControl:false,active:true,subledgerType:""
+  });
+
+  // Bootstrap detects the existing leaf control account by its Arabic name.
+  await invoke("GET","?resource=bootstrap");
+  const account=read("chartOfAccounts/"+accountCode);
+  assert.equal(account.subledgerType,"securityDepositParty");
+  assert.equal(account.isControl,true);
+  assert.equal(account.type,"asset");
+  assert.equal(account.nature,"debit");
+  assert.equal(account.parentCode,"11");
+
+  const missingParty=await invoke("POST","",{
+    action:"submitJournal",date:"2026-11-24",description:"Refundable deposit without analytic party",
+    lines:[
+      {accountCode,description:"Refundable deposit paid",debit:75,credit:0},
+      {accountCode:"1110",description:"Cash paid",debit:0,credit:75}
+    ]
+  });
+  assert.equal(missingParty.status,"needs_correction");
+  assert.ok(missingParty.errors.some(error=>error.includes("جهة التأمينات المستردة")));
+
+  const added=await invoke("POST","",{
+    action:"saveMaster",kind:"securityDepositParties",
+    item:{code:"DEP-UTIL-01",name:"شركة خدمات المرافق",reference:"CONTRACT-DEP-01",active:true}
+  });
+  assert.equal(added.success,true);
+  assert.equal(read("securityDepositParties/DEP-UTIL-01").name,"شركة خدمات المرافق");
+
+  const unknownParty=await invoke("POST","",{
+    action:"submitJournal",date:"2026-11-24",description:"Unregistered refundable deposit party",
+    lines:[
+      {accountCode,description:"Deposit paid",debit:25,credit:0,partyId:"DEP-UNKNOWN"},
+      {accountCode:"1110",description:"Cash paid",debit:0,credit:25}
+    ]
+  });
+  assert.equal(unknownParty.status,"needs_correction");
+  assert.ok(unknownParty.errors.some(error=>error.includes("غير مسجلة أو موقوفة")));
+
+  const journal=await invoke("POST","",{
+    action:"submitJournal",date:"2026-11-24",description:"Refundable deposit paid to utility provider",
+    reference:"DEP-REF-01",
+    lines:[
+      {accountCode,description:"تأمين مسترد لدى شركة خدمات المرافق",debit:75,credit:0,partyType:"securityDepositParty",partyId:"DEP-UTIL-01"},
+      {accountCode:"1110",description:"سداد التأمين من الخزينة",debit:0,credit:75}
+    ]
+  });
+  assert.equal(journal.status,"pending_review");
+  const approved=await invoke("POST","",{
+    action:"review",id:journal.id,decision:"approve",reason:"اختبار تحليل التأمينات المستردة"
+  });
+  assert.equal(approved.status,"posted");
+
+  const indexed=read("partyLedger/securityDepositParty/DEP-UTIL-01/2026-11/"+journal.id+"_1");
+  assert.equal(indexed.debit,75);
+  assert.equal(indexed.partyType,"securityDepositParty");
+  const partyView=await invoke("GET","?resource=party&type=securityDepositParty&id=DEP-UTIL-01");
+  const entries=Object.values(partyView.entries["2026-11"]||{});
+  assert.ok(entries.some(entry=>entry.journalId===journal.id&&entry.debit===75));
+
+  const deleted=await invoke("POST","",{
+    action:"deleteMaster",kind:"securityDepositParties",code:"DEP-UTIL-01"
+  });
+  assert.equal(deleted.deleted,false);
+  assert.equal(deleted.deactivated,true);
+  assert.equal(read("securityDepositParties/DEP-UTIL-01").active,false);
+  assert.ok(deleted.references.some(reference=>reference.includes("الأستاذ المساعد للتأمينات المستردة")));
+});
