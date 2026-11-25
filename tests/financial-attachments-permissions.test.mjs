@@ -34,7 +34,7 @@ test("screen attachment records are allow-listed and require the underlying scre
 
 
 test("financial screen attachments use financial module permissions instead of generic attachments grants", () => {
-  assert.match(workerSource, /const financialScreen=entityType==="screen"&&moduleId\.startsWith\("financial_"\)/);
-  assert.match(workerSource, /entityType!=="financial"&&!financialScreen/);
-  assert.match(workerSource, /else if\(moduleId\.startsWith\("financial_"\)\)\{\s*requireEntityPermission\(moduleId\)/);
+  assert.match(worker, /const financialScreen=entityType==="screen"&&moduleId\.startsWith\("financial_"\)/);
+  assert.match(worker, /entityType!=="financial"&&!financialScreen/);
+  assert.match(worker, /else if\(moduleId\.startsWith\("financial_"\)\)\{\s*requireEntityPermission\(moduleId\)/);
 });
