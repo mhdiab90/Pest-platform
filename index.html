@@ -1836,6 +1836,7 @@ function App(){
   const [driveConnectionStatus,setDriveConnectionStatus] = useState({loading:false,configured:false,connected:false,googleEmail:'',storage:{usedBytes:0,limitBytes:13*1024*1024*1024}});
   const [driveGatewayTestStatus,setDriveGatewayTestStatus] = useState({loading:false,error:'',gatewayVersion:'',effectiveUserEmail:'',folderReady:false});
   const [driveGatewayFileTestStatus,setDriveGatewayFileTestStatus] = useState({loading:false,success:null,error:'',cases:null,cleanupCompleted:null});
+  const [driveGatewaySizeTestStatus,setDriveGatewaySizeTestStatus] = useState({loading:false,results:[],error:'',completed:false});
   const [attachmentPreview,setAttachmentPreview] = useState(null);
   const [attachmentPreviewWidth,setAttachmentPreviewWidth] = useState(()=>Math.max(300,Math.min(680,Math.round(window.innerWidth*.42))));
   const [attachmentPreviewHeight,setAttachmentPreviewHeight] = useState(()=>Math.round(window.innerHeight*.52));
@@ -2912,6 +2913,41 @@ function App(){
     }catch(error){
       setDriveGatewayFileTestStatus({loading:false,success:false,error:String(error.message||error),cases:null,cleanupCompleted:null});
     }
+  }
+
+  async function testAppsScriptGatewaySizeTolerance(){
+    if(!isAdmin||driveGatewaySizeTestStatus.loading)return;
+    const confirmed=window.confirm(rtl
+      ?'سيختبر النظام ثلاثة أحجام منفصلة: 256 KiB ثم 1 MiB ثم 20 MiB. لكل حجم سيتم الرفع والتنزيل والتحقق من الحجم والمحتوى والاستبدال والتحقق مرة أخرى ثم الحذف. ستتوقف الاختبارات عند أول فشل. لن تُنشأ سجلات مرفقات أو تتغير المرفقات الحقيقية. هل تريد المتابعة؟'
+      :'This runs three separate temporary-file tests: 256 KiB, 1 MiB and 20 MiB. Each tier uploads, downloads, verifies size and content, replaces, verifies again and deletes the file. Testing stops at the first failure. No real attachment records or files are changed. Continue?');
+    if(!confirmed)return;
+    setDriveGatewaySizeTestStatus({loading:true,results:[],error:'',completed:false});
+    const tiers=[
+      {tier:'small',label:rtl?'صغير — 256 KiB':'Small — 256 KiB'},
+      {tier:'medium',label:rtl?'متوسط — 1 MiB':'Medium — 1 MiB'},
+      {tier:'maximum',label:rtl?'الحد الأقصى — 20 MiB':'Maximum — 20 MiB'}
+    ];
+    let results=[];
+    for(const item of tiers){
+      try{
+        const outcome=await attachmentWorkerRequest('/drive/gateway/size-test','POST',{tier:item.tier});
+        const result={...outcome,tier:item.tier,label:item.label};
+        results=[...results,result];
+        setDriveGatewaySizeTestStatus({loading:result.success&&item.tier!=='maximum',results,error:result.error||'',completed:!result.success||item.tier==='maximum'});
+        if(!result.success){
+          setAttachmentsNotice(rtl?'توقف اختبار تحمل الأحجام عند أول فشل. راجع النتيجة وتنظيف الملف التجريبي.':'The size test stopped at the first failure. Review the result and temporary-file cleanup status.');
+          return;
+        }
+      }catch(error){
+        const result={tier:item.tier,label:item.label,success:false,error:String(error.message||error),cleanupCompleted:null};
+        results=[...results,result];
+        setDriveGatewaySizeTestStatus({loading:false,results,error:result.error,completed:true});
+        setAttachmentsNotice(rtl?'تعذر إكمال اختبار هذا الحجم. راجع رسالة الخطأ قبل إعادة المحاولة.':'This size test could not complete. Review the error before retrying.');
+        return;
+      }
+    }
+    setDriveGatewaySizeTestStatus({loading:false,results,error:'',completed:true});
+    setAttachmentsNotice(rtl?'اكتملت اختبارات الأحجام الثلاثة، وتم عرض أزمنة النقل ونتائج التنظيف.':'All three size tiers completed. Transfer timings and cleanup results are displayed below.');
   }
   async function refreshAttachmentList(){
     if(!attachmentEntityId||!hasPermission('attachments','view')){setAttachmentsList([]);return;}
@@ -7574,6 +7610,7 @@ function App(){
                     <div className="flex flex-wrap items-center gap-2">
                       <button type="button" onClick={testAppsScriptDriveGateway} disabled={driveGatewayTestStatus.loading||driveConnectionStatus.loading} className="rounded-lg bg-sky-700 text-white px-4 py-2 text-sm font-bold disabled:opacity-50"><i className={`fas ${driveGatewayTestStatus.loading?'fa-spinner fa-spin':'fa-plug'} me-2`}></i>{driveGatewayTestStatus.loading?(rtl?'جارٍ الاختبار...':'Testing...'):(rtl?'اختبار الاتصال':'Test connection')}</button>
                       <button type="button" onClick={testAppsScriptGatewayFileRoundTrip} disabled={!driveGatewayTestStatus.gatewayVersion||driveGatewayFileTestStatus.loading||driveConnectionStatus.loading} className="rounded-lg border border-sky-700 bg-white text-sky-800 px-4 py-2 text-sm font-bold disabled:opacity-50"><i className={`fas ${driveGatewayFileTestStatus.loading?'fa-spinner fa-spin':'fa-file-circle-check'} me-2`}></i>{driveGatewayFileTestStatus.loading?(rtl?'جارٍ اختبار الملفات...':'Testing files...'):(rtl?'اختبار نقل الملفات':'Test file transfer')}</button>
+                      <button type="button" onClick={testAppsScriptGatewaySizeTolerance} disabled={!driveGatewayTestStatus.gatewayVersion||driveGatewaySizeTestStatus.loading||driveGatewayFileTestStatus.loading||driveConnectionStatus.loading} className="rounded-lg border border-indigo-700 bg-white text-indigo-800 px-4 py-2 text-sm font-bold disabled:opacity-50"><i className={`fas ${driveGatewaySizeTestStatus.loading?'fa-spinner fa-spin':'fa-gauge-high'} me-2`}></i>{driveGatewaySizeTestStatus.loading?(rtl?'جارٍ اختبار الأحجام...':'Testing sizes...'):(rtl?'اختبار تحمل الأحجام':'Size endurance test')}</button>
                     </div>
                   </div>
                   {driveGatewayTestStatus.error&&<p className="rounded-lg border border-rose-200 bg-white p-2 text-xs text-rose-800">{driveGatewayTestStatus.error}</p>}
@@ -7595,6 +7632,20 @@ function App(){
                     {driveGatewayFileTestStatus.cleanupCompleted===true&&<p className="text-xs text-emerald-700">{rtl?'تم التأكد من تنظيف ملفات الاختبار.':'All temporary test files were cleaned up.'}</p>}
                     {driveGatewayFileTestStatus.cleanupCompleted===false&&<p className="text-xs text-amber-800">{rtl?'تنبيه: تعذر تأكيد تنظيف جميع ملفات الاختبار.':'Warning: cleanup of every temporary test file could not be confirmed.'}</p>}
                     <p className="text-xs text-slate-600">{rtl?'لم يتم إنشاء سجلات مرفقات داخل Pest Platform أو تعديل المرفقات الإنتاجية.':'No Pest Platform attachment records were created or changed.'}</p>
+                  </div>}
+                  {driveGatewaySizeTestStatus.results.length>0&&<div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 space-y-3">
+                    <b className="text-sm">{rtl?'نتائج اختبار تحمل الأحجام':'Size endurance test results'}</b>
+                    {driveGatewaySizeTestStatus.results.map(item=><div key={item.tier} className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2"><b>{item.label}</b><span className={item.success?'text-emerald-700':'text-rose-700'}>{item.success?'✓':'!' } {item.fileSizeBytes?((item.fileSizeBytes/1048576).toFixed(item.fileSizeBytes<1048576?3:2)+' MiB'):''}</span></div>
+                      {item.timingsMs&&<div className="grid grid-cols-2 sm:grid-cols-5 gap-2">{[['upload',rtl?'رفع':'Upload'],['download',rtl?'تنزيل':'Download'],['replace',rtl?'استبدال':'Replace'],['verifyReplacement',rtl?'التحقق':'Verify'],['delete',rtl?'حذف':'Delete']].map(([key,label])=><div key={key} className="rounded bg-slate-50 p-2 text-xs"><span className="block text-slate-500">{label}</span><b dir="ltr">{item.timingsMs[key]===undefined?'—':item.timingsMs[key]+' ms'}</b></div>)}</div>}
+                      <p className={'text-xs '+(item.cleanupCompleted===true?'text-emerald-700':item.cleanupCompleted===false?'text-amber-800':'text-slate-500')}>{item.cleanupCompleted===true?(rtl?'تم تنظيف الملف التجريبي من Drive.':'Temporary test file cleaned from Drive.'):item.cleanupCompleted===false?(rtl?'لم يتم تأكيد تنظيف الملف التجريبي. افحص Drive قبل إعادة الاختبار.':'Temporary-file cleanup was not confirmed. Inspect Drive before rerunning.'):(rtl?'لم يتم تأكيد إنشاء الملف أو تنظيفه.':'No file creation or cleanup was confirmed.')}</p>
+                      {item.error&&<p className="text-xs text-rose-700">{item.error}</p>}
+                      {item.cleanupError&&<p className="text-xs text-amber-800">{item.cleanupError}</p>}
+                      {item.totalMs&&<p className="text-xs text-slate-500" dir="ltr">{rtl?'إجمالي الزمن: ':'Total time: '}{item.totalMs} ms</p>}
+                    </div>)}
+                    {driveGatewaySizeTestStatus.loading&&<p className="text-xs text-indigo-800">{rtl?'اكتمل الحجم السابق؛ جارٍ اختبار الحجم التالي...':'Previous tier completed; testing the next size...'}</p>}
+                    {driveGatewaySizeTestStatus.completed&&<p className="text-xs font-bold">{driveGatewaySizeTestStatus.results.every(item=>item.success)?(rtl?'اكتملت جميع الأحجام الثلاثة بنجاح.':'All three size tiers passed.'):(rtl?'توقف الاختبار عند أول فشل.':'Testing stopped at the first failure.')}</p>}
+                    <p className="text-xs text-slate-600">{rtl?'الاختبار يستخدم ملفات PDF مؤقتة ولا ينشئ سجلات مرفقات أو يغيّر المرفقات الإنتاجية.':'The test uses temporary PDF files and does not create attachment records or change production attachments.'}</p>
                   </div>}
 
                 </div>}

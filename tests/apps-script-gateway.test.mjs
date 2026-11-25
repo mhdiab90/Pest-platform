@@ -123,3 +123,21 @@ test("Apps Script gateway file self-test is admin-only and exercises temporary P
   assert.ok(app.includes("Temporary PNG and PDF upload, download, replace and delete tests all succeeded."));
   assert.ok(app.includes("No Pest Platform attachment records were created or changed."));
 });
+
+
+test("Apps Script gateway size endurance test covers bounded 256 KiB, 1 MiB and 20 MiB tiers", () => {
+  const worker = readFileSync(new URL("../cloudflare/worker.js", import.meta.url), "utf8");
+  assert.ok(worker.includes('"/drive/gateway/size-test"'));
+  assert.ok(worker.includes("runAppsScriptGatewaySizeTierTest"));
+  assert.ok(worker.includes("256 * 1024"));
+  assert.ok(worker.includes("1024 * 1024"));
+  assert.ok(worker.includes("20 * 1024 * 1024"));
+  assert.ok(worker.includes('profile.role!=="admin"'));
+  assert.ok(worker.includes("productionAttachmentsUnchanged: true"));
+  assert.ok(worker.includes("Downloaded stress-test file size or content did not match the original."));
+  const app = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.ok(app.includes("testAppsScriptGatewaySizeTolerance"));
+  assert.ok(app.includes("/drive/gateway/size-test"));
+  assert.ok(app.includes("Size endurance test results"));
+  assert.ok(app.includes("Testing stops at the first failure."));
+});

@@ -71,7 +71,7 @@ The authenticated `ping` action returns the Apps Script effective account email 
 - Web and Android user interfaces.
 - Current production OAuth connection and its encrypted refresh-token record.
 
-The first gateway integration is a protected connectivity check only. After the account and existing folder are verified, the next step is to test small image/PDF transfers, then 1 MiB and 20 MiB files. Only after those results are acceptable should we route production operations through the gateway.
+The gateway pilot includes an administrator-only size-endurance test with three sequential PDF tiers: 256 KiB, 1 MiB and the current 20 MiB per-file ceiling. Each tier performs upload, download with byte-for-byte verification, replacement, replacement verification and deletion. The UI stops at the first failed tier and reports per-operation timings and cleanup status. Run the 20 MiB boundary tier separately from other application activity: Base64 JSON expands the body to roughly 26.7 MiB before envelope overhead, and Worker memory is finite. A successful test is a pilot measurement, not a production cutover approval; keep the existing production attachment routes until representative preview tests and web/Android regression checks are complete.
 
 ## Operational note
 
