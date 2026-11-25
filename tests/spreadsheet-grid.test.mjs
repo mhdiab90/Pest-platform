@@ -77,6 +77,8 @@ test("value filtering compares localized numeric amounts correctly", () => {
 
 test("global table filters provide live account and cost center autocomplete with code-or-name matching", () => {
   assert.match(app, /const filterColumnKind=header=>/);
+  assert.ok(app.includes("const centerHeader=/مركز.*تكلف|تكلف.*مركز|مراكز.*تكلف"));
+  assert.ok(app.includes('compact.includes("رقمالحساب")'));
   assert.match(app, /window\.PEST_FINANCE_FILTER_LOOKUPS/);
   assert.match(app, /const renderSuggestions=\(\)=>/);
   assert.match(app, /operator\.value="contains"/);
