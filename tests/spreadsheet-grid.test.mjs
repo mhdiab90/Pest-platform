@@ -56,7 +56,14 @@ test("value filtering compares localized numeric amounts correctly", () => {
   assert.equal(matches("١٬٢٣٤٫٥٠ ج.م", { operator: "equals", value: "1234.50" }), true);
   assert.equal(matches("1,234.50 EGP", { operator: "greater", value: "1000" }), true);
   assert.equal(matches("95", { operator: "less", value: "100" }), true);
+  assert.equal(matches("١٬٢٣٤٫٥٠ ج.م", { operator: "contains", value: "1234.5" }), true);
   assert.equal(matches("1234.50", { operator: "contains", value: "1234" }), true);
+  assert.equal(matches("abc 123", { operator: "notContains", value: "xyz" }), true);
+  assert.equal(matches("100", { operator: "notEquals", value: "90" }), true);
+  assert.equal(matches("123", { operator: "starts", value: "12" }), true);
+  assert.equal(matches("123", { operator: "ends", value: "23" }), true);
+  assert.equal(matches("", { operator: "empty", value: "" }), true);
+  assert.equal(matches("0", { operator: "notEmpty", value: "" }), true);
   assert.equal(matches("invoice 123", { operator: "equals", value: "123" }), false);
 });
 
