@@ -1721,6 +1721,7 @@ export async function handleFinancialRequest(ctx){
    createdByName:txt(profile.fullName||profile.username||profile.email,120),status:"pending_review"
   };
   const validation=validateJournal(journal,chart||{},centers||{});
+  validation.errors.push(...await securityDepositPartyRegistryErrors(journal.lines,chart||{},adminRead));
   if(validation.errors.length)throw new Error("تعذر إنشاء قيد الأرصدة الافتتاحية: "+validation.errors.join("؛ "));
   journal.balance=validation.balance;journal.errors=[];
   const updates={};
