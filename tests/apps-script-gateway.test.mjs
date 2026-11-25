@@ -159,3 +159,18 @@ test("Apps Script uploads can be enabled as a reversible admin-only pilot for ne
   assert.ok(app.includes("Pilot limit: 1 MiB"));
   assert.ok(app.includes("Disable Apps Script route"));
 });
+
+
+test("Upload pilot UI does not silently disable its control and explains prerequisites", () => {
+  const worker = readFileSync(new URL("../cloudflare/worker.js", import.meta.url), "utf8");
+  assert.ok(worker.includes("gatewayUploadUrlConfigured:Boolean"));
+  assert.ok(worker.includes("gatewayUploadSecretConfigured:Boolean"));
+  const app = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.ok(app.includes("updateAppsScriptGatewayUploadMode"));
+  assert.ok(app.includes("Refresh status"));
+  assert.ok(app.includes("File-transfer and size-endurance tests are not prerequisites for enabling the pilot."));
+  assert.ok(app.includes("GOOGLE_DRIVE_GATEWAY_URL"));
+  assert.ok(app.includes("GOOGLE_DRIVE_GATEWAY_SECRET"));
+  assert.ok(app.includes("disabled={driveGatewayUploadModeBusy||driveConnectionStatus.loading}"));
+  assert.ok(!app.includes("disabled={!driveConnectionStatus.connected||driveConnectionStatus.gatewayUploadConfigured===false"));
+});

@@ -26,5 +26,5 @@ test("Google Drive status detects invalid refresh tokens and asks for reauthoriz
   assert.match(app, /driveConnectionStatus\.needsReauthorization/);
   assert.match(app, /Reconnect Google Drive account/);
   assert.match(app, /connected:false,needsReauthorization:true,authorizationStatus:'reauthorization_required'/);
-  assert.match(app, /attachment-appsscript-gateway-20261125-2/);
+  assert.match(app, /attachment-appsscript-gateway-20261125-3/);
 });
