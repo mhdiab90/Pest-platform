@@ -46,6 +46,10 @@ const DEFAULT_CHEQUE_ACCOUNTS = [
  {code:"1130",name:"شيكات واردة تحت التحصيل",type:"asset",nature:"debit",parentCode:"11"},
  {code:"2140",name:"شيكات صادرة لم تقدم للبنك",type:"liability",nature:"credit",parentCode:"21"}
 ];
+const isRefundableThirdPartyDepositAccount = account => {
+ const normalized=String(account&&account.name||"").normalize("NFKD").replace(/[\u064B-\u065F\u0670\u0640]/g,"").replace(/[أإآٱ]/g,"ا").replace(/[ةه]/g,"ه").replace(/ى/g,"ي").replace(/[^ء-ي]/g,"");
+ return normalized.includes("تاميناتمسترده")&&normalized.includes("الغير");
+};
 const PARTNER_CURRENT_ACCOUNT_CONFIG = [
  {username:"haitham Ibrahim mahmoud",partnerName:"م/ هيثم إبراهيم",code:"3201",name:"جاري شريك م/ هيثم إبراهيم"},
  {username:"Thabetrabea",email:"thabetrabea@gmail.com",partnerName:"أ/ ثابت ربيع",code:"3202",name:"جاري شريك أ/ ثابت ربيع"}
@@ -256,6 +260,11 @@ async function findMasterReferences(ctx,kind,code,partyType="") {
   const partyLedger=await adminRead("partyLedger/financingParty/"+code);
   if(hasStoredRecords(partyLedger))references.push("دفتر الأستاذ المساعد لجهات التمويل");
   check(entries,["partyId"],"قيود التمويل");
+ }else if(kind==="securityDepositParties"){
+  const partyLedger=await adminRead("partyLedger/securityDepositParty/"+code);
+  if(hasStoredRecords(partyLedger))references.push("دفتر الأستاذ المساعد للتأمينات المستردة");
+  const hasJournalReference=Object.values(entries).some(journal=>journal&&Array.isArray(journal.lines)&&journal.lines.some(line=>String(line.partyType||"")==="securityDepositParty"&&String(line.partyId||"")===String(code)));
+  if(hasJournalReference&&!references.length)references.push("قيود اليومية المرتبطة بجهة التأمينات المستردة");
  }else if(kind==="employeeAdvances"||kind==="employeeCustodies"){
   const employee=await adminRead(kind+"/"+code),employeeUid=String(employee&&employee.employeeUid||""),analyticPartyId=employeeUid||code;
   const subledgerType=kind==="employeeAdvances"?"employeeAdvance":"employeeCustody";
@@ -286,9 +295,22 @@ async function financingPartyRegistryErrors(lines,adminRead){
  }
  return errors;
 }
+async function securityDepositPartyRegistryErrors(lines,chart,adminRead){
+ const errors=[];
+ for(const [index,line] of (Array.isArray(lines)?lines:[]).entries()){
+  const account=(chart||{})[String(line&&line.accountCode||"")];
+  const partyType=String(line&&line.partyType||account&&account.subledgerType||"");
+  if(partyType!=="securityDepositParty")continue;
+  const rawPartyId=String(line&&line.partyId||"").trim();
+  if(!rawPartyId)continue;
+  const partyId=id(rawPartyId),party=await adminRead("securityDepositParties/"+partyId);
+  if(!party||party.active===false)errors.push("السطر "+(index+1)+": جهة التأمينات المستردة "+partyId+" غير مسجلة أو موقوفة. أضف الجهة من دليل جهات التأمينات المستردة ثم اخترها في الطرف التحليلي.");
+ }
+ return errors;
+}
 function validateJournal(j,chart,centers){
  const errors=[],lines=Array.isArray(j.lines)?j.lines:[];if(lines.length<2)errors.push("القيد يجب أن يحتوي على سطرين على الأقل");
- lines.forEach((l,i)=>{const a=chart[txt(l.accountCode,32)];if(!a)errors.push("السطر "+(i+1)+": الحساب غير موجود");else if(a.isGroup||a.active===false)errors.push("السطر "+(i+1)+": الحساب غير قابل للترحيل");const d=Number(l.debit||0),c=Number(l.credit||0);if(!Number.isFinite(d)||!Number.isFinite(c)||d<0||c<0||((d>0)===(c>0)))errors.push("السطر "+(i+1)+": أدخل مدين أو دائن فقط");if(l.costCenterId&&!centers[l.costCenterId])errors.push("السطر "+(i+1)+": مركز التكلفة غير موجود");const requiredSubledgerType=a&&(a.subledgerType||(String(l.accountCode)==="2150"?"financingParty":""));if(requiredSubledgerType&&!String(l.partyId||"").trim()){const analyticLabel={customer:"العميل",vendor:"المورد",employeeCustody:"الموظف صاحب العهدة",employeeAdvance:"الموظف صاحب السلفة",partnerCurrentAccount:"الشريك",financingParty:"جهة التمويل أو الدائن"}[requiredSubledgerType]||"الطرف التحليلي";errors.push("السطر "+(i+1)+": يجب اختيار الطرف التحليلي ("+analyticLabel+") للحساب "+txt(a.code||l.accountCode,32)+" — "+txt(a.name||"",120)+".");}});
+ lines.forEach((l,i)=>{const a=chart[txt(l.accountCode,32)];if(!a)errors.push("السطر "+(i+1)+": الحساب غير موجود");else if(a.isGroup||a.active===false)errors.push("السطر "+(i+1)+": الحساب غير قابل للترحيل");const d=Number(l.debit||0),c=Number(l.credit||0);if(!Number.isFinite(d)||!Number.isFinite(c)||d<0||c<0||((d>0)===(c>0)))errors.push("السطر "+(i+1)+": أدخل مدين أو دائن فقط");if(l.costCenterId&&!centers[l.costCenterId])errors.push("السطر "+(i+1)+": مركز التكلفة غير موجود");const requiredSubledgerType=a&&(a.subledgerType||(String(l.accountCode)==="2150"?"financingParty":""));if(requiredSubledgerType&&!String(l.partyId||"").trim()){const analyticLabel={customer:"العميل",vendor:"المورد",employeeCustody:"الموظف صاحب العهدة",employeeAdvance:"الموظف صاحب السلفة",partnerCurrentAccount:"الشريك",financingParty:"جهة التمويل أو الدائن",securityDepositParty:"جهة التأمينات المستردة"}[requiredSubledgerType]||"الطرف التحليلي";errors.push("السطر "+(i+1)+": يجب اختيار الطرف التحليلي ("+analyticLabel+") للحساب "+txt(a.code||l.accountCode,32)+" — "+txt(a.name||"",120)+".");}});
  const b=balance(lines);if(Math.abs(b.difference)>0.01)errors.push("القيد غير متوازن. الفرق: "+b.difference);return {errors,balance:b};
 }
 
@@ -480,14 +502,14 @@ export async function handleFinancialRequest(ctx){
  };
 
  const financeAreaForMaster=kind=>({
-  parties:"masters",financingParties:"masters",employeeAdvances:"masters",employeeCustodies:"masters",chartOfAccounts:"accounts",costCenters:"centers",
+  parties:"masters",financingParties:"masters",securityDepositParties:"masters",employeeAdvances:"masters",employeeCustodies:"masters",chartOfAccounts:"accounts",costCenters:"centers",
   items:"inventory",itemGroups:"inventory",warehouses:"inventory",
   bankAccounts:"bank",taxCodes:"tax"
  })[kind]||"masters";
  const requireFinanceArea=(area,action)=>requirePermission(profile,"financial_"+area,action);
  const hasFinanceArea=(area,action)=>hasPermission(profile,"financial_"+area,action);
  const requireFinanceMaster=(kind,action)=>{
-  if(["parties","financingParties","employeeAdvances","employeeCustodies"].includes(kind)&&hasPermission(profile,"master",action))return true;
+  if(["parties","financingParties","securityDepositParties","employeeAdvances","employeeCustodies"].includes(kind)&&hasPermission(profile,"master",action))return true;
   return requireFinanceArea(financeAreaForMaster(kind),action);
  };
  const documentPermissionArea=document=>document&&document.type==="invoice"?"invoices":
@@ -608,6 +630,14 @@ export async function handleFinancialRequest(ctx){
      updates["chartOfAccounts/2150/isGroup"]=false;
      chart["2150"]={...chart["2150"],subledgerType:"financingParty",isControl:true,isGroup:false};
     }
+    for(const [accountCode,account] of Object.entries(chart)){
+     if(!account||account.isGroup||account.active===false||(account.subledgerType&&account.subledgerType!=="securityDepositParty")||!isRefundableThirdPartyDepositAccount(account))continue;
+     if(account.subledgerType!=="securityDepositParty"||account.isControl!==true){
+      updates["chartOfAccounts/"+accountCode+"/subledgerType"]="securityDepositParty";
+      updates["chartOfAccounts/"+accountCode+"/isControl"]=true;
+      chart[accountCode]={...account,subledgerType:"securityDepositParty",isControl:true};
+     }
+    }
     if(Object.keys(updates).length)await adminPatch(updates);
    }
    if(profile.role==="admin"){
@@ -629,6 +659,7 @@ export async function handleFinancialRequest(ctx){
     }
    }
    const out={chartOfAccounts:chart};for(const k of ["costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","employeeAdvances","employeeCustodies","settings"])out[k]=(await adminRead(k))||{};
+   out.securityDepositParties=(await adminRead("securityDepositParties"))||{};
    // Every project is also a cost center, using the exact project code. Create only missing
    // project-linked centers; never overwrite a manually maintained center with the same code.
    const projectCostCenterUpdates={},projectDirectory=adminReadRoot?(await adminReadRoot("projects"))||{}:{};
@@ -843,7 +874,7 @@ export async function handleFinancialRequest(ctx){
   if(res==="party"){
    requireFinanceArea("partyStatements","view");
    const requested=txt(url.searchParams.get("type")||"customer",32);
-   const allowed=["customer","vendor","employeeCustody","employeeAdvance","partnerCurrentAccount","financingParty"];
+   const allowed=["customer","vendor","employeeCustody","employeeAdvance","partnerCurrentAccount","financingParty","securityDepositParty"];
    if(!allowed.includes(requested))throw new Error("Invalid analytic party type.");
    const partyId=id(url.searchParams.get("id"));
    return {entries:await readAnalyticPartyLedger(requested,partyId)};
@@ -1177,7 +1208,7 @@ export async function handleFinancialRequest(ctx){
   return {success:true,extracted:data,needsHumanReview:true,pageNumber,totalPages,model:"llama-4-scout-17b-16e-instruct"};
  }
  if(action==="saveMaster"){
-  const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties","financingParties","employeeAdvances","employeeCustodies"];
+  const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties","financingParties","securityDepositParties","employeeAdvances","employeeCustodies"];
   if(!allowed.includes(kind))throw new Error("Unsupported master data type.");
   const item=body.item||{},code=masterCodeId(item.code,kind),originalCode=body.originalCode?id(body.originalCode):code;
   item.code=code;
@@ -1278,7 +1309,7 @@ export async function handleFinancialRequest(ctx){
   return {success:true,item:saved,linkedExisting:kind==="parties"&&linkedExisting,created:!previous&&!target};
  }
  if(action==="deleteMasters"){
-  const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties","financingParties","employeeAdvances","employeeCustodies"];
+  const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties","financingParties","securityDepositParties","employeeAdvances","employeeCustodies"];
   if(!allowed.includes(kind))throw new Error("Unsupported master data type.");
   const rawCodes=Array.isArray(body.codes)?body.codes:[];
   const codes=Array.from(new Set(rawCodes.map(value=>id(value))));
@@ -1318,7 +1349,7 @@ export async function handleFinancialRequest(ctx){
   return {success:failed===0,kind,requested:codes.length,deleted,deactivated,notFound,failed,results};
  }
  if(action==="deleteMaster"){
-  const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties","financingParties","employeeAdvances","employeeCustodies"];
+  const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties","financingParties","securityDepositParties","employeeAdvances","employeeCustodies"];
   if(!allowed.includes(kind))throw new Error("Unsupported master data type.");
   const code=id(body.code);
   let existing=await adminRead(kind+"/"+code);
@@ -1357,7 +1388,7 @@ export async function handleFinancialRequest(ctx){
   return {success:true,deleted:true,deactivated:false,code,references:[]};
  }
  if(action==="importMasters"){
-  const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties","financingParties","employeeAdvances","employeeCustodies"];
+  const kind=txt(body.kind,32),allowed=["chartOfAccounts","costCenters","items","itemGroups","warehouses","bankAccounts","taxCodes","parties","financingParties","securityDepositParties","employeeAdvances","employeeCustodies"];
   if(!allowed.includes(kind))throw new Error("Unsupported master data import type.");
   requireFinanceMaster(kind,"add");
   const sourceRows=Array.isArray(body.rows)?body.rows:[];
@@ -1636,6 +1667,7 @@ export async function handleFinancialRequest(ctx){
   next.lines=normalizeJournalAnalyticLines(next.lines,chart);
   const validation=validateJournal(next,chart,centers);
   validation.errors.push(...await financingPartyRegistryErrors(next.lines,adminRead));
+  validation.errors.push(...await securityDepositPartyRegistryErrors(next.lines,chart,adminRead));
   next.balance=validation.balance;next.errors=validation.errors;
   if(previous.sourceType==="legacyImport"&&body.acknowledgeSourceWarnings===true){
    next.sourceWarningsAcknowledgedAt=now;next.sourceWarningsAcknowledgedBy=claims.sub;
@@ -1883,6 +1915,7 @@ export async function handleFinancialRequest(ctx){
    j.lines=normalizeJournalAnalyticLines(j.lines,chart);
    const v=validateJournal(j,chart,centers);
    v.errors.push(...await financingPartyRegistryErrors(j.lines,adminRead));
+   v.errors.push(...await securityDepositPartyRegistryErrors(j.lines,chart,adminRead));
    if(previous&&previous.status==="posted"){
     if(v.errors.length)throw new Error(v.errors.join("؛ "));
     j.status="posted";j.approvedAt=previous.approvedAt||now;j.approvedBy=previous.approvedBy||claims.sub;j.postedAt=now;j.updatedAt=now;j.updatedBy=claims.sub;
@@ -3163,6 +3196,7 @@ await adminPatch(u);
    if(doc.sourceType==="legacyImport"&&(doc.warnings||[]).length>0&&!doc.sourceWarningsAcknowledgedAt)throw new Error("يجب مراجعة ملاحظات استيراد الأرشيف وتأكيد معالجتها قبل اعتماد القيد.");
    const chart=(await adminRead("chartOfAccounts"))||{},centers=(await adminRead("costCenters"))||{},v=validateJournal(doc,chart,centers);
    v.errors.push(...await financingPartyRegistryErrors(doc.lines,adminRead));
+   v.errors.push(...await securityDepositPartyRegistryErrors(doc.lines,chart,adminRead));
    if(v.errors.length)throw new Error(v.errors.join("؛ "));
    if(doc.sourceType==="journalRevision"&&doc.revisionOf){
     const originalId=id(doc.revisionOf),original=await adminRead("journals/"+originalId);
