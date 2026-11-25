@@ -1835,6 +1835,7 @@ function App(){
   const [attachmentsNotice,setAttachmentsNotice] = useState('');
   const [driveConnectionStatus,setDriveConnectionStatus] = useState({loading:false,configured:false,connected:false,googleEmail:'',storage:{usedBytes:0,limitBytes:13*1024*1024*1024}});
   const [driveGatewayTestStatus,setDriveGatewayTestStatus] = useState({loading:false,error:'',gatewayVersion:'',effectiveUserEmail:'',folderReady:false});
+  const [driveGatewayFileTestStatus,setDriveGatewayFileTestStatus] = useState({loading:false,success:null,error:'',cases:null,cleanupCompleted:null});
   const [attachmentPreview,setAttachmentPreview] = useState(null);
   const [attachmentPreviewWidth,setAttachmentPreviewWidth] = useState(()=>Math.max(300,Math.min(680,Math.round(window.innerWidth*.42))));
   const [attachmentPreviewHeight,setAttachmentPreviewHeight] = useState(()=>Math.round(window.innerHeight*.52));
@@ -2893,6 +2894,23 @@ function App(){
       setAttachmentsNotice(rtl?'نجح اختبار بوابة Google Apps Script، وتم التأكد من حساب الشركة ومجلد المرفقات.':'Apps Script gateway test succeeded. The company account and existing attachment folder were verified.');
     }catch(error){
       setDriveGatewayTestStatus({loading:false,error:String(error.message||error),gatewayVersion:'',effectiveUserEmail:'',folderReady:false});
+    }
+  }
+  async function testAppsScriptGatewayFileRoundTrip(){
+    if(!isAdmin||driveGatewayFileTestStatus.loading)return;
+    const confirmed=window.confirm(rtl
+      ?'سيتم إنشاء صورة وملف PDF تجريبيين مؤقتين داخل مجلد المرفقات، واختبار الرفع والتنزيل والاستبدال والحذف. لن يتم ربطهما بأي سجل حقيقي. هل تريد المتابعة؟'
+      :'This creates temporary PNG and PDF files in the company attachment folder and tests upload, download, replace and delete. They are not linked to any real record. Continue?');
+    if(!confirmed)return;
+    setDriveGatewayFileTestStatus({loading:true,success:null,error:'',cases:null,cleanupCompleted:null});
+    try{
+      const result=await attachmentWorkerRequest('/drive/gateway/self-test','POST',{});
+      setDriveGatewayFileTestStatus({...result,loading:false});
+      setAttachmentsNotice(result.success
+        ?(rtl?'نجح اختبار رفع وتنزيل واستبدال وحذف الصورة وملف PDF التجريبيين.':'Temporary PNG and PDF upload, download, replace and delete tests all succeeded.')
+        :(rtl?'انتهى الاختبار مع وجود خطوة لم تنجح. راجع تفاصيل الاختبار أدناه.':'The test completed with a failed step. Review the details below.'));
+    }catch(error){
+      setDriveGatewayFileTestStatus({loading:false,success:false,error:String(error.message||error),cases:null,cleanupCompleted:null});
     }
   }
   async function refreshAttachmentList(){
@@ -7553,10 +7571,32 @@ function App(){
                 {isAdmin&&<div className="rounded-lg border border-sky-200 bg-sky-50 p-3 space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div><b className="text-sky-950">{rtl?'اختبار بوابة Google Apps Script':'Google Apps Script gateway test'}</b><p className="text-xs text-sky-900 mt-1">{rtl?'يتحقق من حساب Google ومجلد المرفقات الحالي دون تغيير مسارات الرفع أو الملفات.':'Verifies the Google account and existing attachment folder without changing live upload routes or files.'}</p></div>
-                    <button type="button" onClick={testAppsScriptDriveGateway} disabled={driveGatewayTestStatus.loading||driveConnectionStatus.loading} className="rounded-lg bg-sky-700 text-white px-4 py-2 text-sm font-bold disabled:opacity-50"><i className={`fas ${driveGatewayTestStatus.loading?'fa-spinner fa-spin':'fa-plug'} me-2`}></i>{driveGatewayTestStatus.loading?(rtl?'جارٍ الاختبار...':'Testing...'):(rtl?'اختبار الاتصال':'Test connection')}</button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button type="button" onClick={testAppsScriptDriveGateway} disabled={driveGatewayTestStatus.loading||driveConnectionStatus.loading} className="rounded-lg bg-sky-700 text-white px-4 py-2 text-sm font-bold disabled:opacity-50"><i className={`fas ${driveGatewayTestStatus.loading?'fa-spinner fa-spin':'fa-plug'} me-2`}></i>{driveGatewayTestStatus.loading?(rtl?'جارٍ الاختبار...':'Testing...'):(rtl?'اختبار الاتصال':'Test connection')}</button>
+                      <button type="button" onClick={testAppsScriptGatewayFileRoundTrip} disabled={!driveGatewayTestStatus.gatewayVersion||driveGatewayFileTestStatus.loading||driveConnectionStatus.loading} className="rounded-lg border border-sky-700 bg-white text-sky-800 px-4 py-2 text-sm font-bold disabled:opacity-50"><i className={`fas ${driveGatewayFileTestStatus.loading?'fa-spinner fa-spin':'fa-file-circle-check'} me-2`}></i>{driveGatewayFileTestStatus.loading?(rtl?'جارٍ اختبار الملفات...':'Testing files...'):(rtl?'اختبار نقل الملفات':'Test file transfer')}</button>
+                    </div>
                   </div>
                   {driveGatewayTestStatus.error&&<p className="rounded-lg border border-rose-200 bg-white p-2 text-xs text-rose-800">{driveGatewayTestStatus.error}</p>}
                   {driveGatewayTestStatus.gatewayVersion&&<div className="rounded-lg border border-emerald-200 bg-white p-2 text-xs text-emerald-800"><b>{rtl?'الاتصال ناجح':'Connection successful'}</b><p dir="ltr" className="mt-1">{driveGatewayTestStatus.effectiveUserEmail}</p><p dir="ltr">{driveGatewayTestStatus.gatewayVersion}</p><p>{rtl?(driveGatewayTestStatus.folderReady?'تم التحقق من مجلد المرفقات الحالي.':'لم يتم التحقق من مجلد المرفقات.'):(driveGatewayTestStatus.folderReady?'Existing attachment folder verified.':'Attachment folder was not verified.')}</p></div>}
+                  {driveGatewayFileTestStatus.success!==null&&<div className={`rounded-lg border p-3 space-y-3 ${driveGatewayFileTestStatus.success?'border-emerald-200 bg-emerald-50':'border-amber-200 bg-amber-50'}`}>
+                    <b className="text-sm">{driveGatewayFileTestStatus.success?(rtl?'نجح اختبار نقل الملفات':'File transfer test passed'):(rtl?'نتيجة اختبار نقل الملفات':'File transfer test results')}</b>
+                    {driveGatewayFileTestStatus.cases&&['image','pdf'].map(kind=>{
+                      const item=driveGatewayFileTestStatus.cases[kind];
+                      if(!item)return null;
+                      const labels=[['upload',rtl?'رفع':'Upload'],['download',rtl?'تنزيل':'Download'],['replace',rtl?'استبدال':'Replace'],['downloadAfterReplace',rtl?'التحقق بعد الاستبدال':'Verify replacement'],['delete',rtl?'حذف':'Delete']];
+                      return <div key={kind} className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+                        <b>{kind==='image'?(rtl?'صورة PNG':'PNG image'):(rtl?'ملف PDF':'PDF file')}</b>
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">{labels.map(([key,label])=><div key={key} className="rounded bg-slate-50 p-2 text-xs"><span className={item.steps&&item.steps[key]?'text-emerald-700':'text-slate-500'}>{item.steps&&item.steps[key]?'✓':item.failedStep===key?'!':'—'}</span><span className="ms-1">{label}</span></div>)}</div>
+                        {!item.success&&item.error&&<p className="text-xs text-rose-700">{item.error}</p>}
+                        <p className={`text-xs ${item.cleanupCompleted?'text-emerald-700':'text-amber-800'}`}>{item.cleanupCompleted?(rtl?'تم تنظيف الملف التجريبي من Drive.':'Temporary test file was removed from Drive.'):(rtl?'تعذر تأكيد حذف الملف التجريبي؛ راجع مجلد المهملات/Drive.':'Could not confirm cleanup of the temporary test file; inspect Drive before rerunning.')}</p>
+                      </div>;
+                    })}
+                    {driveGatewayFileTestStatus.error&&<p className="text-xs text-rose-700">{driveGatewayFileTestStatus.error}</p>}
+                    {driveGatewayFileTestStatus.cleanupCompleted===true&&<p className="text-xs text-emerald-700">{rtl?'تم التأكد من تنظيف ملفات الاختبار.':'All temporary test files were cleaned up.'}</p>}
+                    {driveGatewayFileTestStatus.cleanupCompleted===false&&<p className="text-xs text-amber-800">{rtl?'تنبيه: تعذر تأكيد تنظيف جميع ملفات الاختبار.':'Warning: cleanup of every temporary test file could not be confirmed.'}</p>}
+                    <p className="text-xs text-slate-600">{rtl?'لم يتم إنشاء سجلات مرفقات داخل Pest Platform أو تعديل المرفقات الإنتاجية.':'No Pest Platform attachment records were created or changed.'}</p>
+                  </div>}
+
                 </div>}
                 {driveConnectionStatus.connected&&<div className="space-y-2">
                   <div className="flex justify-between text-xs text-gray-600"><span>{rtl?'استهلاك مرفقات البرنامج':'App attachment usage'}</span><b dir="ltr">{sizeText(used)} / {sizeText(limit)}</b></div>

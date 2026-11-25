@@ -105,3 +105,21 @@ test("Apps Script source enforces signed requests, nonce checks, file size and c
   assert.match(source, /DriveApp\.getFoldersByName\("Pest Platform Attachments"\)/);
   assert.match(source, /file\.setTrashed\(true\)/);
 });
+
+
+test("Apps Script gateway file self-test is admin-only and exercises temporary PNG/PDF round trips", () => {
+  const worker = readFileSync(new URL("../cloudflare/worker.js", import.meta.url), "utf8");
+  assert.ok(worker.includes('"/drive/gateway/self-test"'));
+  assert.ok(worker.includes('if(profile.role!=="admin")throw new Error("Only a system administrator can run the company Drive file test.")'));
+  assert.ok(worker.includes("runAppsScriptGatewayFileCase"));
+  assert.ok(worker.includes('action: "upload"'));
+  assert.ok(worker.includes('action: "download"'));
+  assert.ok(worker.includes('action: "replace"'));
+  assert.ok(worker.includes('action: "delete"'));
+  assert.ok(worker.includes("productionAttachmentsUnchanged: true"));
+  const app = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.ok(app.includes("testAppsScriptGatewayFileRoundTrip"));
+  assert.ok(app.includes("/drive/gateway/self-test"));
+  assert.ok(app.includes("Temporary PNG and PDF upload, download, replace and delete tests all succeeded."));
+  assert.ok(app.includes("No Pest Platform attachment records were created or changed."));
+});
