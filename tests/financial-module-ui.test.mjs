@@ -538,7 +538,7 @@ test("master directory flag is initialized before its first effect dependency ar
 
 test("master directory permissions allow master-data users to load and maintain all master code types", () => {
   assert.match(apiSource, /if\(!hasPermission\(profile,"financial","view"\)&&!hasPermission\(profile,"master","view"\)&&!hasPermission\(profile,"financial_masters","view"\)\)requirePermission\(profile,"financial","view"\)/);
-  assert.match(apiSource, /const requireFinanceMaster=\(kind,action\)=>\{\s*if\(\["parties","financingParties","employeeAdvances","employeeCustodies"\]\.includes\(kind\)&&hasPermission\(profile,"master",action\)\)return true;/);
+  assert.match(apiSource, /const requireFinanceMaster=\(kind,action\)=>\{\s*if\(\["parties","financingParties","securityDepositParties","employeeAdvances","employeeCustodies"\]\.includes\(kind\)&&hasPermission\(profile,"master",action\)\)return true;/);
   assert.match(apiSource, /requireFinanceMaster\(kind,previous\?"edit":"add"\)/);
   assert.match(indexHtml, /tabId==='master'\?\(hasPermission\('master','view'\)\|\|hasPermission\('financial_masters','view'\)\)/);
 });
