@@ -1158,18 +1158,32 @@ function installPestSpreadsheetGrid(root){
       .filter(Boolean);
     return clean([text,...extras].join(" "));
   };
+  const normalizeFilterText=value=>clean(value)
+    .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,"")
+    .replace(/[٠-٩]/g,d=>String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
+    .replace(/[۰-۹]/g,d=>String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
+    .toLocaleLowerCase();
+  const normalizeFilterSearchText=value=>normalizeFilterText(value).replace(/[٬,]/g,"");
   const parseNumber=value=>{
     let text=String(value==null?"":value).trim()
+      .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,"")
       .replace(/[٠-٩]/g,d=>String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
       .replace(/[۰-۹]/g,d=>String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
-      .replace(/[٬،]/g,",").replace(/[,٬\s]/g,"")
+      .replace(/(?:جنيه(?:\s*مصري)?|ج\s*\.?\s*م\s*\.?|EGP|LE|USD|EUR|SAR|AED|دولار|ريال|درهم)/giu,"")
+      .replace(/[$€£¥%]/g,"")
+      .replace(/[−–]/g,"-")
+      .replace(/٫/g,".");
+    if(/[A-Za-z\u0600-\u06FF]/u.test(text))return null;
+    const accountingNegative=/^\s*\(.*\)\s*$/.test(text);
+    text=text.replace(/^\s*\(|\)\s*$/g,"")
+      .replace(/[٬,،\s\u00a0\u202f]/g,"")
       .replace(/[^\d.+-]/g,"");
-    if(!text||!/[0-9]/.test(text))return null;
+    if(!text||!/[0-9]/.test(text)||!/^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(text))return null;
     const number=Number(text);
-    return Number.isFinite(number)?number:null;
+    return Number.isFinite(number)?(accountingNegative?-Math.abs(number):number):null;
   };
   const comparable=value=>{
-    const text=clean(value);
+    const text=normalizeFilterText(value);
     if(!text)return {kind:"empty",value:""};
     if(/^\d{4}-\d{2}-\d{2}$/.test(text))return {kind:"date",value:Date.parse(text+"T00:00:00Z")};
     const number=parseNumber(text);
@@ -1232,11 +1246,14 @@ function installPestSpreadsheetGrid(root){
     operator.addEventListener("change",()=>{value.disabled=["empty","notEmpty"].includes(operator.value);});
     const add=button(t.addFilter,()=>{
       const index=Number(column.value),op=operator.value,filterValue=value.value;
-      if(!Number.isInteger(index)||index<0)return;
+      if(!Number.isInteger(index)||index<0||index>=state.headers.length)return;
       if(!["empty","notEmpty"].includes(op)&&!clean(filterValue))return;
       state.filters.push({column:index,operator:op,value:filterValue});value.value="";state.page=1;
       renderFilterChips(state,key);
+      apply(state,key);
+      savePrefs(state,key);
     });
+    value.addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();add.click();}});
     first.append(labelWrap(t.column,column),labelWrap(t.condition,operator),labelWrap(t.value,value),add);
     bar.append(first);
     const chips=el("div","pest-grid-filter-chips");state.filterChips=chips;bar.append(chips);
@@ -1352,12 +1369,14 @@ function installPestSpreadsheetGrid(root){
   };
   const getValue=(row,index)=>cellText(rowCells(row)[index]);
   const matches=(text,filter)=>{
-    const left=clean(text).toLocaleLowerCase(),right=clean(filter.value).toLocaleLowerCase();
+    const left=normalizeFilterSearchText(text),right=normalizeFilterSearchText(filter.value);
+    const leftNumber=parseNumber(text),rightNumber=parseNumber(filter.value);
+    const numericMatch=leftNumber!==null&&rightNumber!==null&&Math.abs(leftNumber-rightNumber)<=1e-9*Math.max(1,Math.abs(leftNumber),Math.abs(rightNumber));
     switch(filter.operator){
       case "contains":return left.includes(right);
       case "notContains":return !left.includes(right);
-      case "equals":return left===right;
-      case "notEquals":return left!==right;
+      case "equals":return leftNumber!==null&&rightNumber!==null?numericMatch:left===right;
+      case "notEquals":return leftNumber!==null&&rightNumber!==null?!numericMatch:left!==right;
       case "starts":return left.startsWith(right);
       case "ends":return left.endsWith(right);
       case "empty":return !left;
@@ -1369,10 +1388,10 @@ function installPestSpreadsheetGrid(root){
   };
   const apply=(state,key)=>{
     if(!state.table||!state.table.tBodies||!state.table.tBodies.length)return;
-    const tbody=state.table.tBodies[0],query=clean(state.search).toLocaleLowerCase();
+    const tbody=state.table.tBodies[0],query=normalizeFilterSearchText(state.search);
     let list=state.baseRows.filter(row=>{
       const values=rowTexts(row);
-      if(query&&!values.join(" ").toLocaleLowerCase().includes(query))return false;
+      if(query&&!normalizeFilterSearchText(values.join(" ")).includes(query))return false;
       return state.filters.every(filter=>matches(values[filter.column]||"",filter));
     });
     if(state.sortColumn>=0){
