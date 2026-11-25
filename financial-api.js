@@ -264,7 +264,8 @@ async function findMasterReferences(ctx,kind,code,partyType="") {
   const partyLedger=await adminRead("partyLedger/securityDepositParty/"+code);
   if(hasStoredRecords(partyLedger))references.push("دفتر الأستاذ المساعد للتأمينات المستردة");
   const hasJournalReference=Object.values(entries).some(journal=>journal&&Array.isArray(journal.lines)&&journal.lines.some(line=>String(line.partyType||"")==="securityDepositParty"&&String(line.partyId||"")===String(code)));
-  if(hasJournalReference&&!references.length)references.push("قيود اليومية المرتبطة بجهة التأمينات المستردة");
+  const hasPendingDocumentReference=Object.values(docs).some(document=>document&&document.type==="journal"&&Array.isArray(document.lines)&&document.lines.some(line=>String(line.partyType||"")==="securityDepositParty"&&String(line.partyId||"")===String(code)));
+  if((hasJournalReference||hasPendingDocumentReference)&&!references.length)references.push("قيود اليومية والمسودات المرتبطة بجهة التأمينات المستردة");
  }else if(kind==="employeeAdvances"||kind==="employeeCustodies"){
   const employee=await adminRead(kind+"/"+code),employeeUid=String(employee&&employee.employeeUid||""),analyticPartyId=employeeUid||code;
   const subledgerType=kind==="employeeAdvances"?"employeeAdvance":"employeeCustody";
