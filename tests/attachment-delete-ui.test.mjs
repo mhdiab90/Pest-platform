@@ -16,8 +16,10 @@ test("record attachments, chat files, and previews provide delete actions", () =
 test("screen-level attachment controls are available across application screens", () => {
   assert.match(app, /const mainScreenAttachmentModules=/);
   assert.match(app, /screenAttachmentContext&&renderRecordAttachments\(screenAttachmentContext\.entityType,screenAttachmentContext\.entityId/);
-  assert.match(app, /entityType==='screen'&&hasPermission\('attachments','add'\)/);
+  assert.match(app, /canAddRecordAttachment\(entityType,entityId\)/);
   assert.match(app, /layout='side',onDelete=null/);
+  assert.match(app, /canEditRecordAttachment\(entityType,entityId\)/);
+  assert.match(app, /canDeleteRecordAttachment\(entityType,entityId\)/);
   assert.match(app, /layout:'modal'/);
   assert.match(app, /layout:'side'/);
   assert.match(app, /onAttachmentScreenChange=/);
