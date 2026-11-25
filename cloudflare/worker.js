@@ -2953,8 +2953,9 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
   }
   if(url.pathname==="/drive/disconnect"&&request.method==="POST"){
     if(profile.role!=="admin")throw new Error("Only a system administrator can disconnect company Google Drive.");
+    await driveStorageRequest(env,"/drive-gateway-upload-mode","POST",{mode:{enabled:false,maxBytes:1024*1024,updatedBy:claims.sub}});
     await driveStorageRequest(env,"/drive-connection","DELETE",{});
-    return {success:true,filesRemainInDrive:true};
+    return {success:true,filesRemainInDrive:true,gatewayUploadDisabled:true};
   }
   if(url.pathname==="/attachments/usage"&&request.method==="GET"){requirePermission(profile,"attachments","view");return driveStorageRequest(env,"/attachment-usage","GET");}
   if(url.pathname==="/attachments"&&request.method==="GET"){
