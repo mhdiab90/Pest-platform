@@ -2966,12 +2966,24 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
         }
       }catch(error){metadataStorageError=String(error.message||error).slice(0,240);}
     }else metadataStorageError="AI_AGENT_SCHEDULER Durable Object binding is missing.";
-    let gatewayUploadMode=null;
+    let gatewayUploadMode=null,gatewayUpgradeError="";
     if(profile.role==="admin"){
-      try{const modeResult=await driveStorageRequest(env,"/drive-gateway-upload-mode","GET");gatewayUploadMode=modeResult.mode||{enabled:false,maxBytes:ATTACHMENT_MAX_FILE_BYTES,fullAttachmentRouting:false};}
-      catch(error){metadataStorageError=metadataStorageError||String(error&&error.message||error).slice(0,240);}
+      try{
+        const modeResult=await driveStorageRequest(env,"/drive-gateway-upload-mode","GET");
+        gatewayUploadMode=modeResult.mode||{enabled:false,maxBytes:ATTACHMENT_MAX_FILE_BYTES,fullAttachmentRouting:false};
+        const gatewayConfigured=Boolean(String(env.GOOGLE_DRIVE_GATEWAY_URL||"").trim()&&String(env.GOOGLE_DRIVE_GATEWAY_SECRET||"").trim());
+        if(gatewayUploadMode.enabled===true&&gatewayUploadMode.fullAttachmentRouting!==true&&authorizationStatus==="valid"&&gatewayConfigured){
+          try{
+            await verifyCompanyAppsScriptGateway(env,connection);
+            const upgraded=await driveStorageRequest(env,"/drive-gateway-upload-mode","POST",{mode:{enabled:true,maxBytes:ATTACHMENT_MAX_FILE_BYTES,fullAttachmentRouting:true,updatedBy:claims.sub}});
+            gatewayUploadMode=upgraded.mode||{enabled:true,maxBytes:ATTACHMENT_MAX_FILE_BYTES,fullAttachmentRouting:true};
+          }catch(error){
+            gatewayUpgradeError=String(error&&error.message||error).slice(0,220);
+          }
+        }
+      }catch(error){metadataStorageError=metadataStorageError||String(error&&error.message||error).slice(0,240);}
     }
-    return {workerVersion:"attachment-appsscript-gateway-20261125-4",configured:configuration.ready,configurationMissing:configuration.missing,configuration,metadataStorageError,connected:Boolean(connection&&connection.encryptedRefreshToken&&!needsReauthorization),needsReauthorization,authorizationStatus,authorizationError,googleEmail:connection&&connection.googleEmail||"",folderReady:Boolean(connection&&connection.folderId),storage,maxFileBytes:ATTACHMENT_MAX_FILE_BYTES,softLimitBytes:ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES,gatewayUploadMode,gatewayUploadConfigured:Boolean(String(env.GOOGLE_DRIVE_GATEWAY_URL||"").trim()&&String(env.GOOGLE_DRIVE_GATEWAY_SECRET||"").trim()),gatewayUploadUrlConfigured:Boolean(String(env.GOOGLE_DRIVE_GATEWAY_URL||"").trim()),gatewayUploadSecretConfigured:Boolean(String(env.GOOGLE_DRIVE_GATEWAY_SECRET||"").trim())};
+    return {workerVersion:"attachment-appsscript-gateway-20261125-4",configured:configuration.ready,configurationMissing:configuration.missing,configuration,metadataStorageError,connected:Boolean(connection&&connection.encryptedRefreshToken&&!needsReauthorization),needsReauthorization,authorizationStatus,authorizationError,gatewayUpgradeError,googleEmail:connection&&connection.googleEmail||"",folderReady:Boolean(connection&&connection.folderId),storage,maxFileBytes:ATTACHMENT_MAX_FILE_BYTES,softLimitBytes:ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES,gatewayUploadMode,gatewayUploadConfigured:Boolean(String(env.GOOGLE_DRIVE_GATEWAY_URL||"").trim()&&String(env.GOOGLE_DRIVE_GATEWAY_SECRET||"").trim()),gatewayUploadUrlConfigured:Boolean(String(env.GOOGLE_DRIVE_GATEWAY_URL||"").trim()),gatewayUploadSecretConfigured:Boolean(String(env.GOOGLE_DRIVE_GATEWAY_SECRET||"").trim())};
   }
   if(url.pathname==="/drive/connect"&&request.method==="POST"){
     if(profile.role!=="admin")throw new Error("Only a system administrator can connect the company Google Drive account.");
