@@ -166,7 +166,20 @@ const date=v=>{const s=String(v||"");if(!/^\d{4}-\d{2}-\d{2}$/.test(s)||!Number.
 const uid=p=>(p||"FIN")+"_"+crypto.randomUUID().replace(/-/g,"");
 const journalNumberFor=(dateValue,journalId)=>{const period=String(dateValue||"").slice(0,7).replace("-","");const token=String(journalId||uid("JRN")).replace(/[^A-Za-z0-9]/g,"").toUpperCase();return "JE-"+(period||"UNDATED")+"-"+token.slice(-32).padStart(32,"0");};
 const balance=lines=>{const debit=rnd((lines||[]).reduce((s,x)=>s+Number(x.debit||0),0)),credit=rnd((lines||[]).reduce((s,x)=>s+Number(x.credit||0),0));return {debit,credit,difference:rnd(debit-credit)};};
-const reviewRecord=doc=>({id:doc.id,documentId:doc.id,type:doc.type,invoiceType:doc.invoiceType||"",movementType:doc.movementType||"",title:doc.title||doc.number||doc.id,number:doc.number||"",date:doc.date||"",partyName:doc.partyName||"",total:Number(doc.total||doc.amount||0),status:doc.status,createdAt:doc.createdAt,createdBy:doc.createdBy,createdByName:doc.createdByName||"",attachmentUploadStatus:doc.attachmentUploadStatus||"",attachmentFileName:doc.attachmentFileName||"",attachmentUploadError:doc.attachmentUploadError||"",errors:doc.errors||[],warnings:doc.warnings||[]});
+const reviewRecord=doc=>{
+ const lines=Array.isArray(doc.lines)?doc.lines:[];
+ const lineDebit=lines.reduce((sum,line)=>sum+Number(line&&line.debit||0),0);
+ const amount=Number(doc.total||doc.amount||(doc.balance&&doc.balance.debit)||lineDebit||0);
+ return {
+  id:doc.id,documentId:doc.id,type:doc.type,invoiceType:doc.invoiceType||"",movementType:doc.movementType||"",
+  title:doc.title||doc.number||doc.id,number:doc.number||"",date:doc.date||"",description:doc.description||"",
+  reference:doc.reference||"",currency:doc.currency||"EGP",partyName:doc.partyName||"",projectCode:doc.projectCode||"",
+  projectName:doc.projectName||"",sourceType:doc.sourceType||"",analyticParties:Array.from(new Set(lines.map(line=>line&&(line.partyName||line.analyticPartyName||line.partyId)).filter(Boolean))),
+  lineCount:lines.length,total:Number.isFinite(amount)?amount:0,status:doc.status,createdAt:doc.createdAt,createdBy:doc.createdBy,
+  createdByName:doc.createdByName||"",attachmentUploadStatus:doc.attachmentUploadStatus||"",attachmentFileName:doc.attachmentFileName||"",
+  attachmentUploadError:doc.attachmentUploadError||"",errors:doc.errors||[],warnings:doc.warnings||[]
+ };
+};
 function journalUpdates(j){
  if(!j.type)j.type="journal";
  if(!j.number)j.number=journalNumberFor(j.date,j.id);
@@ -724,13 +737,40 @@ export async function handleFinancialRequest(ctx){
    Object.entries(queue).forEach(([key,record])=>{
     if(!record||typeof record!=="object")return;
     const document=documents[key]||{},isJournal=document.type==="journal"||record.type==="journal";
-    if(!isJournal){items[key]=record;return;}
-    const number=document.number||record.number||journalNumberFor(document.date||record.date,document.id||record.id||key);
-    const title=(!record.title||record.title===key||record.title===record.id)?"قيد رقم "+number:record.title;
-    items[key]={...record,number,title};
-    if(document.type==="journal"&&!document.number)updates["documents/"+key+"/number"]=number;
-    if(record.number!==number)updates["reviewQueue/"+key+"/number"]=number;
-    if(record.title!==title)updates["reviewQueue/"+key+"/title"]=title;
+    const lines=Array.isArray(document.lines)?document.lines:[];
+    const lineDebit=lines.reduce((sum,line)=>sum+Number(line&&line.debit||0),0);
+    const amount=Number(document.total||document.amount||(document.balance&&document.balance.debit)||record.total||record.amount||lineDebit||0);
+    const number=isJournal?(document.number||record.number||journalNumberFor(document.date||record.date,document.id||record.id||key)):(document.number||record.number||"");
+    const title=isJournal&&(!record.title||record.title===key||record.title===record.id)?"قيد رقم "+number:(document.title||record.title||number||key);
+    items[key]={
+     ...record,
+     id:document.id||record.id||key,documentId:document.id||record.documentId||key,
+     type:document.type||record.type,invoiceType:document.invoiceType||record.invoiceType||"",
+     movementType:document.movementType||record.movementType||"",
+     number,title,date:document.date||record.date||"",
+     description:document.description||record.description||"",
+     reference:document.reference||record.reference||"",
+     currency:document.currency||record.currency||"EGP",
+     partyName:document.partyName||record.partyName||"",
+     projectCode:document.projectCode||record.projectCode||"",
+     projectName:document.projectName||record.projectName||"",
+     analyticParties:Array.from(new Set(lines.map(line=>line&&(line.partyName||line.analyticPartyName||line.partyId)).filter(Boolean))),
+     lineCount:lines.length||Number(record.lineCount||0),
+     sourceType:document.sourceType||record.sourceType||"",
+     total:Number.isFinite(amount)?amount:0,
+     createdAt:document.createdAt||record.createdAt||0,
+     createdBy:document.createdBy||record.createdBy||"",
+     createdByName:document.createdByName||record.createdByName||"",
+     status:document.status||record.status,
+     errors:Array.isArray(document.errors)?document.errors:(record.errors||[]),
+     warnings:Array.isArray(document.warnings)?document.warnings:(record.warnings||[]),
+     attachmentUploadStatus:document.attachmentUploadStatus||record.attachmentUploadStatus||"",
+     attachmentFileName:document.attachmentFileName||record.attachmentFileName||"",
+     attachmentUploadError:document.attachmentUploadError||record.attachmentUploadError||""
+    };
+    if(isJournal&&document.type==="journal"&&!document.number)updates["documents/"+key+"/number"]=number;
+    if(isJournal&&record.number!==number)updates["reviewQueue/"+key+"/number"]=number;
+    if(isJournal&&record.title!==title)updates["reviewQueue/"+key+"/title"]=title;
    });
    if(Object.keys(updates).length)await adminPatch(updates);
    return {items};
