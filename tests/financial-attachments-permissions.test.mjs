@@ -31,3 +31,10 @@ test("screen attachment records are allow-listed and require the underlying scre
   assert.match(worker, /moduleId==="admin"/);
   assert.match(worker, /moduleId==="announcements"/);
 });
+
+
+test("financial screen attachments use financial module permissions instead of generic attachments grants", () => {
+  assert.match(workerSource, /const financialScreen=entityType==="screen"&&moduleId\.startsWith\("financial_"\)/);
+  assert.match(workerSource, /entityType!=="financial"&&!financialScreen/);
+  assert.match(workerSource, /else if\(moduleId\.startsWith\("financial_"\)\)\{\s*requireEntityPermission\(moduleId\)/);
+});
