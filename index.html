@@ -1060,7 +1060,7 @@ function PestCrmModuleSlot(props){
 }
 
 function FinanceModuleSlot(props){
-  const FINANCE_MODULE_BUILD='20261125-finance-value-filter-journal-attachments-v23';
+  const FINANCE_MODULE_BUILD='20261125-finance-value-filter-journal-attachments-v24';
   const [FinanceModule,setFinanceModule]=useState(()=>window.PEST_FINANCE_MODULE||null);
   const [loadError,setLoadError]=useState('');
   useEffect(()=>{
@@ -3275,11 +3275,14 @@ function App(){
   function canViewRecordAttachment(entityType,entityId){
     if(entityType==='company')return currentUser?.role==='admin';
     const financialModule=financialScreenPermissionModule(entityType,entityId);
-    if(entityType==='financial'||financialModule)return hasPermission('attachments','view')||['financial_journal','financial_review','financial_assignments','financial_invoices','financial_reports','financial_partyStatements','financial_masters','financial_accounts','financial_centers','financial_inventory','financial_cash','financial_bank','financial_tax','financial'].some(module=>hasPermission(module,'view'));
+    if(financialModule)return hasPermission(financialModule,'view')||hasPermission('attachments','view');
+    if(entityType==='financial')return hasPermission('attachments','view')||['financial_journal','financial_review','financial_assignments','financial_invoices','financial_reports','financial_partyStatements','financial'].some(module=>hasPermission(module,'view'));
     return hasPermission('attachments','view');
   }
   function canAddRecordAttachment(entityType,entityId){
     if(entityType==='company')return currentUser?.role==='admin';
+    const financialModule=financialScreenPermissionModule(entityType,entityId);
+    if(financialModule)return hasPermission(financialModule,'add')||hasPermission(financialModule,'edit')||hasPermission('attachments','add');
     if(entityType==='financial')return hasPermission('financial_journal','add')||hasPermission('financial_journal','edit')||hasPermission('financial_review','edit')||hasPermission('financial_assignments','edit')||hasPermission('financial_invoices','add')||hasPermission('financial_invoices','edit')||hasPermission('financial','add')||hasPermission('financial','edit');
     if(!hasPermission('attachments','add'))return false;
     if(entityType==='screen')return true;
