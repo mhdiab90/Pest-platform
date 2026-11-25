@@ -721,3 +721,18 @@ test("legacy archive corrections and review journal details expose a permission-
   assert.match(source, /سيتم مسح القيد المستورد من أرشيف القيود وقائمة المراجعة نهائيًا/);
   assert.match(source, /حفظ نسخة تدقيقية/);
 });
+
+
+test("refundable third-party deposits have a separate analytic registry, picker, and statement", () => {
+  assert.match(source, /securityDepositParty:"جهة التأمينات المستردة"/);
+  assert.match(source, /registeredSecurityDepositParties=rows\(master\.securityDepositParties\)/);
+  assert.match(source, /openQuickAdd\("securityDepositParties"/);
+  assert.match(source, /securityDepositParties:\{label:'جهات التأمينات المستردة'/);
+  assert.match(source, /\["securityDepositParties","جهات التأمينات المستردة"\]/);
+  assert.match(source, /title="دليل جهات التأمينات المستردة"/);
+  assert.match(source, /value:"securityDepositParty",label:"تأمينات مستردة لدى الغير"/);
+  assert.match(source, /securityDepositParty:"كشف حساب تأمينات مستردة لدى الغير"/);
+  assert.match(source, /out\.securityDepositParties/);
+  assert.match(indexHtml, /20261125-finance-refundable-deposit-analytics-v17/);
+});
+
