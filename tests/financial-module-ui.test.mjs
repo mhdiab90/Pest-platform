@@ -823,6 +823,8 @@ test("production web build waits for runtime libraries and reports startup failu
   assert.match(buildScript, /window\.firebase && typeof window\.firebase\.database/);
   assert.match(buildScript, /window\.PEST_APP_BOOTED === true/);
   assert.match(buildScript, /تعذر تشغيل البرنامج/);
+  assert.match(buildScript, /startupWatchdog = window\.setTimeout/);
+  assert.match(buildScript, /25_000|25000/);
   assert.match(indexHtml, /window\.PEST_APP_BOOTED = true/);
 });
 
