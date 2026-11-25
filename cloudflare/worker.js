@@ -2582,7 +2582,6 @@ async function validateAttachmentEntity(type,id,claims,profile,token,action,owne
         }
       }
     }
-  }
   if(action==="delete"&&ownerUid&&ownerUid!==claims.sub&&profile.role!=="admin")requirePermission(profile,"attachments","delete");
   return {entityType,entityId,moduleId};
 }
