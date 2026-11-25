@@ -22,8 +22,30 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js" async></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" async></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js" async></script>
+  <script>
+    (() => {
+      const sources = {
+        pdfjs: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
+        pdfLib: 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js'
+      };
+      const pending = {};
+      const available = key => key === 'pdfjs' ? window.pdfjsLib : key === 'pdfLib' ? window.PDFLib : null;
+      window.PEST_LOAD_OPTIONAL_LIBRARY = key => {
+        const existing = available(key);
+        if (existing) return Promise.resolve(existing);
+        if (!sources[key]) return Promise.reject(new Error('Unknown optional library: ' + key));
+        if (!pending[key]) pending[key] = new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = sources[key];
+          script.async = true;
+          script.onload = () => available(key) ? resolve(available(key)) : reject(new Error('Optional library did not initialize: ' + key));
+          script.onerror = () => { delete pending[key]; reject(new Error('Could not load optional library: ' + key)); };
+          document.head.appendChild(script);
+        });
+        return pending[key];
+      };
+    })();
+  </script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet" />
   <style>
@@ -3462,6 +3484,7 @@ function App(){
     if(!canEditRecordAttachment(entityType,entityId))return;
     setAttachmentEditorBusy(true);setAttachmentEditorNotice('');
     try{
+      if(String(attachment.mimeType||'').toLowerCase()==='application/pdf')await window.PEST_LOAD_OPTIONAL_LIBRARY('pdfjs');
       const path='/attachments/file?entityType='+encodeURIComponent(entityType)+'&entityId='+encodeURIComponent(entityId)+'&id='+encodeURIComponent(attachment.id);
       const blob=await attachmentWorkerRequest(path,'GET',undefined,{},false,true);
       setAttachmentMarkupDirty(false);attachmentMarkupHistoryRef.current=[];attachmentDrawingStartRef.current=null;
@@ -3526,6 +3549,7 @@ function App(){
         const base=attachmentBaseCanvasRef.current,markup=attachmentMarkupCanvasRef.current;
         let replacementBlob;
         if(attachmentEditor.mimeType==='application/pdf'){
+          if(!window.PDFLib)await window.PEST_LOAD_OPTIONAL_LIBRARY('pdfLib');
           if(!window.PDFLib)throw new Error(rtl?'تعذر تحميل مكتبة تعديل PDF.':'Could not load the PDF editing library.');
           const pdf=await window.PDFLib.PDFDocument.load(await attachmentEditor.blob.arrayBuffer());
           const pages=pdf.getPages(),page=pages[0];
