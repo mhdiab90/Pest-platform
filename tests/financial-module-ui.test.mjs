@@ -31,6 +31,7 @@ test("finance module export version must match the version requested by the load
 
 test("finance module loader resolves the asset next to the app bundle and reports stalled loads", () => {
   assert.match(indexHtml, /const appScript=Array\.from\(document\.scripts\)\.find/);
+  assert.ok(indexHtml.includes("filename.startsWith('app.')&&filename.endsWith('.js')"));
   assert.match(indexHtml, /new URL\('\.\/financial-module\.js',assetBase\)/);
   assert.match(indexHtml, /window\.setTimeout\(\(\)=>\{/);
   assert.match(indexHtml, /استغرق تحميل مكوّن الحسابات وقتًا أطول من المعتاد/);
