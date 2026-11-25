@@ -1834,6 +1834,7 @@ function App(){
   const [attachmentUploadBusy,setAttachmentUploadBusy] = useState(false);
   const [attachmentsNotice,setAttachmentsNotice] = useState('');
   const [driveConnectionStatus,setDriveConnectionStatus] = useState({loading:false,configured:false,connected:false,googleEmail:'',storage:{usedBytes:0,limitBytes:13*1024*1024*1024}});
+  const [driveGatewayTestStatus,setDriveGatewayTestStatus] = useState({loading:false,error:'',gatewayVersion:'',effectiveUserEmail:'',folderReady:false});
   const [attachmentPreview,setAttachmentPreview] = useState(null);
   const [attachmentPreviewWidth,setAttachmentPreviewWidth] = useState(()=>Math.max(300,Math.min(680,Math.round(window.innerWidth*.42))));
   const [attachmentPreviewHeight,setAttachmentPreviewHeight] = useState(()=>Math.round(window.innerHeight*.52));
@@ -2881,6 +2882,18 @@ function App(){
       if(status.needsReauthorization)setAttachmentsNotice(rtl?'انتهى تفويض حساب Google Drive أو تم إلغاؤه. يجب على مدير النظام إعادة ربط حساب الشركة.':'Google Drive authorization has expired or was revoked. A system administrator must reconnect the company account.');
     }
     catch(error){setDriveConnectionStatus(old=>({...old,loading:false,error:String(error.message||error)}));}
+  }
+  async function testAppsScriptDriveGateway(){
+    if(!isAdmin)return;
+    setDriveGatewayTestStatus({loading:true,error:'',gatewayVersion:'',effectiveUserEmail:'',folderReady:false});
+    try{
+      const result=await attachmentWorkerRequest('/drive/gateway/test','GET');
+      if(result.accountMatches!==true)throw new Error(rtl?'لم يتأكد أن بوابة Apps Script تعمل بحساب مساحة الشركة الحالي.':'The Apps Script gateway account does not match the existing company Drive account.');
+      setDriveGatewayTestStatus({loading:false,error:'',gatewayVersion:String(result.gatewayVersion||''),effectiveUserEmail:String(result.effectiveUserEmail||''),folderReady:result.folderReady===true});
+      setAttachmentsNotice(rtl?'نجح اختبار بوابة Google Apps Script، وتم التأكد من حساب الشركة ومجلد المرفقات.':'Apps Script gateway test succeeded. The company account and existing attachment folder were verified.');
+    }catch(error){
+      setDriveGatewayTestStatus({loading:false,error:String(error.message||error),gatewayVersion:'',effectiveUserEmail:'',folderReady:false});
+    }
   }
   async function refreshAttachmentList(){
     if(!attachmentEntityId||!hasPermission('attachments','view')){setAttachmentsList([]);return;}
@@ -7537,6 +7550,14 @@ function App(){
                 {driveConnectionStatus.workerVersion&&<div className={"rounded-lg border p-3 text-xs "+(driveConnectionStatus.workerVersion==="attachment-oauth-health-20261125-1"?"border-emerald-200 bg-emerald-50 text-emerald-800":"border-amber-300 bg-amber-50 text-amber-900")}><b>{driveConnectionStatus.workerVersion==="attachment-oauth-health-20261125-1"?(rtl?"إصدار خدمة المرفقات محدث":"Attachment service is up to date"):(rtl?"تنبيه: خدمة المرفقات على Cloudflare لم يتم تحديثها بعد":"Warning: the Cloudflare attachment service has not been updated yet")}</b><span className="block mt-1" dir="ltr">{driveConnectionStatus.workerVersion}</span>{driveConnectionStatus.workerVersion!=="attachment-oauth-health-20261125-1"&&<span className="block mt-1">{rtl?"انشر cloudflare/worker.js من GitHub إلى Worker pest-platform ثم أعد تحميل هذه الشاشة.":"Deploy cloudflare/worker.js from GitHub to the pest-platform Worker, then refresh this screen."}</span>}</div>}
                 {Array.isArray(driveConnectionStatus.configurationMissing)&&driveConnectionStatus.configurationMissing.length>0&&<div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-900 space-y-2"><b>{rtl?"إعدادات Cloudflare الناقصة أو غير الصحيحة:":"Missing or invalid Cloudflare settings:"}</b><ul className="list-disc ps-5 space-y-1">{driveConnectionStatus.configurationMissing.map(item=><li key={item} dir="ltr" className="font-semibold">{item}</li>)}</ul><p>{rtl?"أضف العناصر المحددة من Cloudflare Worker pest-platform ← Settings ← Variables and Secrets، وأضف Durable Object Binding من Bindings. لا ترسل قيم الأسرار في المحادثة.":"Add the listed items in Cloudflare Worker pest-platform → Settings → Variables and Secrets, and add the Durable Object binding under Bindings. Do not share secret values in chat."}</p></div>}
                 {driveConnectionStatus.metadataStorageError&&<p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">{rtl?"تعذر الوصول إلى تخزين بيانات المرفقات: ":"Attachment metadata storage is unavailable: "}{driveConnectionStatus.metadataStorageError}</p>}
+                {isAdmin&&<div className="rounded-lg border border-sky-200 bg-sky-50 p-3 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div><b className="text-sky-950">{rtl?'اختبار بوابة Google Apps Script':'Google Apps Script gateway test'}</b><p className="text-xs text-sky-900 mt-1">{rtl?'يتحقق من حساب Google ومجلد المرفقات الحالي دون تغيير مسارات الرفع أو الملفات.':'Verifies the Google account and existing attachment folder without changing live upload routes or files.'}</p></div>
+                    <button type="button" onClick={testAppsScriptDriveGateway} disabled={driveGatewayTestStatus.loading||driveConnectionStatus.loading} className="rounded-lg bg-sky-700 text-white px-4 py-2 text-sm font-bold disabled:opacity-50"><i className={`fas ${driveGatewayTestStatus.loading?'fa-spinner fa-spin':'fa-plug'} me-2`}></i>{driveGatewayTestStatus.loading?(rtl?'جارٍ الاختبار...':'Testing...'):(rtl?'اختبار الاتصال':'Test connection')}</button>
+                  </div>
+                  {driveGatewayTestStatus.error&&<p className="rounded-lg border border-rose-200 bg-white p-2 text-xs text-rose-800">{driveGatewayTestStatus.error}</p>}
+                  {driveGatewayTestStatus.gatewayVersion&&<div className="rounded-lg border border-emerald-200 bg-white p-2 text-xs text-emerald-800"><b>{rtl?'الاتصال ناجح':'Connection successful'}</b><p dir="ltr" className="mt-1">{driveGatewayTestStatus.effectiveUserEmail}</p><p dir="ltr">{driveGatewayTestStatus.gatewayVersion}</p><p>{rtl?(driveGatewayTestStatus.folderReady?'تم التحقق من مجلد المرفقات الحالي.':'لم يتم التحقق من مجلد المرفقات.'):(driveGatewayTestStatus.folderReady?'Existing attachment folder verified.':'Attachment folder was not verified.')}</p></div>}
+                </div>}
                 {driveConnectionStatus.connected&&<div className="space-y-2">
                   <div className="flex justify-between text-xs text-gray-600"><span>{rtl?'استهلاك مرفقات البرنامج':'App attachment usage'}</span><b dir="ltr">{sizeText(used)} / {sizeText(limit)}</b></div>
                   <div className="h-2 rounded-full bg-slate-100 overflow-hidden"><div className="h-full bg-blue-600 rounded-full" style={{width:percent+'%'}}></div></div>
