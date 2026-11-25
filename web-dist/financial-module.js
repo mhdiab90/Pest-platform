@@ -571,7 +571,7 @@ function FinanceModule(props){
  const openStatementAttachmentFile=async attachment=>{
   if(typeof props.onOpenAttachment==="function"){
    setStatementAttachmentList(null);
-   props.onOpenAttachment(attachment);
+   props.onOpenAttachment(attachment,()=>deleteStatementAttachment(attachment,invoiceDocumentIdForAttachment(attachment)));
    return;
   }
   setBusy(true);setError('');
