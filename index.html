@@ -3275,14 +3275,14 @@ function App(){
   function canViewRecordAttachment(entityType,entityId){
     if(entityType==='company')return currentUser?.role==='admin';
     const financialModule=financialScreenPermissionModule(entityType,entityId);
-    if(financialModule)return hasPermission(financialModule,'view')||hasPermission('attachments','view');
+    if(financialModule)return hasPermission(financialModule,'view');
     if(entityType==='financial')return hasPermission('attachments','view')||['financial_journal','financial_review','financial_assignments','financial_invoices','financial_reports','financial_partyStatements','financial'].some(module=>hasPermission(module,'view'));
     return hasPermission('attachments','view');
   }
   function canAddRecordAttachment(entityType,entityId){
     if(entityType==='company')return currentUser?.role==='admin';
     const financialModule=financialScreenPermissionModule(entityType,entityId);
-    if(financialModule)return hasPermission(financialModule,'add')||hasPermission(financialModule,'edit')||hasPermission('attachments','add');
+    if(financialModule)return hasPermission(financialModule,'add')||hasPermission(financialModule,'edit');
     if(entityType==='financial')return hasPermission('financial_journal','add')||hasPermission('financial_journal','edit')||hasPermission('financial_review','edit')||hasPermission('financial_assignments','edit')||hasPermission('financial_invoices','add')||hasPermission('financial_invoices','edit')||hasPermission('financial','add')||hasPermission('financial','edit');
     if(!hasPermission('attachments','add'))return false;
     if(entityType==='screen')return true;
@@ -3293,7 +3293,7 @@ function App(){
   function canEditRecordAttachment(entityType,entityId){
     if(entityType==='company')return currentUser?.role==='admin';
     const financialModule=financialScreenPermissionModule(entityType,entityId);
-    if(financialModule)return hasPermission(financialModule,'edit')||hasPermission('attachments','edit');
+    if(financialModule)return hasPermission(financialModule,'edit');
     if(entityType==='financial')return hasPermission('financial_journal','edit')||hasPermission('financial_review','edit')||hasPermission('financial_assignments','edit')||hasPermission('financial_invoices','edit')||hasPermission('financial','edit');
     if(!hasPermission('attachments','edit'))return false;
     if(entityType==='screen')return true;
@@ -3305,7 +3305,7 @@ function App(){
   function canDeleteRecordAttachment(entityType,entityId){
     if(entityType==='company')return currentUser?.role==='admin';
     const financialModule=financialScreenPermissionModule(entityType,entityId);
-    if(financialModule)return hasPermission(financialModule,'delete')||hasPermission(financialModule,'edit')||hasPermission('attachments','delete');
+    if(financialModule)return hasPermission(financialModule,'delete')||hasPermission(financialModule,'edit');
     if(entityType==='financial')return hasPermission('financial_invoices','delete')||hasPermission('financial_invoices','edit')||hasPermission('financial_journal','delete')||hasPermission('financial_journal','edit')||hasPermission('financial_review','edit')||hasPermission('financial_assignments','edit')||hasPermission('financial','delete')||hasPermission('financial','edit');
     if(!hasPermission('attachments','delete'))return false;
     if(entityType==='screen')return true;
