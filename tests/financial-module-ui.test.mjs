@@ -694,3 +694,14 @@ test("financial searchable dropdown safely handles missing or detached inputs du
   assert.match(source, /if\(input&&input\.isConnected!==false&&typeof input\.getBoundingClientRect==='function'\)positions\[key\]=financePickerPosition\(input\)/);
   assert.match(source, /const target=e\.currentTarget\|\|e\.target;setJournalPickerAnchor/);
 });
+
+
+test("finance writes distinguish successful save/approval from a later screen-refresh failure", () => {
+  assert.ok(source.includes("cache:'no-store'"));
+  assert.ok(source.includes("تعذر الاتصال بخادم الحسابات"));
+  assert.ok(source.includes("silent=Boolean(options&&options.silent)"));
+  assert.ok(source.includes("تم حفظ التعديلات على الخادم، لكن تعذر تحديث بعض بيانات الشاشة"));
+  assert.ok(source.includes("تم تنفيذ القرار وحفظه على الخادم، لكن تعذر تحديث بعض بيانات الشاشة"));
+  assert.ok(source.includes("لا تكرر الاعتماد"));
+  assert.ok(source.includes("const expectedStatus=decision==="));
+});
