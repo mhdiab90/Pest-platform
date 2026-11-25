@@ -73,6 +73,12 @@ const appBootstrap = `<script>
     host.append(panel);
   };
 
+  const startupWatchdog = window.setTimeout(() => {
+    if (window.PEST_APP_BOOTED !== true) {
+      showFailure(lastStartupError || "لم تكتمل ملفات بدء تشغيل البرنامج خلال المهلة المحددة. تحقق من تحميل ملفات التطبيق والاتصال بالشبكة.");
+    }
+  }, 25000);
+
   window.addEventListener("error", event => {
     const target = event.target;
     if (target && target.tagName === "SCRIPT") {
@@ -166,8 +172,10 @@ const appBootstrap = `<script>
       bundle.onerror = () => showFailure("تعذر تحميل ملف تشغيل التطبيق: " + bundleUrl);
       bundle.onload = () => {
         window.setTimeout(() => {
-          if (window.PEST_APP_BOOTED === true) finished = true;
-          else showFailure("تم تنزيل ملف التطبيق، لكن React لم يكمل إنشاء الواجهة. " + (lastStartupError || ""));
+          if (window.PEST_APP_BOOTED === true) {
+            finished = true;
+            window.clearTimeout(startupWatchdog);
+          } else showFailure("تم تنزيل ملف التطبيق، لكن React لم يكمل إنشاء الواجهة. " + (lastStartupError || ""));
         }, 1200);
       };
       document.body.appendChild(bundle);
