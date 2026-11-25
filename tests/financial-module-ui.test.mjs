@@ -597,7 +597,7 @@ test("financing-party analytics are resolved from the 2150 account and journal d
   const openModal = source.slice(source.indexOf("const openJournalModal=doc=>{"), source.indexOf("const updateJournalModalLine="));
   const partyLabel = source.slice(source.indexOf("const reviewPartyLabel="), source.indexOf("const renderReviewJournalDetails="));
   assert.match(source, /String\(account\.code\)==="2150"[\s\S]*subledgerType:"financingParty"/);
-  assert.match(openModal, /const analyticType=account&&account\.subledgerType\|\|line\.partyType\|\|""/);
+  assert.match(openModal, /const analyticType=analyticTypeForAccount\(account,line\)/);
   assert.match(openModal, /matchFinancingPartyFromText\(\[line\.description,doc\.description,doc\.reference\]\.join\(" "\)\)\|\|saved/);
   assert.match(openModal, /partyType:"financingParty",partyId:matched\?String\(matched\.code\|\|matched\.id\):""/);
   assert.match(partyLabel, /registeredFinancingParties\.find/);
