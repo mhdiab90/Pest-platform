@@ -91,7 +91,7 @@ test("Apps Script source enforces signed requests, nonce checks, file size and c
   assert.match(source, /verifyEnvelope_\(envelope\)/);
   assert.match(source, /computeHmacSha256Signature/);
   assert.match(source, /getScriptLock/);
-  assert.match(source, /cache\.put\(cacheKey, timestamp, 600\)/);
+  assert.match(source, /properties\.setProperty\(nonceKey, timestamp\)/);
   assert.match(source, /MAX_FILE_BYTES = 20 \* 1024 \* 1024/);
   assert.match(source, /Session\.getEffectiveUser\(\)\.getEmail\(\)/);
   assert.match(source, /DriveApp\.getFoldersByName\("Pest Platform Attachments"\)/);
