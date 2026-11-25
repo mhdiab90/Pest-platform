@@ -21,3 +21,13 @@ test("financial invoice attachment deletion requires an edit, delete, or own-upl
   assert.match(worker, /financialRecord\.createdBy===claims\.sub&&hasPermission\(profile,"financial_invoices","add"\)/);
   assert.match(worker, /await validateAttachmentEntity\(type,entityId,claims,profile,token,"delete",attachment\.ownerUid,env\)/);
 });
+
+test("screen attachment records are allow-listed and require the underlying screen view permission", () => {
+  assert.match(worker, /function attachmentEntityModule\(type,entityId=""\)/);
+  assert.match(worker, /if\(type==="screen"\)/);
+  assert.match(worker, /const allowed=new Set\(\[/);
+  assert.match(worker, /if\(entityType==="screen"\)/);
+  assert.match(worker, /requirePermission\(profile,moduleId,"view"\)/);
+  assert.match(worker, /moduleId==="admin"/);
+  assert.match(worker, /moduleId==="announcements"/);
+});
