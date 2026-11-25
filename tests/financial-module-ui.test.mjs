@@ -813,6 +813,14 @@ test("Firebase collection hydration batches child events instead of rendering on
   assert.match(indexHtml,/\[currentUser\?\.uid,tab,assistantOpen,attachmentEntityType,onlineUsersOpen\]/);
 });
 
+test("PDF editing libraries are loaded only when attachment annotation needs them", () => {
+  assert.doesNotMatch(indexHtml, /pdf\.js\/3\.11\.174\/pdf\.min\.js["']\s+async/);
+  assert.doesNotMatch(indexHtml, /pdf-lib\/1\.17\.1\/pdf-lib\.min\.js["']\s+async/);
+  assert.match(indexHtml, /window\.PEST_LOAD_OPTIONAL_LIBRARY\s*=\s*key\s*=>/);
+  assert.match(indexHtml, /await window\.PEST_LOAD_OPTIONAL_LIBRARY\('pdfjs'\)/);
+  assert.match(indexHtml, /await window\.PEST_LOAD_OPTIONAL_LIBRARY\('pdfLib'\)/);
+});
+
 test("financial statement attachment manager opens, expands and scrolls into view", () => {
   assert.match(indexHtml, /onManageRecordAttachments=\{\(entityType,entityId,label,onDelete\)=>\{/);
   assert.match(indexHtml, /expanded:true,loading:true,error:''/);
