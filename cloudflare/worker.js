@@ -2498,7 +2498,8 @@ async function validateAttachmentEntity(type,id,claims,profile,token,action,owne
   const entityType=cleanText(type,24),entityId=entityType==="company"?"company":safeSegment(id,"attachment record id"),moduleId=attachmentEntityModule(entityType,entityId);
   if(entityType==="company"){if(profile.role!=="admin")throw new Error("Company-wide attachments are restricted to administrators.");}
   else{
-    if(entityType!=="financial")requirePermission(profile,"attachments",action==="view"?"view":action==="upload"?"add":action==="edit"?"edit":"delete");
+    const financialScreen=entityType==="screen"&&moduleId.startsWith("financial_");
+    if(entityType!=="financial"&&!financialScreen)requirePermission(profile,"attachments",action==="view"?"view":action==="upload"?"add":action==="edit"?"edit":"delete");
     const requireEntityPermission=(targetModule)=>{
       if(action==="view")requirePermission(profile,targetModule,"view");
       else if(action==="edit")requirePermission(profile,targetModule,"edit");
@@ -2577,6 +2578,8 @@ async function validateAttachmentEntity(type,id,claims,profile,token,action,owne
           if(profile.role!=="admin")throw new Error("Screen attachments are restricted to administrators.");
         }else if(moduleId==="announcements"){
           if(!hasPermission(profile,"announcements","manage"))throw new Error("Permission denied: announcements.manage.");
+        }else if(moduleId.startsWith("financial_")){
+          requireEntityPermission(moduleId);
         }else{
           requirePermission(profile,moduleId,"view");
         }
