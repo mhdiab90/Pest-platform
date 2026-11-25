@@ -813,6 +813,19 @@ test("Firebase collection hydration batches child events instead of rendering on
   assert.match(indexHtml,/\[currentUser\?\.uid,tab,assistantOpen,attachmentEntityType,onlineUsersOpen\]/);
 });
 
+test("production web build waits for runtime libraries and reports startup failures", () => {
+  const buildScript = readFileSync(new URL("../scripts/build-web.mjs", import.meta.url), "utf8");
+  assert.match(buildScript, /const appBootstrap =/);
+  assert.match(buildScript, /window\.React && typeof window\.React\.createElement/);
+  assert.match(buildScript, /cdn\.jsdelivr\.net\/npm\/react@18\.2\.0/);
+  assert.match(buildScript, /window\.ReactDOM && typeof window\.ReactDOM\.createRoot/);
+  assert.match(buildScript, /window\.firebase && typeof window\.firebase\.auth/);
+  assert.match(buildScript, /window\.firebase && typeof window\.firebase\.database/);
+  assert.match(buildScript, /window\.PEST_APP_BOOTED === true/);
+  assert.match(buildScript, /تعذر تشغيل البرنامج/);
+  assert.match(indexHtml, /window\.PEST_APP_BOOTED = true/);
+});
+
 test("PDF editing libraries are loaded only when attachment annotation needs them", () => {
   assert.doesNotMatch(indexHtml, /pdf\.js\/3\.11\.174\/pdf\.min\.js["']\s+async/);
   assert.doesNotMatch(indexHtml, /pdf-lib\/1\.17\.1\/pdf-lib\.min\.js["']\s+async/);
