@@ -426,6 +426,8 @@ function FinanceModule(props){
  const [master,setMaster]=React.useState({chartOfAccounts:{},costCenters:{},items:{},itemGroups:{},warehouses:{},bankAccounts:{},taxCodes:{},parties:{},financingParties:{},employeeAdvances:{},employeeCustodies:{},settings:{},inventory:{balances:{}}});
  const [inventoryMovements,setInventoryMovements]=React.useState([]),[inventoryMovementModal,setInventoryMovementModal]=React.useState(null);
  const [documents,setDocuments]=React.useState([]),[journalRecords,setJournalRecords]=React.useState([]),[review,setReview]=React.useState([]),[periodJournals,setPeriodJournals]=React.useState([]),[balanceJournals,setBalanceJournals]=React.useState([]),[accountingStartMonth,setAccountingStartMonth]=React.useState('');
+ const [legacyImportDocumentsLoading,setLegacyImportDocumentsLoading]=React.useState(false),[legacyImportDocumentsLoaded,setLegacyImportDocumentsLoaded]=React.useState(false);
+ const legacyImportDocumentsRequestRef=React.useRef(0);
  const [journalModal,setJournalModal]=React.useState(null),[journalModalDraft,setJournalModalDraft]=React.useState(null);
  const [clients,setClients]=React.useState([]),[vendors,setVendors]=React.useState([]),[projects,setProjects]=React.useState([]);
  const [period,setPeriod]=React.useState({from:today().slice(0,7),to:today().slice(0,7)}),[report,setReport]=React.useState('trial');
@@ -708,6 +710,40 @@ function FinanceModule(props){
   }catch(e){setError(e.message||String(e));}
   finally{setBusy(false);}
  };
+ const loadLegacyImportDocuments=async()=>{
+  const request=++legacyImportDocumentsRequestRef.current;
+  setLegacyImportDocumentsLoading(true);
+  setLegacyImportDocumentsLoaded(false);
+  try{
+   const result=await api('?resource=documents');
+   if(request!==legacyImportDocumentsRequestRef.current)return null;
+   const list=rows(result.items).sort((a,b)=>n(b.createdAt)-n(a.createdAt));
+   setDocuments(list);
+   setLegacyImportDocumentsLoaded(true);
+   return list;
+  }catch(error){
+   if(request===legacyImportDocumentsRequestRef.current){
+    setLegacyImportDocumentsLoaded(false);
+    setError(error.message||String(error));
+   }
+   return null;
+  }finally{
+   if(request===legacyImportDocumentsRequestRef.current)setLegacyImportDocumentsLoading(false);
+  }
+ };
+ React.useEffect(()=>{
+  if(tab!=='legacyImport'||!currentUser||currentUser.role!=='admin')return;
+  let active=true;
+  const sync=()=>{if(active&&(!document||document.visibilityState!=='hidden'))void loadLegacyImportDocuments();};
+  void loadLegacyImportDocuments();
+  const onVisibility=()=>{if(document.visibilityState==='visible')sync();};
+  document.addEventListener('visibilitychange',onVisibility);
+  return()=>{
+   active=false;
+   legacyImportDocumentsRequestRef.current+=1;
+   document.removeEventListener('visibilitychange',onVisibility);
+  };
+ },[tab,currentUser&&currentUser.uid]);
  const loadInventoryMovements=async()=>{
   try{
    const result=await api('?resource=inventory');
@@ -3723,7 +3759,7 @@ const renderReview=()=>panel('مركز المراجعة والفحص والاع�
     h("div",{className:"flex flex-wrap items-end gap-3"},
      h("label",{className:"block text-sm font-bold"},"ملف حزمة الاستيراد JSON",h("input",{type:"file",accept:".json,application/json",onChange:readLegacyImportFile,className:"block mt-1 w-full rounded-lg border p-2 font-normal bg-white"})),
      button("تنفيذ التكويد ورفع القيود",importLegacyArchive,"primary",busy||!legacyImportPackage||!currentUser||currentUser.role!=="admin"),
-     button("تحديث السجلات المستوردة",refresh,"muted",busy)
+     button("تحديث السجلات المستوردة",()=>loadLegacyImportDocuments(),"muted",busy||legacyImportDocumentsLoading)
     ),
     legacyImportFileName?h("div",{className:"text-xs text-slate-500"},"الملف المحدد: "+legacyImportFileName):null,
     legacyImportPackage?h("div",{className:"grid grid-cols-2 md:grid-cols-4 gap-3"},
@@ -3745,8 +3781,12 @@ const renderReview=()=>panel('مركز المراجعة والفحص والاع�
     )):null
    )),
    panel("القيود المستوردة التي تحتاج استكمالًا","افتح القيد لتصحيح الحساب أو الطرف التحليلي أو تأكيد الملاحظات. لا يظهر أثرها في الأستاذ والقوائم قبل الاعتماد.",h("div",{className:"space-y-2"},
-    h("div",{className:"flex flex-wrap gap-3 text-sm font-bold"},h("span",null,"كل القيود المستوردة: "+imported.length),h("span",{className:"text-amber-700"},"تحتاج تصحيحًا: "+corrections.length),h("span",{className:"text-indigo-700"},"بانتظار المراجعة: "+waiting.length)),
-    corrections.length?table(["رقم المصدر","التاريخ","عدد السطور","ملاحظات الفحص","إجراء"],correctionRows):h("div",{className:"rounded-lg border border-dashed p-4 text-center text-sm text-slate-500"},"لا توجد قيود تحتاج تصحيحًا أو لم يتم تحديث السجلات بعد.")
+    h("div",{className:"flex flex-wrap gap-3 text-sm font-bold"},
+     h("span",null,"كل القيود المستوردة: "+(legacyImportDocumentsLoaded?imported.length:"جارٍ التحميل...")),
+     h("span",{className:"text-amber-700"},"تحتاج تصحيحًا: "+(legacyImportDocumentsLoaded?corrections.length:"—")),
+     h("span",{className:"text-indigo-700"},"بانتظار المراجعة: "+(legacyImportDocumentsLoaded?waiting.length:"—"))
+    ),
+    corrections.length?table(["رقم المصدر","التاريخ","عدد السطور","ملاحظات الفحص","إجراء"],correctionRows):h("div",{className:"rounded-lg border border-dashed p-4 text-center text-sm text-slate-500"},legacyImportDocumentsLoaded?"لا توجد قيود تحتاج تصحيحًا.":legacyImportDocumentsLoading?"جارٍ تحميل القيود المستوردة...":"تعذر تحميل السجلات المستوردة؛ اضغط تحديث لإعادة المحاولة.")
    ))
   );
  };
@@ -5389,5 +5429,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261124-finance-dropdown-portal-v12";
+ window.PEST_FINANCE_MODULE_VERSION="20261125-legacy-import-loading-v13";
 })();
