@@ -397,7 +397,7 @@ test("VAT movement and settlement detail is displayed inside statements but excl
 
 test("all searchable account pickers support inline coding and canceling search preserves the current value", () => {
   assert.match(source,/needle=normalizeMatch\(query\),addItem=list\.find\(item=>String\(item\.value\)==='__quick_add__'\)/);
-  assert.match(source,/const query=opened\?\(hasQuery\?String\(journalPickerSearch\[searchKey\]\|\|''\):''\):String\(selected&&selected\.label\|\|''\)/);
+  assert.match(source,/query=opened\?\(hasQuery\?String\(journalPickerSearch\[searchKey\]\|\|''\):''\):String\(selected&&selected\.label\|\|''\)/);
   assert.doesNotMatch(source,/else if\(value\)onChange\(\{\}\)/);
   assert.match(source,/selectWithAdd\('الحساب المحاسبي',accountAnalysisCode/);
   assert.match(source,/selectWithAdd\('الحساب المقابل',offset/);
@@ -436,7 +436,7 @@ test("analytical party selectors support quick creation of customers and financi
 test("opening or closing an analytical picker does not replace its existing value without a selection", () => {
   const picker=source.slice(source.indexOf("const searchablePicker="), source.indexOf("const searchablePickerWithAdd="));
   assert.match(picker, /const choose=item=>\{\s*onChange\(item\.value\)/);
-  assert.match(picker, /onFocus:e=>\{const rect=e\.currentTarget\.getBoundingClientRect\(\)/);
+  assert.match(picker, /onFocus:e=>\{const target=e\.currentTarget\|\|e\.target;setJournalPickerAnchor/);
   assert.match(picker, /setJournalPickerSearch\(old=>Object\.assign\(\{\},old,\{\[searchKey\]:''\}\)\)/);
   assert.match(picker, /if\(e\.key==='Escape'\)setJournalPickerOpen/);
 });
@@ -566,9 +566,9 @@ test("the global master navigation opens the unified directory instead of the le
 test("financial dropdowns open on the side with more visible space and keep the previous choice visible while searching", () => {
   const picker = source.slice(source.indexOf("const searchablePicker="), source.indexOf("const searchablePickerWithAdd="));
   assert.match(picker, /position:'fixed',zIndex:10000/);
-  assert.match(picker, /const spaceBelow=Math\.max\(0,vh-rect\.bottom-8\)/);
-  assert.match(picker, /const spaceAbove=Math\.max\(0,rect\.top-8\)/);
-  assert.match(picker, /openBelow=spaceBelow>=spaceAbove/);
+  assert.match(source, /const spaceBelow=Math\.max\(0,vh-rect\.bottom-8\)/);
+  assert.match(source, /const spaceAbove=Math\.max\(0,rect\.top-8\)/);
+  assert.match(source, /openBelow=spaceBelow>=spaceAbove/);
   assert.match(picker, /ReactDOM\.createPortal\(menu,document\.body\)/);
   assert.match(picker, /data-finance-picker-menu/);
   assert.match(source, /window\.addEventListener\('scroll',reposition,true\)/);
