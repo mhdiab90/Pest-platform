@@ -15,7 +15,7 @@ This gateway supports the complete, reversible Pest Platform attachment route af
 
 The application supports files up to 20 MiB. Binary data is transferred as Base64 inside signed JSON because Apps Script `ContentService` returns text output; a 20 MiB file becomes roughly 26.7 MiB before envelope overhead. The recorded 20 MiB endurance test succeeded, but measured approximately 107 seconds for upload and 105 seconds for replacement. Large files are therefore materially slower than the former direct route; routine attachments should be kept smaller when practical.
 
-Google's six-minute Apps Script execution ceiling is not a guarantee that a Web App request/response of this size will always be accepted or fast. The full route preserves the existing 20 MiB application limit, verifies the company account and folder for every file operation, and never silently retries an ambiguous gateway failure through a second storage route. If Apps Script is unavailable, users receive an error rather than risking duplicate files or inconsistent metadata. An administrator can disable the full route and return all file operations to the existing direct Google Drive API.
+Google's six-minute Apps Script execution ceiling is not a guarantee that a Web App request/response of this size will always be accepted or fast. The full route preserves the existing 20 MiB application limit, verifies the company account and folder for every file operation, and never silently retries an ambiguous gateway failure through a second storage route. If Apps Script is unavailable, users receive an error rather than risking duplicate files or inconsistent metadata. An administrator can disable full routing for new files; records created through the gateway continue using Apps Script so their Drive IDs and links remain valid, while newly created files return to the direct API.
 
 ## Security and Google Drive permission
 
@@ -68,7 +68,7 @@ The authenticated `ping` action returns the Apps Script effective account email 
 - The existing Durable Object attachment metadata, entity links, notes, permissions, and audit ownership; they remain the system of record.
 - Existing Drive files and their folder. Enabling the route does not copy, bulk-migrate, or rewrite existing records; existing `driveFileId` values are read through the gateway.
 - The 20 MiB maximum attachment size and supported file types.
-- The reversible direct Google Drive API route, which remains available when an administrator disables the gateway mode.
+- The direct Google Drive API route for newly created files and records explicitly marked as API-managed. Gateway-created files and older records without provider metadata remain on Apps Script when full routing is disabled, preserving their access.
 - A silent automatic fallback after an ambiguous gateway failure. Apps Script may have completed a Drive operation even if its response was lost, so a second upload or delete is not attempted automatically.
 - Web and Android continue to use the same authenticated Cloudflare Worker endpoints.
 
