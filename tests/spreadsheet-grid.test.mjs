@@ -31,7 +31,7 @@ test("adding a value filter immediately applies it to the table and Enter submit
   assert.ok(start >= 0 && end > start, "filter add handler must exist");
   const handler = app.slice(start, end);
   assert.match(handler, /renderFilterChips\(state,key\);\s*apply\(state,key\);\s*savePrefs\(state,key\);/);
-  assert.match(handler, /value\.addEventListener\("keydown".*add\.click\(\)/);
+  assert.match(handler, /value\.addEventListener\("keydown"[\s\S]*?add\.click\(\)/);
   assert.match(app, /activeFilters\.every\(filter=>matches/);
 });
 
@@ -81,7 +81,7 @@ test("global table filters provide live account and cost center autocomplete wit
   assert.match(app, /const renderSuggestions=\(\)=>/);
   assert.match(app, /operator\.value="contains"/);
   assert.match(app, /filterSelection=\{code:item\.code,name:item\.name,label:item\.label\}/);
-  assert.match(app, /matchAny:selection\?\[selection\.code,selection\.name\]\.filter\(Boolean\)/);
+  assert.match(app, /matchAny:\[selection\.code,selection\.name\]\.filter\(Boolean\)/);
   assert.match(app, /filterSuggestionMenu/);
   assert.match(app, /pest-grid-filter-suggestion/);
   const gridStart = app.indexOf("function installPestSpreadsheetGrid(root)");
