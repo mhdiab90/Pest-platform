@@ -1162,6 +1162,7 @@ function installPestSpreadsheetGrid(root){
     .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,"")
     .replace(/[٠-٩]/g,d=>String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
     .replace(/[۰-۹]/g,d=>String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
+    .replace(/٫/g,".")
     .toLocaleLowerCase();
   const normalizeFilterSearchText=value=>normalizeFilterText(value).replace(/[٬,]/g,"");
   const parseNumber=value=>{
