@@ -20,7 +20,7 @@ test("spreadsheet grid supports full-text search and multiple independent column
     assert.ok(app.includes('["' + operator + '"'), "missing filter operator: " + operator);
   }
   assert.match(app, /state\.filters\.push\(\{column:index,operator:op,value:filterValue\}\)/);
-  assert.match(app, /state\.filters\.every\(filter=>matches/);
+  assert.match(app, /activeFilters\.every\(filter=>matches/);
   assert.match(app, /searchPlaceholder:"ابحث في كل بيانات الجدول/);
 });
 
@@ -32,7 +32,7 @@ test("adding a value filter immediately applies it to the table and Enter submit
   const handler = app.slice(start, end);
   assert.match(handler, /renderFilterChips\(state,key\);\s*apply\(state,key\);\s*savePrefs\(state,key\);/);
   assert.match(handler, /value\.addEventListener\("keydown".*add\.click\(\)/);
-  assert.match(app, /state\.filters\.every\(filter=>matches/);
+  assert.match(app, /activeFilters\.every\(filter=>matches/);
 });
 
 test("column value filter applies live while typing and retains its selected column", () => {
