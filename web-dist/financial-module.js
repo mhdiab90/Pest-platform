@@ -476,6 +476,41 @@ function FinanceModule(props){
  const [statementAttachmentIndex,setStatementAttachmentIndex]=React.useState({});
  const [statementAttachmentList,setStatementAttachmentList]=React.useState(null),[statementAttachmentPreview,setStatementAttachmentPreview]=React.useState(null);
  const statementAttachmentCacheRef=React.useRef(new Set());
+ React.useEffect(()=>{
+  if(typeof props.onAttachmentScreenChange!=="function")return;
+  if(props.activeHostTab!=="financial"&&props.activeHostTab!=="master")return;
+  const area=financeTabAreas[tab]||"reports";
+  const moduleArea=area==="overview"?"reports":area;
+  const moduleId="financial_"+moduleArea;
+  const parts=[tab];
+  if(tab==="masters")parts.push(masterViewKind);
+  if(tab==="partnerCurrent")parts.push(partnerCurrentSelectedUid||"all");
+  if(tab==="reports")parts.push(report);
+  if(tab==="partyStatements")parts.push(partyStatement.type,partyStatement.id||"all");
+  if(tab==="accountAnalysis")parts.push(accountAnalysisCode||"all");
+  if(tab==="accountReview")parts.push(accountReviewSelectedCode||"all",accountReviewSelectedPartyType||"all",accountReviewSelectedParty||"all");
+  const screenKey=parts.map(value=>String(value||"all").replace(/[^a-zA-Z0-9_-]+/g,"_").slice(0,24)).join("_").slice(0,96);
+  const screenLabels={
+   overview:t("ملخص النظام المالي","Financial overview"),
+   journal:t("القيود اليومية","Journal entries"),
+   review:t("مراجعة القيود","Journal review"),
+   invoices:t("الفواتير والمستندات","Invoices and documents"),
+   assignments:t("مهام المراجعة","Review assignments"),
+   partyStatements:t("كشوف الحسابات","Party statements"),
+   masters:t("دليل الأكواد والبيانات الأساسية","Master data"),
+   accounts:t("دليل الحسابات","Chart of accounts"),
+   centers:t("مراكز التكلفة","Cost centers"),
+   inventory:t("المخزون","Inventory"),
+   cash:t("الخزينة","Cash"),
+   bank:t("البنوك","Banks"),
+   tax:t("الضرائب","Taxes"),
+   reports:t("القوائم المالية والتقارير","Financial statements and reports")
+  };
+  let label=tab==="partnerCurrent"?t("جاري الشركاء","Partner current accounts"):screenLabels[area]||screenLabels.reports;
+  if(tab==="accountAnalysis")label=t("تحليل الحسابات","Account analysis");
+  if(tab==="accountReview")label=t("مراجعة الحسابات","Account review");
+  props.onAttachmentScreenChange({entityType:"screen",entityId:moduleId+"--"+screenKey,label});
+ },[props.activeHostTab,props.masterDirectoryOnly,tab,masterViewKind,partnerCurrentSelectedUid,report,partyStatement.type,partyStatement.id,accountAnalysisCode,accountReviewSelectedCode,accountReviewSelectedPartyType,accountReviewSelectedParty]);
  const api=async(path,method,body)=>{
   const auth=window.PEST_FIREBASE_AUTH&&window.PEST_FIREBASE_AUTH.currentUser;
   if(!auth)throw new Error(t('جلسة الدخول انتهت. أعد تسجيل الدخول.','Your session expired. Sign in again.'));
@@ -534,6 +569,11 @@ function FinanceModule(props){
   const found=new Map();(references||[]).forEach(reference=>{const key=statementAttachmentKey(reference);(statementAttachmentIndex[key]||[]).forEach(attachment=>found.set(key+":"+attachment.id,Object.assign({},attachment,{entityType:reference.entityType,entityId:reference.entityId})));});return Array.from(found.values());
  };
  const openStatementAttachmentFile=async attachment=>{
+  if(typeof props.onOpenAttachment==="function"){
+   setStatementAttachmentList(null);
+   props.onOpenAttachment(attachment);
+   return;
+  }
   setBusy(true);setError('');
   try{
    const auth=window.PEST_FIREBASE_AUTH&&window.PEST_FIREBASE_AUTH.currentUser;if(!auth)throw new Error("جلسة الدخول انتهت. أعد تسجيل الدخول.");
@@ -611,8 +651,14 @@ function FinanceModule(props){
   finally{setBusy(false);}
  };
  const statementAttachmentActionForReferences=references=>{
-  const attachments=statementAttachmentsForReferences(references);if(!attachments.length)return null;
-  return h("button",{type:"button",title:attachments.map(item=>item.fileName).join("، "),className:"inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100 whitespace-nowrap",onClick:event=>{event.stopPropagation();if(attachments.length===1)void openStatementAttachmentFile(attachments[0]);else setStatementAttachmentList({title:"مرفقات الحركة",attachments});}},"📎 "+(attachments.length===1?"مرفق":String(attachments.length)+" مرفقات"));
+  const validReferences=Array.from(references||[]).filter(reference=>reference&&reference.entityType&&reference.entityId);
+  const attachments=statementAttachmentsForReferences(validReferences);
+  const custodyReference=validReferences.find(reference=>reference.entityType==="cashCustody");
+  if(!attachments.length&&!custodyReference)return null;
+  return h("span",{className:"inline-flex flex-wrap items-center gap-1"},
+   attachments.length?h("button",{type:"button",title:attachments.map(item=>item.fileName).join("، "),className:"inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100 whitespace-nowrap",onClick:event=>{event.stopPropagation();if(attachments.length===1)void openStatementAttachmentFile(attachments[0]);else setStatementAttachmentList({title:"مرفقات الحركة",attachments});}},"📎 "+(attachments.length===1?"مرفق":String(attachments.length)+" مرفقات")):null,
+   custodyReference&&typeof props.onManageRecordAttachments==="function"?h("button",{type:"button",title:"إضافة أو إدارة مرفقات حركة العهدة",className:"inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-bold text-indigo-700 hover:bg-indigo-100 whitespace-nowrap",onClick:event=>{event.stopPropagation();props.onManageRecordAttachments(custodyReference.entityType,custodyReference.entityId,t("مرفقات حركة العهدة","Cash custody attachments"));}},"＋ "+t("إدارة","Manage")):null
+  );
  };
  const statementAttachmentAction=record=>statementAttachmentActionForReferences(statementAttachmentReferences(record));
  const closeStatementAttachmentPreview=()=>setStatementAttachmentPreview(previous=>{if(previous&&previous.url)URL.revokeObjectURL(previous.url);return null;});
@@ -3299,6 +3345,7 @@ const renderPartnerCurrent=()=>{
         h('td',{className:'p-2'},fmt((Number(item.size)||0)/1024)+' KB'),
         h('td',{className:'p-2'},
          h('div',{className:'flex flex-wrap gap-1'},
+          button('عرض',()=>void openStatementAttachmentFile(reference),'muted',busy),
           button('تحميل',()=>downloadPartnerCustodyAttachment({uid:partnerCurrentAttachmentView.ownerUid},partnerCurrentAttachmentView.transaction,item),'muted',busy),
           canDeleteStatementAttachment(reference)?button('حذف',()=>void deleteStatementAttachment(reference),'danger',busy):null
          )
