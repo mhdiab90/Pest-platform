@@ -1060,7 +1060,7 @@ function PestCrmModuleSlot(props){
 }
 
 function FinanceModuleSlot(props){
-  const FINANCE_MODULE_BUILD='20261125-finance-refundable-deposit-analytics-v19';
+  const FINANCE_MODULE_BUILD='20261125-finance-value-filter-journal-attachments-v20';
   const [FinanceModule,setFinanceModule]=useState(()=>window.PEST_FINANCE_MODULE||null);
   const [loadError,setLoadError]=useState('');
   useEffect(()=>{
@@ -1164,7 +1164,7 @@ function installPestSpreadsheetGrid(root){
     .replace(/[۰-۹]/g,d=>String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
     .replace(/٫/g,".")
     .toLocaleLowerCase();
-  const normalizeFilterSearchText=value=>normalizeFilterText(value).replace(/[٬,]/g,"");
+  const normalizeFilterSearchText=value=>normalizeFilterText(value).replace(/[٬,،]/g,"");
   const parseNumber=value=>{
     let text=String(value==null?"":value).trim()
       .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,"")
@@ -1243,18 +1243,20 @@ function installPestSpreadsheetGrid(root){
     state.searchInput=search;first.append(labelWrap(t.search,search));
     const column=selectControl(),operator=selectControl(),value=el("input","pest-grid-input");value.type="text";value.placeholder=t.value;
     state.filterField=column;state.filterOperator=operator;state.filterValue=value;
+    column.addEventListener("change",()=>updateDraftFilter(state,key));
     const operators=[["contains",t.contains],["notContains",t.notContains],["equals",t.equals],["notEquals",t.notEquals],["starts",t.starts],["ends",t.ends],["greater",t.greater],["less",t.less],["empty",t.empty],["notEmpty",t.notEmpty]];
     operators.forEach(([v,label])=>{const option=el("option","",label);option.value=v;operator.append(option);});
-    operator.addEventListener("change",()=>{value.disabled=["empty","notEmpty"].includes(operator.value);});
+    operator.addEventListener("change",()=>{value.disabled=["empty","notEmpty"].includes(operator.value);updateDraftFilter(state,key);});
     const add=button(t.addFilter,()=>{
       const index=Number(column.value),op=operator.value,filterValue=value.value;
       if(!Number.isInteger(index)||index<0||index>=state.headers.length)return;
       if(!["empty","notEmpty"].includes(op)&&!clean(filterValue))return;
-      state.filters.push({column:index,operator:op,value:filterValue});value.value="";state.page=1;
+      state.filters.push({column:index,operator:op,value:filterValue});state.draftFilter=null;value.value="";operator.value="contains";value.disabled=false;state.page=1;
       renderFilterChips(state,key);
       apply(state,key);
       savePrefs(state,key);
     });
+    value.addEventListener("input",()=>updateDraftFilter(state,key));
     value.addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();add.click();}});
     first.append(labelWrap(t.column,column),labelWrap(t.condition,operator),labelWrap(t.value,value),add);
     bar.append(first);
@@ -1288,7 +1290,7 @@ function installPestSpreadsheetGrid(root){
     const pageInfo=el("span","pest-grid-page-info","");state.pageInfo=pageInfo;
     const next=button(t.next+" ›",()=>{state.page+=1;apply(state,key);});
     state.prevButton=prev;state.nextButton=next;second.append(prev,pageInfo,next);
-    second.append(button(t.clearFilters,()=>{state.search="";state.searchInput.value="";state.filters=[];state.sortColumn=-1;state.page=1;renderFilterChips(state,key);apply(state,key);savePrefs(state,key);}));
+    second.append(button(t.clearFilters,()=>{state.search="";state.searchInput.value="";state.filters=[];state.draftFilter=null;state.filterValue.value="";state.filterOperator.value="contains";state.filterValue.disabled=false;state.sortColumn=-1;state.page=1;renderFilterChips(state,key);apply(state,key);savePrefs(state,key);}));
     second.append(button(arabic()?"تطبيق الفلاتر":"Apply filters",()=>{state.page=1;renderFilterChips(state,key);apply(state,key);savePrefs(state,key);}));
     bar.append(second);
     state.sortLabel=el("div","pest-grid-sort-hint",t.sortHint);bar.append(state.sortLabel);
@@ -1302,7 +1304,7 @@ function installPestSpreadsheetGrid(root){
     const nearby=host.parentElement&&host.parentElement.querySelector("h1,h2,h3,summary");
     const key="pest-grid:"+hash(document.title+"|"+title+"|"+clean(nearby&&nearby.textContent)+"|"+headers.join("|"));
     let saved={};try{saved=JSON.parse(localStorage.getItem(key)||"{}")||{};}catch(_){}
-    state={host,toolbar,table:null,headers,baseRows:[],visibleRows:[],selected:new Set(),filters:[],search:"",
+    state={host,toolbar,table:null,headers,baseRows:[],visibleRows:[],selected:new Set(),filters:[],draftFilter:null,search:"",
       sortColumn:Number.isInteger(saved.sortColumn)?saved.sortColumn:-1,sortDirection:saved.sortDirection==="desc"?"desc":"asc",
       page:1,pageSize:[25,50,100,250,0].includes(Number(saved.pageSize))?Number(saved.pageSize):25,
       hiddenColumns:new Set(Array.isArray(saved.hiddenColumns)?saved.hiddenColumns:[]),contentSignature:"",columnSignature:"",
@@ -1323,7 +1325,7 @@ function installPestSpreadsheetGrid(root){
     });
   };
   const renderFilterChips=(state,key)=>{
-    const t=words();state.filterChips.replaceChildren();
+    const t=words(),selectedColumn=state.filterField.value;state.filterChips.replaceChildren();
     state.filters.forEach((filter,index)=>{
       const label=state.headers[filter.column]||t.column,operator=({contains:t.contains,notContains:t.notContains,equals:t.equals,notEquals:t.notEquals,starts:t.starts,ends:t.ends,greater:t.greater,less:t.less,empty:t.empty,notEmpty:t.notEmpty})[filter.operator]||filter.operator;
       const chip=el("span","pest-grid-filter-chip",label+" · "+operator+(filter.value?" · "+filter.value:""));
@@ -1333,7 +1335,9 @@ function installPestSpreadsheetGrid(root){
     });
     state.filterField.replaceChildren();
     state.headers.forEach((header,index)=>{const option=el("option","",header);option.value=String(index);state.filterField.append(option);});
-    if(state.headers.length)state.filterField.value="0";
+    const preferredColumn=state.draftFilter?String(state.draftFilter.column):selectedColumn;
+    if(state.headers.length)state.filterField.value=state.headers.some((_,index)=>String(index)===preferredColumn)?preferredColumn:"0";
+    if(state.draftFilter){state.filterOperator.value=state.draftFilter.operator;state.filterValue.value=state.draftFilter.value||"";state.filterValue.disabled=["empty","notEmpty"].includes(state.draftFilter.operator);}
     state.columnDetails.querySelector("summary").textContent=t.columns+" ▾";
     renderColumns(state,key);
   };
@@ -1388,13 +1392,20 @@ function installPestSpreadsheetGrid(root){
       default:return true;
     }
   };
+  const updateDraftFilter=(state,key)=>{
+    const column=Number(state.filterField&&state.filterField.value),operator=state.filterOperator&&state.filterOperator.value,value=state.filterValue&&state.filterValue.value||"";
+    const noValueRequired=operator==="empty"||operator==="notEmpty";
+    if(!Number.isInteger(column)||column<0||column>=state.headers.length||(!noValueRequired&&!clean(value)))state.draftFilter=null;
+    else state.draftFilter={column,operator,value:noValueRequired?"":value};
+    state.page=1;apply(state,key);
+  };
   const apply=(state,key)=>{
     if(!state.table||!state.table.tBodies||!state.table.tBodies.length)return;
-    const tbody=state.table.tBodies[0],query=normalizeFilterSearchText(state.search);
+    const tbody=state.table.tBodies[0],query=normalizeFilterSearchText(state.search),activeFilters=state.draftFilter?[...state.filters,state.draftFilter]:state.filters;
     let list=state.baseRows.filter(row=>{
       const values=rowTexts(row);
       if(query&&!normalizeFilterSearchText(values.join(" ")).includes(query))return false;
-      return state.filters.every(filter=>matches(values[filter.column]||"",filter));
+      return activeFilters.every(filter=>matches(values[filter.column]||"",filter));
     });
     if(state.sortColumn>=0){
       const column=state.sortColumn,direction=state.sortDirection==="asc"?1:-1;
