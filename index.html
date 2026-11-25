@@ -1060,7 +1060,7 @@ function PestCrmModuleSlot(props){
 }
 
 function FinanceModuleSlot(props){
-  const FINANCE_MODULE_BUILD='20261125-finance-value-filter-journal-attachments-v21';
+  const FINANCE_MODULE_BUILD='20261125-finance-value-filter-journal-attachments-v22';
   const [FinanceModule,setFinanceModule]=useState(()=>window.PEST_FINANCE_MODULE||null);
   const [loadError,setLoadError]=useState('');
   useEffect(()=>{
@@ -1952,6 +1952,7 @@ function App(){
   const [driveGatewaySizeTestStatus,setDriveGatewaySizeTestStatus] = useState({loading:false,results:[],error:'',completed:false});
   const [driveGatewayUploadModeBusy,setDriveGatewayUploadModeBusy] = useState(false);
   const [attachmentPreview,setAttachmentPreview] = useState(null);
+  const [screenAttachmentContext,setScreenAttachmentContext] = useState(null);
   const [attachmentPreviewWidth,setAttachmentPreviewWidth] = useState(()=>Math.max(300,Math.min(680,Math.round(window.innerWidth*.42))));
   const [attachmentPreviewHeight,setAttachmentPreviewHeight] = useState(()=>Math.round(window.innerHeight*.52));
   const [recordAttachmentPanels,setRecordAttachmentPanels] = useState({});
@@ -3109,16 +3110,16 @@ function App(){
     try{
       const mime=attachmentMimeType(file),name=file.name||'Attachment';
       if(mime==='application/pdf'||mime.startsWith('image/')){
-        setAttachmentPreview({kind:'media',url:URL.createObjectURL(file),fileName:name,mimeType:mime});
+        setAttachmentPreview({kind:'media',url:URL.createObjectURL(file),fileName:name,mimeType:mime,layout:'side'});
       }else if(mime==='text/plain'||mime==='text/csv'){
-        setAttachmentPreview({kind:'text',fileName:name,text:(await file.text()).slice(0,500000)});
+        setAttachmentPreview({kind:'text',fileName:name,text:(await file.text()).slice(0,500000),layout:'side'});
       }else if(mime==='application/vnd.ms-excel'||mime==='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'){
         const workbook=window.XLSX.read(await file.arrayBuffer(),{type:'array'});
         const sheet=workbook.Sheets[workbook.SheetNames[0]];
         const rows=sheet?window.XLSX.utils.sheet_to_json(sheet,{header:1,defval:'',blankrows:false}).slice(0,200).map(row=>row.slice(0,24)):[];
-        setAttachmentPreview({kind:'table',fileName:name,rows});
+        setAttachmentPreview({kind:'table',fileName:name,rows,layout:'side'});
       }else{
-        setAttachmentPreview({kind:'unsupported',url:URL.createObjectURL(file),fileName:name,mimeType:mime});
+        setAttachmentPreview({kind:'unsupported',url:URL.createObjectURL(file),fileName:name,mimeType:mime,layout:'side'});
       }
     }catch(error){alert((rtl?'تعذرت معاينة الملف: ':'Could not preview file: ')+String(error.message||error));}
   }
@@ -3246,7 +3247,7 @@ function App(){
     }catch(error){setAttachmentsNotice(String(error.message||error));}
     finally{setAttachmentUploadBusy(false);input.value='';}
   }
-  async function openAttachmentFile(attachment,download=false,entityType=attachmentEntityType,entityId=attachmentEntityId,layout='modal'){
+  async function openAttachmentFile(attachment,download=false,entityType=attachmentEntityType,entityId=attachmentEntityId,layout='side',onDelete=null){
     setAttachmentsBusy(true);setAttachmentsNotice('');
     try{
       const path='/attachments/file?entityType='+encodeURIComponent(entityType)+'&entityId='+encodeURIComponent(entityId)+'&id='+encodeURIComponent(attachment.id);
@@ -3255,21 +3256,22 @@ function App(){
         const workbook=window.XLSX.read(await blob.arrayBuffer(),{type:'array'});
         const sheet=workbook.Sheets[workbook.SheetNames[0]];
         const rows=sheet?window.XLSX.utils.sheet_to_json(sheet,{header:1,defval:'',blankrows:false}).slice(0,200).map(row=>row.slice(0,24)):[];
-        setAttachmentPreview({kind:'table',fileName:attachment.fileName,rows,layout,attachment,entityType,entityId});
+        setAttachmentPreview({kind:'table',fileName:attachment.fileName,rows,layout,attachment,entityType,entityId,onDelete});
       }else if(!download&&(attachment.mimeType==='text/plain'||attachment.mimeType==='text/csv')){
-        setAttachmentPreview({kind:'text',fileName:attachment.fileName,text:(await blob.text()).slice(0,500000),layout,attachment,entityType,entityId});
+        setAttachmentPreview({kind:'text',fileName:attachment.fileName,text:(await blob.text()).slice(0,500000),layout,attachment,entityType,entityId,onDelete});
       }else{
         const objectUrl=URL.createObjectURL(blob);
-        if(!download&&['application/pdf','image/jpeg','image/png','image/webp'].includes(attachment.mimeType))setAttachmentPreview({kind:'media',url:objectUrl,fileName:attachment.fileName,mimeType:attachment.mimeType,entityType,entityId,layout,attachment});
+        if(!download&&['application/pdf','image/jpeg','image/png','image/webp'].includes(attachment.mimeType))setAttachmentPreview({kind:'media',url:objectUrl,fileName:attachment.fileName,mimeType:attachment.mimeType,entityType,entityId,layout,attachment,onDelete});
         else{const link=document.createElement('a');link.href=objectUrl;link.download=attachment.fileName;document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(objectUrl),60000);}
       }
     }catch(error){setAttachmentsNotice(String(error.message||error));}
     finally{setAttachmentsBusy(false);}
   }
-  function canDeleteRecordAttachment(entityType){
+  function canDeleteRecordAttachment(entityType,entityId){
     if(entityType==='company')return currentUser?.role==='admin';
-    if(entityType==='financial')return hasPermission('financial_invoices','delete')||hasPermission('financial_invoices','edit')||hasPermission('financial','delete')||hasPermission('financial','edit');
+    if(entityType==='financial')return hasPermission('financial_invoices','delete')||hasPermission('financial_invoices','edit')||hasPermission('financial_journal','delete')||hasPermission('financial_journal','edit')||hasPermission('financial_review','edit')||hasPermission('financial_assignments','edit')||hasPermission('financial','delete')||hasPermission('financial','edit');
     if(!hasPermission('attachments','delete'))return false;
+    if(entityType==='screen')return true;
     const moduleId=({project:'projects',projectEvent:'projects',client:'master',vendor:'master',task:'tasks',message:'messages',cashCustody:'cashCustody',cashCustodyDraft:'cashCustody'})[entityType];
     if(!moduleId)return false;
     if(entityType==='cashCustodyDraft')return hasPermission(moduleId,'add')||hasPermission(moduleId,'edit');
@@ -3337,7 +3339,7 @@ function App(){
     if(!current?.loaded)void refreshRecordAttachmentPanel(entityType,entityId);
   }
   async function replaceRecordAttachment(entityType,entityId,attachment,file){
-    if(!file||!requirePermission('attachments','add'))return;
+    if(!file||!requirePermission('attachments','edit'))return;
     if(file.size>20*1024*1024)throw new Error(rtl?'الحد الأقصى 20 MB للملف.':'Maximum file size is 20 MB.');
     setAttachmentsBusy(true);
     try{
@@ -3548,15 +3550,17 @@ function App(){
       setRecordAttachmentPanels(old=>({...old,[key]:{...(old[key]||{}),expanded:true,loading:false,error:String(error.message||error)}}));
     }
   }
-  function renderRecordAttachments(entityType,entityId){
+  function renderRecordAttachments(entityType,entityId,contextLabel=''){
     const key=recordAttachmentKey(entityType,entityId),panel=recordAttachmentPanels[key]||{};
     if(!entityId||!hasPermission('attachments','view'))return null;
     return <div className="mt-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-2 no-print">
+      {contextLabel&&<div className="mb-2 text-xs font-bold text-slate-600"><i className="fas fa-paperclip me-1"></i>{contextLabel}</div>}
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" title={rtl?'اضغط لفتح أول مرفق جانبيًا':'Click to open the first attachment beside this screen'} onClick={()=>void openRecordAttachmentPreview(entityType,entityId)} className="inline-flex items-center gap-2 rounded-lg bg-white border px-3 py-1.5 text-xs font-bold text-slate-700">
           <i className="fas fa-paperclip text-blue-700"></i>{rtl?'فتح المرفق':'Open attachment'}{panel.loaded&&<span className="rounded-full bg-blue-50 text-blue-700 px-1.5">{panel.attachments?.length||0}</span>}
         </button>
         <button type="button" title={panel.expanded?(rtl?'إخفاء قائمة المرفقات':'Collapse attachments'):(rtl?'عرض قائمة المرفقات':'Expand attachments')} onClick={()=>toggleRecordAttachmentPanel(entityType,entityId)} className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white border text-slate-600"><i className={'fas '+(panel.expanded?'fa-chevron-up':'fa-chevron-down')+' text-[10px]'}></i></button>
+        {entityType==='screen'&&hasPermission('attachments','add')&&<label className="cursor-pointer inline-flex items-center gap-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100 px-3 py-1.5 text-xs font-bold"><i className="fas fa-plus"></i>{rtl?'إضافة مرفق للشاشة':'Add screen attachment'}<input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt" className="hidden" onChange={e=>{const files=Array.from(e.target.files||[]);void uploadRecordAttachments(entityType,entityId,files);e.target.value='';}}/></label>}
         {entityType==='cashCustody'&&hasPermission('attachments','add')&&(hasPermission('cashCustody','add')||hasPermission('cashCustody','edit'))&&<label className="cursor-pointer inline-flex items-center gap-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100 px-3 py-1.5 text-xs font-bold"><i className="fas fa-plus"></i>{rtl?'إضافة مرفق':'Add attachment'}<input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt" className="hidden" onChange={e=>{const files=Array.from(e.target.files||[]);void uploadRecordAttachments(entityType,entityId,files);e.target.value='';}}/></label>}
       </div>
       {panel.expanded&&<div className="mt-2 space-y-2">
@@ -3568,8 +3572,8 @@ function App(){
               <button type="button" disabled={attachmentsBusy} onClick={()=>openAttachmentFile(item,false,entityType,entityId)} className="rounded bg-blue-50 text-blue-700 px-2 py-1 text-[11px] font-bold">{rtl?'عرض':'View'}</button>
               <button type="button" disabled={attachmentsBusy} onClick={()=>openAttachmentFile(item,true,entityType,entityId)} className="rounded bg-slate-100 text-slate-700 px-2 py-1 text-[11px]">{rtl?'تنزيل':'Download'}</button>
               {hasPermission('attachments','edit')&&<button type="button" disabled={attachmentEditorBusy} onClick={()=>openAttachmentEditor(entityType,entityId,item)} className="rounded bg-amber-50 text-amber-800 px-2 py-1 text-[11px] font-bold">{rtl?'ملاحظة / تمييز':'Annotate'}</button>}
-              {hasPermission('attachments','add')&&<label className="cursor-pointer rounded bg-indigo-50 text-indigo-700 px-2 py-1 text-[11px] font-bold">{rtl?'استبدال':'Replace'}<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt" className="hidden" disabled={attachmentsBusy} onChange={async e=>{const file=e.target.files?.[0];try{await replaceRecordAttachment(entityType,entityId,item,file);}catch(error){alert(String(error.message||error));}finally{e.target.value='';}}}/></label>}
-              {canDeleteRecordAttachment(entityType)&&<button type="button" disabled={attachmentsBusy} onClick={()=>removeRecordAttachment(entityType,entityId,item)} className="rounded bg-rose-50 text-rose-700 px-2 py-1 text-[11px]">{rtl?'حذف':'Delete'}</button>}
+              {hasPermission('attachments','edit')&&<label className="cursor-pointer rounded bg-indigo-50 text-indigo-700 px-2 py-1 text-[11px] font-bold">{rtl?'استبدال':'Replace'}<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt" className="hidden" disabled={attachmentsBusy} onChange={async e=>{const file=e.target.files?.[0];try{await replaceRecordAttachment(entityType,entityId,item,file);}catch(error){alert(String(error.message||error));}finally{e.target.value='';}}}/></label>}
+              {canDeleteRecordAttachment(entityType,entityId)&&<button type="button" disabled={attachmentsBusy} onClick={()=>removeRecordAttachment(entityType,entityId,item)} className="rounded bg-rose-50 text-rose-700 px-2 py-1 text-[11px]">{rtl?'حذف':'Delete'}</button>}
             </div>
           </div>)}
       </div>}
