@@ -1456,6 +1456,14 @@ const transferPartnerCustodyMovement=async(account,transaction)=>{
 React.useEffect(()=>{if(tab==='partnerCurrent'&&canFinance('partyStatements','view'))void loadPartnerCurrentAccounts();if(tab==='openingBalances'&&posting.some(account=>['partnerCurrentAccount','financingParty'].includes(account.subledgerType)))void loadPartnerCurrentAccounts(true);},[tab,currentUser&&currentUser.uid]);
 const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
  const centers=rows(master.costCenters),activeCenters=centers.filter(x=>x.active!==false);
+ React.useEffect(()=>{
+  const lookups={
+   accounts:accounts.filter(account=>account&&account.code).map(account=>({code:String(account.code),name:String(account.name||"")})),
+   costCenters:centers.filter(center=>center&&(center.code||center.id)).map(center=>({code:String(center.code||center.id),name:String(center.name||"")}))
+  };
+  window.PEST_FINANCE_FILTER_LOOKUPS=lookups;
+  return ()=>{if(window.PEST_FINANCE_FILTER_LOOKUPS===lookups)delete window.PEST_FINANCE_FILTER_LOOKUPS;};
+ },[master.chartOfAccounts,master.costCenters]);
  const items=rows(master.items),activeItems=items.filter(x=>x.active!==false);
  const financialParties=rows(master.parties),registeredFinancingParties=rows(master.financingParties),registeredSecurityDepositParties=rows(master.securityDepositParties);
  const mergePartyRows=(base,type)=>{const map=new Map((base||[]).map(p=>[String(p.code||p.id),p]));financialParties.filter(p=>p.partyType===type).forEach(p=>map.set(String(p.code||p.id),p));return Array.from(map.values()).filter(p=>p&&(p.code||p.id));};
@@ -5601,5 +5609,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261125-finance-value-filter-journal-attachments-v20";
+ window.PEST_FINANCE_MODULE_VERSION="20261125-finance-value-filter-journal-attachments-v21";
 })();
