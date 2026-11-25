@@ -839,17 +839,29 @@ test("journal list repairs legacy posted journals without numbers across report 
   assert.equal(read("reviewQueue/"+pendingId+"/number"),read("documents/"+pendingId+"/number"));
 });
 
-test("review inbox backfills unique journal numbers for legacy pending journals", async () => {
+test("review inbox backfills journal numbers and reconstructs amount and details from legacy documents", async () => {
   await invoke("GET","?resource=bootstrap");
   const journalId="REVIEW-ONLY-LEGACY-JOURNAL";
-  write("documents/"+journalId,{id:journalId,type:"journal",date:"2026-11-19",status:"pending_review"});
-  write("reviewQueue/"+journalId,{id:journalId,type:"journal",date:"2026-11-19",status:"pending_review",title:journalId});
+  write("documents/"+journalId,{
+    id:journalId,type:"journal",date:"2026-11-19",status:"pending_review",
+    description:"شراء خامات تشغيل للخط الأول",reference:"INV-RAW-104",projectCode:"PRJ-01",
+    currency:"EGP",createdByName:"محاسب التكاليف",
+    lines:[{accountCode:"6100",debit:1250.75,credit:0},{accountCode:"1110",debit:0,credit:1250.75}]
+  });
+  write("reviewQueue/"+journalId,{id:journalId,type:"journal",date:"2026-11-19",status:"pending_review",title:journalId,total:0});
   const result=await invoke("GET","?resource=review");
   const item=result.items[journalId];
   assert.match(item.number,/^JE-202611-[A-Z0-9]{32}$/);
   assert.equal(read("documents/"+journalId+"/number"),item.number);
   assert.equal(read("reviewQueue/"+journalId+"/number"),item.number);
   assert.equal(item.title,"قيد رقم "+item.number);
+  assert.equal(item.total,1250.75,"journal amount is derived from debit when summary total is missing");
+  assert.equal(item.description,"شراء خامات تشغيل للخط الأول");
+  assert.equal(item.reference,"INV-RAW-104");
+  assert.equal(item.projectCode,"PRJ-01");
+  assert.equal(item.createdByName,"محاسب التكاليف");
+  assert.equal(item.currency,"EGP");
+  assert.equal(item.lineCount,2);
 });
 
 test("period report returns selected-period activity and cumulative balances separately", async () => {
