@@ -1074,7 +1074,10 @@ function FinanceModuleSlot(props){
     const language=props.language||(props.rtl?'ar':'en');
     // Resolve the module beside the compiled application bundle, not beside
     // the current route. This prevents nested URLs from producing a bad path.
-    const appScript=Array.from(document.scripts).find(node=>/\\/app\\.[a-f0-9]+\\.js(?:[?#]|$)/i.test(String(node.src||'')));
+const appScript=Array.from(document.scripts).find(node=>{
+      const filename=String(node.src||'').split('/').pop().split('?')[0].split('#')[0];
+      return filename.startsWith('app.')&&filename.endsWith('.js');
+    });
     const assetBase=appScript&&appScript.src?appScript.src:(document.baseURI||window.location.href);
     const moduleUrl=new URL('./financial-module.js',assetBase);
     moduleUrl.searchParams.set('v',FINANCE_MODULE_BUILD);
