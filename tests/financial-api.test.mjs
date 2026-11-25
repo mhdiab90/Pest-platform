@@ -2495,3 +2495,31 @@ test("account 2150 is migrated as an analytical financing control and posted to 
   const rows=Object.values(partyView.entries["2026-11"]||{});
   assert.ok(rows.some(row=>row.journalId===journal.id&&row.credit===250));
 });
+
+
+test("legacy imported journals can be deleted from archive with an audit snapshot and no leftover review row", async () => {
+  await invoke("GET","?resource=bootstrap");
+  const journalId="LEGACY-ARCHIVE-DELETE-API-01";
+  const journal={
+    id:journalId,type:"journal",sourceType:"legacyImport",sourceJournalNumber:"ARCH-DELETE-01",
+    date:"2026-11-22",number:"ARCH-DELETE-01",description:"Imported journal to remove",
+    reference:"ARCH-DELETE-01",currency:"EGP",status:"needs_correction",
+    errors:["Missing analytic party"],warnings:["Source warning"],
+    lines:[
+      {accountCode:"6100",debit:100,credit:0,description:"Expense",sourceLineNo:1},
+      {accountCode:"1110",debit:0,credit:100,description:"Cash",sourceLineNo:2}
+    ]
+  };
+  write("documents/"+journalId,journal);
+  write("reviewQueue/"+journalId,{id:journalId,type:"journal",status:"needs_correction"});
+  const result=await invoke("POST","",{action:"deleteJournal",id:journalId,reason:"حذف قيد مستورد بالخطأ"});
+  assert.equal(result.deleted,true);
+  assert.deepEqual(result.deletedIds,[journalId]);
+  assert.equal(read("documents/"+journalId),null,"the imported journal is removed from the archive list");
+  assert.equal(read("reviewQueue/"+journalId),null,"the journal cannot remain in the review queue");
+  assert.equal(read("journals/"+journalId),null,"no posted journal index is created or left behind");
+  assert.ok(Object.values(read("audit")||{}).some(item=>
+    item&&item.action==="delete_linked_journal_chain"&&item.documentId===journalId&&
+    item.snapshot&&item.snapshot.sourceType==="legacyImport"
+  ),"the full imported journal snapshot remains available in the audit log");
+});
