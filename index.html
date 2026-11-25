@@ -1060,7 +1060,7 @@ function PestCrmModuleSlot(props){
 }
 
 function FinanceModuleSlot(props){
-  const FINANCE_MODULE_BUILD='20261125-finance-attachment-manager-filter-fix-v25';
+  const FINANCE_MODULE_BUILD='20261126-startup-lazy-directory-presence-batched-subscriptions-v26';
   const [FinanceModule,setFinanceModule]=useState(()=>window.PEST_FINANCE_MODULE||null);
   const [loadError,setLoadError]=useState('');
   useEffect(()=>{
@@ -2506,13 +2506,9 @@ function App(){
     if(authUser?.uid&&currentUser?.uid&&authUser.uid!==currentUser.uid){
       console.warn('Presence profile UID differs from Firebase Auth UID; using the authenticated UID.',{profileUid:currentUser.uid,authUid:authUser.uid});
     }
-    const presenceRef=db.ref('presence');
-    const presenceHandler=snapshot=>{
-      if(!mounted)return;
-      setOnlinePresenceByUid(snapshot.val()||{});
-      // A successful read must not hide a failed presence write.
-    };
-    presenceRef.on('value',presenceHandler,error=>reportPresenceError('Online presence read:',error));
+    // Keep the current user's heartbeat active, but do not download every user's
+    // presence record during application startup. The global list is loaded only
+    // while the online-users popover is open (separate effect below).
     const connectionRef=db.ref('.info/connected');
     const ownPresenceRef=db.ref('presence/'+uid).push();
     const connectionHandler=snapshot=>{
@@ -2542,16 +2538,42 @@ function App(){
       heartbeatTimer=window.setInterval(writePresence,45000);
     };
     connectionRef.on('value',connectionHandler,error=>reportPresenceError('Firebase connection listener:',error));
-    const clockTimer=window.setInterval(()=>{if(mounted)setOnlinePresenceClock(Date.now());},15000);
     return ()=>{
       mounted=false;
       if(heartbeatTimer!==null)window.clearInterval(heartbeatTimer);
-      window.clearInterval(clockTimer);
-      presenceRef.off('value',presenceHandler);
       connectionRef.off('value',connectionHandler);
       ownPresenceRef.remove().catch(error=>console.warn('Online presence cleanup:',error));
     };
   },[currentUser?.uid]);
+
+  // Presence for all employees is a potentially large collection. Read it only
+  // when the user explicitly opens the online-users panel, and stop the stream
+  // and its freshness clock immediately when the panel closes.
+  useEffect(()=>{
+    const uid=currentUser?.uid||'';
+    if(!uid||!onlineUsersOpen){
+      setOnlinePresenceByUid({});
+      return;
+    }
+    let mounted=true;
+    const presenceRef=db.ref('presence');
+    const presenceHandler=snapshot=>{
+      if(!mounted)return;
+      setOnlinePresenceByUid(snapshot.val()||{});
+      setOnlinePresenceClock(Date.now());
+    };
+    presenceRef.on('value',presenceHandler,error=>{
+      if(!mounted)return;
+      console.error('Online presence read:',error);
+      setOnlinePresenceError(firebaseErrorMessage(error,tr));
+    });
+    const clockTimer=window.setInterval(()=>{if(mounted)setOnlinePresenceClock(Date.now());},15000);
+    return ()=>{
+      mounted=false;
+      window.clearInterval(clockTimer);
+      presenceRef.off('value',presenceHandler);
+    };
+  },[currentUser?.uid,onlineUsersOpen]);
 
   // Subscribe to shared data only when a screen needs it. Each dataset is loaded
   // at most once per signed-in session; subscriptions remain cached for live updates
@@ -2575,6 +2597,7 @@ function App(){
     const detachAll=()=>{
       subscriptions.forEach(subscription=>{
         try{
+          if(typeof subscription.cancelPendingPublish==='function')subscription.cancelPendingPublish();
           if(subscription.handlers){
             Object.entries(subscription.handlers).forEach(([eventName,handler])=>subscription.ref.off(eventName,handler));
           }else if(subscription.handler)subscription.ref.off('value',subscription.handler);
@@ -2618,7 +2641,16 @@ function App(){
     };
     const subscribeCollection=(key,ref,setter,onMutation)=>{
       if(subscriptions.has(key))return;
-      let rows=[];
+      let rows=[],publishTimer=null;
+      const cancelPendingPublish=()=>{
+        if(publishTimer!==null){window.clearTimeout(publishTimer);publishTimer=null;}
+      };
+      const publishRows=()=>{
+        if(publishTimer!==null)return;
+        // Firebase emits child_added once per existing record. Batch bursts so
+        // a large directory does not force one full React render per employee.
+        publishTimer=window.setTimeout(()=>{publishTimer=null;setter(rows);},75);
+      };
       const normalise=snapshot=>{
         const value=snapshot.val();
         if(!value||typeof value!=='object')return null;
@@ -2631,13 +2663,13 @@ function App(){
         const index=rows.findIndex(item=>String(item.id)===rowKey||String(item.uid)===rowKey);
         if(index<0)rows=[...rows,row];
         else{const next=rows.slice();next[index]=row;rows=next;}
-        setter(rows);
+        publishRows();
         if(onMutation)onMutation(eventType,row,snapshot);
       };
       const remove=snapshot=>{
         const rowKey=String(snapshot.key);
         rows=rows.filter(item=>String(item.id)!==rowKey&&String(item.uid)!==rowKey);
-        setter(rows);
+        publishRows();
         if(onMutation)onMutation('removed',null,snapshot);
       };
       const handlers={
@@ -2647,11 +2679,12 @@ function App(){
       };
       const onError=error=>{
         console.error('Lazy Firebase collection '+key,error);
+        cancelPendingPublish();
         Object.entries(handlers).forEach(([eventName,handler])=>ref.off(eventName,handler));
         subscriptions.delete(key);
       };
       Object.entries(handlers).forEach(([eventName,handler])=>ref.on(eventName,handler,onError));
-      subscriptions.set(key,{ref,handlers});
+      subscriptions.set(key,{ref,handlers,cancelPendingPublish});
     };
     const watch=(key,path,handler)=>subscribe(key,db.ref(path),handler);
     const watchArray=(key,path,setter,onMutation)=>subscribeCollection(key,db.ref(path),setter,onMutation);
@@ -2666,7 +2699,6 @@ function App(){
       watchArray('outflows','outflows',setOutflows);
     };
     const needDirectory=()=>watchArray('userDirectory','userDirectory',setUserDirectory);
-    needDirectory();
     const needTasks=()=>watchArray('tasks:'+uid,'tasks/'+uid,setTasks);
     const needMessages=()=>{
       watchArray('messages:'+uid,'messages/'+uid,setMessages,(eventType,message)=>{
@@ -2687,6 +2719,10 @@ function App(){
         }
       });
     };
+    // User directory is only needed by selected workspaces, finance/master
+    // pickers, the AI assistant, or the online-users panel—not by the home screen.
+    if(onlineUsersOpen||tab==='financial'||tab==='master')needDirectory();
+
     if(tab==='dashboard'){
       needProjects();needFinance();
       if(isAdmin && !subscriptions.has('logs:all')){
