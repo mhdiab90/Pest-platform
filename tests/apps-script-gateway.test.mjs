@@ -171,6 +171,6 @@ test("Upload pilot UI does not silently disable its control and explains prerequ
   assert.ok(app.includes("File-transfer and size-endurance tests are not prerequisites for enabling the pilot."));
   assert.ok(app.includes("GOOGLE_DRIVE_GATEWAY_URL"));
   assert.ok(app.includes("GOOGLE_DRIVE_GATEWAY_SECRET"));
-  assert.ok(app.includes("!driveGatewayUploadModeBusy||"));
+  assert.ok(app.includes("disabled={driveGatewayUploadModeBusy||driveConnectionStatus.loading}"));
   assert.ok(!app.includes("disabled={!driveConnectionStatus.connected||driveConnectionStatus.gatewayUploadConfigured===false"));
 });
