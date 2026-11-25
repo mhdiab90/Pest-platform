@@ -2554,7 +2554,8 @@ async function handleGoogleDriveOAuthCallback(request,env){
 async function handleGoogleDriveRequest(request,url,body,claims,profile,token,env){
   if(url.pathname==="/drive/gateway/test"&&request.method==="GET"){
     if(profile.role!=="admin")throw new Error("Only a system administrator can test the company Drive gateway.");
-    const gateway=await callAppsScriptGateway(env,{action:"ping"});
+    const companyDriveConnection=await getGoogleDriveConnection(env);
+    const gateway=await callAppsScriptGateway(env,{action:"ping",folderId:String(companyDriveConnection&&companyDriveConnection.folderId||"")});
     return {gatewayTest:true,gatewayVersion:String(gateway.gatewayVersion||""),effectiveUserEmail:String(gateway.effectiveUserEmail||""),folderReady:Boolean(gateway.folderId),productionAttachmentsUnchanged:true};
   }
   if(url.pathname==="/drive/status"&&request.method==="GET"){
@@ -2580,7 +2581,7 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
         }
       }catch(error){metadataStorageError=String(error.message||error).slice(0,240);}
     }else metadataStorageError="AI_AGENT_SCHEDULER Durable Object binding is missing.";
-    return {workerVersion:"attachment-oauth-health-20261125-1",configured:configuration.ready,configurationMissing:configuration.missing,configuration,metadataStorageError,connected:Boolean(connection&&connection.encryptedRefreshToken&&!needsReauthorization),needsReauthorization,authorizationStatus,authorizationError,googleEmail:connection&&connection.googleEmail||"",folderReady:Boolean(connection&&connection.folderId),storage,maxFileBytes:ATTACHMENT_MAX_FILE_BYTES,softLimitBytes:ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES};
+    return {workerVersion:"attachment-appsscript-gateway-20261125-1",configured:configuration.ready,configurationMissing:configuration.missing,configuration,metadataStorageError,connected:Boolean(connection&&connection.encryptedRefreshToken&&!needsReauthorization),needsReauthorization,authorizationStatus,authorizationError,googleEmail:connection&&connection.googleEmail||"",folderReady:Boolean(connection&&connection.folderId),storage,maxFileBytes:ATTACHMENT_MAX_FILE_BYTES,softLimitBytes:ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES};
   }
   if(url.pathname==="/drive/connect"&&request.method==="POST"){
     if(profile.role!=="admin")throw new Error("Only a system administrator can connect the company Google Drive account.");
