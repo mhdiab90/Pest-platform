@@ -2390,7 +2390,13 @@ async function googleDriveAccessToken(env,connection){
   const config=googleDriveConfig(env),refreshToken=await decryptGoogleDriveToken(connection.encryptedRefreshToken,env);
   const response=await fetch("https://oauth2.googleapis.com/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams({client_id:config.clientId,client_secret:config.clientSecret,refresh_token:refreshToken,grant_type:"refresh_token"})});
   const data=await response.json().catch(()=>({}));
-  if(!response.ok||!data.access_token)throw new Error("Google Drive authorization expired or was revoked. Reconnect the company Drive account. "+String(data.error_description||data.error||"").slice(0,120));
+  if(!response.ok||!data.access_token){
+    const code=String(data.error||"token_refresh_failed");
+    const error=new Error("Google Drive authorization expired or was revoked. Reconnect the company Drive account. "+String(data.error_description||data.error||"").slice(0,120));
+    error.code=code;
+    error.reauthorizationRequired=code==="invalid_grant";
+    throw error;
+  }
   if(data.refresh_token){connection.encryptedRefreshToken=await encryptGoogleDriveToken(data.refresh_token,env);connection.updatedAt=Date.now();await saveGoogleDriveConnection(env,connection);}
   return data.access_token;
 }
@@ -2549,11 +2555,26 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     requirePermission(profile,"attachments","view");
     const configuration=googleDriveConfigurationStatus(env);
     let connection=null,storage={usedBytes:0,attachmentCount:0,limitBytes:ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES},metadataStorageError="";
+    let authorizationStatus="not_connected",needsReauthorization=false,authorizationError="";
     if(env.AI_AGENT_SCHEDULER){
-      try{connection=await getGoogleDriveConnection(env);storage=await driveStorageRequest(env,"/attachment-usage","GET");}
-      catch(error){metadataStorageError=String(error.message||error).slice(0,240);}
+      try{
+        connection=await getGoogleDriveConnection(env);
+        storage=await driveStorageRequest(env,"/attachment-usage","GET");
+        if(connection&&connection.encryptedRefreshToken){
+          try{
+            await googleDriveAccessToken(env,connection);
+            authorizationStatus="valid";
+          }catch(error){
+            authorizationError=String(error&&error.message||error).slice(0,220);
+            if(error&&error.reauthorizationRequired){
+              needsReauthorization=true;
+              authorizationStatus="reauthorization_required";
+            }else authorizationStatus="check_failed";
+          }
+        }
+      }catch(error){metadataStorageError=String(error.message||error).slice(0,240);}
     }else metadataStorageError="AI_AGENT_SCHEDULER Durable Object binding is missing.";
-    return {workerVersion:"attachment-delete-all-screens-20261123-1",configured:configuration.ready,configurationMissing:configuration.missing,configuration,metadataStorageError,connected:Boolean(connection&&connection.encryptedRefreshToken),googleEmail:connection&&connection.googleEmail||"",folderReady:Boolean(connection&&connection.folderId),storage,maxFileBytes:ATTACHMENT_MAX_FILE_BYTES,softLimitBytes:ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES};
+    return {workerVersion:"attachment-oauth-health-20261125-1",configured:configuration.ready,configurationMissing:configuration.missing,configuration,metadataStorageError,connected:Boolean(connection&&connection.encryptedRefreshToken&&!needsReauthorization),needsReauthorization,authorizationStatus,authorizationError,googleEmail:connection&&connection.googleEmail||"",folderReady:Boolean(connection&&connection.folderId),storage,maxFileBytes:ATTACHMENT_MAX_FILE_BYTES,softLimitBytes:ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES};
   }
   if(url.pathname==="/drive/connect"&&request.method==="POST"){
     if(profile.role!=="admin")throw new Error("Only a system administrator can connect the company Google Drive account.");

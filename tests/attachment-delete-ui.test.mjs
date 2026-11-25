@@ -16,3 +16,15 @@ test("attachment manager and common record screens use the same Worker delete en
   assert.match(app, /attachmentWorkerRequest\('\/attachments','DELETE',\{id:attachment\.id,entityType:attachmentEntityType,entityId:attachmentEntityId\}\)/);
   assert.match(app, /attachmentWorkerRequest\('\/attachments','DELETE',\{id:attachment\.id,entityType,entityId\}\)/);
 });
+
+const worker = readFileSync(new URL("../cloudflare/worker.js", import.meta.url), "utf8");
+
+test("Google Drive status detects invalid refresh tokens and asks for reauthorization", () => {
+  assert.match(worker, /error\.reauthorizationRequired=code==="invalid_grant"/);
+  assert.match(worker, /await googleDriveAccessToken\(env,connection\)/);
+  assert.match(worker, /needsReauthorization,authorizationStatus,authorizationError/);
+  assert.match(app, /driveConnectionStatus\.needsReauthorization/);
+  assert.match(app, /Reconnect Google Drive account/);
+  assert.match(app, /connected:false,needsReauthorization:true,authorizationStatus:'reauthorization_required'/);
+  assert.match(app, /attachment-oauth-health-20261125-1/);
+});
