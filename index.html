@@ -1329,7 +1329,10 @@ function installPestSpreadsheetGrid(root){
     state.filterSuggestionDismiss=dismissSuggestions;state.filterSuggestionScroll=scrollDismissSuggestions;
     column.addEventListener("change",()=>{
       state.filterSelection=null;
-      if(filterColumnKind(state.headers[Number(column.value)]||""))operator.value="contains";
+      const kind=filterColumnKind(state.headers[Number(column.value)]||"");
+      if(kind==="accounts"){operator.value="contains";value.placeholder=arabic()?"اكتب اسم الحساب أو رقمه...":"Type account name or number...";}
+      else if(kind==="costCenters"){operator.value="contains";value.placeholder=arabic()?"اكتب اسم مركز التكلفة أو رقمه...":"Type cost center name or code...";}
+      else value.placeholder=t.value;
       closeSuggestions();updateDraftFilter(state,key);
     });
     const operators=[["contains",t.contains],["notContains",t.notContains],["equals",t.equals],["notEquals",t.notEquals],["starts",t.starts],["ends",t.ends],["greater",t.greater],["less",t.less],["empty",t.empty],["notEmpty",t.notEmpty]];
@@ -1437,6 +1440,8 @@ function installPestSpreadsheetGrid(root){
     state.headers.forEach((header,index)=>{const option=el("option","",header);option.value=String(index);state.filterField.append(option);});
     const preferredColumn=state.draftFilter?String(state.draftFilter.column):selectedColumn;
     if(state.headers.length)state.filterField.value=state.headers.some((_,index)=>String(index)===preferredColumn)?preferredColumn:"0";
+    const lookupKind=filterColumnKind(state.headers[Number(state.filterField.value)]||"");
+    state.filterValue.placeholder=lookupKind==="accounts"?(arabic()?"اكتب اسم الحساب أو رقمه...":"Type account name or number..."):lookupKind==="costCenters"?(arabic()?"اكتب اسم مركز التكلفة أو رقمه...":"Type cost center name or code..."):t.value;
     if(state.draftFilter){state.filterOperator.value=state.draftFilter.operator;state.filterValue.value=state.draftFilter.value||"";state.filterValue.disabled=["empty","notEmpty"].includes(state.draftFilter.operator);}
     state.columnDetails.querySelector("summary").textContent=t.columns+" ▾";
     renderColumns(state,key);
