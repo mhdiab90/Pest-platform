@@ -75,6 +75,39 @@ test("value filtering compares localized numeric amounts correctly", () => {
   assert.equal(matches("invoice 123", { operator: "equals", value: "123" }), false);
 });
 
+test("global table filters provide live account and cost center autocomplete with code-or-name matching", () => {
+  assert.match(app, /const filterColumnKind=header=>/);
+  assert.match(app, /window\\.PEST_FINANCE_FILTER_LOOKUPS/);
+  assert.match(app, /const renderSuggestions=\\(\\)=>/);
+  assert.match(app, /operator\\.value="contains"/);
+  assert.match(app, /filterSelection=\\{code:item\\.code,name:item\\.name,label:item\\.label\\}/);
+  assert.match(app, /matchAny:selection\\?\\[selection\\.code,selection\\.name\\]\\.filter\\(Boolean\\)/);
+  assert.match(app, /filterSuggestionMenu/);
+  assert.match(app, /pest-grid-filter-suggestion/);
+  const gridStart = app.indexOf("function installPestSpreadsheetGrid(root)");
+  const helperStart = app.indexOf("  const normalizeFilterText=", gridStart);
+  const helperEnd = app.indexOf("  const hash=", helperStart);
+  const matchesStart = app.indexOf("  const matches=", helperEnd);
+  const matchesEnd = app.indexOf("  const updateDraftFilter=", matchesStart);
+  assert.ok(gridStart >= 0 && helperStart > gridStart && helperEnd > helperStart && matchesEnd > matchesStart);
+  const helpers = app.slice(helperStart, helperEnd) + app.slice(matchesStart, matchesEnd);
+  const sandbox = {};
+  vm.runInNewContext(
+    `const clean=value=>String(value==null?"":value).replace(/\\\\s+/g," ").trim();
+     const arabic=()=>true;
+     ${helpers}
+     globalThis.gridTest={matches};`,
+    sandbox
+  );
+  const {matches}=sandbox.gridTest;
+  const selected={operator:"contains",value:"4010 — إيرادات المبيعات",matchAny:["4010","إيرادات المبيعات"]};
+  assert.equal(matches("4010 — إيرادات المبيعات",selected),true);
+  assert.equal(matches("إيرادات المبيعات",selected),true);
+  assert.equal(matches("4010",selected),true);
+  assert.equal(matches("4020 — إيرادات أخرى",selected),false);
+  assert.equal(matches("مركز 07", {operator:"contains",value:"07 — مركز الإنتاج",matchAny:["07","مركز الإنتاج"]}),true);
+});
+
 test("spreadsheet grid supports ascending/descending sorting, pagination, and saved column visibility", () => {
   assert.match(app, /state\.sortDirection=state\.sortDirection==="asc"\?"desc":"asc"/);
   assert.match(app, /state\.hiddenColumns\.add\(index\)/);
