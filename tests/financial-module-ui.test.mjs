@@ -784,14 +784,14 @@ test("refundable deposit quick coding works in journal entry, review editing, an
 test("financial module uses the shared split attachment viewer and keeps source-record links", () => {
   assert.match(source, /props\.onAttachmentScreenChange\(/);
   assert.match(source, /props\.onOpenAttachment\(attachment,\(\)=>deleteStatementAttachment\(attachment,invoiceDocumentIdForAttachment\(attachment\)\)\)/);
-  assert.ok(source.includes('props.onManageRecordAttachments(reference.entityType,reference.entityId,label)'));
+  assert.ok(source.includes('props.onManageRecordAttachments(reference.entityType,reference.entityId,label,attachment=>deleteStatementAttachment'));
   assert.match(source, /button\('عرض',\(\)=>void openStatementAttachmentFile\(reference\)/);
 });
 
 test("financial statement rows expose direct attachment management for the original source record", () => {
   assert.match(source, /const manageableReferences=typeof props\.onManageRecordAttachments==="function"\?validReferences:\[\]/);
   assert.match(source, /manageableReferences\.map\(\(reference,index\)=>h\("button"/);
-  assert.match(source, /props\.onManageRecordAttachments\(reference\.entityType,reference\.entityId,label\)/);
+  assert.match(source, /props\.onManageRecordAttachments\(reference\.entityType,reference\.entityId,label,attachment=>deleteStatementAttachment/);
 });
 
 
