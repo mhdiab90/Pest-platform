@@ -239,7 +239,7 @@ test("journal review editors expose and save check, invoice and document numbers
 test("journal attachments load in review, support multiple new files, and preserve existing files", () => {
   assert.match(source, /tab==='review'&&selected&&selected\.type==='journal'\)void loadStatementAttachments\(\[selected\]\)/);
   assert.match(source, /const appendStatementAttachment=\(entityId,rawAttachment\)=>/);
-  assert.match(source, /const uploadJournalAttachments=async\(files,record\)=>/);
+  assert.ok(source.includes("const uploadJournalAttachments=async(files,record,options)=>"));
   assert.match(source, /multiple:true,accept:'image\/\*,\.pdf,\.doc,\.docx,\.xls,\.xlsx,\.csv,\.txt'/);
   assert.match(source, /setStatementAttachmentIndex\(previous=>\{/);
   assert.match(source, /const next=current\.filter\(item=>String\(item\.id\)!==String\(attachment\.id\)\)/);
@@ -248,6 +248,15 @@ test("journal attachments load in review, support multiple new files, and preser
   assert.match(source, /journalAttachmentUploadControl\(draft\)/);
   assert.match(source, /journalAttachmentUploadControl\(statementJournal\)/);
   assert.match(source, /const combined=\[\.\.\.\(found\.get\(key\)\|\|\[\]\),\.\.\.\(Array\.isArray\(previous\[key\]\)\?previous\[key\]:\[\]\)\]/);
+});
+
+test("new journal creation accepts multiple files and uploads them against the created journal ID", () => {
+  assert.ok(source.includes("const [journalFiles,setJournalFiles]=React.useState([])"));
+  assert.ok(source.includes("const journalAttachmentsPanel=panel('مرفقات القيد'"));
+  assert.ok(source.includes("type:'file',multiple:true,accept:'image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt'"));
+  assert.ok(source.includes("setJournalFiles(previous=>previous.concat(accepted))"));
+  assert.ok(source.includes("uploadJournalAttachments(selectedFiles,{id:result.id,type:'journal',status:result.status},{keepBusy:true,quiet:true})"));
+  assert.ok(source.includes("setJournalFiles([])"));
 });
 
 test("daily journal rows show green posted and red cancelled status badges", () => {
@@ -742,7 +751,7 @@ test("refundable third-party deposits have a separate analytic registry, picker,
   assert.match(source, /value:"securityDepositParty",label:"تأمينات مستردة لدى الغير"/);
   assert.match(source, /securityDepositParty:"كشف حساب تأمينات مستردة لدى الغير"/);
   assert.match(source, /securityDepositParties:\{\}/);
-  assert.match(indexHtml, /20261125-finance-refundable-deposit-analytics-v19/);
+  assert.match(indexHtml, /20261125-finance-value-filter-journal-attachments-v20/);
 });
 
 test("refundable deposit quick coding works in journal entry, review editing, and legacy archive correction", () => {
