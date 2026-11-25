@@ -1270,6 +1270,9 @@ function installPestSpreadsheetGrid(root){
   };
   const selectControl=()=>el("select","pest-grid-select");
   const buildToolbar=(state,key)=>{
+    if(state.filterSuggestionMenu&&state.filterSuggestionMenu.parentNode)state.filterSuggestionMenu.remove();
+    if(state.filterSuggestionDismiss)document.removeEventListener("mousedown",state.filterSuggestionDismiss);
+    if(state.filterSuggestionScroll)window.removeEventListener("scroll",state.filterSuggestionScroll,true);
     const t=words(),bar=state.toolbar;bar.replaceChildren();
     bar.setAttribute("data-pest-grid-toolbar","true");bar.setAttribute("data-pest-export-actions","true");
     bar.setAttribute("dir",arabic()?"rtl":"ltr");
@@ -1308,7 +1311,6 @@ function installPestSpreadsheetGrid(root){
             value.value=item.label;
             closeSuggestions();
             updateDraftFilter(state,key);
-            value.focus();
           });
           suggestionMenu.append(option);
         });
@@ -1348,6 +1350,7 @@ function installPestSpreadsheetGrid(root){
       if(event.key==="Escape"){closeSuggestions();return;}
       if(event.key==="Enter"){
         event.preventDefault();
+        if(state.filterSelection){add.click();return;}
         const firstSuggestion=suggestionMenu.querySelector("button");
         if(!suggestionMenu.hidden&&firstSuggestion){firstSuggestion.click();return;}
         add.click();
