@@ -65,6 +65,15 @@ function encodeBase64Bytes(bytes) {
   return btoa(binary);
 }
 
+function decodeBase64Bytes(value) {
+  const normalized = String(value || "").replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
 async function getFirebaseJwks(forceRefresh = false) {
   if (!forceRefresh && cachedJwks && Date.now() < cachedJwksUntil) return cachedJwks;
   const response = await fetch(FIREBASE_JWKS_URL, {
@@ -2034,14 +2043,16 @@ export class AIAgentScheduler {
       }
       if (url.pathname==="/drive-gateway-upload-mode" && method==="GET") {
         const mode=await this.ctx.storage.get("drive:gateway-upload-mode");
-        return jsonResponse({mode:mode||{enabled:false,maxBytes:1024*1024,updatedAt:0,updatedBy:""}},200,"");
+        return jsonResponse({mode:mode||{enabled:false,maxBytes:ATTACHMENT_MAX_FILE_BYTES,fullAttachmentRouting:false,updatedAt:0,updatedBy:""}},200,"");
       }
       if (url.pathname==="/drive-gateway-upload-mode" && method==="POST") {
         const body=await request.json(),mode=body.mode||{};
         if(typeof mode.enabled!=="boolean")throw new Error("Gateway upload mode must be explicitly enabled or disabled.");
-        const maxBytes=Number(mode.maxBytes||1024*1024);
-        if(![256*1024,1024*1024].includes(maxBytes))throw new Error("Gateway upload pilot size must be 256 KiB or 1 MiB.");
-        const saved={enabled:mode.enabled,maxBytes,updatedAt:Date.now(),updatedBy:safeSegment(mode.updatedBy,"gateway mode administrator")};
+        const fullAttachmentRouting=mode.fullAttachmentRouting===true;
+        const maxBytes=Number(mode.maxBytes||(fullAttachmentRouting?ATTACHMENT_MAX_FILE_BYTES:1024*1024));
+        if(![256*1024,1024*1024,ATTACHMENT_MAX_FILE_BYTES].includes(maxBytes))throw new Error("Gateway attachment size must be 256 KiB, 1 MiB or 20 MiB.");
+        if(fullAttachmentRouting&&(!mode.enabled||maxBytes!==ATTACHMENT_MAX_FILE_BYTES))throw new Error("Full attachment routing requires the route to be enabled with a 20 MiB limit.");
+        const saved={enabled:mode.enabled,maxBytes,fullAttachmentRouting,updatedAt:Date.now(),updatedBy:safeSegment(mode.updatedBy,"gateway mode administrator")};
         await this.ctx.storage.put("drive:gateway-upload-mode",saved);
         return jsonResponse({mode:saved},200,"");
       }
@@ -2410,6 +2421,18 @@ function driveHtmlPage(title,message,success){
 }
 async function getGoogleDriveConnection(env){const x=await driveStorageRequest(env,"/drive-connection","GET");return x.connection||null;}
 async function saveGoogleDriveConnection(env,connection){return driveStorageRequest(env,"/drive-connection","POST",{connection});}
+async function verifyCompanyAppsScriptGateway(env,connection){
+  if(!connection||!connection.encryptedRefreshToken)throw new Error("The existing company Google Drive account is not connected.");
+  const expectedEmail=String(connection.googleEmail||"").trim().toLowerCase();
+  if(!expectedEmail)throw new Error("The company Google Drive account email is not available.");
+  const gateway=await callAppsScriptGateway(env,{action:"ping",folderId:String(connection.folderId||"")});
+  const actualEmail=String(gateway&&gateway.effectiveUserEmail||"").trim().toLowerCase();
+  if(!actualEmail||actualEmail!==expectedEmail)throw new Error("Apps Script account does not match the existing company Google Drive account.");
+  const gatewayFolderId=String(gateway&&gateway.folderId||"").trim();
+  if(!gatewayFolderId||(connection.folderId&&gatewayFolderId!==connection.folderId))throw new Error("Apps Script did not verify the existing company attachment folder.");
+  if(!connection.folderId){connection.folderId=gatewayFolderId;connection.updatedAt=Date.now();await saveGoogleDriveConnection(env,connection);}
+  return gateway;
+}
 async function googleDriveAccessToken(env,connection){
   const config=googleDriveConfig(env),refreshToken=await decryptGoogleDriveToken(connection.encryptedRefreshToken,env);
   const response=await fetch("https://oauth2.googleapis.com/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams({client_id:config.clientId,client_secret:config.clientSecret,refresh_token:refreshToken,grant_type:"refresh_token"})});
@@ -2888,13 +2911,15 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
   if(url.pathname==="/drive/gateway/upload-mode"&&request.method==="GET"){
     if(profile.role!=="admin")throw new Error("Only a system administrator can view the Apps Script upload pilot setting.");
     const result=await driveStorageRequest(env,"/drive-gateway-upload-mode","GET");
-    return {mode:result.mode||{enabled:false,maxBytes:1024*1024},configured:Boolean(String(env.GOOGLE_DRIVE_GATEWAY_URL||"").trim()&&String(env.GOOGLE_DRIVE_GATEWAY_SECRET||"").trim())};
+    return {mode:result.mode||{enabled:false,maxBytes:ATTACHMENT_MAX_FILE_BYTES,fullAttachmentRouting:false},configured:Boolean(String(env.GOOGLE_DRIVE_GATEWAY_URL||"").trim()&&String(env.GOOGLE_DRIVE_GATEWAY_SECRET||"").trim())};
   }
   if(url.pathname==="/drive/gateway/upload-mode"&&request.method==="POST"){
     if(profile.role!=="admin")throw new Error("Only a system administrator can change the Apps Script upload pilot setting.");
     const enabled=body.enabled===true;
-    const maxBytes=Number(body.maxBytes||1024*1024);
-    if(![256*1024,1024*1024].includes(maxBytes))throw new Error("The upload pilot supports a 256 KiB or 1 MiB limit.");
+    const fullAttachmentRouting=enabled&&body.fullAttachmentRouting===true;
+    const maxBytes=Number(body.maxBytes||(fullAttachmentRouting?ATTACHMENT_MAX_FILE_BYTES:1024*1024));
+    if(![256*1024,1024*1024,ATTACHMENT_MAX_FILE_BYTES].includes(maxBytes))throw new Error("The Apps Script route supports a 256 KiB, 1 MiB or 20 MiB limit.");
+    if(fullAttachmentRouting&&maxBytes!==ATTACHMENT_MAX_FILE_BYTES)throw new Error("Full attachment routing requires the 20 MiB file limit.");
     if(enabled){
       const connection=await getGoogleDriveConnection(env);
       if(!connection||!connection.encryptedRefreshToken)throw new Error("The existing company Google Drive account is not connected.");
@@ -2908,8 +2933,8 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
       if(!gatewayFolderId||(connection.folderId&&gatewayFolderId!==connection.folderId))throw new Error("Apps Script did not verify the existing company attachment folder.");
       if(!connection.folderId){connection.folderId=gatewayFolderId;connection.updatedAt=Date.now();await saveGoogleDriveConnection(env,connection);}
     }
-    const saved=await driveStorageRequest(env,"/drive-gateway-upload-mode","POST",{mode:{enabled,maxBytes,updatedBy:claims.sub}});
-    return {mode:saved.mode,configured:true,accountVerified:enabled};
+    const saved=await driveStorageRequest(env,"/drive-gateway-upload-mode","POST",{mode:{enabled,maxBytes,fullAttachmentRouting,updatedBy:claims.sub}});
+    return {mode:saved.mode,configured:true,accountVerified:enabled,fullAttachmentRouting};
   }
   if(url.pathname==="/drive/status"&&request.method==="GET"){
     requirePermission(profile,"attachments","view");
@@ -2936,10 +2961,10 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     }else metadataStorageError="AI_AGENT_SCHEDULER Durable Object binding is missing.";
     let gatewayUploadMode=null;
     if(profile.role==="admin"){
-      try{const modeResult=await driveStorageRequest(env,"/drive-gateway-upload-mode","GET");gatewayUploadMode=modeResult.mode||{enabled:false,maxBytes:1024*1024};}
+      try{const modeResult=await driveStorageRequest(env,"/drive-gateway-upload-mode","GET");gatewayUploadMode=modeResult.mode||{enabled:false,maxBytes:ATTACHMENT_MAX_FILE_BYTES,fullAttachmentRouting:false};}
       catch(error){metadataStorageError=metadataStorageError||String(error&&error.message||error).slice(0,240);}
     }
-    return {workerVersion:"attachment-appsscript-gateway-20261125-3",configured:configuration.ready,configurationMissing:configuration.missing,configuration,metadataStorageError,connected:Boolean(connection&&connection.encryptedRefreshToken&&!needsReauthorization),needsReauthorization,authorizationStatus,authorizationError,googleEmail:connection&&connection.googleEmail||"",folderReady:Boolean(connection&&connection.folderId),storage,maxFileBytes:ATTACHMENT_MAX_FILE_BYTES,softLimitBytes:ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES,gatewayUploadMode,gatewayUploadConfigured:Boolean(String(env.GOOGLE_DRIVE_GATEWAY_URL||"").trim()&&String(env.GOOGLE_DRIVE_GATEWAY_SECRET||"").trim()),gatewayUploadUrlConfigured:Boolean(String(env.GOOGLE_DRIVE_GATEWAY_URL||"").trim()),gatewayUploadSecretConfigured:Boolean(String(env.GOOGLE_DRIVE_GATEWAY_SECRET||"").trim())};
+    return {workerVersion:"attachment-appsscript-gateway-20261125-4",configured:configuration.ready,configurationMissing:configuration.missing,configuration,metadataStorageError,connected:Boolean(connection&&connection.encryptedRefreshToken&&!needsReauthorization),needsReauthorization,authorizationStatus,authorizationError,googleEmail:connection&&connection.googleEmail||"",folderReady:Boolean(connection&&connection.folderId),storage,maxFileBytes:ATTACHMENT_MAX_FILE_BYTES,softLimitBytes:ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES,gatewayUploadMode,gatewayUploadConfigured:Boolean(String(env.GOOGLE_DRIVE_GATEWAY_URL||"").trim()&&String(env.GOOGLE_DRIVE_GATEWAY_SECRET||"").trim()),gatewayUploadUrlConfigured:Boolean(String(env.GOOGLE_DRIVE_GATEWAY_URL||"").trim()),gatewayUploadSecretConfigured:Boolean(String(env.GOOGLE_DRIVE_GATEWAY_SECRET||"").trim())};
   }
   if(url.pathname==="/drive/connect"&&request.method==="POST"){
     if(profile.role!=="admin")throw new Error("Only a system administrator can connect the company Google Drive account.");
@@ -2954,7 +2979,7 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
   }
   if(url.pathname==="/drive/disconnect"&&request.method==="POST"){
     if(profile.role!=="admin")throw new Error("Only a system administrator can disconnect company Google Drive.");
-    await driveStorageRequest(env,"/drive-gateway-upload-mode","POST",{mode:{enabled:false,maxBytes:1024*1024,updatedBy:claims.sub}});
+    await driveStorageRequest(env,"/drive-gateway-upload-mode","POST",{mode:{enabled:false,maxBytes:ATTACHMENT_MAX_FILE_BYTES,fullAttachmentRouting:false,updatedBy:claims.sub}});
     await driveStorageRequest(env,"/drive-connection","DELETE",{});
     return {success:true,filesRemainInDrive:true,gatewayUploadDisabled:true};
   }
@@ -3005,19 +3030,14 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     const usage=await driveStorageRequest(env,"/attachment-usage","GET");
     if(Number(usage.usedBytes||0)+bytes.byteLength>ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES)throw new Error("تم الوصول إلى الحد الداخلي لمساحة مرفقات البرنامج (14 GB). احذف بعض الملفات أو راجع المساحة المتاحة بحساب Google.");
     const modeResult=await driveStorageRequest(env,"/drive-gateway-upload-mode","GET");
-    const gatewayMode=modeResult.mode||{enabled:false,maxBytes:0};
-    const useAppsScriptGateway=gatewayMode.enabled===true&&bytes.byteLength<=Number(gatewayMode.maxBytes||0);
+    const gatewayMode=modeResult.mode||{enabled:false,maxBytes:0,fullAttachmentRouting:false};
+    const fullAttachmentRouting=gatewayMode.enabled===true&&gatewayMode.fullAttachmentRouting===true;
+    const useAppsScriptGateway=fullAttachmentRouting||(gatewayMode.enabled===true&&bytes.byteLength<=Number(gatewayMode.maxBytes||0));
     const id=crypto.randomUUID().replace(/-/g,"");
     let driveFile=null,driveAccessToken="",gatewayFileCreated=false;
     if(useAppsScriptGateway){
-      // Keep the existing OAuth connection healthy because preview/download/replace/delete
-      // still use the direct Google Drive API after this gateway upload.
-      await googleDriveAccessToken(env,connection);
-      if(!connection.folderId)throw new Error("The company attachment folder has not been verified. Test the gateway connection again.");
-      const gateway=await callAppsScriptGateway(env,{action:"ping",folderId:connection.folderId});
-      const expectedEmail=String(connection.googleEmail||"").trim().toLowerCase();
-      const actualEmail=String(gateway&&gateway.effectiveUserEmail||"").trim().toLowerCase();
-      if(!actualEmail||actualEmail!==expectedEmail||String(gateway&&gateway.folderId||"")!==String(connection.folderId))throw new Error("Apps Script account or attachment folder no longer matches the connected company Drive account.");
+      if(!fullAttachmentRouting)await googleDriveAccessToken(env,connection);
+      await verifyCompanyAppsScriptGateway(env,connection);
       const uploaded=await callAppsScriptGateway(env,{
         action:"upload",fileName,mimeType:mime,attachmentId:id,fileBase64:encodeBase64Bytes(new Uint8Array(bytes))
       });
@@ -3025,6 +3045,7 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
       driveFile={id:String(uploaded.id),name:String(uploaded.name||fileName),mimeType:String(uploaded.mimeType||mime),size:Number(uploaded.size||bytes.byteLength),createdTime:String(uploaded.createdTime||new Date().toISOString())};
       gatewayFileCreated=true;
     }else{
+      googleDriveConfig(env);
       driveAccessToken=await googleDriveAccessToken(env,connection);
       const folderId=await ensureGoogleDriveFolder(env,connection,driveAccessToken);
       driveFile=await googleDriveUpload(driveAccessToken,{name:fileName,mimeType:mime,parents:[folderId],appProperties:{pest_attachment_id:id,pest_entity_type:type,pest_entity_id:entityId}},bytes,mime);
@@ -3075,14 +3096,40 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     validateAttachmentBytes(new Uint8Array(bytes),mime);
     const usage=await driveStorageRequest(env,"/attachment-usage","GET");
     if(Number(usage.usedBytes||0)-Number(attachment.fileSize||0)+bytes.byteLength>ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES)throw new Error("The attachment storage limit would be exceeded.");
+    const modeResult=await driveStorageRequest(env,"/drive-gateway-upload-mode","GET");
+    const gatewayMode=modeResult.mode||{enabled:false,fullAttachmentRouting:false};
+    const fullAttachmentRouting=gatewayMode.enabled===true&&gatewayMode.fullAttachmentRouting===true;
     const connection=await getGoogleDriveConnection(env);if(!connection||!connection.encryptedRefreshToken)throw new Error("Google Drive is disconnected.");
-    const accessToken=await googleDriveAccessToken(env,connection);
-    const response=await fetch("https://www.googleapis.com/upload/drive/v3/files/"+encodeURIComponent(attachment.driveFileId)+"?uploadType=media",{method:"PATCH",headers:{Authorization:"Bearer "+accessToken,"Content-Type":mime},body:bytes});
-    const driveResult=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error("Google Drive replacement failed: "+String(driveResult.error&&driveResult.error.message||response.status).slice(0,180));
-    if(fileName!==attachment.fileName)await googleDriveApi(accessToken,"/files/"+encodeURIComponent(attachment.driveFileId),{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:fileName})});
-    const updated={...attachment,fileName,mimeType:mime,fileSize:bytes.byteLength,updatedAt:new Date().toISOString(),updatedByName:String(profile.fullName||profile.username||"").slice(0,120)};
-    await driveStorageRequest(env,"/attachment-record","POST",{attachment:updated});
+    let updated;
+    if(fullAttachmentRouting){
+      await verifyCompanyAppsScriptGateway(env,connection);
+      const uploaded=await callAppsScriptGateway(env,{action:"upload",fileName,mimeType:mime,attachmentId:id,fileBase64:encodeBase64Bytes(new Uint8Array(bytes))});
+      if(!uploaded||!uploaded.id)throw new Error("Apps Script did not return the replacement attachment file ID.");
+      updated={...attachment,driveFileId:String(uploaded.id),fileName,mimeType:mime,fileSize:bytes.byteLength,updatedAt:new Date().toISOString(),updatedByName:String(profile.fullName||profile.username||"").slice(0,120)};
+      try{
+        await driveStorageRequest(env,"/attachment-record","POST",{attachment:updated});
+      }catch(writeError){
+        const persisted=await findAttachment(env,type,entityId,id).catch(()=>null);
+        if(persisted&&persisted.driveFileId===updated.driveFileId){
+          // The Durable Object may have committed the record before its response was lost.
+        }else if(persisted&&persisted.driveFileId===attachment.driveFileId){
+          await callAppsScriptGateway(env,{action:"delete",driveFileId:updated.driveFileId}).catch(()=>null);
+          throw writeError;
+        }else{
+          throw new Error("Replacement was uploaded, but the attachment record could not be confirmed. The original file was kept; contact support before retrying.");
+        }
+      }
+      try{await callAppsScriptGateway(env,{action:"delete",driveFileId:attachment.driveFileId});}
+      catch(cleanupError){console.error("Apps Script replaced attachment but could not retire the old file:",String(cleanupError&&cleanupError.message||cleanupError).slice(0,220));}
+    }else{
+      const accessToken=await googleDriveAccessToken(env,connection);
+      const response=await fetch("https://www.googleapis.com/upload/drive/v3/files/"+encodeURIComponent(attachment.driveFileId)+"?uploadType=media",{method:"PATCH",headers:{Authorization:"Bearer "+accessToken,"Content-Type":mime},body:bytes});
+      const driveResult=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error("Google Drive replacement failed: "+String(driveResult.error&&driveResult.error.message||response.status).slice(0,180));
+      if(fileName!==attachment.fileName)await googleDriveApi(accessToken,"/files/"+encodeURIComponent(attachment.driveFileId),{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:fileName})});
+      updated={...attachment,fileName,mimeType:mime,fileSize:bytes.byteLength,updatedAt:new Date().toISOString(),updatedByName:String(profile.fullName||profile.username||"").slice(0,120)};
+      await driveStorageRequest(env,"/attachment-record","POST",{attachment:updated});
+    }
     return {success:true,attachment:updated,storage:{usedBytes:Number(usage.usedBytes||0)-Number(attachment.fileSize||0)+bytes.byteLength,limitBytes:ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES}};
   }
   if(url.pathname==="/attachments/annotate"&&request.method==="POST"){
@@ -3099,19 +3146,42 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     const attachment=await findAttachment(env,type,entityId,id);
     await validateAttachmentEntity(type,entityId,claims,profile,token,"view",attachment.ownerUid,env);
     const connection=await getGoogleDriveConnection(env);if(!connection||!connection.encryptedRefreshToken)throw new Error("Google Drive is disconnected.");
-    const accessToken=await googleDriveAccessToken(env,connection);
-    const response=await fetch("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(attachment.driveFileId)+"?alt=media",{headers:{Authorization:"Bearer "+accessToken}});
-    if(!response.ok)throw new Error("Could not download file from Google Drive (HTTP "+response.status+").");
+    const modeResult=await driveStorageRequest(env,"/drive-gateway-upload-mode","GET");
+    const gatewayMode=modeResult.mode||{enabled:false,fullAttachmentRouting:false};
+    const fullAttachmentRouting=gatewayMode.enabled===true&&gatewayMode.fullAttachmentRouting===true;
+    let fileBody;
+    if(fullAttachmentRouting){
+      await verifyCompanyAppsScriptGateway(env,connection);
+      const downloaded=await callAppsScriptGateway(env,{action:"download",driveFileId:attachment.driveFileId});
+      fileBody=decodeBase64Bytes(String(downloaded&&downloaded.dataBase64||""));
+      if(!fileBody.byteLength)throw new Error("Apps Script returned an empty attachment download.");
+      if(downloaded&&downloaded.file&&Number(downloaded.file.size)!==fileBody.byteLength)throw new Error("Apps Script download size did not match the stored file.");
+      if(Number(attachment.fileSize||0)>0&&Number(attachment.fileSize)!==fileBody.byteLength)throw new Error("Downloaded attachment size did not match its saved metadata.");
+    }else{
+      const accessToken=await googleDriveAccessToken(env,connection);
+      const response=await fetch("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(attachment.driveFileId)+"?alt=media",{headers:{Authorization:"Bearer "+accessToken}});
+      if(!response.ok)throw new Error("Could not download file from Google Drive (HTTP "+response.status+").");
+      fileBody=response.body;
+    }
     const mime=["application/pdf","image/jpeg","image/png","image/webp","text/plain","text/csv"].includes(attachment.mimeType)?attachment.mimeType:"application/octet-stream";
     const inline=mime!=="application/octet-stream",safeName=attachment.fileName.replace(/[\r\n"]/g,"_");
-    return new Response(response.body,{status:200,headers:{"Content-Type":mime,"Content-Disposition":(inline?"inline":"attachment")+"; filename*=UTF-8''"+encodeURIComponent(safeName),"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'none'; sandbox",...corsHeaders(request.headers.get("Origin")||"")}});
+    return new Response(fileBody,{status:200,headers:{"Content-Type":mime,"Content-Disposition":(inline?"inline":"attachment")+"; filename*=UTF-8''"+encodeURIComponent(safeName),"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'none'; sandbox",...corsHeaders(request.headers.get("Origin")||"")}});
   }
   if(url.pathname==="/attachments"&&request.method==="DELETE"){
     const type=cleanText(body.entityType,24),entityId=cleanText(body.entityId,120),id=safeSegment(body.id,"attachment id");
     const attachment=await findAttachment(env,type,entityId,id);
     await validateAttachmentEntity(type,entityId,claims,profile,token,"delete",attachment.ownerUid,env);
     const connection=await getGoogleDriveConnection(env);if(!connection||!connection.encryptedRefreshToken)throw new Error("Google Drive is disconnected.");
-    const accessToken=await googleDriveAccessToken(env,connection);await googleDriveDelete(accessToken,attachment.driveFileId);
+    const modeResult=await driveStorageRequest(env,"/drive-gateway-upload-mode","GET");
+    const gatewayMode=modeResult.mode||{enabled:false,fullAttachmentRouting:false};
+    if(gatewayMode.enabled===true&&gatewayMode.fullAttachmentRouting===true){
+      await verifyCompanyAppsScriptGateway(env,connection);
+      const result=await callAppsScriptGateway(env,{action:"delete",driveFileId:attachment.driveFileId});
+      if(!result||result.deleted!==true)throw new Error("Apps Script did not confirm that the attachment was moved to Google Drive Trash.");
+    }else{
+      const accessToken=await googleDriveAccessToken(env,connection);
+      await googleDriveDelete(accessToken,attachment.driveFileId);
+    }
     await driveStorageRequest(env,"/attachment-record","DELETE",null,{entityType:type,entityId,id});
     return {success:true,id};
   }
