@@ -45,9 +45,19 @@ function verifyEnvelope_(envelope) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) throw new Error("Gateway is busy. Retry the request.");
   try {
-    const cache = CacheService.getScriptCache(), cacheKey = "gateway_nonce_" + nonce;
-    if (cache.get(cacheKey)) throw new Error("Duplicate gateway request was rejected.");
-    cache.put(cacheKey, timestamp, 600);
+    // Persist accepted nonces for the full signature-validity window. Unlike CacheService,
+    // Script Properties do not silently evict replay markers before their expiry.
+    const properties = PropertiesService.getScriptProperties();
+    const allProperties = properties.getProperties();
+    const expiryCutoff = Date.now() - 10 * 60 * 1000;
+    Object.keys(allProperties).forEach(function (key) {
+      if (key.indexOf("GATEWAY_NONCE_") === 0 && Number(allProperties[key]) < expiryCutoff) {
+        properties.deleteProperty(key);
+      }
+    });
+    const nonceKey = "GATEWAY_NONCE_" + nonce;
+    if (properties.getProperty(nonceKey)) throw new Error("Duplicate gateway request was rejected.");
+    properties.setProperty(nonceKey, timestamp);
   } finally { lock.releaseLock(); }
 }
 
