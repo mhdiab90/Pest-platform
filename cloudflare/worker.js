@@ -2900,6 +2900,7 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
       if(!connection||!connection.encryptedRefreshToken)throw new Error("The existing company Google Drive account is not connected.");
       const expectedEmail=String(connection.googleEmail||"").trim().toLowerCase();
       if(!expectedEmail)throw new Error("The company Google Drive account email is not available.");
+      await googleDriveAccessToken(env,connection);
       const gateway=await callAppsScriptGateway(env,{action:"ping",folderId:String(connection.folderId||"")});
       const actualEmail=String(gateway&&gateway.effectiveUserEmail||"").trim().toLowerCase();
       if(!actualEmail||actualEmail!==expectedEmail)throw new Error("Apps Script account does not match the existing company Google Drive account.");
@@ -3009,6 +3010,9 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     const id=crypto.randomUUID().replace(/-/g,"");
     let driveFile=null,driveAccessToken="",gatewayFileCreated=false;
     if(useAppsScriptGateway){
+      // Keep the existing OAuth connection healthy because preview/download/replace/delete
+      // still use the direct Google Drive API after this gateway upload.
+      await googleDriveAccessToken(env,connection);
       if(!connection.folderId)throw new Error("The company attachment folder has not been verified. Test the gateway connection again.");
       const gateway=await callAppsScriptGateway(env,{action:"ping",folderId:connection.folderId});
       const expectedEmail=String(connection.googleEmail||"").trim().toLowerCase();
