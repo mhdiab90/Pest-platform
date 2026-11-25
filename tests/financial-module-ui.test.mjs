@@ -790,6 +790,29 @@ test("financial module uses the shared split attachment viewer and keeps source-
   assert.match(source, /button\('عرض',\(\)=>void openStatementAttachmentFile\(reference\)/);
 });
 
+test("application startup defers bulk user-directory and global-presence reads", () => {
+  const directoryStart=indexHtml.indexOf("const needDirectory=()=>");
+  const directoryEnd=indexHtml.indexOf("const needTasks=",directoryStart);
+  assert.ok(directoryStart>=0&&directoryEnd>directoryStart);
+  assert.doesNotMatch(indexHtml.slice(directoryStart,directoryEnd),/needDirectory\(\);/);
+  assert.match(indexHtml,/if\(onlineUsersOpen\|\|tab==='financial'\|\|tab==='master'\)needDirectory\(\)/);
+  const presenceStart=indexHtml.indexOf("// Presence for all employees is a potentially large collection");
+  const presenceEnd=indexHtml.indexOf("// Subscribe to shared data only when a screen needs it",presenceStart);
+  assert.ok(presenceStart>=0&&presenceEnd>presenceStart);
+  const presenceEffect=indexHtml.slice(presenceStart,presenceEnd);
+  assert.match(presenceEffect,/if\(!uid\|\|!onlineUsersOpen\)/);
+  assert.match(presenceEffect,/presenceRef\.on\('value'/);
+  assert.match(presenceEffect,/window\.clearInterval\(clockTimer\)/);
+});
+
+test("Firebase collection hydration batches child events instead of rendering once per row", () => {
+  assert.match(indexHtml,/let rows=\[\],publishTimer=null/);
+  assert.match(indexHtml,/const publishRows=\(\)=>\{/);
+  assert.match(indexHtml,/publishTimer=window\.setTimeout\(\(\)=>\{publishTimer=null;setter\(rows\);\},75\)/);
+  assert.match(indexHtml,/cancelPendingPublish/);
+  assert.match(indexHtml,/\[currentUser\?\.uid,tab,assistantOpen,attachmentEntityType,onlineUsersOpen\]/);
+});
+
 test("financial statement attachment manager opens, expands and scrolls into view", () => {
   assert.match(indexHtml, /onManageRecordAttachments=\{\(entityType,entityId,label,onDelete\)=>\{/);
   assert.match(indexHtml, /expanded:true,loading:true,error:''/);
