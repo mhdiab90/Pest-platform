@@ -445,6 +445,7 @@ function FinanceModule(props){
  const [cashHistorySearch,setCashHistorySearch]=React.useState(''),[masterViewKind,setMasterViewKind]=React.useState('chartOfAccounts');
  const [bankFile,setBankFile]=React.useState(null),[bankRows,setBankRows]=React.useState([]),[bankAccount,setBankAccount]=React.useState('1120');
  const [search,setSearch]=React.useState(''),[masterPartySearch,setMasterPartySearch]=React.useState(''),[screenTableSearch,setScreenTableSearch]=React.useState('');
+ const [screenAccountFilter,setScreenAccountFilter]=React.useState(''),[screenCostCenterFilter,setScreenCostCenterFilter]=React.useState('');
  const [masterImportKind,setMasterImportKind]=React.useState('customers'),[masterImportRows,setMasterImportRows]=React.useState([]),[masterImportName,setMasterImportName]=React.useState('');
  const [legacyImportPackage,setLegacyImportPackage]=React.useState(null),[legacyImportFileName,setLegacyImportFileName]=React.useState(""),[legacyImportProgress,setLegacyImportProgress]=React.useState(null);
  const [selectedMasterCodes,setSelectedMasterCodes]=React.useState([]);
@@ -657,7 +658,7 @@ function FinanceModule(props){
   if(!attachments.length&&!manageableReferences.length)return null;
   return h("span",{className:"inline-flex flex-wrap items-center gap-1"},
    attachments.length?h("button",{type:"button",title:attachments.map(item=>item.fileName).join("، "),className:"inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100 whitespace-nowrap",onClick:event=>{event.stopPropagation();if(attachments.length===1)void openStatementAttachmentFile(attachments[0]);else setStatementAttachmentList({title:"مرفقات البيان",attachments});}},"📎 "+(attachments.length===1?"مرفق":String(attachments.length)+" مرفقات")):null,
-   ...manageableReferences.map((reference,index)=>h("button",{key:reference.entityType+":"+reference.entityId,type:"button",title:reference.entityType==="cashCustody"?"إضافة أو إدارة مرفقات حركة العهدة":"إضافة أو إدارة مرفقات المستند الأصلي",className:"inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-bold text-indigo-700 hover:bg-indigo-100 whitespace-nowrap",onClick:event=>{event.stopPropagation();const label=reference.entityType==="cashCustody"?t("مرفقات حركة العهدة","Cash custody attachments"):reference.entityType==="financial"?t("مرفقات المستند أو القيد","Source document or journal attachments"):t("مرفقات البيان الأصلي","Source record attachments");props.onManageRecordAttachments(reference.entityType,reference.entityId,label);}},"＋ "+t("إدارة","Manage")))
+   ...manageableReferences.map((reference,index)=>h("button",{key:reference.entityType+":"+reference.entityId,type:"button",title:reference.entityType==="cashCustody"?"إضافة أو إدارة مرفقات حركة العهدة":"إضافة أو إدارة مرفقات المستند الأصلي",className:"inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-bold text-indigo-700 hover:bg-indigo-100 whitespace-nowrap",onClick:event=>{event.stopPropagation();const label=reference.entityType==="cashCustody"?t("مرفقات حركة العهدة","Cash custody attachments"):reference.entityType==="financial"?t("مرفقات المستند أو القيد","Source document or journal attachments"):t("مرفقات البيان الأصلي","Source record attachments");props.onManageRecordAttachments(reference.entityType,reference.entityId,label,attachment=>deleteStatementAttachment(attachment,invoiceDocumentIdForAttachment(attachment)));}},"＋ "+t("إدارة","Manage")))
   );
  };
  const statementAttachmentAction=record=>statementAttachmentActionForReferences(statementAttachmentReferences(record));
@@ -1502,6 +1503,8 @@ const transferPartnerCustodyMovement=async(account,transaction)=>{
 React.useEffect(()=>{if(tab==='partnerCurrent'&&canFinance('partyStatements','view'))void loadPartnerCurrentAccounts();if(tab==='openingBalances'&&posting.some(account=>['partnerCurrentAccount','financingParty'].includes(account.subledgerType)))void loadPartnerCurrentAccounts(true);},[tab,currentUser&&currentUser.uid]);
 const posting=accounts.filter(a=>!a.isGroup&&a.active!==false);
  const centers=rows(master.costCenters),activeCenters=centers.filter(x=>x.active!==false);
+ const screenAccountFilterOptions=[{value:'',label:t('كل الحسابات','All accounts')}].concat(accounts.filter(account=>account&&account.code).map(account=>({value:String(account.code),label:String(account.code)+' — '+String(account.name||'')})));
+ const screenCostCenterFilterOptions=[{value:'',label:t('كل مراكز التكلفة','All cost centers')}].concat(centers.filter(center=>center&&(center.code||center.id)).map(center=>({value:String(center.code||center.id),label:String(center.code||center.id)+' — '+String(center.name||'')})));
  React.useEffect(()=>{
   const lookups={
    accounts:accounts.filter(account=>account&&account.code).map(account=>({code:String(account.code),name:String(account.name||"")})),
@@ -2012,10 +2015,44 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
   if(React.isValidElement(node))return screenSearchText(node.props&&node.props.children);
   return '';
  };
+ const tableFieldText=(row,headers,kind)=>{
+  const cells=Array.isArray(row&&row.props&&row.props.children)?row.props.children:[row&&row.props?row.props.children:null];
+  const labels=(headers||[]).map(value=>String(screenSearchText(value)||'').toLowerCase());
+  const indices=new Set();
+  labels.forEach((label,index)=>{
+   const accountColumn=kind==='account'&&(label.includes('حساب')||label.includes('account'));
+   const centerColumn=kind==='costCenter'&&(label.includes('مركز التكلفة')||label.includes('مركز تكلفة')||label.includes('cost center')||label.includes('المشروع')||label.includes('project'));
+   if(accountColumn||centerColumn)indices.add(index);
+  });
+  if(kind==='account'){
+   Array.from(indices).forEach(index=>{
+    if(index>0&&/(كود|code)/.test(labels[index-1]))indices.add(index-1);
+    if(index+1<labels.length&&/(كود|code)/.test(labels[index+1]))indices.add(index+1);
+   });
+  }
+  if(!indices.size)return '';
+  return Array.from(indices).map(index=>screenSearchText(cells[index])).join(' ');
+ };
  const table=(headers,data,scrollStyle)=>{
-  const query=String(screenTableSearch||'').trim().toLowerCase();
+  const query=normalizeMatch(screenTableSearch||'');
+  const accountOption=screenAccountFilterOptions.find(item=>String(item.value)===String(screenAccountFilter||''))||null;
+  const centerOption=screenCostCenterFilterOptions.find(item=>String(item.value)===String(screenCostCenterFilter||''))||null;
   const source=Array.isArray(data)?data:[];
-  const filtered=query?source.filter(row=>screenSearchText(row).toLowerCase().includes(query)):source;
+  const filtered=source.filter(row=>{
+   const rowText=normalizeMatch(screenSearchText(row));
+   if(query&&!rowText.includes(query))return false;
+   if(accountOption&&accountOption.value){
+    const accountText=normalizeMatch(tableFieldText(row,headers,'account'));
+    const accountNeedles=[accountOption.value,accountOption.label.split(' — ').slice(1).join(' — ')].map(normalizeMatch).filter(Boolean);
+    if(!accountNeedles.some(needle=>accountText.includes(needle)))return false;
+   }
+   if(centerOption&&centerOption.value){
+    const centerText=normalizeMatch(tableFieldText(row,headers,'costCenter'));
+    const centerNeedles=[centerOption.value,centerOption.label.split(' — ').slice(1).join(' — ')].map(normalizeMatch).filter(Boolean);
+    if(!centerNeedles.some(needle=>centerText.includes(needle)))return false;
+   }
+   return true;
+  });
   const exportTitle=Array.isArray(headers)?headers.slice(0,3).join(" - "):"جدول التقرير";
   const tableScrollStyle=Object.assign({
    maxHeight:'min(62vh, 620px)',
@@ -5651,7 +5688,7 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   `),
   h('header',{className:'flex flex-wrap items-center justify-between gap-3'},h('div',null,h('h2',{className:'text-2xl font-extrabold'},masterDirectoryOnly?t('دليل الأكواد والبيانات الأساسية','Master Codes & Master Data'):t('النظام المالي والمحاسبي','Financial & Accounting System')),h('p',{className:'text-xs text-slate-500'},masterDirectoryOnly?t('مكان موحد لكل الأكواد والبيانات الأساسية وربطها بكل الحقول المستخدمة في النظام.','One directory for master codes used throughout the application.'):t('دفتر أستاذ مستقل — لا ترحيل قبل المراجعة والاعتماد','Separate General Ledger — No Posting Before Review & Approval'))),button(busy?t('جارٍ التحديث','Updating'):t('تحديث البيانات','Refresh Data'),refresh,'muted',busy)),
   h('nav',{className:'flex flex-wrap gap-2'},visibleNav.map(x=>button(rtl?x[1]:x[2],()=>{setTab(x[0]);setNotice('');setError('');setScreenTableSearch('');},tab===x[0]?'primary':'muted'))),
-  field(t('بحث في بيانات الشاشة الحالية','Search current screen data'),screenTableSearch,setScreenTableSearch),
+  h('div',{className:'grid grid-cols-1 md:grid-cols-4 gap-2 items-end'},field(t('بحث في بيانات الشاشة الحالية','Search current screen data'),screenTableSearch,setScreenTableSearch),searchablePicker(t('الحساب','Account'),screenAccountFilter,setScreenAccountFilter,screenAccountFilterOptions,'global-screen-account-filter'),searchablePicker(t('مركز التكلفة','Cost Center'),screenCostCenterFilter,setScreenCostCenterFilter,screenCostCenterFilterOptions,'global-screen-cost-center-filter'),button(t('مسح فلاتر الحساب ومركز التكلفة','Clear account and cost center filters'),()=>{setScreenAccountFilter('');setScreenCostCenterFilter('');},'muted')),
   noticeElement,content,renderQuickAdd(),statementAttachmentListModal,statementAttachmentPreviewModal,busy?h('p',{className:'text-xs text-slate-500'},'جارٍ تحميل البيانات...'):null,
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
