@@ -647,7 +647,7 @@ test("income statement tax disclosure separates VAT inputs, outputs, settlement,
 
 test("review queue shows journal amount and decision-supporting information", () => {
   assert.match(source, /table\(\['رقم المستند \/ القيد','البيان والمرجع','النوع','التاريخ','الطرف','المشروع','المبلغ','مقدم الطلب','الحالة','ملاحظات الفحص','المرفق','مراجعة'\]/);
-  assert.match(source, /const amount=Number\(x\.total\|\|x\.amount\|\|0\)/);
+  assert.match(source, /amount=Number\(x\.total\|\|x\.amount\|\|0\)/);
   assert.match(source, /fmt\(amount\)\+' '\+currency/);
   assert.match(source, /x\.description\|\|title/);
   assert.match(source, /'أخطاء: '\+errors\.length/);
