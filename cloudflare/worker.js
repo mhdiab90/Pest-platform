@@ -2100,6 +2100,7 @@ export class AIAgentScheduler {
           fileName:cleanText(attachment.fileName,180),
           mimeType:cleanText(attachment.mimeType||"application/octet-stream",120),
           fileSize:Number(attachment.fileSize),entityType,entityId,
+          storageProvider:attachment.storageProvider==="apps_script_gateway"?"apps_script_gateway":"google_drive_api",
           ownerUid:safeSegment(attachment.ownerUid,"attachment owner"),
           createdByName:cleanText(attachment.createdByName||"",120),
           createdAt:String(attachment.createdAt||new Date().toISOString()),
@@ -2119,9 +2120,15 @@ export class AIAgentScheduler {
         const key="attachment:"+entityType+":"+entityId+":"+id;
         const existing=await this.ctx.storage.get(key);
         if(!existing)throw new Error("Attachment record does not exist.");
-        if(attachment.driveFileId&&attachment.driveFileId!==existing.driveFileId)throw new Error("Attachment file identity cannot be changed.");
+        const replaceFileIdentity=attachment.replaceFileIdentity===true;
+        if(attachment.driveFileId&&attachment.driveFileId!==existing.driveFileId&&!replaceFileIdentity)throw new Error("Attachment file identity can only change after a verified replacement operation.");
+        const nextDriveFileId=replaceFileIdentity?safeSegment(attachment.driveFileId,"replacement Google Drive file id"):existing.driveFileId;
+        const nextStorageProvider=["apps_script_gateway","google_drive_api"].includes(attachment.storageProvider)?attachment.storageProvider:existing.storageProvider;
         const saved={
           ...existing,
+          driveFileId:nextDriveFileId,
+          ...(nextStorageProvider?{storageProvider:nextStorageProvider}:{}),
+          ...(attachment.driveCreatedAt?{driveCreatedAt:String(attachment.driveCreatedAt)}:{}),
           fileName:cleanText(attachment.fileName||existing.fileName,180),
           mimeType:cleanText(attachment.mimeType||existing.mimeType,120),
           fileSize:Number(attachment.fileSize??existing.fileSize),
@@ -3050,7 +3057,7 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
       const folderId=await ensureGoogleDriveFolder(env,connection,driveAccessToken);
       driveFile=await googleDriveUpload(driveAccessToken,{name:fileName,mimeType:mime,parents:[folderId],appProperties:{pest_attachment_id:id,pest_entity_type:type,pest_entity_id:entityId}},bytes,mime);
     }
-    const record={id,driveFileId:driveFile.id,fileName,mimeType:mime,fileSize:bytes.byteLength,entityType:type,entityId,ownerUid:claims.sub,createdByName:String(profile.fullName||profile.username||profile.email||claims.sub).slice(0,120),createdAt:new Date().toISOString(),driveCreatedAt:driveFile.createdTime||""};
+    const record={id,driveFileId:driveFile.id,storageProvider:useAppsScriptGateway?"apps_script_gateway":"google_drive_api",fileName,mimeType:mime,fileSize:bytes.byteLength,entityType:type,entityId,ownerUid:claims.sub,createdByName:String(profile.fullName||profile.username||profile.email||claims.sub).slice(0,120),createdAt:new Date().toISOString(),driveCreatedAt:driveFile.createdTime||""};
     try{await driveStorageRequest(env,"/attachment-records","POST",{attachment:record});}
     catch(error){
       if(gatewayFileCreated)await callAppsScriptGateway(env,{action:"delete",driveFileId:driveFile.id}).catch(()=>null);
@@ -3099,15 +3106,16 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     const modeResult=await driveStorageRequest(env,"/drive-gateway-upload-mode","GET");
     const gatewayMode=modeResult.mode||{enabled:false,fullAttachmentRouting:false};
     const fullAttachmentRouting=gatewayMode.enabled===true&&gatewayMode.fullAttachmentRouting===true;
+    const useAppsScriptGateway=fullAttachmentRouting||attachment.storageProvider!=="google_drive_api";
     const connection=await getGoogleDriveConnection(env);if(!connection||!connection.encryptedRefreshToken)throw new Error("Google Drive is disconnected.");
     let updated;
-    if(fullAttachmentRouting){
+    if(useAppsScriptGateway){
       await verifyCompanyAppsScriptGateway(env,connection);
       const uploaded=await callAppsScriptGateway(env,{action:"upload",fileName,mimeType:mime,attachmentId:id,fileBase64:encodeBase64Bytes(new Uint8Array(bytes))});
       if(!uploaded||!uploaded.id)throw new Error("Apps Script did not return the replacement attachment file ID.");
-      updated={...attachment,driveFileId:String(uploaded.id),fileName,mimeType:mime,fileSize:bytes.byteLength,updatedAt:new Date().toISOString(),updatedByName:String(profile.fullName||profile.username||"").slice(0,120)};
+      updated={...attachment,driveFileId:String(uploaded.id),storageProvider:"apps_script_gateway",driveCreatedAt:String(uploaded.createdTime||new Date().toISOString()),fileName,mimeType:mime,fileSize:bytes.byteLength,updatedAt:new Date().toISOString(),updatedByName:String(profile.fullName||profile.username||"").slice(0,120)};
       try{
-        await driveStorageRequest(env,"/attachment-record","POST",{attachment:updated});
+        await driveStorageRequest(env,"/attachment-record","POST",{attachment:{...updated,replaceFileIdentity:true}});
       }catch(writeError){
         const persisted=await findAttachment(env,type,entityId,id).catch(()=>null);
         if(persisted&&persisted.driveFileId===updated.driveFileId){
@@ -3127,7 +3135,7 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
       const driveResult=await response.json().catch(()=>({}));
       if(!response.ok)throw new Error("Google Drive replacement failed: "+String(driveResult.error&&driveResult.error.message||response.status).slice(0,180));
       if(fileName!==attachment.fileName)await googleDriveApi(accessToken,"/files/"+encodeURIComponent(attachment.driveFileId),{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:fileName})});
-      updated={...attachment,fileName,mimeType:mime,fileSize:bytes.byteLength,updatedAt:new Date().toISOString(),updatedByName:String(profile.fullName||profile.username||"").slice(0,120)};
+      updated={...attachment,storageProvider:"google_drive_api",fileName,mimeType:mime,fileSize:bytes.byteLength,updatedAt:new Date().toISOString(),updatedByName:String(profile.fullName||profile.username||"").slice(0,120)};
       await driveStorageRequest(env,"/attachment-record","POST",{attachment:updated});
     }
     return {success:true,attachment:updated,storage:{usedBytes:Number(usage.usedBytes||0)-Number(attachment.fileSize||0)+bytes.byteLength,limitBytes:ATTACHMENT_STORAGE_SOFT_LIMIT_BYTES}};
@@ -3149,8 +3157,9 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     const modeResult=await driveStorageRequest(env,"/drive-gateway-upload-mode","GET");
     const gatewayMode=modeResult.mode||{enabled:false,fullAttachmentRouting:false};
     const fullAttachmentRouting=gatewayMode.enabled===true&&gatewayMode.fullAttachmentRouting===true;
+    const useAppsScriptGateway=fullAttachmentRouting||attachment.storageProvider!=="google_drive_api";
     let fileBody;
-    if(fullAttachmentRouting){
+    if(useAppsScriptGateway){
       await verifyCompanyAppsScriptGateway(env,connection);
       const downloaded=await callAppsScriptGateway(env,{action:"download",driveFileId:attachment.driveFileId});
       fileBody=decodeBase64Bytes(String(downloaded&&downloaded.dataBase64||""));
@@ -3174,7 +3183,7 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     const connection=await getGoogleDriveConnection(env);if(!connection||!connection.encryptedRefreshToken)throw new Error("Google Drive is disconnected.");
     const modeResult=await driveStorageRequest(env,"/drive-gateway-upload-mode","GET");
     const gatewayMode=modeResult.mode||{enabled:false,fullAttachmentRouting:false};
-    if(gatewayMode.enabled===true&&gatewayMode.fullAttachmentRouting===true){
+    if(gatewayMode.enabled===true&&gatewayMode.fullAttachmentRouting===true||attachment.storageProvider!=="google_drive_api"){
       await verifyCompanyAppsScriptGateway(env,connection);
       const result=await callAppsScriptGateway(env,{action:"delete",driveFileId:attachment.driveFileId});
       if(!result||result.deleted!==true)throw new Error("Apps Script did not confirm that the attachment was moved to Google Drive Trash.");
