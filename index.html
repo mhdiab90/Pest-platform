@@ -1060,29 +1060,55 @@ function PestCrmModuleSlot(props){
 }
 
 function FinanceModuleSlot(props){
-  const FINANCE_MODULE_BUILD='20261125-finance-refundable-deposit-analytics-v18';
+  const FINANCE_MODULE_BUILD='20261125-finance-refundable-deposit-analytics-v19';
   const [FinanceModule,setFinanceModule]=useState(()=>window.PEST_FINANCE_MODULE||null);
   const [loadError,setLoadError]=useState('');
   useEffect(()=>{
     if(window.PEST_FINANCE_MODULE&&window.PEST_FINANCE_MODULE_VERSION===FINANCE_MODULE_BUILD){
       setFinanceModule(()=>window.PEST_FINANCE_MODULE);
+      setLoadError('');
       return;
     }
     let active=true;
     const script=document.createElement('script');
     const language=props.language||(props.rtl?'ar':'en');
-    script.src=new URL('./financial-module.js?v='+FINANCE_MODULE_BUILD+'&lang='+encodeURIComponent(language),window.location.href).href;
+    // Resolve the module beside the compiled application bundle, not beside
+    // the current route. This prevents nested URLs from producing a bad path.
+    const appScript=Array.from(document.scripts).find(node=>/\\/app\\.[a-f0-9]+\\.js(?:[?#]|$)/i.test(String(node.src||'')));
+    const assetBase=appScript&&appScript.src?appScript.src:(document.baseURI||window.location.href);
+    const moduleUrl=new URL('./financial-module.js',assetBase);
+    moduleUrl.searchParams.set('v',FINANCE_MODULE_BUILD);
+    moduleUrl.searchParams.set('lang',language);
+    script.src=moduleUrl.href;
     script.async=true;
+    let settled=false;
+    const timeoutId=window.setTimeout(()=>{
+      if(active&&!settled)setLoadError('استغرق تحميل مكوّن الحسابات وقتًا أطول من المعتاد. تحقق من الاتصال ثم أعد المحاولة.');
+    },15000);
+    const clearLoadTimer=()=>{window.clearTimeout(timeoutId);};
     script.onload=()=>{
+      clearLoadTimer();
       if(!active)return;
+      settled=true;
       if(typeof window.PEST_FINANCE_MODULE==='function'&&window.PEST_FINANCE_MODULE_VERSION===FINANCE_MODULE_BUILD){
         setFinanceModule(()=>window.PEST_FINANCE_MODULE);
         setLoadError('');
-      }else setLoadError('تعذر تحميل إصدار وحدة الحسابات المطلوب.');
+      }else setLoadError('تم تحميل ملف الحسابات، لكن رقم الإصدار بداخله لا يطابق التطبيق. أعد النشر ثم حاول مرة أخرى.');
     };
-    script.onerror=()=>{if(active)setLoadError('تعذر تحميل ملف واجهة الحسابات (financial-module.js). تحقق من اتصال الإنترنت أو افتح المعاينة بعد اكتمال النشر.');};
+    script.onerror=()=>{
+      clearLoadTimer();
+      if(!active)return;
+      settled=true;
+      setLoadError('تعذر تحميل ملف واجهة الحسابات من المسار: '+moduleUrl.pathname+'. تحقق من اكتمال نشر ملفات التطبيق.');
+    };
     document.head.appendChild(script);
-    return ()=>{active=false;script.onload=null;script.onerror=null;};
+    return ()=>{
+      active=false;
+      clearLoadTimer();
+      script.onload=null;
+      script.onerror=null;
+      if(!settled&&script.parentNode)script.parentNode.removeChild(script);
+    };
   },[props.language,props.rtl]);
   if(!FinanceModule)return <section dir={props.rtl?'rtl':'ltr'} className="m-3 rounded-2xl border border-amber-300 bg-amber-50 p-5 text-amber-950 space-y-3">
     <h2 className="font-extrabold text-lg">{props.rtl?'تعذر فتح النظام المالي':'Unable to Open Financial System'}</h2>
