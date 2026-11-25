@@ -494,6 +494,8 @@ test("employee advance and custody registries are server-validated and protected
 
 test("global table filters publish full account and cost center lookup options for the shared grid", () => {
   assert.match(source, /window\.PEST_FINANCE_FILTER_LOOKUPS=lookups/);
+  assert.match(source, /Keep the latest lightweight master lookups available/);
+  assert.doesNotMatch(source, /if\(window\.PEST_FINANCE_FILTER_LOOKUPS===lookups\)delete/);
   assert.match(source, /accounts:accounts\.filter\(account=>account&&account\.code\)/);
   assert.match(source, /costCenters:centers\.filter\(center=>center&&\(center\.code\|\|center\.id\)\)/);
 });
@@ -786,6 +788,14 @@ test("financial module uses the shared split attachment viewer and keeps source-
   assert.match(source, /props\.onOpenAttachment\(attachment,\(\)=>deleteStatementAttachment\(attachment,invoiceDocumentIdForAttachment\(attachment\)\)\)/);
   assert.ok(source.includes('props.onManageRecordAttachments(reference.entityType,reference.entityId,label,attachment=>deleteStatementAttachment'));
   assert.match(source, /button\('عرض',\(\)=>void openStatementAttachmentFile\(reference\)/);
+});
+
+test("financial statement attachment manager opens, expands and scrolls into view", () => {
+  assert.match(indexHtml, /onManageRecordAttachments=\{\(entityType,entityId,label,onDelete\)=>\{/);
+  assert.match(indexHtml, /expanded:true,loading:true,error:''/);
+  assert.match(indexHtml, /scrollIntoView\(\{behavior:'smooth',block:'center'\}\)/);
+  assert.match(indexHtml, /data-record-attachment-manager="true"/);
+  assert.match(indexHtml, /لا تملك صلاحية عرض مرفقات هذا السجل/);
 });
 
 test("financial statement rows expose direct attachment management for the original source record", () => {
