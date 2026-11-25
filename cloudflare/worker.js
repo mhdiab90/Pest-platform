@@ -2551,6 +2551,121 @@ async function handleGoogleDriveOAuthCallback(request,env){
     return driveHtmlPage("تم ربط Google Drive بنجاح","تم توصيل الحساب "+String(userInfo.email||"")+". يمكنك إغلاق النافذة والعودة إلى Pest Platform.",true);
   }catch(error){console.error("Google Drive OAuth callback:",String(error&&error.message||error).slice(0,220));return driveHtmlPage("تعذر ربط Google Drive",String(error&&error.message||"حدث خطأ أثناء الاتصال.").slice(0,240),false);}
 }
+
+async function runAppsScriptGatewayFileCase(env, specification) {
+  const steps = { upload: false, download: false, replace: false, downloadAfterReplace: false, delete: false };
+  let driveFileId = "";
+  let failedStep = "upload";
+  let cleanupError = "";
+  try {
+    const uploaded = await callAppsScriptGateway(env, {
+      action: "upload",
+      fileName: specification.fileName,
+      mimeType: specification.mimeType,
+      attachmentId: specification.attachmentId,
+      fileBase64: specification.originalBase64
+    });
+    if (!uploaded || !uploaded.id) throw new Error("Apps Script did not return the uploaded test file ID.");
+    driveFileId = String(uploaded.id);
+    steps.upload = true;
+
+    failedStep = "download";
+    const downloaded = await callAppsScriptGateway(env, { action: "download", driveFileId });
+    if (String(downloaded && downloaded.dataBase64 || "") !== specification.originalBase64) {
+      throw new Error("Downloaded test file did not match the original bytes.");
+    }
+    steps.download = true;
+
+    failedStep = "replace";
+    const replaced = await callAppsScriptGateway(env, {
+      action: "replace",
+      driveFileId,
+      fileName: specification.fileName,
+      mimeType: specification.mimeType,
+      fileBase64: specification.replacementBase64
+    });
+    if (!replaced || !replaced.id) throw new Error("Apps Script did not return the replacement file ID.");
+    driveFileId = String(replaced.id);
+    steps.replace = true;
+
+    failedStep = "downloadAfterReplace";
+    const replacementDownload = await callAppsScriptGateway(env, { action: "download", driveFileId });
+    if (String(replacementDownload && replacementDownload.dataBase64 || "") !== specification.replacementBase64) {
+      throw new Error("Downloaded replacement file did not match the replacement bytes.");
+    }
+    steps.downloadAfterReplace = true;
+
+    failedStep = "delete";
+    const deleted = await callAppsScriptGateway(env, { action: "delete", driveFileId });
+    if (!deleted || deleted.deleted !== true) throw new Error("Apps Script did not confirm deletion of the temporary test file.");
+    driveFileId = "";
+    steps.delete = true;
+
+    return { success: true, fileName: specification.fileName, steps, failedStep: "", cleanupCompleted: true, error: "" };
+  } catch (error) {
+    let cleanupCompleted = !driveFileId;
+    if (driveFileId) {
+      try {
+        const cleanup = await callAppsScriptGateway(env, { action: "delete", driveFileId });
+        cleanupCompleted = Boolean(cleanup && cleanup.deleted === true);
+      } catch (cleanupFailure) {
+        cleanupError = String(cleanupFailure && cleanupFailure.message || cleanupFailure).slice(0, 200);
+      }
+    }
+    return {
+      success: false,
+      fileName: specification.fileName,
+      steps,
+      failedStep,
+      cleanupCompleted,
+      cleanupError,
+      error: String(error && error.message || error || "Gateway file test failed.").slice(0, 240)
+    };
+  }
+}
+
+async function runAppsScriptGatewayFileSelfTest(env, companyDriveConnection) {
+  const expectedCompanyEmail = String(companyDriveConnection && companyDriveConnection.googleEmail || "").trim().toLowerCase();
+  if (!expectedCompanyEmail) throw new Error("The existing company Google Drive account is not identified.");
+
+  const gateway = await callAppsScriptGateway(env, {
+    action: "ping",
+    folderId: String(companyDriveConnection && companyDriveConnection.folderId || "")
+  });
+  const effectiveUserEmail = String(gateway && gateway.effectiveUserEmail || "").trim().toLowerCase();
+  if (!effectiveUserEmail || effectiveUserEmail !== expectedCompanyEmail) {
+    throw new Error("Apps Script account does not match the existing company Google Drive account.");
+  }
+  if (!gateway.folderId) throw new Error("The existing company attachment folder could not be verified.");
+
+  const suffix = crypto.randomUUID().replace(/-/g, "");
+  const image = await runAppsScriptGatewayFileCase(env, {
+    fileName: "pest-gateway-self-test-" + suffix + ".png",
+    mimeType: "image/png",
+    attachmentId: "gateway_test_" + suffix + "_png",
+    originalBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgqPj/HwAEagJ39jVQDgAAAABJRU5ErkJggg==",
+    replacementBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGOQ2xL1HwAETAIsWU73TgAAAABJRU5ErkJggg=="
+  });
+  const pdf = await runAppsScriptGatewayFileCase(env, {
+    fileName: "pest-gateway-self-test-" + suffix + ".pdf",
+    mimeType: "application/pdf",
+    attachmentId: "gateway_test_" + suffix + "_pdf",
+    originalBase64: "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUlIgL01lZGlhQm94IFswIDAgMzAwIDEyMF0gL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNCAwIFIgPj4gPj4gL0NvbnRlbnRzIDUgMCBSID4+CmVuZG9iago0IDAgb2JqCjw8IC9UeXBlIC9Gb250IC9TdWJ0eXBlIC9UeXBlMSAvQmFzZUZvbnQgL0hlbHZldGljYSA+PgplbmRvYmoKNSAwIG9iago8PCAvTGVuZ3RoIDQ5ID4+CnN0cmVhbQpCVCAvRjEgMTIgVGYgMzYgNzIgVGQgKFBlc3QgR2F0ZXdheSBUZXN0IE9yaWdpbmFsKSBUSiBFTApzdHJlYW0KZW5kb2JqCnhyZWYKMCA2CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAwOSAwMDAwMCBuIAowMDAwMDAwMDU4IDAwMDAwIG4gCjAwMDAwMDAxMTUgMDAwMDAgbiAKMDAwMDAwMDI0NSAwMDAwMCBuIAowMDAwMDAwMzE1IDAwMDAwIG4gCnRyYWlsZXIKPDwgL1NpemUgNiAvUm9vdCAxIDAgUiA+PgpzdGFydHhyZWYKNDEyCiUlRU9GCg==",
+    replacementBase64: "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUlIgL01lZGlhQm94IFswIDAgMzAwIDEyMF0gL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgNCAwIFIgPj4gPj4gL0NvbnRlbnRzIDUgMCBSID4+CmVuZG9iago0IDAgb2JqCjw8IC9UeXBlIC9Gb250IC9TdWJ0eXBlIC9UeXBlMSAvQmFzZUZvbnQgL0hlbHZldGljYSA+PgplbmRvYmoKNSAwIG9iago8PCAvTGVuZ3RoIDUwID4+CnN0cmVhbQpCVCAvRjEgMTIgVGYgMzYgNzIgVGQgKFBlc3QgR2F0ZXdheSBUZXN0IFJlcGxhY2VtZW50KSBUSiBFTApzdHJlYW0KZW5kb2JqCnhyZWYKMCA2CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAwOSAwMDAwMCBuIAowMDAwMDAwMDU4IDAwMDAwIG4gCjAwMDAwMDAxMTUgMDAwMDAgbiAKMDAwMDAwMDI0NSAwMDAwMCBuIAowMDAwMDAwMzE1IDAwMDAwIG4gCnRyYWlsZXIKPDwgL1NpemUgNiAvUm9vdCAxIDAgUiA+PgpzdGFydHhyZWYKNDEzCiUlRU9GCg=="
+  });
+
+  return {
+    success: image.success && pdf.success,
+    gatewayVersion: String(gateway.gatewayVersion || ""),
+    effectiveUserEmail,
+    accountMatches: true,
+    folderReady: true,
+    cases: { image, pdf },
+    cleanupCompleted: image.cleanupCompleted && pdf.cleanupCompleted,
+    productionAttachmentsUnchanged: true
+  };
+}
+
 async function handleGoogleDriveRequest(request,url,body,claims,profile,token,env){
   if(url.pathname==="/drive/gateway/test"&&request.method==="GET"){
     if(profile.role!=="admin")throw new Error("Only a system administrator can test the company Drive gateway.");
@@ -2561,6 +2676,12 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     const effectiveUserEmail=String(gateway.effectiveUserEmail||"").trim().toLowerCase();
     if(!effectiveUserEmail||effectiveUserEmail!==expectedCompanyEmail)throw new Error("Apps Script is running under a different Google account. Expected "+expectedCompanyEmail+" but received "+(effectiveUserEmail||"an unidentified account")+". Deploy it under the existing company Drive account.");
     return {gatewayTest:true,gatewayVersion:String(gateway.gatewayVersion||""),effectiveUserEmail,accountMatches:true,folderReady:Boolean(gateway.folderId),productionAttachmentsUnchanged:true};
+  }
+  if(url.pathname==="/drive/gateway/self-test"&&request.method==="POST"){
+    if(profile.role!=="admin")throw new Error("Only a system administrator can run the company Drive file test.");
+    const companyDriveConnection=await getGoogleDriveConnection(env);
+    if(!companyDriveConnection||!companyDriveConnection.encryptedRefreshToken)throw new Error("The existing company Google Drive account is not connected.");
+    return await runAppsScriptGatewayFileSelfTest(env,companyDriveConnection);
   }
   if(url.pathname==="/drive/status"&&request.method==="GET"){
     requirePermission(profile,"attachments","view");
@@ -2815,7 +2936,7 @@ export default {
       }, 200, origin);
     }
     if (!["GET","POST","DELETE"].includes(request.method)) return jsonResponse({ error: "Method not allowed." }, 405, origin);
-    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/gateway/test", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/lookup", "/attachments/upload", "/attachments/attach", "/attachments/replace", "/attachments/annotate", "/attachments/file", "/attachments/usage", "/push/notify", "/push/request", "/push/badge/sync", "/admin/users/delete", "/finance"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
+    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/gateway/test", "/drive/gateway/self-test", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/lookup", "/attachments/upload", "/attachments/attach", "/attachments/replace", "/attachments/annotate", "/attachments/file", "/attachments/usage", "/push/notify", "/push/request", "/push/badge/sync", "/admin/users/delete", "/finance"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
 
     try {
       const authorization = request.headers.get("Authorization") || "";
