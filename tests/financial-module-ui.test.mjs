@@ -732,7 +732,7 @@ test("refundable third-party deposits have a separate analytic registry, picker,
   assert.match(source, /title="دليل جهات التأمينات المستردة"/);
   assert.match(source, /value:"securityDepositParty",label:"تأمينات مستردة لدى الغير"/);
   assert.match(source, /securityDepositParty:"كشف حساب تأمينات مستردة لدى الغير"/);
-  assert.match(source, /out\.securityDepositParties/);
+  assert.match(source, /securityDepositParties:\{\}/);
   assert.match(indexHtml, /20261125-finance-refundable-deposit-analytics-v17/);
 });
 
