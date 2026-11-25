@@ -2274,6 +2274,7 @@ const unpostJournalDocument=async(doc)=>{
    }else if(linkedRefs.length){
     effect.push("هذا القيد مرتبط بقيد أصلي أو عكسي/تعديل؛ سيبحث النظام عن السجلات المرتبطة ويحذفها ضمن نفس العملية.");
    }
+   if(sourceType==="legacyImport"&&!posted)effect.push("سيتم مسح القيد المستورد من أرشيف القيود وقائمة المراجعة نهائيًا، مع الاحتفاظ بنسخة كاملة منه في سجل التدقيق.");
    if(sourceType!=="manual"&&posted)effect.push("سيتم إلغاء الأثر المحاسبي للمستند المصدر مباشرة، ولن يتم إنشاء قيد عكسي بانتظار المراجعة.");
    if(sourceType==="invoice"&&posted){
     const stockLines=(sourceInvoice&&sourceInvoice.lines||[]).filter(line=>line&&line.kind==="stock");
@@ -2286,8 +2287,13 @@ const unpostJournalDocument=async(doc)=>{
    try{
     const result=await api('', 'POST',{action:'deleteJournal',id:doc.id,reason:"حذف مباشر بعد إظهار الأثر المحاسبي"});
     const warningText=Array.isArray(result.inventoryWarnings)&&result.inventoryWarnings.length?" تنبيه المخزون: "+result.inventoryWarnings.join(" | "):"";
-    setNotice((result.deleted?"تم حذف القيد وكل القيود المرتبطة به ("+(result.deletedIds||[doc.id]).length+" قيد/قيود) وتحديث الأستاذ والفترات.":"")+(result.sourceCancelled?" تم إلغاء المستند المصدر محاسبيًا.":"")+warningText);
-    setJournalModal(null);setJournalModalDraft(null);await refresh();await loadPeriod();
+    const deletionNotice=(result.deleted?"تم مسح القيد وكل القيود المرتبطة به ("+(result.deletedIds||[doc.id]).length+" قيد/قيود). تم تحديث الأستاذ والفترات وحفظ نسخة تدقيقية.":"تعذر تأكيد حذف القيد.")+(result.sourceCancelled?" تم إلغاء المستند المصدر محاسبيًا.":"")+warningText;
+    setNotice(deletionNotice);
+    setJournalModal(null);setJournalModalDraft(null);setSelected(null);
+    let screenRefreshOk=true;
+    if(!await refresh({silent:true,keepBusy:true}))screenRefreshOk=false;
+    if(!await loadPeriod({silent:true,keepBusy:true}))screenRefreshOk=false;
+    if(!screenRefreshOk)setNotice(deletionNotice+" تم الحذف على الخادم، لكن تعذر تحديث بعض بيانات الشاشة. اضغط تحديث البيانات بعد عودة الاتصال.");
    }
    catch(e){setError(e.message||String(e));}
    finally{setBusy(false);}
@@ -3495,6 +3501,7 @@ const renderReview=()=>panel('مركز المراجعة والفحص والاع�
      canFinance("review","approve")?button('اعتماد وترحيل',()=>reviewAction(selected.status==='duplicate_review'?'approveDuplicate':'approve'),'success',busy):null,
      canFinance("review","edit")?button('إعادة للتصحيح',()=>reviewAction('return'),'muted',busy):null,
      canFinance("review","approve")?button('رفض',()=>reviewAction('reject'),'danger',busy):null,
+     selected.type==='journal'&&canFinance("journal","delete")?button('مسح القيد',()=>void deleteJournalDocument(selected),'danger',busy):null,
      selected.type==='invoice'&&canFinance('invoices','delete')?button('حذف الفاتورة',()=>void deleteInvoiceRecord(selected),'danger',busy):null
     )
   ):table(['المستند','النوع','التاريخ','الطرف','المبلغ','الحالة','المرفق','مراجعة'],review.map(x=>h('tr',{key:x.id,className:'border-t'},
@@ -3830,7 +3837,10 @@ const renderReview=()=>panel('مركز المراجعة والفحص والاع�
    h("td",{className:"p-2"},item.date||"—"),
    h("td",{className:"p-2 text-end"},String((item.lines||[]).length)),
    h("td",{className:"p-2 text-rose-700 text-xs"},(item.errors||[]).concat(item.warnings||[]).concat(item.reviewReason?[item.reviewReason]:[]).slice(0,5).join(" · ")||"مراجعة مطلوبة"),
-   h("td",{className:"p-2"},button("فتح واستكمال",()=>{setSelected(item);setTab("review");openJournalModal(item);},"muted",!canFinance("review","edit")))
+   h("td",{className:"p-2"},h("div",{className:"flex flex-wrap gap-1"},
+    button("فتح واستكمال",()=>{setSelected(item);setTab("review");openJournalModal(item);},"muted",!canFinance("review","edit")),
+    canFinance("journal","delete")?button("مسح القيد",()=>void deleteJournalDocument(item),"danger",busy):null
+   ))
   ));
   return h("div",{className:"space-y-4"},
    panel("استيراد أرشيف القيود اليومية","ارفع ملف الحزمة الذي تم تجهيزه بعد مطابقة الإكسل مع نسخة قاعدة البيانات. هذه العملية تنشئ الحسابات ثم تحفظ القيود للمراجعة فقط؛ لا يتم ترحيل أي قيد.",h("div",{className:"space-y-3"},
@@ -5508,5 +5518,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261125-finance-save-refresh-safe-v15";
+ window.PEST_FINANCE_MODULE_VERSION="20261125-finance-journal-delete-shortcut-v16";
 })();
