@@ -493,9 +493,9 @@ test("employee advance and custody registries are server-validated and protected
 });
 
 test("global table filters publish full account and cost center lookup options for the shared grid", () => {
-  assert.match(source, /window\\.PEST_FINANCE_FILTER_LOOKUPS=lookups/);
-  assert.match(source, /accounts:accounts\\.filter\\(account=>account&&account\\.code\\)/);
-  assert.match(source, /costCenters:centers\\.filter\\(center=>center&&\\(center\\.code\\|\\|center\\.id\\)\\)/);
+  assert.match(source, /window\.PEST_FINANCE_FILTER_LOOKUPS=lookups/);
+  assert.match(source, /accounts:accounts\.filter\(account=>account&&account\.code\)/);
+  assert.match(source, /costCenters:centers\.filter\(center=>center&&\(center\.code\|\|center\.id\)\)/);
 });
 
 test("unified master directory retains cost center analysis and the same master records feed inline dropdown creation", () => {
