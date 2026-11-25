@@ -705,3 +705,19 @@ test("finance writes distinguish successful save/approval from a later screen-re
   assert.ok(source.includes("لا تكرر الاعتماد"));
   assert.ok(source.includes("const expectedStatus=decision==="));
 });
+
+
+test("legacy archive corrections and review journal details expose a permission-gated delete button", () => {
+  const archiveStart=source.indexOf("const renderLegacyImport=()=>{");
+  const archiveEnd=source.indexOf("const renderMasters",archiveStart);
+  const archive=source.slice(archiveStart,archiveEnd);
+  assert.ok(archiveStart>=0&&archiveEnd>archiveStart,"legacy import screen must exist");
+  assert.match(archive, /canFinance\("journal","delete"\)\?button\("مسح القيد",\(\)=>void deleteJournalDocument\(item\),"danger",busy\)/);
+  const reviewStart=source.indexOf("const renderReview=()=>panel(");
+  const reviewEnd=source.indexOf("const renderCash=()=>",reviewStart);
+  const review=source.slice(reviewStart,reviewEnd);
+  assert.ok(reviewStart>=0&&reviewEnd>reviewStart,"review screen must exist");
+  assert.match(review, /selected\.type==='journal'&&canFinance\("journal","delete"\)\?button\('مسح القيد',\(\)=>void deleteJournalDocument\(selected\),'danger',busy\)/);
+  assert.match(source, /سيتم مسح القيد المستورد من أرشيف القيود وقائمة المراجعة نهائيًا/);
+  assert.match(source, /حفظ نسخة تدقيقية/);
+});
