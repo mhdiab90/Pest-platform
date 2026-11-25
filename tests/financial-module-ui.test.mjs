@@ -803,6 +803,7 @@ test("all financial tables expose searchable account and cost-center filters", (
   assert.match(source, /searchablePicker\(t\('الحساب','Account'\),screenAccountFilter/);
   assert.match(source, /searchablePicker\(t\('مركز التكلفة','Cost Center'\),screenCostCenterFilter/);
   assert.match(source, /const tableFieldText=\(row,headers,kind\)=>/);
+  assert.match(source, /if\(!indices\.size\)return null/);
   assert.match(source, /tableFieldText\(row,headers,'account'\)/);
   assert.match(source, /tableFieldText\(row,headers,'costCenter'\)/);
   assert.match(source, /accountNeedles=\[accountOption\.value/);
