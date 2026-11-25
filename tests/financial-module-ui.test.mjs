@@ -766,7 +766,7 @@ test("refundable third-party deposits have a separate analytic registry, picker,
   assert.match(source, /value:"securityDepositParty",label:"تأمينات مستردة لدى الغير"/);
   assert.match(source, /securityDepositParty:"كشف حساب تأمينات مستردة لدى الغير"/);
   assert.match(source, /securityDepositParties:\{\}/);
-  assert.match(indexHtml, /20261125-finance-value-filter-journal-attachments-v23/);
+  assert.match(indexHtml, /20261125-finance-value-filter-journal-attachments-v24/);
 });
 
 test("refundable deposit quick coding works in journal entry, review editing, and legacy archive correction", () => {
