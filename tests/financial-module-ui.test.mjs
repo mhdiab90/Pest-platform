@@ -687,3 +687,10 @@ test("legacy imported journal completion list loads documents when its tab opens
   assert.match(archive, /legacyImportDocumentsLoaded\?imported\.length:"جارٍ التحميل\.\.\."/);
   assert.match(archive, /legacyImportDocumentsLoading\?"جارٍ تحميل القيود المستوردة\.\.\."/);
 });
+
+test("financial searchable dropdown safely handles missing or detached inputs during journal editing", () => {
+  assert.match(source, /const financePickerFallbackPosition=\(\)=>\(/);
+  assert.match(source, /if\(!element\|\|typeof element\.getBoundingClientRect!=='function'\|\|element\.isConnected===false\)return financePickerFallbackPosition\(\)/);
+  assert.match(source, /if\(input&&input\.isConnected!==false&&typeof input\.getBoundingClientRect==='function'\)positions\[key\]=financePickerPosition\(input\)/);
+  assert.match(source, /const target=e\.currentTarget\|\|e\.target;setJournalPickerAnchor/);
+});
