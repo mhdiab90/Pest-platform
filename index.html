@@ -1060,7 +1060,7 @@ function PestCrmModuleSlot(props){
 }
 
 function FinanceModuleSlot(props){
-  const FINANCE_MODULE_BUILD='20261126-startup-lazy-directory-presence-batched-subscriptions-v26';
+  const FINANCE_MODULE_BUILD='20261125-finance-attachment-manager-filter-fix-v25';
   const [FinanceModule,setFinanceModule]=useState(()=>window.PEST_FINANCE_MODULE||null);
   const [loadError,setLoadError]=useState('');
   useEffect(()=>{
@@ -2836,7 +2836,7 @@ function App(){
         console.warn('Initial badge notification read:',error);
         markNotificationBadgeStreamReady('custody');
       });
-  },[currentUser?.uid,tab,assistantOpen,attachmentEntityType]);
+  },[currentUser?.uid,tab,assistantOpen,attachmentEntityType,onlineUsersOpen]);
 
   function closeHeaderPopoversOnOutside(event){
     unlockNotificationAudio();
