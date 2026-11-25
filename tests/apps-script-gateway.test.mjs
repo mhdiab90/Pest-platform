@@ -143,21 +143,26 @@ test("Apps Script gateway size endurance test covers bounded 256 KiB, 1 MiB and 
 });
 
 
-test("Apps Script uploads can be enabled as a reversible admin-only pilot for new files up to 1 MiB", () => {
+test("Apps Script full attachment routing is reversible, admin-only and covers the full 20 MiB lifecycle", () => {
   const worker = readFileSync(new URL("../cloudflare/worker.js", import.meta.url), "utf8");
   assert.ok(worker.includes('"/drive/gateway/upload-mode"'));
   assert.ok(worker.includes('"/drive-gateway-upload-mode"'));
   assert.ok(worker.includes('if(profile.role!=="admin")throw new Error("Only a system administrator can change the Apps Script upload pilot setting.")'));
-  assert.ok(worker.includes("useAppsScriptGateway=gatewayMode.enabled===true&&bytes.byteLength<=Number(gatewayMode.maxBytes||0)"));
+  assert.ok(worker.includes("fullAttachmentRouting=enabled&&body.fullAttachmentRouting===true"));
+  assert.ok(worker.includes("const useAppsScriptGateway=fullAttachmentRouting||(gatewayMode.enabled===true&&bytes.byteLength<=Number(gatewayMode.maxBytes||0))"));
   assert.ok(worker.includes("encodeBase64Bytes(new Uint8Array(bytes))"));
-  assert.ok(worker.includes("gatewayFileCreated=true"));
-  assert.ok(worker.includes("googleDriveUpload(driveAccessToken"));
-  assert.ok(worker.includes("effectiveUserEmail"));
+  assert.ok(worker.includes("verifyCompanyAppsScriptGateway(env,connection)"));
+  assert.ok(worker.includes('action:"download",driveFileId:attachment.driveFileId'));
+  assert.ok(worker.includes('action:"delete",driveFileId:attachment.driveFileId'));
+  assert.ok(worker.includes("decodeBase64Bytes(String(downloaded&&downloaded.dataBase64||\"\")"));
+  assert.ok(worker.includes('driveFileId:String(uploaded.id)'));
+  assert.ok(worker.includes("fullAttachmentRouting,updatedAt:Date.now()"));
   const app = readFileSync(new URL("../index.html", import.meta.url), "utf8");
   assert.ok(app.includes("updateAppsScriptGatewayUploadMode"));
-  assert.ok(app.includes("Enable upload pilot"));
-  assert.ok(app.includes("Pilot limit: 1 MiB"));
-  assert.ok(app.includes("Disable Apps Script route"));
+  assert.ok(app.includes("Full attachment migration — Apps Script Gateway"));
+  assert.ok(app.includes("Complete full migration"));
+  assert.ok(app.includes("Maximum file size: 20 MiB"));
+  assert.ok(app.includes("Files near 20 MiB may take about 100 seconds"));
 });
 
 
