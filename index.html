@@ -3267,6 +3267,17 @@ function App(){
     }catch(error){setAttachmentsNotice(String(error.message||error));}
     finally{setAttachmentsBusy(false);}
   }
+  function financialScreenPermissionModule(entityType,entityId){
+    if(entityType!=='screen')return '';
+    const id=String(entityId||'').split('--')[0];
+    return id.startsWith('financial_')?id:'';
+  }
+  function canViewRecordAttachment(entityType,entityId){
+    if(entityType==='company')return currentUser?.role==='admin';
+    const financialModule=financialScreenPermissionModule(entityType,entityId);
+    if(entityType==='financial'||financialModule)return hasPermission('attachments','view')||['financial_journal','financial_review','financial_assignments','financial_invoices','financial_reports','financial_partyStatements','financial_masters','financial_accounts','financial_centers','financial_inventory','financial_cash','financial_bank','financial_tax','financial'].some(module=>hasPermission(module,'view'));
+    return hasPermission('attachments','view');
+  }
   function canAddRecordAttachment(entityType,entityId){
     if(entityType==='company')return currentUser?.role==='admin';
     if(entityType==='financial')return hasPermission('financial_journal','add')||hasPermission('financial_journal','edit')||hasPermission('financial_review','edit')||hasPermission('financial_assignments','edit')||hasPermission('financial_invoices','add')||hasPermission('financial_invoices','edit')||hasPermission('financial','add')||hasPermission('financial','edit');
@@ -3278,6 +3289,8 @@ function App(){
   }
   function canEditRecordAttachment(entityType,entityId){
     if(entityType==='company')return currentUser?.role==='admin';
+    const financialModule=financialScreenPermissionModule(entityType,entityId);
+    if(financialModule)return hasPermission(financialModule,'edit')||hasPermission('attachments','edit');
     if(entityType==='financial')return hasPermission('financial_journal','edit')||hasPermission('financial_review','edit')||hasPermission('financial_assignments','edit')||hasPermission('financial_invoices','edit')||hasPermission('financial','edit');
     if(!hasPermission('attachments','edit'))return false;
     if(entityType==='screen')return true;
@@ -3288,6 +3301,8 @@ function App(){
   }
   function canDeleteRecordAttachment(entityType,entityId){
     if(entityType==='company')return currentUser?.role==='admin';
+    const financialModule=financialScreenPermissionModule(entityType,entityId);
+    if(financialModule)return hasPermission(financialModule,'delete')||hasPermission(financialModule,'edit')||hasPermission('attachments','delete');
     if(entityType==='financial')return hasPermission('financial_invoices','delete')||hasPermission('financial_invoices','edit')||hasPermission('financial_journal','delete')||hasPermission('financial_journal','edit')||hasPermission('financial_review','edit')||hasPermission('financial_assignments','edit')||hasPermission('financial','delete')||hasPermission('financial','edit');
     if(!hasPermission('attachments','delete'))return false;
     if(entityType==='screen')return true;
@@ -3318,6 +3333,7 @@ function App(){
   }
 
   async function refreshRecordAttachmentPanel(entityType,entityId){
+    if(!canViewRecordAttachment(entityType,entityId))return [];
     const key=recordAttachmentKey(entityType,entityId);
     setRecordAttachmentPanels(old=>({...old,[key]:{...(old[key]||{}),loading:true,error:''}}));
     try{
@@ -3335,7 +3351,7 @@ function App(){
     return ['application/pdf','image/jpeg','image/png','image/webp','text/plain','text/csv','application/vnd.ms-excel'].includes(mime)||mime.includes('spreadsheet');
   }
   async function openRecordAttachmentPreview(entityType,entityId,preferredAttachmentId=''){
-    if(!entityId||!hasPermission('attachments','view'))return;
+    if(!entityId||!canViewRecordAttachment(entityType,entityId))return;
     const key=recordAttachmentKey(entityType,entityId);
     if(attachmentPreviewRequestRef.current[key])return;
     attachmentPreviewRequestRef.current[key]=true;
@@ -3579,9 +3595,9 @@ function App(){
       setRecordAttachmentPanels(old=>({...old,[key]:{...(old[key]||{}),expanded:true,loading:false,error:String(error.message||error)}}));
     }
   }
-  function renderRecordAttachments(entityType,entityId,contextLabel=''){
+  function renderRecordAttachments(entityType,entityId,contextLabel='',onDelete=null){
     const key=recordAttachmentKey(entityType,entityId),panel=recordAttachmentPanels[key]||{};
-    if(!entityId||!hasPermission('attachments','view'))return null;
+    if(!entityId||!canViewRecordAttachment(entityType,entityId))return null;
     return <div className="mt-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-2 no-print">
       {contextLabel&&<div className="mb-2 text-xs font-bold text-slate-600"><i className="fas fa-paperclip me-1"></i>{contextLabel}</div>}
       <div className="flex flex-wrap items-center gap-2">
@@ -3590,7 +3606,6 @@ function App(){
         </button>
         <button type="button" title={panel.expanded?(rtl?'إخفاء قائمة المرفقات':'Collapse attachments'):(rtl?'عرض قائمة المرفقات':'Expand attachments')} onClick={()=>toggleRecordAttachmentPanel(entityType,entityId)} className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white border text-slate-600"><i className={'fas '+(panel.expanded?'fa-chevron-up':'fa-chevron-down')+' text-[10px]'}></i></button>
         {canAddRecordAttachment(entityType,entityId)&&<label className="cursor-pointer inline-flex items-center gap-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100 px-3 py-1.5 text-xs font-bold"><i className="fas fa-plus"></i>{rtl?'إضافة مرفق':'Add attachment'}<input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt" className="hidden" onChange={e=>{const files=Array.from(e.target.files||[]);void uploadRecordAttachments(entityType,entityId,files);e.target.value='';}}/></label>}
-        remove duplicate custody add control
       </div>
       {panel.expanded&&<div className="mt-2 space-y-2">
         {panel.loading?<p className="text-xs text-gray-500">{rtl?'جارٍ تحميل الملفات...':'Loading files...'}</p>:panel.error?<p className="text-xs text-rose-700">{panel.error}</p>:!panel.attachments?.length?<p className="text-xs text-gray-500">{rtl?'لا توجد مرفقات مرتبطة بهذا البيان.':'No files are linked to this record.'}</p>:
@@ -3602,7 +3617,7 @@ function App(){
               <button type="button" disabled={attachmentsBusy} onClick={()=>openAttachmentFile(item,true,entityType,entityId)} className="rounded bg-slate-100 text-slate-700 px-2 py-1 text-[11px]">{rtl?'تنزيل':'Download'}</button>
               {canEditRecordAttachment(entityType,entityId)&&<button type="button" disabled={attachmentEditorBusy} onClick={()=>openAttachmentEditor(entityType,entityId,item)} className="rounded bg-amber-50 text-amber-800 px-2 py-1 text-[11px] font-bold">{rtl?'ملاحظة / تمييز':'Annotate'}</button>}
               {canEditRecordAttachment(entityType,entityId)&&<label className="cursor-pointer rounded bg-indigo-50 text-indigo-700 px-2 py-1 text-[11px] font-bold">{rtl?'استبدال':'Replace'}<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.csv,.txt" className="hidden" disabled={attachmentsBusy} onChange={async e=>{const file=e.target.files?.[0];try{await replaceRecordAttachment(entityType,entityId,item,file);}catch(error){alert(String(error.message||error));}finally{e.target.value='';}}}/></label>}
-              {canDeleteRecordAttachment(entityType,entityId)&&<button type="button" disabled={attachmentsBusy} onClick={()=>removeRecordAttachment(entityType,entityId,item)} className="rounded bg-rose-50 text-rose-700 px-2 py-1 text-[11px]">{rtl?'حذف':'Delete'}</button>}
+              {canDeleteRecordAttachment(entityType,entityId)&&<button type="button" disabled={attachmentsBusy} onClick={async()=>{const removed=typeof onDelete==='function'?await onDelete(item):await removeRecordAttachment(entityType,entityId,item);if(removed&&typeof onDelete==='function')await refreshRecordAttachmentPanel(entityType,entityId);}} className="rounded bg-rose-50 text-rose-700 px-2 py-1 text-[11px]">{rtl?'حذف':'Delete'}</button>}
             </div>
           </div>)}
       </div>}
@@ -7523,7 +7538,7 @@ function App(){
           </div>
           <div className="app-screen-current"><small>{rtl?'مساحة العمل':'WORKSPACE'}</small><strong>{activeNavItem?.label||(tab==='projectDetail'?(rtl?'ملف المشروع':'Project file'):String(tab||''))}</strong></div>
         </div>}
-        {tab!=='appLauncher'&&screenAttachmentContext&&renderRecordAttachments(screenAttachmentContext.entityType,screenAttachmentContext.entityId,screenAttachmentContext.label)}
+        {tab!=='appLauncher'&&screenAttachmentContext&&renderRecordAttachments(screenAttachmentContext.entityType,screenAttachmentContext.entityId,screenAttachmentContext.label,screenAttachmentContext.onDelete)}
         {tab!=='appLauncher'&&canExportCurrentScreen()&&<div className="app-report-toolbar no-print"><div className="report-toolbar-caption"><strong><i className="fas fa-file-invoice me-2 text-slate-500"></i>{rtl?'تقرير الشاشة الحالية':'Current screen report'}</strong><small>{rtl?'ملخص تنفيذي + تفاصيل في Excel و PDF':'Executive summary + detailed sheets in Excel and PDF'}</small></div><div className="report-toolbar-actions"><button type="button" onClick={exportCurrentScreenExcel} className="bg-emerald-600 text-white hover:bg-emerald-700"><i className="fas fa-file-excel"></i>{rtl?'تصدير Excel':'Excel'}</button><button type="button" onClick={exportCurrentScreenPdf} className="bg-slate-800 text-white hover:bg-slate-900"><i className="fas fa-file-pdf"></i>{rtl?'تصدير PDF':'PDF'}</button></div></div>}
         {tab==='appLauncher'&&<div className="app-launcher">
           <div className="app-launcher-heading"><strong>{rtl?'التطبيقات':'Applications'}</strong><span>{rtl?'اختر القسم لعرض شاشاته':'Choose a section to view its screens'}</span></div>
@@ -7539,7 +7554,7 @@ function App(){
           </div>}
         </div>}
         {tab==='pestCrm'&&canAccessTab('pestCrm')&&<PestCrmModuleSlot db={db} currentUser={currentUser} rtl={rtl} can={hasPermission} addLog={addLog}/>}
-        {financialModuleMounted&&(canAccessTab('financial')||canAccessTab('master'))&&<div className={tab==='financial'||tab==='master'?'':'hidden'}><FinanceModuleSlot db={db} currentUser={currentUser} rtl={rtl} language={lang} workerBase={PUSH_WORKER_BASE} userDirectory={userDirectory} addLog={addLog} masterDirectoryOnly={tab==='master'} activeHostTab={tab} onAttachmentScreenChange={context=>{if(context)setScreenAttachmentContext(context);}} onOpenAttachment={(attachment,onDelete)=>void openAttachmentFile(attachment,false,attachment.entityType,attachment.entityId,'side',onDelete)} onManageRecordAttachments={(entityType,entityId,label)=>setScreenAttachmentContext({entityType,entityId,label})} externalPartyRequest={financialPartyMasterRequest} onPartyMasterRequestComplete={()=>setFinancialPartyMasterRequest(null)} can={(module,action)=>{if(tab==='master'&&module==='financial_masters')return hasPermission('master',action)||hasPermission(module,action);return hasPermission(module,action);}} onOpenPartyMaster={openFinancialPartyMaster}/></div>}
+        {financialModuleMounted&&(canAccessTab('financial')||canAccessTab('master'))&&<div className={tab==='financial'||tab==='master'?'':'hidden'}><FinanceModuleSlot db={db} currentUser={currentUser} rtl={rtl} language={lang} workerBase={PUSH_WORKER_BASE} userDirectory={userDirectory} addLog={addLog} masterDirectoryOnly={tab==='master'} activeHostTab={tab} onAttachmentScreenChange={context=>{if(context)setScreenAttachmentContext(context);}} onOpenAttachment={(attachment,onDelete)=>void openAttachmentFile(attachment,false,attachment.entityType,attachment.entityId,'side',onDelete)} onManageRecordAttachments={(entityType,entityId,label,onDelete)=>setScreenAttachmentContext({entityType,entityId,label,onDelete})} externalPartyRequest={financialPartyMasterRequest} onPartyMasterRequestComplete={()=>setFinancialPartyMasterRequest(null)} can={(module,action)=>{if(tab==='master'&&module==='financial_masters')return hasPermission('master',action)||hasPermission(module,action);return hasPermission(module,action);}} onOpenPartyMaster={openFinancialPartyMaster}/></div>}
         {tab==='dashboard'&&<div className="space-y-5 print-area">
           <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="font-bold text-xl">{tr('dashboard')} · {tr('cashFlow')}</h2><div className="flex gap-2 no-print"><button onClick={()=>setTab('reports')} className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-bold">{tr('reportCenter')}</button><button onClick={()=>window.print()} className="bg-gray-800 text-white rounded-lg px-4 py-2 text-sm">{tr('printPdf')}</button></div></div>
           <section className="app-dashboard-filterbar no-print">
