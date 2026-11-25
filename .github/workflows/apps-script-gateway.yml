@@ -1,0 +1,28 @@
+name: Apps Script Drive Gateway Pilot
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps-script/**"
+      - "cloudflare/apps-script-gateway.js"
+      - "tests/apps-script-gateway.test.mjs"
+      - ".github/workflows/apps-script-gateway.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  gateway-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check Cloudflare gateway adapter syntax
+        run: node --check cloudflare/apps-script-gateway.js
+      - name: Check Apps Script V8 source syntax
+        run: node --check < apps-script/Code.gs
+      - name: Run gateway protocol tests
+        run: node --test tests/apps-script-gateway.test.mjs
