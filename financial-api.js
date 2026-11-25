@@ -300,7 +300,7 @@ async function securityDepositPartyRegistryErrors(lines,chart,adminRead){
  const errors=[];
  for(const [index,line] of (Array.isArray(lines)?lines:[]).entries()){
   const account=(chart||{})[String(line&&line.accountCode||"")];
-  const partyType=String(line&&line.partyType||account&&account.subledgerType||"");
+  const partyType=String(account&&(account.subledgerType||(isRefundableThirdPartyDepositAccount(account)?"securityDepositParty":""))||line&&line.partyType||"");
   if(partyType!=="securityDepositParty")continue;
   const rawPartyId=String(line&&line.partyId||"").trim();
   if(!rawPartyId)continue;
@@ -311,7 +311,7 @@ async function securityDepositPartyRegistryErrors(lines,chart,adminRead){
 }
 function validateJournal(j,chart,centers){
  const errors=[],lines=Array.isArray(j.lines)?j.lines:[];if(lines.length<2)errors.push("القيد يجب أن يحتوي على سطرين على الأقل");
- lines.forEach((l,i)=>{const a=chart[txt(l.accountCode,32)];if(!a)errors.push("السطر "+(i+1)+": الحساب غير موجود");else if(a.isGroup||a.active===false)errors.push("السطر "+(i+1)+": الحساب غير قابل للترحيل");const d=Number(l.debit||0),c=Number(l.credit||0);if(!Number.isFinite(d)||!Number.isFinite(c)||d<0||c<0||((d>0)===(c>0)))errors.push("السطر "+(i+1)+": أدخل مدين أو دائن فقط");if(l.costCenterId&&!centers[l.costCenterId])errors.push("السطر "+(i+1)+": مركز التكلفة غير موجود");const requiredSubledgerType=a&&(a.subledgerType||(String(l.accountCode)==="2150"?"financingParty":""));if(requiredSubledgerType&&!String(l.partyId||"").trim()){const analyticLabel={customer:"العميل",vendor:"المورد",employeeCustody:"الموظف صاحب العهدة",employeeAdvance:"الموظف صاحب السلفة",partnerCurrentAccount:"الشريك",financingParty:"جهة التمويل أو الدائن",securityDepositParty:"جهة التأمينات المستردة"}[requiredSubledgerType]||"الطرف التحليلي";errors.push("السطر "+(i+1)+": يجب اختيار الطرف التحليلي ("+analyticLabel+") للحساب "+txt(a.code||l.accountCode,32)+" — "+txt(a.name||"",120)+".");}});
+ lines.forEach((l,i)=>{const a=chart[txt(l.accountCode,32)];if(!a)errors.push("السطر "+(i+1)+": الحساب غير موجود");else if(a.isGroup||a.active===false)errors.push("السطر "+(i+1)+": الحساب غير قابل للترحيل");const d=Number(l.debit||0),c=Number(l.credit||0);if(!Number.isFinite(d)||!Number.isFinite(c)||d<0||c<0||((d>0)===(c>0)))errors.push("السطر "+(i+1)+": أدخل مدين أو دائن فقط");if(l.costCenterId&&!centers[l.costCenterId])errors.push("السطر "+(i+1)+": مركز التكلفة غير موجود");const requiredSubledgerType=a&&(a.subledgerType||(isRefundableThirdPartyDepositAccount(a)?"securityDepositParty":String(l.accountCode)==="2150"?"financingParty":""));if(requiredSubledgerType&&!String(l.partyId||"").trim()){const analyticLabel={customer:"العميل",vendor:"المورد",employeeCustody:"الموظف صاحب العهدة",employeeAdvance:"الموظف صاحب السلفة",partnerCurrentAccount:"الشريك",financingParty:"جهة التمويل أو الدائن",securityDepositParty:"جهة التأمينات المستردة"}[requiredSubledgerType]||"الطرف التحليلي";errors.push("السطر "+(i+1)+": يجب اختيار الطرف التحليلي ("+analyticLabel+") للحساب "+txt(a.code||l.accountCode,32)+" — "+txt(a.name||"",120)+".");}});
  const b=balance(lines);if(Math.abs(b.difference)>0.01)errors.push("القيد غير متوازن. الفرق: "+b.difference);return {errors,balance:b};
 }
 
@@ -364,7 +364,7 @@ function inventoryLedgerControlValue(journals){
 function normalizeJournalAnalyticLines(lines,chart){
  return (Array.isArray(lines)?lines:[]).map(line=>{
   const account=chart[txt(line&&line.accountCode||"",32)];
-  const analyticType=account&&(account.subledgerType||(String(line.accountCode)==="2150"?"financingParty":""));
+  const analyticType=account&&(account.subledgerType||(isRefundableThirdPartyDepositAccount(account)?"securityDepositParty":String(line.accountCode)==="2150"?"financingParty":String(line.partyType||"")));
   return analyticType?{...line,partyType:analyticType}:{...line};
  });
 }
@@ -476,7 +476,7 @@ export async function handleFinancialRequest(ctx){
      :"";
    (Array.isArray(journal.lines)?journal.lines:[]).forEach((line,index)=>{
     const account=(chart||{})[String(line.accountCode||"")];
-    const resolvedType=String(line.partyType||account&&account.subledgerType||documentPartyType||"");
+    const resolvedType=String(account&&(account.subledgerType||(isRefundableThirdPartyDepositAccount(account)?"securityDepositParty":""))||line.partyType||documentPartyType||"");
     const sourcePartyId=sourceDocument&&(sourceDocument.partyId||sourceDocument.employeeUid||"");
     const canUseDocumentParty=resolvedType===documentPartyType||["employeeCustody","employeeAdvance"].includes(resolvedType);
     const resolvedId=String(line.partyId||(canUseDocumentParty?sourcePartyId:"")||"");
