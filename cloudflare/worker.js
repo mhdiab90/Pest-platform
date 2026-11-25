@@ -2624,6 +2624,179 @@ async function runAppsScriptGatewayFileCase(env, specification) {
   }
 }
 
+
+const GATEWAY_STRESS_TEST_TIERS = {
+  small: { bytes: 256 * 1024, label: "256 KiB" },
+  medium: { bytes: 1024 * 1024, label: "1 MiB" },
+  maximum: { bytes: 20 * 1024 * 1024, label: "20 MiB" }
+};
+
+function encodeGatewayStressPdfBase64(ascii) {
+  const chunkSize = 48 * 1024;
+  let encoded = "";
+  for (let offset = 0; offset < ascii.length; offset += chunkSize) {
+    encoded += btoa(ascii.slice(offset, Math.min(offset + chunkSize, ascii.length)));
+  }
+  return encoded;
+}
+
+function createGatewayStressPdfBase64(targetBytes, variant) {
+  const header = "%PDF-1.4\n";
+  const object1 = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
+  const object2 = "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n";
+  const object3 = "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 120] /Resources << >> /Contents 4 0 R >>\nendobj\n";
+  const marker = "% Pest Platform Gateway Stress " + String(variant) + " ";
+  let contentLength = targetBytes - 700;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const fillLength = contentLength - marker.length - 1;
+    if (fillLength < 0) throw new Error("Stress-test PDF target size is too small.");
+    const streamContent = marker + "X".repeat(fillLength) + "\n";
+    const object4 = "4 0 obj\n<< /Length " + streamContent.length + " >>\nstream\n" +
+      streamContent + "\nendstream\nendobj\n";
+    const offset1 = header.length;
+    const offset2 = offset1 + object1.length;
+    const offset3 = offset2 + object2.length;
+    const offset4 = offset3 + object3.length;
+    const xrefOffset = offset4 + object4.length;
+    const xref = "xref\n0 5\n0000000000 65535 f \n" +
+      String(offset1).padStart(10, "0") + " 00000 n \n" +
+      String(offset2).padStart(10, "0") + " 00000 n \n" +
+      String(offset3).padStart(10, "0") + " 00000 n \n" +
+      String(offset4).padStart(10, "0") + " 00000 n \n";
+    const trailer = "trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n" + xrefOffset + "\n%%EOF\n";
+    const pdf = header + object1 + object2 + object3 + object4 + xref + trailer;
+    const difference = targetBytes - pdf.length;
+    if (difference === 0) return encodeGatewayStressPdfBase64(pdf);
+    contentLength += difference;
+  }
+  throw new Error("Could not generate a PDF with the exact requested stress-test size.");
+}
+
+async function runAppsScriptGatewaySizeTierTest(env, companyDriveConnection, tier) {
+  const specification = GATEWAY_STRESS_TEST_TIERS[String(tier || "")];
+  if (!specification) throw new Error("Unknown gateway stress-test size tier.");
+  const expectedCompanyEmail = String(companyDriveConnection && companyDriveConnection.googleEmail || "").trim().toLowerCase();
+  if (!expectedCompanyEmail) throw new Error("The existing company Google Drive account is not identified.");
+
+  const totalStartedAt = Date.now();
+  const gateway = await callAppsScriptGateway(env, {
+    action: "ping",
+    folderId: String(companyDriveConnection && companyDriveConnection.folderId || "")
+  });
+  const effectiveUserEmail = String(gateway && gateway.effectiveUserEmail || "").trim().toLowerCase();
+  if (!effectiveUserEmail || effectiveUserEmail !== expectedCompanyEmail) {
+    throw new Error("Apps Script account does not match the existing company Google Drive account.");
+  }
+  if (!gateway.folderId) throw new Error("The existing company attachment folder could not be verified.");
+
+  const runId = crypto.randomUUID().replace(/-/g, "");
+  const fileName = "pest-gateway-stress-" + String(tier) + "-" + runId + ".pdf";
+  const attachmentId = "gateway_stress_" + runId;
+  const originalVariant = "ORIGINAL-" + runId;
+  const replacementVariant = "REPLACEMENT-" + runId;
+  const timingsMs = { upload: 0, download: 0, replace: 0, verifyReplacement: 0, delete: 0 };
+  let driveFileId = "";
+  let transferBase64 = "";
+  let cleanupCompleted = false;
+  let cleanupError = "";
+
+  try {
+    transferBase64 = createGatewayStressPdfBase64(specification.bytes, originalVariant);
+    let startedAt = Date.now();
+    const uploaded = await callAppsScriptGateway(env, {
+      action: "upload",
+      fileName,
+      mimeType: "application/pdf",
+      attachmentId,
+      fileBase64: transferBase64
+    });
+    timingsMs.upload = Date.now() - startedAt;
+    transferBase64 = "";
+    if (!uploaded || !uploaded.id) throw new Error("Apps Script did not return the uploaded stress-test file ID.");
+    driveFileId = String(uploaded.id);
+
+    startedAt = Date.now();
+    const downloaded = await callAppsScriptGateway(env, { action: "download", driveFileId });
+    timingsMs.download = Date.now() - startedAt;
+    const expectedOriginal = createGatewayStressPdfBase64(specification.bytes, originalVariant);
+    if (Number(downloaded && downloaded.file && downloaded.file.size) !== specification.bytes ||
+        String(downloaded && downloaded.dataBase64 || "") !== expectedOriginal) {
+      throw new Error("Downloaded stress-test file size or content did not match the original.");
+    }
+    if (downloaded) downloaded.dataBase64 = "";
+
+    transferBase64 = createGatewayStressPdfBase64(specification.bytes, replacementVariant);
+    startedAt = Date.now();
+    const replaced = await callAppsScriptGateway(env, {
+      action: "replace",
+      driveFileId,
+      fileName,
+      mimeType: "application/pdf",
+      fileBase64: transferBase64
+    });
+    timingsMs.replace = Date.now() - startedAt;
+    transferBase64 = "";
+    if (!replaced || !replaced.id) throw new Error("Apps Script did not return the replacement stress-test file ID.");
+    driveFileId = String(replaced.id);
+
+    startedAt = Date.now();
+    const replacementDownload = await callAppsScriptGateway(env, { action: "download", driveFileId });
+    timingsMs.verifyReplacement = Date.now() - startedAt;
+    const expectedReplacement = createGatewayStressPdfBase64(specification.bytes, replacementVariant);
+    if (Number(replacementDownload && replacementDownload.file && replacementDownload.file.size) !== specification.bytes ||
+        String(replacementDownload && replacementDownload.dataBase64 || "") !== expectedReplacement) {
+      throw new Error("Downloaded replacement size or content did not match the generated replacement.");
+    }
+    if (replacementDownload) replacementDownload.dataBase64 = "";
+
+    startedAt = Date.now();
+    const deleted = await callAppsScriptGateway(env, { action: "delete", driveFileId });
+    timingsMs.delete = Date.now() - startedAt;
+    if (!deleted || deleted.deleted !== true) throw new Error("Apps Script did not confirm deletion of the temporary stress-test file.");
+    driveFileId = "";
+
+    return {
+      success: true,
+      tier: String(tier),
+      tierLabel: specification.label,
+      fileSizeBytes: specification.bytes,
+      fileName,
+      timingsMs,
+      totalMs: Date.now() - totalStartedAt,
+      cleanupCompleted: true,
+      cleanupError: "",
+      gatewayVersion: String(gateway.gatewayVersion || ""),
+      productionAttachmentsUnchanged: true
+    };
+  } catch (error) {
+    transferBase64 = "";
+    if (driveFileId) {
+      try {
+        const cleanup = await callAppsScriptGateway(env, { action: "delete", driveFileId });
+        cleanupCompleted = Boolean(cleanup && cleanup.deleted === true);
+      } catch (cleanupFailure) {
+        cleanupError = String(cleanupFailure && cleanupFailure.message || cleanupFailure).slice(0, 200);
+      }
+    }
+    return {
+      success: false,
+      tier: String(tier),
+      tierLabel: specification.label,
+      fileSizeBytes: specification.bytes,
+      fileName,
+      timingsMs,
+      totalMs: Date.now() - totalStartedAt,
+      cleanupCompleted,
+      cleanupError,
+      error: String(error && error.message || error || "Gateway stress test failed.").slice(0, 300),
+      gatewayVersion: String(gateway.gatewayVersion || ""),
+      productionAttachmentsUnchanged: true
+    };
+  } finally {
+    transferBase64 = "";
+  }
+}
+
 async function runAppsScriptGatewayFileSelfTest(env, companyDriveConnection) {
   const expectedCompanyEmail = String(companyDriveConnection && companyDriveConnection.googleEmail || "").trim().toLowerCase();
   if (!expectedCompanyEmail) throw new Error("The existing company Google Drive account is not identified.");
@@ -2682,6 +2855,12 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
     const companyDriveConnection=await getGoogleDriveConnection(env);
     if(!companyDriveConnection||!companyDriveConnection.encryptedRefreshToken)throw new Error("The existing company Google Drive account is not connected.");
     return await runAppsScriptGatewayFileSelfTest(env,companyDriveConnection);
+  }
+  if(url.pathname==="/drive/gateway/size-test"&&request.method==="POST"){
+    if(profile.role!=="admin")throw new Error("Only a system administrator can run the company Drive size test.");
+    const companyDriveConnection=await getGoogleDriveConnection(env);
+    if(!companyDriveConnection||!companyDriveConnection.encryptedRefreshToken)throw new Error("The existing company Google Drive account is not connected.");
+    return await runAppsScriptGatewaySizeTierTest(env,companyDriveConnection,body.tier);
   }
   if(url.pathname==="/drive/status"&&request.method==="GET"){
     requirePermission(profile,"attachments","view");
@@ -2936,7 +3115,7 @@ export default {
       }, 200, origin);
     }
     if (!["GET","POST","DELETE"].includes(request.method)) return jsonResponse({ error: "Method not allowed." }, 405, origin);
-    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/gateway/test", "/drive/gateway/self-test", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/lookup", "/attachments/upload", "/attachments/attach", "/attachments/replace", "/attachments/annotate", "/attachments/file", "/attachments/usage", "/push/notify", "/push/request", "/push/badge/sync", "/admin/users/delete", "/finance"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
+    if (!["/ask", "/agent", "/execute", "/schedules", "/dashboards", "/whatsapp/notify-message", "/drive/status", "/drive/gateway/test", "/drive/gateway/self-test", "/drive/gateway/size-test", "/drive/connect", "/drive/disconnect", "/attachments", "/attachments/lookup", "/attachments/upload", "/attachments/attach", "/attachments/replace", "/attachments/annotate", "/attachments/file", "/attachments/usage", "/push/notify", "/push/request", "/push/badge/sync", "/admin/users/delete", "/finance"].includes(url.pathname)) return jsonResponse({ error: "Not found." }, 404, origin);
 
     try {
       const authorization = request.headers.get("Authorization") || "";
