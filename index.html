@@ -1173,7 +1173,8 @@ function installPestSpreadsheetGrid(root){
       .replace(/(?:جنيه(?:\s*مصري)?|ج\s*\.?\s*م\s*\.?|EGP|LE|USD|EUR|SAR|AED|دولار|ريال|درهم)/giu,"")
       .replace(/[$€£¥%]/g,"")
       .replace(/[−–]/g,"-")
-      .replace(/٫/g,".");
+      .replace(/٫/g,".")
+      .replace(/[٬,،\s\u00a0\u202f]/g,"");
     if(/[A-Za-z\u0600-\u06FF]/u.test(text))return null;
     const accountingNegative=/^\s*\(.*\)\s*$/.test(text);
     text=text.replace(/^\s*\(|\)\s*$/g,"")
