@@ -20,7 +20,7 @@ test("spreadsheet grid supports full-text search and multiple independent column
     assert.ok(app.includes('["' + operator + '"'), "missing filter operator: " + operator);
   }
   assert.match(app, /state\.filters\.push\(\{column:index,operator:op,value:filterValue\}\)/);
-  assert.match(app, /state\.filters\.every\(filter=>matches/);
+  assert.match(app, /activeFilters\.every\(filter=>matches/);
   assert.match(app, /searchPlaceholder:"ابحث في كل بيانات الجدول/);
 });
 
@@ -32,7 +32,15 @@ test("adding a value filter immediately applies it to the table and Enter submit
   const handler = app.slice(start, end);
   assert.match(handler, /renderFilterChips\(state,key\);\s*apply\(state,key\);\s*savePrefs\(state,key\);/);
   assert.match(handler, /value\.addEventListener\("keydown".*add\.click\(\)/);
-  assert.match(app, /state\.filters\.every\(filter=>matches/);
+  assert.match(app, /activeFilters\.every\(filter=>matches/);
+});
+
+test("column value filter applies live while typing and retains its selected column", () => {
+  assert.ok(app.includes('column.addEventListener("change",()=>updateDraftFilter(state,key))'));
+  assert.ok(app.includes('operator.addEventListener("change",()=>{value.disabled=["empty","notEmpty"].includes(operator.value);updateDraftFilter(state,key);})'));
+  assert.ok(app.includes('value.addEventListener("input",()=>updateDraftFilter(state,key))'));
+  assert.ok(app.includes('state.draftFilter?[...state.filters,state.draftFilter]:state.filters'));
+  assert.ok(app.includes('const preferredColumn=state.draftFilter?String(state.draftFilter.column):selectedColumn'));
 });
 
 test("value filtering compares localized numeric amounts correctly", () => {

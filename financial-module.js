@@ -438,6 +438,7 @@ function FinanceModule(props){
  const [quickAddType,setQuickAddType]=React.useState(''),[quickAddTarget,setQuickAddTarget]=React.useState(null),[quickAddParent,setQuickAddParent]=React.useState(null),[quickAddOriginalCode,setQuickAddOriginalCode]=React.useState(''),[quickAddForm,setQuickAddForm]=React.useState({code:'',name:'',active:true,type:'expense',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',unit:'قطعة',groupCode:'',groupType:'other',itemType:'stock',version:'',warehouseCode:'default',projectCode:'',taxType:'vat_output',rate:'0',effectiveFrom:today(),partyType:'customer',phone:'',taxNumber:'',email:'',address:''});
  const [masterForm,setMasterForm]=React.useState({kind:'chartOfAccounts',code:'',name:'',type:'asset',nature:'debit',parentCode:'',isGroup:false,subledgerType:'',unit:'قطعة',groupCode:'',groupType:'other',itemType:'stock',version:'',projectCode:'',warehouseCode:'default',taxType:'vat',rate:'0',effectiveFrom:today()});
  const [journal,setJournal]=React.useState({id:'',date:today(),description:'',reference:'',checkNumber:'',invoiceNumber:'',documentNumber:'',currency:'EGP',lines:[{accountCode:'6100',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''},{accountCode:'1110',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''}]});
+ const [journalFiles,setJournalFiles]=React.useState([]);
  const [invoice,setInvoice]=React.useState({id:'',type:'purchase',date:today(),number:'',partyId:'',partyName:'',partyTaxNumber:'',currency:'EGP',taxCode:'VAT-IN-14',taxRate:'14',taxAmount:'',discount:'',projectCode:'',lines:[{description:'',kind:'stock',itemCode:'',quantity:'1',unit:'قطعة',unitPrice:'',discount:'',accountCode:'6100',incomeAccountCode:'4100',costCenterId:'',warehouseCode:'default'}]});
  const [invoiceTypeManuallySelected,setInvoiceTypeManuallySelected]=React.useState(false);
  const [invoiceFile,setInvoiceFile]=React.useState(null),[invoicePartySearch,setInvoicePartySearch]=React.useState(''),[cashPartySearch,setCashPartySearch]=React.useState(''),[statementPartySearch,setStatementPartySearch]=React.useState(''),[ocrSuggestions,setOcrSuggestions]=React.useState({party:null,items:[]}),[cash,setCash]=React.useState({movementType:'customer_receipt',date:today(),amount:'',description:'',reference:'',partyType:'customer',partyId:'',partyName:'',employeeUid:'',employeeName:'',cashAccountCode:'1110',bankAccountCode:'1120',offsetAccountCode:'6100',taxAccountCode:'2110',projectCode:'',currency:'EGP'});
@@ -648,14 +649,16 @@ function FinanceModule(props){
    return Object.assign({},previous,{[key]:next});
   });
  };
- const uploadJournalAttachments=async(files,record)=>{
+ const uploadJournalAttachments=async(files,record,options)=>{
   const selectedFiles=Array.from(files||[]).filter(file=>file&&file.name),entityId=String(record&&record.id||'');
-  if(!selectedFiles.length)return;
-  if(!entityId){setError('تعذر تحديد رقم القيد لربط المرفق.');return;}
+  const keepBusy=Boolean(options&&options.keepBusy),quiet=Boolean(options&&options.quiet);
+  if(!selectedFiles.length)return {uploaded:0,failures:[]};
+  if(!entityId){const message='تعذر تحديد رقم القيد لربط المرفق.';if(!quiet)setError(message);return {uploaded:0,failures:[message]};}
   const pending=['pending_review','duplicate_review','needs_correction'].includes(String(record.status||''));
-  const permitted=pending?canFinance('review','edit'):(canFinance('journal','add')||canFinance('journal','edit'));
-  if(!permitted){setError(pending?'إضافة مرفق لقيد المراجعة تتطلب صلاحية تعديل المراجعة.':'إضافة مرفق لقيد مرحّل تتطلب صلاحية إضافة أو تعديل القيود.');return;}
-  setBusy(true);setError('');
+  const permitted=pending?(canFinance('review','edit')||canFinance('journal','add')||canFinance('journal','edit')):(canFinance('journal','add')||canFinance('journal','edit'));
+  if(!permitted){const message=pending?'إضافة مرفق لقيد المراجعة تتطلب صلاحية المراجعة أو إضافة/تعديل القيود.':'إضافة مرفق لقيد مرحّل تتطلب صلاحية إضافة أو تعديل القيود.';if(!quiet)setError(message);return {uploaded:0,failures:selectedFiles.map(file=>(file.name||'ملف')+': '+message)};}
+  if(!keepBusy)setBusy(true);
+  if(!quiet)setError('');
   let uploaded=0;const failures=[];
   try{
    for(const file of selectedFiles){
@@ -665,14 +668,15 @@ function FinanceModule(props){
      appendStatementAttachment(entityId,attachment);uploaded++;
     }catch(error){failures.push((file.name||'ملف')+': '+(error.message||String(error)));}
    }
-   if(uploaded)setNotice('تم رفع '+uploaded+' مرفق وربطها بالقيد بنجاح. تم الاحتفاظ بكل المرفقات السابقة.');
-   if(failures.length)setError('تعذر رفع بعض المرفقات: '+failures.join(' · '));
-  }finally{setBusy(false);}
+   if(uploaded&&!quiet)setNotice('تم رفع '+uploaded+' مرفق وربطها بالقيد بنجاح. تم الاحتفاظ بكل المرفقات السابقة.');
+   if(failures.length&&!quiet)setError('تعذر رفع بعض المرفقات: '+failures.join(' · '));
+   return {uploaded,failures};
+  }finally{if(!keepBusy)setBusy(false);}
  };
  const journalAttachmentUploadControl=record=>{
   if(!record||record.type!=='journal')return null;
   const pending=['pending_review','duplicate_review','needs_correction'].includes(String(record.status||''));
-  const permitted=pending?canFinance('review','edit'):(canFinance('journal','add')||canFinance('journal','edit'));
+  const permitted=pending?(canFinance('review','edit')||canFinance('journal','add')||canFinance('journal','edit')):(canFinance('journal','add')||canFinance('journal','edit'));
   if(!permitted)return null;
   return h('label',{className:'inline-flex items-center gap-2 rounded-lg border border-dashed border-blue-300 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-800 cursor-pointer hover:bg-blue-100'},'＋ إضافة مرفق للقيد',h('input',{type:'file',multiple:true,accept:'image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt',disabled:busy,className:'hidden',onChange:event=>{const files=event.target.files;if(files&&files.length)void uploadJournalAttachments(files,record);event.target.value='';}}));
  };
@@ -2329,7 +2333,25 @@ const submitJournal=async()=>{
   if(!canFinance("journal",journal.id?"edit":"add")){setError("ليس لديك صلاحية حفظ أو تعديل القيود اليومية.");return;}
   const missingAnalytic=(journal.lines||[]).map((line,index)=>({line,index,account:posting.find(account=>String(account.code)===String(line.accountCode))})).find(item=>item.account&&item.account.subledgerType&&!String(item.line.partyId||"").trim());
   if(missingAnalytic){setError("السطر "+(missingAnalytic.index+1)+": الحساب "+missingAnalytic.account.code+" — "+missingAnalytic.account.name+" يتطلب اختيار "+analyticPartyLabel(missingAnalytic.analyticType)+". اختر الطرف التحليلي قبل الحفظ.");return;}
-  setBusy(true);setError('');try{const payload=Object.assign({},journal);const result=await api('', 'POST',Object.assign({action:'submitJournal'},payload));setNotice(result.status==='pending_review'?'تم إرسال القيد إلى المراجعة':'تم حفظ القيد مع أخطاء: '+(result.errors||[]).join('، '));if(result.status==='pending_review')setJournal({id:'',date:today(),description:'',reference:'',checkNumber:'',invoiceNumber:'',documentNumber:'',currency:'EGP',lines:[{accountCode:'6100',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''},{accountCode:'1110',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''}]});else setJournal(o=>Object.assign({},o,{id:result.id}));await refresh();}catch(e){setError(e.message||String(e));}finally{setBusy(false);}
+  setBusy(true);setError('');
+  try{
+   const payload=Object.assign({},journal),selectedFiles=journalFiles.slice();
+   const result=await api('', 'POST',Object.assign({action:'submitJournal'},payload));
+   let attachmentResult={uploaded:0,failures:[]};
+   if(selectedFiles.length){
+    if(result.id)attachmentResult=await uploadJournalAttachments(selectedFiles,{id:result.id,type:'journal',status:result.status},{keepBusy:true,quiet:true});
+    else attachmentResult={uploaded:0,failures:selectedFiles.map(file=>(file.name||'ملف')+': لم يرجع الخادم رقم القيد لربط المرفق.')};
+   }
+   const saveMessage=result.status==='pending_review'?'تم إرسال القيد إلى المراجعة':'تم حفظ القيد مع أخطاء: '+(result.errors||[]).join('، ');
+   const attachmentMessage=attachmentResult.uploaded?' تم رفع '+attachmentResult.uploaded+' مرفق وربطها بالقيد بنجاح.':'';
+   setNotice(saveMessage+attachmentMessage);
+   if(result.status==='pending_review')setJournal({id:'',date:today(),description:'',reference:'',checkNumber:'',invoiceNumber:'',documentNumber:'',currency:'EGP',lines:[{accountCode:'6100',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''},{accountCode:'1110',description:'',debit:'',credit:'',costCenterId:'',partyType:'',partyId:''}]});
+   else setJournal(old=>Object.assign({},old,{id:result.id}));
+   setJournalFiles([]);
+   await refresh();
+   if(attachmentResult.failures.length)setError('تم حفظ القيد، لكن تعذر رفع بعض المرفقات: '+attachmentResult.failures.join(' · ')+'. افتح القيد من قائمته واستخدم «إضافة مرفق للقيد» لإعادة رفع الملفات المتبقية.');
+  }catch(e){setError(e.message||String(e));}
+  finally{setBusy(false);}
  };
  const submitInvoice=async()=>{
   if(!canFinance("invoices",invoice.id?"edit":"add")){setError("ليس لديك صلاحية إرسال أو تعديل الفواتير.");return;}
@@ -2790,6 +2812,12 @@ const renderJournal = function() {
    h('b',{className:Math.abs(jDebit-jCredit)<0.01?'text-emerald-700':'text-rose-700'},'الفرق: '+fmt(jDebit-jCredit)),
    button('حفظ وإرسال للمراجعة',submitJournal,'primary',busy||!canFinance("journal",journal.id?"edit":"add"))
   );
+  const journalAttachmentsPanel=panel('مرفقات القيد','اختر ملفًا واحدًا أو عدة ملفات. سيتم رفعها وربطها برقم القيد تلقائيًا بعد الحفظ.',h('div',{className:'space-y-3'},
+   h('label',{className:'inline-flex items-center gap-2 rounded-lg border border-dashed border-blue-300 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-800 cursor-pointer hover:bg-blue-100'},'＋ اختيار مرفقات القيد',
+    h('input',{type:'file',multiple:true,accept:'image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt',disabled:busy,className:'hidden',onChange:event=>{const files=Array.from(event.target.files||[]),accepted=files.filter(file=>file.size<=20*1024*1024),tooLarge=files.length-accepted.length;if(accepted.length)setJournalFiles(previous=>previous.concat(accepted));if(tooLarge)setError('تم تجاهل '+tooLarge+' ملف/ملفات لأن الحد الأقصى لحجم الملف الواحد 20 MB.');event.target.value='';}})),
+   journalFiles.length?h('div',{className:'space-y-2'},h('p',{className:'text-xs font-bold text-slate-600'},'عدد الملفات المختارة: '+journalFiles.length),...journalFiles.map((file,index)=>h('div',{key:String(file.name)+'-'+index,className:'flex items-center justify-between gap-2 rounded-lg border bg-white px-3 py-2 text-xs'},h('span',{className:'min-w-0 break-all'},file.name),button('إزالة',()=>setJournalFiles(previous=>previous.filter((_,i)=>i!==index)),'danger',busy)))):h('p',{className:'text-xs text-slate-500'},'لم يتم اختيار أي مرفقات بعد.'),
+   h('p',{className:'text-xs text-slate-500'},'الحد الأقصى 20 MB لكل ملف. الأنواع المدعومة: PDF وJPG وPNG وWebP وDOC وDOCX وXLS وXLSX وCSV وTXT.')
+  ));
    const journalMap=new Map();
    documents.filter(function(x){return x.type==='journal';}).forEach(x=>journalMap.set(String(x.id),x));
    journalRecords.forEach(x=>journalMap.set(String(x.id),x));
@@ -2854,7 +2882,7 @@ const renderJournal = function() {
      )
     );
    })():null;
-  return h('div',{className:'space-y-4'},headerPanel,linesPanel,totalsPanel,draftsPanel,modal);
+  return h('div',{className:'space-y-4'},headerPanel,linesPanel,journalAttachmentsPanel,totalsPanel,draftsPanel,modal);
  };
  const renderInvoices = function() {
   const headFields = h('div',{className:'grid md:grid-cols-3 gap-3'},
@@ -5562,5 +5590,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261125-finance-refundable-deposit-analytics-v19";
+ window.PEST_FINANCE_MODULE_VERSION="20261125-finance-value-filter-journal-attachments-v20";
 })();
