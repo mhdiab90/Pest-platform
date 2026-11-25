@@ -2555,8 +2555,12 @@ async function handleGoogleDriveRequest(request,url,body,claims,profile,token,en
   if(url.pathname==="/drive/gateway/test"&&request.method==="GET"){
     if(profile.role!=="admin")throw new Error("Only a system administrator can test the company Drive gateway.");
     const companyDriveConnection=await getGoogleDriveConnection(env);
+    const expectedCompanyEmail=String(companyDriveConnection&&companyDriveConnection.googleEmail||"").trim().toLowerCase();
+    if(!expectedCompanyEmail)throw new Error("The existing company Google Drive account is not identified. Reconnect the company Drive account first.");
     const gateway=await callAppsScriptGateway(env,{action:"ping",folderId:String(companyDriveConnection&&companyDriveConnection.folderId||"")});
-    return {gatewayTest:true,gatewayVersion:String(gateway.gatewayVersion||""),effectiveUserEmail:String(gateway.effectiveUserEmail||""),folderReady:Boolean(gateway.folderId),productionAttachmentsUnchanged:true};
+    const effectiveUserEmail=String(gateway.effectiveUserEmail||"").trim().toLowerCase();
+    if(!effectiveUserEmail||effectiveUserEmail!==expectedCompanyEmail)throw new Error("Apps Script is running under a different Google account. Expected "+expectedCompanyEmail+" but received "+(effectiveUserEmail||"an unidentified account")+". Deploy it under the existing company Drive account.");
+    return {gatewayTest:true,gatewayVersion:String(gateway.gatewayVersion||""),effectiveUserEmail,accountMatches:true,folderReady:Boolean(gateway.folderId),productionAttachmentsUnchanged:true};
   }
   if(url.pathname==="/drive/status"&&request.method==="GET"){
     requirePermission(profile,"attachments","view");
