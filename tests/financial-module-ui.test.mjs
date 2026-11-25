@@ -766,7 +766,7 @@ test("refundable third-party deposits have a separate analytic registry, picker,
   assert.match(source, /value:"securityDepositParty",label:"تأمينات مستردة لدى الغير"/);
   assert.match(source, /securityDepositParty:"كشف حساب تأمينات مستردة لدى الغير"/);
   assert.match(source, /securityDepositParties:\{\}/);
-  assert.match(indexHtml, /20261125-finance-value-filter-journal-attachments-v22/);
+  assert.match(indexHtml, /20261125-finance-value-filter-journal-attachments-v23/);
 });
 
 test("refundable deposit quick coding works in journal entry, review editing, and legacy archive correction", () => {
@@ -786,4 +786,10 @@ test("financial module uses the shared split attachment viewer and keeps source-
   assert.match(source, /props\.onOpenAttachment\(attachment,\(\)=>deleteStatementAttachment\(attachment,invoiceDocumentIdForAttachment\(attachment\)\)\)/);
   assert.match(source, /props\.onManageRecordAttachments\(custodyReference\.entityType,custodyReference\.entityId/);
   assert.match(source, /button\('عرض',\(\)=>void openStatementAttachmentFile\(reference\)/);
+});
+
+test("financial statement rows expose direct attachment management for the original source record", () => {
+  assert.match(source, /const manageableReferences=typeof props\.onManageRecordAttachments==="function"\?validReferences:\[\]/);
+  assert.match(source, /manageableReferences\.map\(\(reference,index\)=>h\("button"/);
+  assert.match(source, /props\.onManageRecordAttachments\(reference\.entityType,reference\.entityId,label\)/);
 });
