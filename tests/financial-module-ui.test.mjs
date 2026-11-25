@@ -733,6 +733,17 @@ test("refundable third-party deposits have a separate analytic registry, picker,
   assert.match(source, /value:"securityDepositParty",label:"تأمينات مستردة لدى الغير"/);
   assert.match(source, /securityDepositParty:"كشف حساب تأمينات مستردة لدى الغير"/);
   assert.match(source, /securityDepositParties:\{\}/);
-  assert.match(indexHtml, /20261125-finance-refundable-deposit-analytics-v17/);
+  assert.match(indexHtml, /20261125-finance-refundable-deposit-analytics-v18/);
+});
+
+test("refundable deposit quick coding works in journal entry, review editing, and legacy archive correction", () => {
+  assert.match(source, /const analyticTypeForAccount=\(account,line\)=>/);
+  assert.match(source, /if\(type==="securityDepositParty"\)return searchablePicker[\s\S]*openQuickAdd\("securityDepositParties",onChange/);
+  assert.match(source, /analyticTypeForAccount\(account,line\)/);
+  assert.match(source, /analyticPickerWithAdd\(/);
+  assert.match(source, /button\("فتح واستكمال",\(\)=>\{setSelected\(item\);setTab\("review"\);openJournalModal\(item\)\}/);
+  assert.match(source, /latest\.securityDepositParties/);
+  const reviewEditor = source.slice(source.indexOf("const renderReviewJournalEditor="), source.indexOf("const renderReview="));
+  assert.match(reviewEditor, /analyticPickerWithAdd\(/);
 });
 
