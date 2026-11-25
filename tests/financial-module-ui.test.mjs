@@ -766,7 +766,7 @@ test("refundable third-party deposits have a separate analytic registry, picker,
   assert.match(source, /value:"securityDepositParty",label:"تأمينات مستردة لدى الغير"/);
   assert.match(source, /securityDepositParty:"كشف حساب تأمينات مستردة لدى الغير"/);
   assert.match(source, /securityDepositParties:\{\}/);
-  assert.match(indexHtml, /20261125-finance-value-filter-journal-attachments-v21/);
+  assert.match(indexHtml, /20261125-finance-value-filter-journal-attachments-v22/);
 });
 
 test("refundable deposit quick coding works in journal entry, review editing, and legacy archive correction", () => {
@@ -780,3 +780,10 @@ test("refundable deposit quick coding works in journal entry, review editing, an
   assert.match(reviewEditor, /analyticPickerWithAdd\(/);
 });
 
+
+test("financial module uses the shared split attachment viewer and keeps source-record links", () => {
+  assert.match(source, /props\.onAttachmentScreenChange\(/);
+  assert.match(source, /props\.onOpenAttachment\(attachment,\(\)=>deleteStatementAttachment\(attachment,invoiceDocumentIdForAttachment\(attachment\)\)\)/);
+  assert.match(source, /props\.onManageRecordAttachments\(custodyReference\.entityType,custodyReference\.entityId/);
+  assert.match(source, /button\('عرض',\(\)=>void openStatementAttachmentFile\(reference\)/);
+});
