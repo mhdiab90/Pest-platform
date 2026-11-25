@@ -80,7 +80,7 @@ test("gateway client surfaces Apps Script application errors", async () => {
 
 test("Cloudflare exposes only an admin-protected connectivity check without changing live attachment routes", () => {
   const worker = readFileSync(new URL("../cloudflare/worker.js", import.meta.url), "utf8");
-  assert.match(worker, /import \\{ callAppsScriptGateway \\} from "\.\/apps-script-gateway\.js"/);
+  assert.match(worker, /import \{ callAppsScriptGateway \} from "\.\/apps-script-gateway\.js"/);
   assert.match(worker, /\/drive\/gateway\/test/);
   assert.match(worker, /profile\.role!==["']admin["']/);
   assert.match(worker, /productionAttachmentsUnchanged:true/);
