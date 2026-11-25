@@ -160,7 +160,7 @@ test("Apps Script full attachment routing is reversible, admin-only and covers t
   assert.ok(worker.includes('if(gatewayUploadMode.enabled===true&&gatewayUploadMode.fullAttachmentRouting!==true&&authorizationStatus==="valid"&&gatewayConfigured)'));
   assert.ok(worker.includes("gatewayUpgradeError"));
   assert.ok(worker.includes("replaceFileIdentity===true"));
-  assert.ok(worker.includes("storageProvider:useAppsScriptGateway?\\"apps_script_gateway\\":\\"google_drive_api\\""));
+  assert.ok(worker.includes('storageProvider:useAppsScriptGateway?"apps_script_gateway":"google_drive_api"'));
   const app = readFileSync(new URL("../index.html", import.meta.url), "utf8");
   assert.ok(app.includes("updateAppsScriptGatewayUploadMode"));
   assert.ok(app.includes("Full attachment migration — Apps Script Gateway"));
