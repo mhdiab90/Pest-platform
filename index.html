@@ -1837,6 +1837,7 @@ function App(){
   const [driveGatewayTestStatus,setDriveGatewayTestStatus] = useState({loading:false,error:'',gatewayVersion:'',effectiveUserEmail:'',folderReady:false});
   const [driveGatewayFileTestStatus,setDriveGatewayFileTestStatus] = useState({loading:false,success:null,error:'',cases:null,cleanupCompleted:null});
   const [driveGatewaySizeTestStatus,setDriveGatewaySizeTestStatus] = useState({loading:false,results:[],error:'',completed:false});
+  const [driveGatewayUploadModeBusy,setDriveGatewayUploadModeBusy] = useState(false);
   const [attachmentPreview,setAttachmentPreview] = useState(null);
   const [attachmentPreviewWidth,setAttachmentPreviewWidth] = useState(()=>Math.max(300,Math.min(680,Math.round(window.innerWidth*.42))));
   const [attachmentPreviewHeight,setAttachmentPreviewHeight] = useState(()=>Math.round(window.innerHeight*.52));
@@ -2884,6 +2885,24 @@ function App(){
       if(status.needsReauthorization)setAttachmentsNotice(rtl?'انتهى تفويض حساب Google Drive أو تم إلغاؤه. يجب على مدير النظام إعادة ربط حساب الشركة.':'Google Drive authorization has expired or was revoked. A system administrator must reconnect the company account.');
     }
     catch(error){setDriveConnectionStatus(old=>({...old,loading:false,error:String(error.message||error)}));}
+  }
+  async function updateAppsScriptGatewayUploadMode(enabled){
+    if(!isAdmin||driveGatewayUploadModeBusy)return;
+    if(enabled&&!window.confirm(rtl
+      ?'سيتم توجيه المرفقات الجديدة التي لا يزيد حجمها عن 1 MiB فقط عبر بوابة Apps Script. الملفات الأكبر، وجميع المرفقات القديمة، والمعاينة والتنزيل والاستبدال والحذف ستظل على مسار Google Drive الحالي. قد يستغرق رفع الملف الصغير عدة ثوانٍ. هل تريد تشغيل التجربة؟'
+      :'Only new attachments up to 1 MiB will use the Apps Script gateway. Larger files, all existing attachments, preview, download, replace and delete stay on the current Google Drive route. Small uploads may take several seconds. Enable the pilot?'))return;
+    if(!enabled&&!window.confirm(rtl?'إيقاف مسار الرفع التجريبي وإعادة كل الرفعات الجديدة إلى مسار Google Drive الحالي؟':'Disable the upload pilot and return all new uploads to the current Google Drive route?'))return;
+    setDriveGatewayUploadModeBusy(true);
+    try{
+      const result=await attachmentWorkerRequest('/drive/gateway/upload-mode','POST',{enabled,maxBytes:1024*1024});
+      if(!result||!result.mode)throw new Error(rtl?'لم يؤكد الخادم حفظ إعداد مسار الرفع.':'The server did not confirm the upload-mode setting.');
+      setDriveConnectionStatus(old=>({...old,gatewayUploadMode:result.mode,gatewayUploadConfigured:result.configured!==false}));
+      setAttachmentsNotice(enabled
+        ?(rtl?'تم ربط الرفع التجريبي بنجاح. الملفات الجديدة حتى 1 MiB ستُرفع عبر Apps Script.':'The upload pilot is connected. New files up to 1 MiB will use Apps Script.')
+        :(rtl?'تم إيقاف الرفع عبر Apps Script. عادت الرفعات إلى مسار Google Drive الحالي.':'Apps Script upload is disabled. New uploads now use the current Google Drive route.'));
+    }catch(error){
+      setAttachmentsNotice((rtl?'تعذر تغيير مسار الرفع: ':'Could not change the upload route: ')+String(error.message||error));
+    }finally{setDriveGatewayUploadModeBusy(false);}
   }
   async function testAppsScriptDriveGateway(){
     if(!isAdmin)return;
@@ -7601,7 +7620,7 @@ function App(){
                     </div>
                     {driveConnectionStatus.configured?<button type="button" onClick={startGoogleDriveConnection} className="rounded-lg bg-blue-600 text-white px-5 py-3 font-bold"><i className="fab fa-google me-2"></i>{driveConnectionStatus.needsReauthorization?(rtl?'إعادة ربط حساب Google Drive':'Reconnect Google Drive account'):(rtl?'ربط حساب Google Drive':'Connect Google Drive account')}</button>:<p className="text-sm text-amber-800">{rtl?'لم يتم ضبط مفاتيح OAuth في Cloudflare Worker بعد.':'Google OAuth credentials are not configured in the Cloudflare Worker yet.'}</p>}</>:<p className="text-sm text-amber-800">{driveConnectionStatus.needsReauthorization?(rtl?'انتهت صلاحية تفويض مساحة الشركة. أبلغ مدير النظام لإعادة ربط حساب Google Drive.':'Company Drive authorization has expired. Ask the system administrator to reconnect Google Drive.'):(rtl?'لم يربط مدير النظام حساب Google Drive بعد.':'The system administrator has not connected Google Drive yet.')}</p>}
                   </div>}
-                {driveConnectionStatus.workerVersion&&<div className={"rounded-lg border p-3 text-xs "+(driveConnectionStatus.workerVersion==="attachment-appsscript-gateway-20261125-1"?"border-emerald-200 bg-emerald-50 text-emerald-800":"border-amber-300 bg-amber-50 text-amber-900")}><b>{driveConnectionStatus.workerVersion==="attachment-appsscript-gateway-20261125-1"?(rtl?"إصدار خدمة المرفقات محدث":"Attachment service is up to date"):(rtl?"تنبيه: خدمة المرفقات على Cloudflare لم يتم تحديثها بعد":"Warning: the Cloudflare attachment service has not been updated yet")}</b><span className="block mt-1" dir="ltr">{driveConnectionStatus.workerVersion}</span>{driveConnectionStatus.workerVersion!=="attachment-appsscript-gateway-20261125-1"&&<span className="block mt-1">{rtl?"انشر cloudflare/worker.js من GitHub إلى Worker pest-platform ثم أعد تحميل هذه الشاشة.":"Deploy cloudflare/worker.js from GitHub to the pest-platform Worker, then refresh this screen."}</span>}</div>}
+                {driveConnectionStatus.workerVersion&&<div className={"rounded-lg border p-3 text-xs "+(driveConnectionStatus.workerVersion==="attachment-appsscript-gateway-20261125-2"?"border-emerald-200 bg-emerald-50 text-emerald-800":"border-amber-300 bg-amber-50 text-amber-900")}><b>{driveConnectionStatus.workerVersion==="attachment-appsscript-gateway-20261125-2"?(rtl?"إصدار خدمة المرفقات محدث":"Attachment service is up to date"):(rtl?"تنبيه: خدمة المرفقات على Cloudflare لم يتم تحديثها بعد":"Warning: the Cloudflare attachment service has not been updated yet")}</b><span className="block mt-1" dir="ltr">{driveConnectionStatus.workerVersion}</span>{driveConnectionStatus.workerVersion!=="attachment-appsscript-gateway-20261125-2"&&<span className="block mt-1">{rtl?"انشر cloudflare/worker.js من GitHub إلى Worker pest-platform ثم أعد تحميل هذه الشاشة.":"Deploy cloudflare/worker.js from GitHub to the pest-platform Worker, then refresh this screen."}</span>}</div>}
                 {Array.isArray(driveConnectionStatus.configurationMissing)&&driveConnectionStatus.configurationMissing.length>0&&<div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-900 space-y-2"><b>{rtl?"إعدادات Cloudflare الناقصة أو غير الصحيحة:":"Missing or invalid Cloudflare settings:"}</b><ul className="list-disc ps-5 space-y-1">{driveConnectionStatus.configurationMissing.map(item=><li key={item} dir="ltr" className="font-semibold">{item}</li>)}</ul><p>{rtl?"أضف العناصر المحددة من Cloudflare Worker pest-platform ← Settings ← Variables and Secrets، وأضف Durable Object Binding من Bindings. لا ترسل قيم الأسرار في المحادثة.":"Add the listed items in Cloudflare Worker pest-platform → Settings → Variables and Secrets, and add the Durable Object binding under Bindings. Do not share secret values in chat."}</p></div>}
                 {driveConnectionStatus.metadataStorageError&&<p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">{rtl?"تعذر الوصول إلى تخزين بيانات المرفقات: ":"Attachment metadata storage is unavailable: "}{driveConnectionStatus.metadataStorageError}</p>}
                 {isAdmin&&<div className="rounded-lg border border-sky-200 bg-sky-50 p-3 space-y-2">
@@ -7612,6 +7631,24 @@ function App(){
                       <button type="button" onClick={testAppsScriptGatewayFileRoundTrip} disabled={!driveGatewayTestStatus.gatewayVersion||driveGatewayFileTestStatus.loading||driveConnectionStatus.loading} className="rounded-lg border border-sky-700 bg-white text-sky-800 px-4 py-2 text-sm font-bold disabled:opacity-50"><i className={`fas ${driveGatewayFileTestStatus.loading?'fa-spinner fa-spin':'fa-file-circle-check'} me-2`}></i>{driveGatewayFileTestStatus.loading?(rtl?'جارٍ اختبار الملفات...':'Testing files...'):(rtl?'اختبار نقل الملفات':'Test file transfer')}</button>
                       <button type="button" onClick={testAppsScriptGatewaySizeTolerance} disabled={!driveGatewayTestStatus.gatewayVersion||driveGatewaySizeTestStatus.loading||driveGatewayFileTestStatus.loading||driveConnectionStatus.loading} className="rounded-lg border border-indigo-700 bg-white text-indigo-800 px-4 py-2 text-sm font-bold disabled:opacity-50"><i className={`fas ${driveGatewaySizeTestStatus.loading?'fa-spinner fa-spin':'fa-gauge-high'} me-2`}></i>{driveGatewaySizeTestStatus.loading?(rtl?'جارٍ اختبار الأحجام...':'Testing sizes...'):(rtl?'اختبار تحمل الأحجام':'Size endurance test')}</button>
                     </div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <b className="text-sm text-slate-900">{rtl?'ربط نقل المرفقات بالبرنامج — تشغيل تجريبي':'Connect attachment transfers — controlled pilot'}</b>
+                        <p className="text-xs text-slate-600 mt-1">{rtl?'يستخدم Apps Script للملفات الجديدة حتى 1 MiB فقط. كل ما عدا ذلك يستمر على Google Drive API الحالي دون نقل أو تغيير سجلات الملفات القديمة.':'Uses Apps Script only for new files up to 1 MiB. Everything else stays on the current Google Drive API; existing files and metadata are not migrated or changed.'}</p>
+                      </div>
+                      <button type="button" onClick={()=>void updateAppsScriptGatewayUploadMode(!(driveConnectionStatus.gatewayUploadMode&&driveConnectionStatus.gatewayUploadMode.enabled))} disabled={!driveConnectionStatus.connected||driveConnectionStatus.gatewayUploadConfigured===false||driveGatewayUploadModeBusy||driveConnectionStatus.loading} className={'rounded-lg px-4 py-2 text-sm font-bold text-white disabled:opacity-40 '+(driveConnectionStatus.gatewayUploadMode&&driveConnectionStatus.gatewayUploadMode.enabled?'bg-rose-700':'bg-emerald-700')}>
+                        <i className={'fas '+(driveGatewayUploadModeBusy?'fa-spinner fa-spin':driveConnectionStatus.gatewayUploadMode&&driveConnectionStatus.gatewayUploadMode.enabled?'fa-pause':'fa-play')+' me-2'}></i>
+                        {driveGatewayUploadModeBusy?(rtl?'جارٍ التحديث...':'Updating...'):(driveConnectionStatus.gatewayUploadMode&&driveConnectionStatus.gatewayUploadMode.enabled?(rtl?'إيقاف مسار Apps Script':'Disable Apps Script route'):(rtl?'تشغيل الربط التجريبي':'Enable upload pilot'))}
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className={'rounded-full px-2.5 py-1 font-bold '+(driveConnectionStatus.gatewayUploadMode&&driveConnectionStatus.gatewayUploadMode.enabled?'bg-emerald-100 text-emerald-800':'bg-slate-100 text-slate-700')}>{driveConnectionStatus.gatewayUploadMode&&driveConnectionStatus.gatewayUploadMode.enabled?(rtl?'الربط التجريبي نشط':'Pilot route active'):(rtl?'المسار الحالي نشط — Apps Script متوقف':'Current route active — Apps Script disabled')}</span>
+                      <span className="text-slate-500">{rtl?'حد التجربة: 1 MiB':'Pilot limit: 1 MiB'}</span>
+                      {driveConnectionStatus.gatewayUploadConfigured===false&&<span className="text-rose-700">{rtl?'إعدادات بوابة Apps Script غير مكتملة في Cloudflare.':'Apps Script gateway settings are missing in Cloudflare.'}</span>}
+                    </div>
+                    <p className="text-[11px] text-slate-500">{rtl?'التنزيل والمعاينة والاستبدال والحذف تظل على المسار المباشر الأسرع. عند فشل رفع عبر البوابة لن ينفذ النظام رفعًا احتياطيًا تلقائيًا لتجنب إنشاء ملفات مكررة؛ أوقف التجربة ثم أعد المحاولة.':'Download, preview, replace and delete remain on the faster direct route. A failed gateway upload will not silently retry through another route, preventing duplicate files; disable the pilot before retrying.'}</p>
                   </div>
                   {driveGatewayTestStatus.error&&<p className="rounded-lg border border-rose-200 bg-white p-2 text-xs text-rose-800">{driveGatewayTestStatus.error}</p>}
                   {driveGatewayTestStatus.gatewayVersion&&<div className="rounded-lg border border-emerald-200 bg-white p-2 text-xs text-emerald-800"><b>{rtl?'الاتصال ناجح':'Connection successful'}</b><p dir="ltr" className="mt-1">{driveGatewayTestStatus.effectiveUserEmail}</p><p dir="ltr">{driveGatewayTestStatus.gatewayVersion}</p><p>{rtl?(driveGatewayTestStatus.folderReady?'تم التحقق من مجلد المرفقات الحالي.':'لم يتم التحقق من مجلد المرفقات.'):(driveGatewayTestStatus.folderReady?'Existing attachment folder verified.':'Attachment folder was not verified.')}</p></div>}
