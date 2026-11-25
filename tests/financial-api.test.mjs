@@ -2533,6 +2533,16 @@ test("refundable deposits with third parties use a dedicated analytic subledger 
     parentCode:"11",isGroup:false,isControl:false,active:true,subledgerType:""
   });
 
+  const legacyMissingParty=await invoke("POST","",{
+    action:"submitJournal",date:"2026-11-24",description:"Legacy deposit account without migrated metadata",
+    lines:[
+      {accountCode,description:"Refundable deposit paid",debit:75,credit:0},
+      {accountCode:"1110",description:"Cash paid",debit:0,credit:75}
+    ]
+  });
+  assert.equal(legacyMissingParty.status,"needs_correction");
+  assert.ok(legacyMissingParty.errors.some(error=>error.includes("جهة التأمينات المستردة")));
+
   // Bootstrap detects the existing leaf control account by its Arabic name.
   await invoke("GET","?resource=bootstrap");
   const account=read("chartOfAccounts/"+accountCode);
@@ -2573,11 +2583,12 @@ test("refundable deposits with third parties use a dedicated analytic subledger 
     action:"submitJournal",date:"2026-11-24",description:"Refundable deposit paid to utility provider",
     reference:"DEP-REF-01",
     lines:[
-      {accountCode,description:"تأمين مسترد لدى شركة خدمات المرافق",debit:75,credit:0,partyType:"securityDepositParty",partyId:"DEP-UTIL-01"},
+      {accountCode,description:"تأمين مسترد لدى شركة خدمات المرافق",debit:75,credit:0,partyId:"DEP-UTIL-01"},
       {accountCode:"1110",description:"سداد التأمين من الخزينة",debit:0,credit:75}
     ]
   });
   assert.equal(journal.status,"pending_review");
+  assert.equal(read("documents/"+journal.id+"/lines/0/partyType"),"securityDepositParty","the account name must infer the refundable-deposit analytic type");
   const approved=await invoke("POST","",{
     action:"review",id:journal.id,decision:"approve",reason:"اختبار تحليل التأمينات المستردة"
   });
