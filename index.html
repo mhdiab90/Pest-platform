@@ -1060,7 +1060,7 @@ function PestCrmModuleSlot(props){
 }
 
 function FinanceModuleSlot(props){
-  const FINANCE_MODULE_BUILD='20261125-finance-value-filter-journal-attachments-v24';
+  const FINANCE_MODULE_BUILD='20261125-finance-attachment-manager-filter-fix-v25';
   const [FinanceModule,setFinanceModule]=useState(()=>window.PEST_FINANCE_MODULE||null);
   const [loadError,setLoadError]=useState('');
   useEffect(()=>{
@@ -1216,8 +1216,11 @@ function installPestSpreadsheetGrid(root){
   const rowTexts=row=>rowCells(row).map(cellText);
   const filterColumnKind=header=>{
     const text=normalizeFilterSearchText(header);
-    if(text.includes("مركز التكلفة")||text.includes("مركز تكلفة")||text.includes("cost center")||text.includes("costcenter"))return "costCenters";
-    if(text.includes("حساب")||text.includes("account"))return "accounts";
+    const compact=text.replace(/[\\s_\\-/.]+/g,"");
+    const centerHeader=/مركز.*تكلف|تكلف.*مركز|مراكز.*تكلف|cost.?cent(er|re)|costcent(er|re)|كود.*مركز|رقم.*مركز/.test(text)||compact.includes("مركزالتكلف")||compact.includes("costcenter")||compact.includes("costcentre")||text==="مركز"||text==="المركز";
+    if(centerHeader)return "costCenters";
+    const accountHeader=/حساب|account|دليل الحسابات|gl.?account|ledger.?account|glcode/.test(text)||compact.includes("رقمالحساب")||compact.includes("كودالحساب");
+    if(accountHeader)return "accounts";
     return "";
   };
   const filterLookupOptions=(state,column)=>{
@@ -3600,9 +3603,13 @@ function App(){
   }
   function renderRecordAttachments(entityType,entityId,contextLabel='',onDelete=null){
     const key=recordAttachmentKey(entityType,entityId),panel=recordAttachmentPanels[key]||{};
-    if(!entityId||!canViewRecordAttachment(entityType,entityId))return null;
-    return <div className="mt-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-2 no-print">
-      {contextLabel&&<div className="mb-2 text-xs font-bold text-slate-600"><i className="fas fa-paperclip me-1"></i>{contextLabel}</div>}
+    if(!entityId)return null;
+    if(!canViewRecordAttachment(entityType,entityId))return <div data-record-attachment-manager="true" className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-3 no-print">
+      <div className="flex items-center justify-between gap-3"><strong className="text-sm text-amber-900">{contextLabel|| (rtl?'إدارة المرفقات':'Attachment manager')}</strong><button type="button" onClick={()=>setScreenAttachmentContext(null)} className="rounded-lg border border-amber-300 bg-white px-3 py-1 text-xs font-bold text-amber-900">{rtl?'إغلاق':'Close'}</button></div>
+      <p className="mt-2 text-xs text-amber-800">{rtl?'لا تملك صلاحية عرض مرفقات هذا السجل. اطلب من مدير النظام صلاحية عرض المرفقات أو صلاحية الشاشة المرتبطة.':'You do not have permission to view this record’s attachments. Ask an administrator for attachment-view or related-screen access.'}</p>
+    </div>;
+    return <div data-record-attachment-manager="true" className="mt-2 scroll-mt-24 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-2 no-print">
+      {contextLabel&&<div className="mb-2 flex items-center justify-between gap-2 text-xs font-bold text-slate-600"><span><i className="fas fa-paperclip me-1"></i>{contextLabel}</span><button type="button" onClick={()=>setScreenAttachmentContext(null)} className="rounded-md border bg-white px-2 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-100">{rtl?'إغلاق':'Close'}</button></div>}
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" title={rtl?'اضغط لفتح أول مرفق جانبيًا':'Click to open the first attachment beside this screen'} onClick={()=>void openRecordAttachmentPreview(entityType,entityId)} className="inline-flex items-center gap-2 rounded-lg bg-white border px-3 py-1.5 text-xs font-bold text-slate-700">
           <i className="fas fa-paperclip text-blue-700"></i>{rtl?'فتح المرفق':'Open attachment'}{panel.loaded&&<span className="rounded-full bg-blue-50 text-blue-700 px-1.5">{panel.attachments?.length||0}</span>}
@@ -7557,7 +7564,13 @@ function App(){
           </div>}
         </div>}
         {tab==='pestCrm'&&canAccessTab('pestCrm')&&<PestCrmModuleSlot db={db} currentUser={currentUser} rtl={rtl} can={hasPermission} addLog={addLog}/>}
-        {financialModuleMounted&&(canAccessTab('financial')||canAccessTab('master'))&&<div className={tab==='financial'||tab==='master'?'':'hidden'}><FinanceModuleSlot db={db} currentUser={currentUser} rtl={rtl} language={lang} workerBase={PUSH_WORKER_BASE} userDirectory={userDirectory} addLog={addLog} masterDirectoryOnly={tab==='master'} activeHostTab={tab} onAttachmentScreenChange={context=>{if(context)setScreenAttachmentContext(context);}} onOpenAttachment={(attachment,onDelete)=>void openAttachmentFile(attachment,false,attachment.entityType,attachment.entityId,'side',onDelete)} onManageRecordAttachments={(entityType,entityId,label,onDelete)=>setScreenAttachmentContext({entityType,entityId,label,onDelete})} externalPartyRequest={financialPartyMasterRequest} onPartyMasterRequestComplete={()=>setFinancialPartyMasterRequest(null)} can={(module,action)=>{if(tab==='master'&&module==='financial_masters')return hasPermission('master',action)||hasPermission(module,action);return hasPermission(module,action);}} onOpenPartyMaster={openFinancialPartyMaster}/></div>}
+        {financialModuleMounted&&(canAccessTab('financial')||canAccessTab('master'))&&<div className={tab==='financial'||tab==='master'?'':'hidden'}><FinanceModuleSlot db={db} currentUser={currentUser} rtl={rtl} language={lang} workerBase={PUSH_WORKER_BASE} userDirectory={userDirectory} addLog={addLog} masterDirectoryOnly={tab==='master'} activeHostTab={tab} onAttachmentScreenChange={context=>{if(context)setScreenAttachmentContext(context);}} onOpenAttachment={(attachment,onDelete)=>void openAttachmentFile(attachment,false,attachment.entityType,attachment.entityId,'side',onDelete)} onManageRecordAttachments={(entityType,entityId,label,onDelete)=>{
+          setScreenAttachmentContext({entityType,entityId,label,onDelete});
+          const key=recordAttachmentKey(entityType,entityId);
+          setRecordAttachmentPanels(old=>({...old,[key]:{...(old[key]||{}),expanded:true,loading:true,error:''}}));
+          void refreshRecordAttachmentPanel(entityType,entityId);
+          window.requestAnimationFrame(()=>document.querySelector('[data-record-attachment-manager="true"]')?.scrollIntoView({behavior:'smooth',block:'center'}));
+        }} externalPartyRequest={financialPartyMasterRequest} onPartyMasterRequestComplete={()=>setFinancialPartyMasterRequest(null)} can={(module,action)=>{if(tab==='master'&&module==='financial_masters')return hasPermission('master',action)||hasPermission(module,action);return hasPermission(module,action);}} onOpenPartyMaster={openFinancialPartyMaster}/></div>}
         {tab==='dashboard'&&<div className="space-y-5 print-area">
           <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="font-bold text-xl">{tr('dashboard')} · {tr('cashFlow')}</h2><div className="flex gap-2 no-print"><button onClick={()=>setTab('reports')} className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-bold">{tr('reportCenter')}</button><button onClick={()=>window.print()} className="bg-gray-800 text-white rounded-lg px-4 py-2 text-sm">{tr('printPdf')}</button></div></div>
           <section className="app-dashboard-filterbar no-print">
