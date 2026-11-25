@@ -22,8 +22,30 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js" async></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" async></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js" async></script>
+  <script>
+    (() => {
+      const sources = {
+        pdfjs: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
+        pdfLib: 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js'
+      };
+      const pending = {};
+      const available = key => key === 'pdfjs' ? window.pdfjsLib : key === 'pdfLib' ? window.PDFLib : null;
+      window.PEST_LOAD_OPTIONAL_LIBRARY = key => {
+        const existing = available(key);
+        if (existing) return Promise.resolve(existing);
+        if (!sources[key]) return Promise.reject(new Error('Unknown optional library: ' + key));
+        if (!pending[key]) pending[key] = new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = sources[key];
+          script.async = true;
+          script.onload = () => available(key) ? resolve(available(key)) : reject(new Error('Optional library did not initialize: ' + key));
+          script.onerror = () => { delete pending[key]; reject(new Error('Could not load optional library: ' + key)); };
+          document.head.appendChild(script);
+        });
+        return pending[key];
+      };
+    })();
+  </script>
   <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" onload="this.onload=null;this.rel='stylesheet'" />
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" onload="this.onload=null;this.rel='stylesheet'" />
   <style>
@@ -930,7 +952,7 @@
 
 <script src="./code-intelligence.js" defer></script>
 <script src="./capacitor-bridge.js" defer></script>
-<script defer src="./app.589c75dd4b0f5b59.js"></script>
+<script defer src="./app.8aac90ea30f529ac.js"></script>
 <script>
 (()=>{
   const WORKER_URL=window.location.hostname.endsWith('-pest-platform.ai-mhdiab90.workers.dev')
