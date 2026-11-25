@@ -29,6 +29,14 @@ test("finance module export version must match the version requested by the load
   assert.equal(exportedBuild, requestedBuild, "loader and module build identifiers must match");
 });
 
+test("finance module loader resolves the asset next to the app bundle and reports stalled loads", () => {
+  assert.match(indexHtml, /const appScript=Array\.from\(document\.scripts\)\.find/);
+  assert.match(indexHtml, /new URL\('\.\/financial-module\.js',assetBase\)/);
+  assert.match(indexHtml, /window\.setTimeout\(\(\)=>\{/);
+  assert.match(indexHtml, /استغرق تحميل مكوّن الحسابات وقتًا أطول من المعتاد/);
+  assert.match(indexHtml, /moduleUrl\.pathname/);
+});
+
 test("financial tables align RTL amounts below matching headers", () => {
   assert.match(source, /className:'pest-finance-workspace p-2 md:p-3 space-y-2'/);
   assert.match(source, /\.pest-finance-workspace\[dir="rtl"\] table\{direction:rtl!important;text-align:right!important;\}/);
@@ -733,7 +741,7 @@ test("refundable third-party deposits have a separate analytic registry, picker,
   assert.match(source, /value:"securityDepositParty",label:"تأمينات مستردة لدى الغير"/);
   assert.match(source, /securityDepositParty:"كشف حساب تأمينات مستردة لدى الغير"/);
   assert.match(source, /securityDepositParties:\{\}/);
-  assert.match(indexHtml, /20261125-finance-refundable-deposit-analytics-v18/);
+  assert.match(indexHtml, /20261125-finance-refundable-deposit-analytics-v19/);
 });
 
 test("refundable deposit quick coding works in journal entry, review editing, and legacy archive correction", () => {
