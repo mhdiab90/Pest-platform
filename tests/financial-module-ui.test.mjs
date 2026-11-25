@@ -793,3 +793,21 @@ test("financial statement rows expose direct attachment management for the origi
   assert.match(source, /manageableReferences\.map\(\(reference,index\)=>h\("button"/);
   assert.match(source, /props\.onManageRecordAttachments\(reference\.entityType,reference\.entityId,label\)/);
 });
+
+
+test("all financial tables expose searchable account and cost-center filters", () => {
+  assert.match(source, /screenAccountFilter,setScreenAccountFilter/);
+  assert.match(source, /screenCostCenterFilter,setScreenCostCenterFilter/);
+  assert.match(source, /screenAccountFilterOptions=/);
+  assert.match(source, /screenCostCenterFilterOptions=/);
+  assert.match(source, /searchablePicker\(t\('الحساب','Account'\),screenAccountFilter/);
+  assert.match(source, /searchablePicker\(t\('مركز التكلفة','Cost Center'\),screenCostCenterFilter/);
+  assert.match(source, /const tableFieldText=\(row,headers,kind\)=>/);
+  assert.match(source, /tableFieldText\(row,headers,'account'\)/);
+  assert.match(source, /tableFieldText\(row,headers,'costCenter'\)/);
+  assert.match(source, /accountNeedles=\[accountOption\.value/);
+  assert.match(source, /centerNeedles=\[centerOption\.value/);
+});
+test("financial attachment manager uses the financial API to unlink invoice metadata", () => {
+  assert.match(source, /props\.onManageRecordAttachments\(reference\.entityType,reference\.entityId,label,attachment=>deleteStatementAttachment\(attachment,invoiceDocumentIdForAttachment\(attachment\)\)\)/);
+});
