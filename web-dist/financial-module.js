@@ -2321,20 +2321,40 @@ const analyticPartyLabel=type=>({customer:"العميل",vendor:"المورد",e
     h("div",{className:"md:col-span-1 flex items-end"},button("حذف السطر",()=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).filter((row,i)=>i!==index)})),"danger",!editable))
    );
   });
+  const reviewHeaderSection=h("section",{className:"pest-journal-subsection"},
+   h("div",{className:"pest-journal-subsection-heading"},h("div",null,h("h4",null,"بيانات رأس القيد"),h("p",null,"يمكن تعديل التاريخ والمرجع وأرقام الشيك والفاتورة والمستند والبيان قبل الاعتماد."))),
+   h("div",{className:"grid grid-cols-3 gap-x-2 gap-y-1.5 min-w-0"},
+    headerField("تاريخ القيد",draft.date||"",value=>setJournalModalDraft(old=>Object.assign({},old,{date:value})),"date"),
+    headerField("المرجع",draft.reference||"",value=>setJournalModalDraft(old=>Object.assign({},old,{reference:value}))),
+    headerField("رقم الشيك",draft.checkNumber||"",value=>setJournalModalDraft(old=>Object.assign({},old,{checkNumber:value}))),
+    headerField("رقم الفاتورة",draft.invoiceNumber||"",value=>setJournalModalDraft(old=>Object.assign({},old,{invoiceNumber:value}))),
+    headerField("رقم المستند",draft.documentNumber||"",value=>setJournalModalDraft(old=>Object.assign({},old,{documentNumber:value}))),
+    headerField("بيان القيد",draft.description||"",value=>setJournalModalDraft(old=>Object.assign({},old,{description:value})))
+   )
+  );
+  const reviewLinesSection=h("section",{className:"pest-journal-subsection"},
+   h("div",{className:"pest-journal-subsection-heading"},h("div",null,h("h4",null,"سطور القيد المحاسبي"),h("p",null,"راجع الحساب والبيان والطرف التحليلي ومركز التكلفة وقيم المدين والدائن.")),button("إضافة سطر جديد",()=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).concat([{accountCode:"6100",description:"",debit:0,credit:0,costCenterId:draft.projectCode||"",projectCode:draft.projectCode||"",partyType:"",partyId:""}])}),"primary",!editable||lines.length>=(draft.sourceType==="legacyImport"?500:draft.openingBalance?2000:100))),
+   h("div",{className:"space-y-2"},lineCards.length?lineCards:h("p",{className:"text-sm text-rose-700"},"القيد لا يحتوي على سطور. أضف سطرين على الأقل.")),
+   h("div",{className:"grid grid-cols-1 sm:grid-cols-3 gap-2 border-t bg-slate-50 p-3 text-sm rounded-lg"},
+    h("b",null,"إجمالي المدين: "+fmt(debit)),h("b",null,"إجمالي الدائن: "+fmt(credit)),
+    h("b",{className:Math.abs(difference)<0.01?"text-emerald-700":"text-rose-700"},"الفرق: "+fmt(difference))
+   )
+  );
+  const reviewAttachmentsSection=h("section",{className:"pest-journal-subsection"},
+   h("div",{className:"pest-journal-subsection-heading"},h("div",null,h("h4",null,"مرفقات القيد"),h("p",null,"اعرض المرفقات الموجودة أو أضف ملفات جديدة إلى القيد الجاري مراجعته."))),
+   h("div",{className:"flex flex-wrap items-center gap-2"},
+    statementAttachmentAction(draft)||h("span",{className:"text-xs text-slate-500"},"لا توجد مرفقات مرتبطة بهذا القيد."),
+    journalAttachmentUploadControl(draft)
+   )
+  );
+  const reviewJournalSections=panel("بيانات القيد ومرفقاته","بيانات الرأس والسطور والمرفقات مجمعة في نموذج واحد دون فصلها إلى لوحات مستقلة.",h("div",{className:"pest-journal-form space-y-4"},reviewHeaderSection,h("div",{className:"pest-journal-section-divider"}),reviewLinesSection,h("div",{className:"pest-journal-section-divider"}),reviewAttachmentsSection));
   return h("div",{className:"fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/60 p-3",onClick:()=>{if(!busy){setJournalModal(null);setJournalModalDraft(null);}}},
    h("section",{className:"w-full max-w-6xl max-h-[94vh] overflow-y-auto rounded-2xl bg-white p-4 md:p-6 shadow-2xl space-y-4",onClick:event=>event.stopPropagation()},
     h("div",{className:"flex flex-wrap items-center justify-between gap-3"},
      h("div",null,h("h3",{className:"font-extrabold text-xl"},"تعديل قيد المراجعة: "+(draft.number||draft.id)),h("p",{className:"text-xs text-slate-500 mt-1"},"يمكن تعديل الحساب والبيان والمدين والدائن ومركز التكلفة والطرف وإضافة أو حذف سطور.")),
      button("إغلاق",()=>{setJournalModal(null);setJournalModalDraft(null);},"muted",busy)
     ),
-    panel("بيانات رأس القيد","يمكن تعديل التاريخ والمرجع وأرقام الشيك والفاتورة والمستند والبيان قبل الاعتماد.",h("div",{className:"grid grid-cols-3 gap-x-2 gap-y-1.5 min-w-0"},
-     headerField("تاريخ القيد",draft.date||"",value=>setJournalModalDraft(old=>Object.assign({},old,{date:value})),"date"),
-     headerField("المرجع",draft.reference||"",value=>setJournalModalDraft(old=>Object.assign({},old,{reference:value}))),
-     headerField("رقم الشيك",draft.checkNumber||"",value=>setJournalModalDraft(old=>Object.assign({},old,{checkNumber:value}))),
-     headerField("رقم الفاتورة",draft.invoiceNumber||"",value=>setJournalModalDraft(old=>Object.assign({},old,{invoiceNumber:value}))),
-     headerField("رقم المستند",draft.documentNumber||"",value=>setJournalModalDraft(old=>Object.assign({},old,{documentNumber:value}))),
-     headerField("بيان القيد",draft.description||"",value=>setJournalModalDraft(old=>Object.assign({},old,{description:value})))
-    )),
+    reviewJournalSections,
     h("div",{className:"flex flex-wrap gap-2 text-xs"},
      h("span",{className:"rounded-full bg-slate-100 px-3 py-1"},"المصدر: "+(draft.sourceType||"manual")),
      h("span",{className:"rounded-full bg-amber-50 text-amber-800 px-3 py-1"},"الحالة: "+status(draft.status)),
@@ -2344,18 +2364,6 @@ const analyticPartyLabel=type=>({customer:"العميل",vendor:"المورد",e
     (draft.warnings||[]).length?h("div",{className:"rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"},h("strong",null,"ملاحظات الفحص"),h("ul",{className:"list-disc pr-5"},draft.warnings.map((reason,index)=>h("li",{key:index},reason)))):null,
     draft.sourceType==="journalRevision"?h("label",{className:"block text-sm font-bold"},"ملاحظات التعديل / سبب إرجاع القيد",h("textarea",{value:draft.revisionNotes||"",onChange:event=>setJournalModalDraft(old=>Object.assign({},old,{revisionNotes:event.target.value})),rows:3,disabled:!editable,className:"mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal"})):null,
     draft.sourceType==="legacyImport"&&(draft.warnings||[]).length?h("div",{className:"rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-2"},h("b",{className:"text-amber-900"},"ملاحظات المصدر التي يجب مراجعتها قبل الاعتماد"),h("ul",{className:"list-disc pr-5 text-sm text-amber-900"},(draft.warnings||[]).map((warning,index)=>h("li",{key:index},warning))),h("label",{className:"flex items-start gap-2 text-sm font-bold text-amber-950"},h("input",{type:"checkbox",checked:Boolean(draft.acknowledgeSourceWarnings||draft.sourceWarningsAcknowledgedAt),disabled:!editable,onChange:event=>setJournalModalDraft(old=>Object.assign({},old,{acknowledgeSourceWarnings:event.target.checked}))}),"أؤكد أنني راجعت ملاحظات هذا القيد وصححت تصنيفه أو تحققت من صحته، ويمكن إرساله للمراجعة والاعتماد.")):null,
-    h("div",{className:"rounded-xl border border-indigo-100 overflow-hidden"},
-     h("div",{className:"flex flex-wrap items-center justify-between gap-2 bg-indigo-50 p-3"},
-      h("b",null,"سطور القيد المحاسبي"),
-      button("إضافة سطر جديد",()=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).concat([{accountCode:"6100",description:"",debit:0,credit:0,costCenterId:draft.projectCode||"",projectCode:draft.projectCode||"",partyType:"",partyId:""}])})),"primary",!editable||lines.length>=(draft.sourceType==="legacyImport"?500:draft.openingBalance?2000:100))
-     ),
-     h("div",{className:"space-y-2 p-3"},lineCards.length?lineCards:h("p",{className:"text-sm text-rose-700"},"القيد لا يحتوي على سطور. أضف سطرين على الأقل.")),
-     h("div",{className:"grid grid-cols-1 sm:grid-cols-3 gap-2 border-t bg-slate-50 p-3 text-sm"},
-      h("b",null,"إجمالي المدين: "+fmt(debit)),
-      h("b",null,"إجمالي الدائن: "+fmt(credit)),
-      h("b",{className:Math.abs(difference)<0.01?"text-emerald-700":"text-rose-700"},"الفرق: "+fmt(difference))
-     )
-    ),
     h("p",{className:"rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"},"التعديل لا يرحّل القيد ولا يغيّر أي رصيد. سيظل القيد في قائمة المراجعة، ولن يظهر أثره في الأستاذ أو القوائم إلا بعد اعتماده بنجاح وبعد اجتياز التحقق المحاسبي."),
     h("div",{className:"flex flex-wrap justify-end gap-2"},
      button("إلغاء",()=>{setJournalModal(null);setJournalModalDraft(null);},"muted",busy),
@@ -3512,74 +3520,71 @@ const renderCostCenterAnalysis = function() {
   const lines=Array.isArray(selected.lines)?selected.lines:[];
   const totals=lines.reduce((sum,line)=>({debit:sum.debit+n(line.debit),credit:sum.credit+n(line.credit)}),{debit:0,credit:0});
   const difference=totals.debit-totals.credit,balanced=Math.abs(difference)<0.01,source=selected.sourceDetails||{};
-  const sourcePanel=source.kind==='cashCustody'?panel(t('بيانات حركة العهدة الأصلية','Original Custody Transaction'),t('بيانات الحركة التي تم إنشاء القيد المحاسبي منها.','Source movement used to create this accounting journal.'),
+  const headerSection=h('section',{className:'pest-journal-subsection'},
+   h('div',{className:'pest-journal-subsection-heading'},h('div',null,h('h4',null,t('بيانات رأس القيد','Journal Header')),h('p',null,t('راجع تاريخ القيد ووصفه ومرجعه ومصدره قبل اتخاذ قرار الاعتماد.','Review the journal date, description, reference and source before approval.')))),
    h('div',{className:'grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2'},
-    reviewDetailItem(t('الموظف صاحب العهدة','Custody Employee'),source.employeeName),
-    reviewDetailItem(t('معرّف الموظف','Employee ID'),source.employeeUid),
+    reviewDetailItem(t('رقم القيد','Journal Entry No.'),selected.id),reviewDetailItem(t('تاريخ القيد','Journal Date'),selected.date),
+    reviewDetailItem(t('المرجع','Reference'),selected.reference),reviewDetailItem(t('رقم الشيك','Check Number'),selected.checkNumber||'—'),
+    reviewDetailItem(t('رقم الفاتورة','Invoice Number'),selected.invoiceNumber||'—'),reviewDetailItem(t('رقم المستند','Document Number'),selected.documentNumber||'—'),
+    reviewDetailItem(t('العملة','Currency'),selected.currency||'EGP'),
+    reviewDetailItem(t('مصدر القيد','Journal Source'),selected.sourceType==='legacyImport'?t('استيراد أرشيف القيود','Legacy Journal Import'):selected.sourceType==='cashCustody'?t('عهدة موظف','Employee Custody'):selected.sourceType==='projectEvent'?t('حدث مشروع','Project Event'):t('قيد يدوي','Manual Journal')),
+    reviewDetailItem(t('أنشأه','Created By'),selected.createdByName||selected.createdBy),
+    reviewDetailItem(t('تاريخ الإنشاء','Created At'),selected.createdAt?new Date(Number(selected.createdAt)).toLocaleString(rtl?'ar-EG':'en-GB'):'—'),
+    reviewDetailItem(t('كود المشروع','Project Code'),selected.projectCode),
+    h('div',{className:'col-span-full rounded-lg bg-slate-50 border p-3'},h('div',{className:'text-xs text-slate-500 mb-1'},t('شرح القيد','Journal Description')),h('div',{className:'text-sm font-semibold whitespace-pre-wrap'},selected.description||'—'))
+   )
+  );
+  const sourceSection=source.kind==='cashCustody'?h('section',{className:'pest-journal-subsection'},
+   h('div',{className:'pest-journal-subsection-heading'},h('div',null,h('h4',null,t('بيانات حركة العهدة الأصلية','Original Custody Transaction')),h('p',null,t('بيانات الحركة التي تم إنشاء القيد المحاسبي منها.','Source movement used to create this accounting journal.')))),
+   h('div',{className:'grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2'},
+    reviewDetailItem(t('الموظف صاحب العهدة','Custody Employee'),source.employeeName),reviewDetailItem(t('معرّف الموظف','Employee ID'),source.employeeUid),
     reviewDetailItem(t('نوع الدفتر','Book Scope'),source.bookScope==='company'?t('دفتر الشركة','Company Book'):t('دفتر شخصي','Personal Book')),
     reviewDetailItem(t('نوع الحركة','Movement Type'),({receipt:t('استلام','Receipt'),topup:t('تعزيز عهدة','Custody Top-up'),refund:t('استرداد','Refund'),opening_balance:t('رصيد افتتاحي','Opening Balance'),adjustment_in:t('تسوية واردة','Incoming Adjustment'),transfer_in:t('تحويل وارد','Transfer In'),return:t('رد عهدة','Custody Return'),transfer_out:t('تحويل صادر','Transfer Out'),expense:t('مصروف عهدة','Custody Expense')}[source.movementType]||source.movementType||'—')),
-    reviewDetailItem(t('تاريخ الحركة','Movement Date'),source.date),
-    reviewDetailItem(t('المبلغ الأصلي','Original Amount'),moneyLabel(source.amount)),
-    reviewDetailItem(t('العملة','Currency'),source.currency),
-    reviewDetailItem(t('المرجع','Reference'),source.reference),
-    reviewDetailItem(t('المشروع','Project'),source.projectName||source.projectCode),
-    reviewDetailItem(t('حالة حركة العهدة','Custody Movement Status'),status(source.status)),
-    reviewDetailItem(t('الطرف المقابل','Counterparty'),source.counterpartyName),
-    reviewDetailItem(t('كود الطرف المقابل','Counterparty Code'),source.counterpartyCode),
+    reviewDetailItem(t('تاريخ الحركة','Movement Date'),source.date),reviewDetailItem(t('المبلغ الأصلي','Original Amount'),moneyLabel(source.amount)),
+    reviewDetailItem(t('العملة','Currency'),source.currency),reviewDetailItem(t('المرجع','Reference'),source.reference),
+    reviewDetailItem(t('المشروع','Project'),source.projectName||source.projectCode),reviewDetailItem(t('حالة حركة العهدة','Custody Movement Status'),status(source.status)),
+    reviewDetailItem(t('الطرف المقابل','Counterparty'),source.counterpartyName),reviewDetailItem(t('كود الطرف المقابل','Counterparty Code'),source.counterpartyCode),
     h('div',{className:'col-span-full rounded-lg bg-slate-50 border p-3'},h('div',{className:'text-xs text-slate-500 mb-1'},t('وصف الحركة','Movement Description')),h('div',{className:'text-sm font-semibold whitespace-pre-wrap'},source.description||'—'))
    )
   ):null;
-  return h('div',{className:'space-y-3'},
-   panel(t('بيانات رأس القيد','Journal Header'),t('راجع تاريخ القيد ووصفه ومرجعه ومصدره قبل اتخاذ قرار الاعتماد.','Review the journal date, description, reference and source before approval.'),
-    h('div',{className:'grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2'},
-     reviewDetailItem(t('رقم القيد','Journal Entry No.'),selected.id),
-     reviewDetailItem(t('تاريخ القيد','Journal Date'),selected.date),
-     reviewDetailItem(t('المرجع','Reference'),selected.reference),
-     reviewDetailItem(t('رقم الشيك','Check Number'),selected.checkNumber||'—'),
-     reviewDetailItem(t('رقم الفاتورة','Invoice Number'),selected.invoiceNumber||'—'),
-     reviewDetailItem(t('رقم المستند','Document Number'),selected.documentNumber||'—'),
-     reviewDetailItem(t('العملة','Currency'),selected.currency||'EGP'),
-     reviewDetailItem(t('مصدر القيد','Journal Source'),selected.sourceType==='legacyImport'?t('استيراد أرشيف القيود','Legacy Journal Import'):selected.sourceType==='cashCustody'?t('عهدة موظف','Employee Custody'):selected.sourceType==='projectEvent'?t('حدث مشروع','Project Event'):t('قيد يدوي','Manual Journal')),
-     reviewDetailItem(t('أنشأه','Created By'),selected.createdByName||selected.createdBy),
-     reviewDetailItem(t('تاريخ الإنشاء','Created At'),selected.createdAt?new Date(Number(selected.createdAt)).toLocaleString(rtl?'ar-EG':'en-GB'):'—'),
-     reviewDetailItem(t('كود المشروع','Project Code'),selected.projectCode),
-     h('div',{className:'col-span-full rounded-lg bg-slate-50 border p-3'},h('div',{className:'text-xs text-slate-500 mb-1'},t('شرح القيد','Journal Description')),h('div',{className:'text-sm font-semibold whitespace-pre-wrap'},selected.description||'—'))
-    )
-   ),
-   sourcePanel,
-   panel(t('سطور القيد المحاسبي','Accounting Journal Lines'),t('هذا هو القيد الذي سيتم ترحيله إلى دفتر الأستاذ عند الاعتماد. كل سطر يوضح الحساب والبيان والطرف ومركز التكلفة والمدين والدائن.','This is the exact journal that will be posted to the General Ledger upon approval. Each row shows the account, description, party, cost center, debit and credit.'),
-    h('div',{className:'space-y-3'},
-     table([t('م','No.'),t('الحساب','Account'),t('البيان','Description'),t('الطرف التحليلي','Analytical Party'),t('مركز التكلفة','Cost Center'),t('المشروع','Project'),t('الصنف','Item'),t('الكمية','Quantity'),t('مدين','Debit'),t('دائن','Credit')],lines.map((line,index)=>{
-      const item=items.find(x=>String(x.code)===String(line.itemCode)),projectCode=line.projectCode||selected.projectCode;
-      return h('tr',{key:index,className:'border-t align-top '+(canFinance('review','edit')&&['pending_review','needs_correction'].includes(selected.status)?'cursor-pointer hover:bg-indigo-50':''),
-        onClick:()=>{if(canFinance('review','edit')&&['pending_review','needs_correction'].includes(selected.status))openJournalModal(selected);},
-        title:canFinance('review','edit')?'اضغط على السطر لتعديل الحساب أو البيان أو القيمة':''
-       },
-       h('td',{className:'p-2'},String(index+1)),
-       h('td',{className:'p-2 min-w-44'},reviewAccountLabel(line.accountCode)),
-       h('td',{className:'p-2 min-w-48 whitespace-pre-wrap'},line.description||selected.description||'—'),
-       h('td',{className:'p-2 min-w-36'},reviewPartyLabel(line)),
-       h('td',{className:'p-2 min-w-40'},reviewCenterLabel(line.costCenterId)),
-       h('td',{className:'p-2'},projectCode||'—'),
-       h('td',{className:'p-2 min-w-32'},line.itemCode?(item?item.name+' ('+line.itemCode+')':line.itemCode):'—'),
-       h('td',{className:'p-2'},line.quantity==null||line.quantity===''?'—':String(line.quantity)+(line.unit?' '+line.unit:'')),
-       h('td',{className:'p-2 text-end font-semibold tabular-nums whitespace-nowrap'},moneyLabel(line.debit)),
-       h('td',{className:'p-2 text-end font-semibold tabular-nums whitespace-nowrap'},moneyLabel(line.credit))
-      );
-     })),
-     h('div',{className:'grid grid-cols-2 md:grid-cols-4 gap-2'},
-      metric(t('إجمالي المدين','Total Debit'),moneyLabel(totals.debit)),
-      metric(t('إجمالي الدائن','Total Credit'),moneyLabel(totals.credit)),
-      metric(t('الفرق','Difference'),moneyLabel(difference)),
-      h('div',{className:'rounded-xl border p-3 '+(balanced?'border-emerald-200 bg-emerald-50':'border-rose-300 bg-rose-50')},
-       h('div',{className:'text-xs font-semibold text-slate-600'},t('نتيجة توازن القيد','Journal Balance')),
-       h('div',{className:'text-base font-extrabold '+(balanced?'text-emerald-700':'text-rose-700')},balanced?t('متوازن','Balanced'):t('غير متوازن','Out of Balance'))
-      )
+  const linesSection=h('section',{className:'pest-journal-subsection'},
+   h('div',{className:'pest-journal-subsection-heading'},h('div',null,h('h4',null,t('سطور القيد المحاسبي','Accounting Journal Lines')),h('p',null,t('هذا هو القيد الذي سيتم ترحيله إلى دفتر الأستاذ عند الاعتماد. كل سطر يوضح الحساب والبيان والطرف ومركز التكلفة والمدين والدائن.','This is the exact journal that will be posted to the General Ledger upon approval. Each row shows the account, description, party, cost center, debit and credit.')))),
+   h('div',{className:'space-y-3'},
+    table([t('م','No.'),t('الحساب','Account'),t('البيان','Description'),t('الطرف التحليلي','Analytical Party'),t('مركز التكلفة','Cost Center'),t('المشروع','Project'),t('الصنف','Item'),t('الكمية','Quantity'),t('مدين','Debit'),t('دائن','Credit')],lines.map((line,index)=>{
+     const item=items.find(x=>String(x.code)===String(line.itemCode)),projectCode=line.projectCode||selected.projectCode;
+     return h('tr',{key:index,className:'border-t align-top '+(canFinance('review','edit')&&['pending_review','needs_correction'].includes(selected.status)?'cursor-pointer hover:bg-indigo-50':''),
+      onClick:()=>{if(canFinance('review','edit')&&['pending_review','needs_correction'].includes(selected.status))openJournalModal(selected);},
+      title:canFinance('review','edit')?'اضغط على السطر لتعديل الحساب أو البيان أو القيمة':''
+     },
+     h('td',{className:'p-2'},String(index+1)),h('td',{className:'p-2 min-w-44'},reviewAccountLabel(line.accountCode)),
+     h('td',{className:'p-2 min-w-48 whitespace-pre-wrap'},line.description||selected.description||'—'),
+     h('td',{className:'p-2 min-w-36'},reviewPartyLabel(line)),h('td',{className:'p-2 min-w-40'},reviewCenterLabel(line.costCenterId)),
+     h('td',{className:'p-2'},projectCode||'—'),h('td',{className:'p-2 min-w-32'},line.itemCode?(item?item.name+' ('+line.itemCode+')':line.itemCode):'—'),
+     h('td',{className:'p-2'},line.quantity==null||line.quantity===''?'—':String(line.quantity)+(line.unit?' '+line.unit:'')),
+     h('td',{className:'p-2 text-end font-semibold tabular-nums whitespace-nowrap'},moneyLabel(line.debit)),
+     h('td',{className:'p-2 text-end font-semibold tabular-nums whitespace-nowrap'},moneyLabel(line.credit))
+     );
+    })),
+    h('div',{className:'grid grid-cols-2 md:grid-cols-4 gap-2'},
+     metric(t('إجمالي المدين','Total Debit'),moneyLabel(totals.debit)),metric(t('إجمالي الدائن','Total Credit'),moneyLabel(totals.credit)),
+     metric(t('الفرق','Difference'),moneyLabel(difference)),
+     h('div',{className:'rounded-xl border p-3 '+(balanced?'border-emerald-200 bg-emerald-50':'border-rose-300 bg-rose-50')},
+      h('div',{className:'text-xs font-semibold text-slate-600'},t('نتيجة توازن القيد','Journal Balance')),
+      h('div',{className:'text-base font-extrabold '+(balanced?'text-emerald-700':'text-rose-700')},balanced?t('متوازن','Balanced'):t('غير متوازن','Out of Balance'))
      )
     )
    )
   );
+  const attachmentsSection=h('section',{className:'pest-journal-subsection'},
+   h('div',{className:'pest-journal-subsection-heading'},h('div',null,h('h4',null,t('مرفقات القيد','Journal Attachments')),h('p',null,t('عرض وإدارة المرفقات المرتبطة بالقيد من نفس القسم.','View and manage the files linked to this journal from the same section.')))),
+   h('div',{className:'flex flex-wrap items-center gap-2'},
+    statementAttachmentAction(selected)||h('span',{className:'text-xs text-slate-500'},t('لا توجد مرفقات مرتبطة بهذا القيد.','No attachments are linked to this journal.')),
+    journalAttachmentUploadControl(selected)
+   )
+  );
+  return panel(t('بيانات القيد ومرفقاته','Journal Entry & Attachments'),t('بيانات الرأس والسطور والمرفقات مجمعة في قسم واحد قبل اتخاذ قرار المراجعة والاعتماد.','Journal header, lines and attachments are grouped together before review and approval.'),h('div',{className:'pest-journal-form space-y-4'},headerSection,sourceSection,h('div',{className:'pest-journal-section-divider'}),linesSection,h('div',{className:'pest-journal-section-divider'}),attachmentsSection));
  };
+
 const renderIntegrityFindingModal=()=>{
  const finding=integrityAudit&&integrityAudit.findings.find(item=>item.id===integrityFindingSelected);
  if(!finding)return null;
@@ -3687,7 +3692,6 @@ const renderReview=()=>panel('مركز المراجعة والفحص والاع�
    h('p',{className:'text-sm'},t('النوع: ','Type: ')+(selected.type==='invoice'?(selected.invoiceType==='purchase'?t('فاتورة مشتريات','Purchase Invoice'):t('فاتورة مبيعات','Sales Invoice')):documentType(selected.type))+' · '+t('التاريخ: ','Date: ')+(selected.date||'—')+' · '+t('الحالة: ','Status: ')+status(selected.status)),
    h('p',{className:'text-sm font-bold'},t('قيمة القيد / المستند: ','Journal / Document Amount: ')+moneyLabel(selected.total||selected.amount||(selected.type==='journal'?(selected.lines||[]).reduce((sum,line)=>sum+n(line.debit),0):0))),
    selected.type==='journal'?renderReviewJournalDetails():null,
-   selected.type==='journal'?h('div',{className:'flex flex-wrap items-center gap-3 rounded-xl border border-blue-200 bg-blue-50/60 p-3'},h('b',{className:'text-sm'},'مرفقات القيد'),statementAttachmentAction(selected)||h('span',{className:'text-xs text-slate-500'},'لا توجد مرفقات مرتبطة بهذا القيد'),journalAttachmentUploadControl(selected)):null,
     selected.type==='journal'&&canFinance('review','edit')&&['pending_review','needs_correction'].includes(selected.status)?button('تعديل القيد',()=>openJournalModal(selected),'primary',busy):null,
     (selected.reviewReason||'')?h('p',{className:'rounded-lg border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900'},'ملاحظة المراجعة السابقة: '+selected.reviewReason):null,
    (selected.errors||[]).length?h('ul',{className:'list-disc pr-5 text-rose-700'},selected.errors.map((x,i)=>h('li',{key:i},x))):null,
@@ -5933,5 +5937,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261128-journal-single-panel-statement-ui-v27";
+ window.PEST_FINANCE_MODULE_VERSION="20261128-review-journal-single-panel-v28";
 })();
