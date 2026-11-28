@@ -206,7 +206,7 @@ test("daily journal entry combines header, lines and attachments in one editor p
   assert.match(source, /const headerSection\s*=\s*h\('section'/);
   assert.match(source, /const linesSection\s*=\s*h\('section'/);
   assert.match(source, /const attachmentsSection\s*=\s*h\('section'/);
-  assert.match(source, /return h\('div',\{className:'space-y-4'\},journalEditorPanel,draftsPanel,modal\)/);
+  assert.match(source, /return h\('div',\{className:'space-y-4'\},journalEditorPanel,accountFilterPanel,draftsPanel,modal\)/);
   const journalEditor=source.slice(source.indexOf("const linesSection ="),source.indexOf("const journalMap=",source.indexOf("const linesSection =")));
   assert.ok(journalEditor.length>0,"daily journal editor source range must be present");
   assert.doesNotMatch(journalEditor, /panel\('(بيانات رأس القيد|سطور القيد|مرفقات القيد)'/);
