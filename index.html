@@ -4,7 +4,8 @@
   <script id="pest-pages-optimized-entry">
     (() => {
       const host = String(window.location.hostname || "").toLowerCase();
-      const path = String(window.location.pathname || "").replace(/\\/+$/, "");
+      const rawPath = String(window.location.pathname || "");
+      const path = rawPath.endsWith("/") ? rawPath.slice(0, -1) : rawPath;
       if (host === "mhdiab90.github.io" &&
           (path === "/Pest-platform" || path === "/Pest-platform/index.html")) {
         window.location.replace(
