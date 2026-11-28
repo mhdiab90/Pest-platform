@@ -125,6 +125,14 @@ const DEFAULT_EXPENSE_ACCOUNTS = [
  {code:"7802",name:"معارض ومطبوعات ومواد ترويجية",type:"expense",nature:"debit",parentCode:"78",statementGroup:"administrative"}
 ];
 
+const DEFAULT_BALANCE_ADJUSTMENT_ACCOUNTS = [
+ {code:"43",name:"مكاسب وفروق تسويات الأرصدة",type:"revenue",nature:"credit",isGroup:true,parentCode:"4"},
+ {code:"4301",name:"مكاسب تسوية أرصدة الموردين والعملاء",type:"revenue",nature:"credit",parentCode:"43",statementGroup:"finance"},
+ {code:"4302",name:"فروق تقريب دائنة",type:"revenue",nature:"credit",parentCode:"43",statementGroup:"finance"},
+ {code:"79",name:"مصروفات تسوية الأرصدة وفروق التقريب",type:"expense",nature:"debit",isGroup:true,parentCode:"6"},
+ {code:"7901",name:"مصروفات تسوية أرصدة الموردين والعملاء",type:"expense",nature:"debit",parentCode:"79",statementGroup:"administrative"},
+ {code:"7902",name:"فروق تقريب مدينة",type:"expense",nature:"debit",parentCode:"79",statementGroup:"administrative"}
+];
 export const DEFAULT_FINANCE_ACCOUNTS = [
 {code:"1",name:"الأصول",type:"asset",nature:"debit",isGroup:true},
 {code:"11",name:"الأصول المتداولة",type:"asset",nature:"debit",isGroup:true,parentCode:"1"},
@@ -623,7 +631,7 @@ export async function handleFinancialRequest(ctx){
    if(profile.role==="admin"){
     const migrated={};
     const updates={};
-    for(const account of [...DEFAULT_PARTNER_CURRENT_ACCOUNTS,{code:'1300',name:'المخزون',type:'asset',nature:'debit',parentCode:'11',isControl:true},{code:'2150',name:'تمويل وقروض من الشركاء والغير',type:'liability',nature:'credit',parentCode:'21',isControl:true,isGroup:false,subledgerType:'financingParty'},...DEFAULT_EXPENSE_ACCOUNTS,...DEFAULT_STAFF_ACCOUNTS,...DEFAULT_PARTY_ADVANCE_ACCOUNTS,...DEFAULT_CHEQUE_ACCOUNTS]){
+    for(const account of [...DEFAULT_PARTNER_CURRENT_ACCOUNTS,{code:'1300',name:'المخزون',type:'asset',nature:'debit',parentCode:'11',isControl:true},{code:'2150',name:'تمويل وقروض من الشركاء والغير',type:'liability',nature:'credit',parentCode:'21',isControl:true,isGroup:false,subledgerType:'financingParty'},...DEFAULT_EXPENSE_ACCOUNTS,...DEFAULT_BALANCE_ADJUSTMENT_ACCOUNTS,...DEFAULT_STAFF_ACCOUNTS,...DEFAULT_PARTY_ADVANCE_ACCOUNTS,...DEFAULT_CHEQUE_ACCOUNTS]){
      if(chart[account.code])continue;
      const parent=account.parentCode?(chart[account.parentCode]||migrated[account.parentCode]):null;
      if(account.parentCode&&(!parent||!parent.isGroup))continue;
@@ -655,6 +663,8 @@ export async function handleFinancialRequest(ctx){
     if(Object.keys(updates).length)await adminPatch(updates);
    }
    if(profile.role==="admin"){
+    const balanceAdjustmentDefaults={roundingThreshold:1,partyThreshold:10,roundingDebitAccountCode:"7902",roundingCreditAccountCode:"4302",supplierDebitOffsetAccount:"7901",supplierCreditOffsetAccount:"4301",customerDebitOffsetAccount:"7901",customerCreditOffsetAccount:"4301"};
+    if(!(await adminRead("settings/accountReviewSmallBalances")))await adminPatch({"settings/accountReviewSmallBalances":{...balanceAdjustmentDefaults,createdAt:Date.now(),createdBy:claims.sub}});
     const currentTaxCodes=(await adminRead("taxCodes"))||{},taxUpdates={};
     for(const taxCode of DEFAULT_VAT_CODES){if(!currentTaxCodes[taxCode.code])taxUpdates["taxCodes/"+taxCode.code]={...taxCode,active:true,createdAt:Date.now(),createdBy:claims.sub};}
     if(Object.keys(taxUpdates).length)await adminPatch(taxUpdates);
@@ -820,6 +830,25 @@ export async function handleFinancialRequest(ctx){
   if(res==="audit"){requireFinanceArea("reports","view");return {items:(await adminRead("audit"))||{}};}
   if(res==="bank"){requireFinanceArea("bank","view");return {items:(await adminRead("bankImports"))||{},accounts:(await adminRead("bankAccounts"))||{}};}
   if(res==="accountReviews"){requireFinanceArea("reports","view");return {items:(await adminRead("accountReviewDecisions"))||{}};}
+  if(res==="accountReviewSettings"){
+   requireFinanceArea("reports","view");
+   const chart=(await adminRead("chartOfAccounts"))||{};
+   const configured=(await adminRead("settings/accountReviewSmallBalances"))||{roundingThreshold:1,partyThreshold:10,roundingDebitAccountCode:"7902",roundingCreditAccountCode:"4302",supplierDebitOffsetAccount:"7901",supplierCreditOffsetAccount:"4301",customerDebitOffsetAccount:"7901",customerCreditOffsetAccount:"4301"};
+   const validOffset=(code,type)=>{
+    const account=chart[String(code||"")];
+    return Boolean(account&&!account.isGroup&&account.active!==false&&!account.isControl&&!account.subledgerType&&account.type===type);
+   };
+   const item={
+    ...configured,
+    roundingDebitAccountCode:validOffset(configured.roundingDebitAccountCode,"expense")?String(configured.roundingDebitAccountCode):"",
+    roundingCreditAccountCode:validOffset(configured.roundingCreditAccountCode,"revenue")?String(configured.roundingCreditAccountCode):"",
+    supplierDebitOffsetAccount:validOffset(configured.supplierDebitOffsetAccount,"expense")?String(configured.supplierDebitOffsetAccount):"",
+    supplierCreditOffsetAccount:validOffset(configured.supplierCreditOffsetAccount,"revenue")?String(configured.supplierCreditOffsetAccount):"",
+    customerDebitOffsetAccount:validOffset(configured.customerDebitOffsetAccount,"expense")?String(configured.customerDebitOffsetAccount):"",
+    customerCreditOffsetAccount:validOffset(configured.customerCreditOffsetAccount,"revenue")?String(configured.customerCreditOffsetAccount):""
+   };
+   return {item};
+  }
   if(res==="accountReviewFindingDecisions"){requireFinanceArea("reports","view");return {items:(await adminRead("accountReviewFindingDecisions"))||{}};}
   if(res==="periods"){if(!hasFinanceArea("reports","view")&&!hasFinanceArea("overview","view")&&!hasFinanceArea("centers","view")&&!hasFinanceArea("tax","view"))throw new Error("ليس لديك صلاحية عرض التقارير المالية.");
    const from=txt(url.searchParams.get("from")||new Date().toISOString().slice(0,7),7),to=txt(url.searchParams.get("to")||from,7);
@@ -945,6 +974,39 @@ export async function handleFinancialRequest(ctx){
   throw new Error("Unknown financial data resource.");
  }
  if(request.method!=="POST")throw new Error("Method not allowed.");const action=txt(body.action,80),now=Date.now();
+ if(action==="saveAccountReviewSettings"){
+  requireFinanceArea("reports","edit");
+  const chart=(await adminRead("chartOfAccounts"))||{},previous=(await adminRead("settings/accountReviewSmallBalances"))||{};
+  const numeric=(value,fallback,max,label)=>{
+   const parsed=value===undefined||value===null||String(value).trim()===""?fallback:Number(value);
+   if(!Number.isFinite(parsed)||parsed<0||parsed>max)throw new Error("قيمة "+label+" يجب أن تكون بين صفر و"+max+".");
+   return Math.round(parsed*100)/100;
+  };
+  const code=(key,fallback,expectedType,label)=>{
+   const value=txt(body[key]===undefined?fallback:body[key]||"",60);
+   if(!value)return "";
+   id(value);
+   const account=chart[value];
+   if(!account||account.isGroup||account.active===false||account.isControl||account.subledgerType)throw new Error("الحساب المقابل المحدد لـ"+label+" غير موجود أو ليس حسابًا تفصيليًا نشطًا وغير رقابي.");
+   if(account.type!==expectedType)throw new Error("نوع الحساب المقابل لـ"+label+" غير صحيح؛ اختر حساب "+(expectedType==="expense"?"مصروفات":"إيرادات")+".");
+   return value;
+  };
+  const record={
+   roundingThreshold:numeric(body.roundingThreshold,previous.roundingThreshold??1,100,"حد فرق التقريب"),
+   partyThreshold:numeric(body.partyThreshold,previous.partyThreshold??10,1000,"حد رصيد المورد أو العميل"),
+   roundingDebitAccountCode:code("roundingDebitAccountCode",previous.roundingDebitAccountCode||"7902","expense","فرق التقريب المدين"),
+   roundingCreditAccountCode:code("roundingCreditAccountCode",previous.roundingCreditAccountCode||"4302","revenue","فرق التقريب الدائن"),
+   supplierDebitOffsetAccount:code("supplierDebitOffsetAccount",previous.supplierDebitOffsetAccount||"7901","expense","رصيد المورد المدين"),
+   supplierCreditOffsetAccount:code("supplierCreditOffsetAccount",previous.supplierCreditOffsetAccount||"4301","revenue","رصيد المورد الدائن"),
+   customerDebitOffsetAccount:code("customerDebitOffsetAccount",previous.customerDebitOffsetAccount||"7901","expense","رصيد العميل المدين"),
+   customerCreditOffsetAccount:code("customerCreditOffsetAccount",previous.customerCreditOffsetAccount||"4301","revenue","رصيد العميل الدائن"),
+   updatedAt:now,updatedBy:claims.sub,updatedByName:txt(profile.fullName||profile.username||profile.email||claims.sub,120)
+  };
+  const updates={"settings/accountReviewSmallBalances":record};
+  updates["audit/"+uid("AUD")]={action:"save_account_review_small_balance_settings",uid:claims.sub,createdAt:now,roundingThreshold:record.roundingThreshold,partyThreshold:record.partyThreshold};
+  await adminPatch(updates);
+  return {success:true,item:record};
+ }
  if(action==="saveAccountReviewDecision"){
   requireFinanceArea("reports","edit");
   const accountCode=id(body.accountCode),period=txt(body.period,7),partyType=txt(body.partyType||"",24),partyId=id(body.partyId||""),decision=txt(body.status,32),notes=txt(body.notes||"",2000);

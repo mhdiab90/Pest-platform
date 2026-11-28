@@ -768,7 +768,7 @@ test("refundable third-party deposits have a separate analytic registry, picker,
   assert.match(source, /value:"securityDepositParty",label:"تأمينات مستردة لدى الغير"/);
   assert.match(source, /securityDepositParty:"كشف حساب تأمينات مستردة لدى الغير"/);
   assert.match(source, /securityDepositParties:\{\}/);
-  assert.match(indexHtml, /20261125-finance-value-filter-journal-attachments-v24/);
+  assert.match(indexHtml, /20261128-unified-statements-rounding-review-v26/);
 });
 
 test("refundable deposit quick coding works in journal entry, review editing, and legacy archive correction", () => {
@@ -867,4 +867,32 @@ test("all financial tables expose searchable account and cost-center filters", (
 });
 test("financial attachment manager uses the financial API to unlink invoice metadata", () => {
   assert.match(source, /props\.onManageRecordAttachments\(reference\.entityType,reference\.entityId,label,attachment=>deleteStatementAttachment\(attachment,invoiceDocumentIdForAttachment\(attachment\)\)\)/);
+});
+
+
+test("balance sheet and income statement render as single continuous financial tables", () => {
+  assert.match(source, /قائمة المركز المالي — جدول موحد/);
+  assert.match(source, /قائمة الدخل — جدول موحد/);
+  assert.match(source, /إجمالي الأصول المتداولة/);
+  assert.match(source, /إجمالي الأصول غير المتداولة/);
+  assert.match(source, /إجمالي الالتزامات وحقوق الملكية/);
+  assert.match(source, /unclassifiedAssets/);
+  assert.match(source, /incomeUnclassifiedExpenseRows/);
+});
+
+test("statement account drilldown and Excel export include full posted history", () => {
+  assert.match(source, /accountDetailMovements=accountDetailData\?balanceFlat\.filter/);
+  assert.match(source, /accountDetailHistoryNet=accountDetailMovements\.reduce/);
+  assert.match(source, /accountSheetByCode/);
+  assert.match(source, /Target:"#'/);
+  assert.match(source, /ACC_/);
+});
+
+test("rounding and party residuals create reviewable draft journals, not automatic postings", () => {
+  assert.match(source, /roundingThreshold:1,partyThreshold:10/);
+  assert.match(source, /roundingCandidates/);
+  assert.match(source, /smallPartyCandidates/);
+  assert.match(source, /prepareSmallBalanceAdjustment/);
+  assert.match(source, /لم يتم ترحيل أي مبلغ تلقائيًا/);
+  assert.match(source, /protectedAdjustmentCodes/);
 });
