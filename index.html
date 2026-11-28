@@ -1252,7 +1252,7 @@ function installPestSpreadsheetGrid(root){
   const rowTexts=row=>rowCells(row).map(cellText);
   const filterColumnKind=header=>{
     const text=normalizeFilterSearchText(header);
-    const compact=text.replace(/[\\s_\\-/.]+/g,"");
+    const compact=text.replace(/[\\\s_\/.-]+/g,"");
     const centerHeader=/مركز.*تكلف|تكلف.*مركز|مراكز.*تكلف|cost.?cent(er|re)|costcent(er|re)|كود.*مركز|رقم.*مركز/.test(text)||compact.includes("مركزالتكلف")||compact.includes("costcenter")||compact.includes("costcentre")||text==="مركز"||text==="المركز";
     if(centerHeader)return "costCenters";
     const accountHeader=/حساب|account|دليل الحسابات|gl.?account|ledger.?account|glcode/.test(text)||compact.includes("رقمالحساب")||compact.includes("كودالحساب");
