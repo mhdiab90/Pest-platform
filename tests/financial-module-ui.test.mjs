@@ -201,11 +201,15 @@ test("opening balances screen supports account and analytical party balances wit
   assert.match(source, /if\(tab==='openingBalances'\)content=renderOpeningBalances\(\)/);
 });
 
-test("journal entry form compacts details and places line labels beside the account selector", () => {
-  assert.match(source, /md:col-span-12.*field\('البيان'/);
+test("daily journal entry combines header, lines and attachments in one editor panel", () => {
+  assert.match(source, /const journalEditorPanel=panel\('القيد اليومي'/);
+  assert.match(source, /const headerSection\s*=\s*h\('section'/);
+  assert.match(source, /const linesSection\s*=\s*h\('section'/);
+  assert.match(source, /const attachmentsSection\s*=\s*h\('section'/);
+  assert.match(source, /return h\('div',\{className:'space-y-4'\},journalEditorPanel,draftsPanel,modal\)/);
+  assert.doesNotMatch(source, /panel\('(بيانات رأس القيد|سطور القيد|مرفقات القيد)'/);
   assert.match(source, /'السطر '\+\(index\+1\)/);
-  assert.match(source, /panel\('سطور القيد','',/);
-  assert.doesNotMatch(source, /panel\('سطور القيد','يجب أن يتساوى المدين والدائن\.'/);
+  assert.match(source, /uploadJournalAttachments\(selectedFiles/);
 });
 
 test("searchable financial dropdowns close when clicking outside their picker", () => {
@@ -870,7 +874,7 @@ test("financial attachment manager uses the financial API to unlink invoice meta
 });
 
 
-test("balance sheet and income statement render as single continuous financial tables", () => {
+test("balance sheet and income statement render as styled continuous financial tables", () => {
   assert.match(source, /قائمة المركز المالي — جدول موحد/);
   assert.match(source, /قائمة الدخل — جدول موحد/);
   assert.match(source, /إجمالي الأصول المتداولة/);
@@ -878,6 +882,11 @@ test("balance sheet and income statement render as single continuous financial t
   assert.match(source, /إجمالي الالتزامات وحقوق الملكية/);
   assert.match(source, /unclassifiedAssets/);
   assert.match(source, /incomeUnclassifiedExpenseRows/);
+  assert.match(source, /pest-statement-section-main/);
+  assert.match(source, /pest-statement-final-total/);
+  assert.match(source, /pest-finance-table/);
+  assert.match(indexHtml, /pest-finance-ui-refresh/);
+  assert.match(indexHtml, /pest-statement-kpis/);
 });
 
 test("statement account drilldown and Excel export include full posted history", () => {
