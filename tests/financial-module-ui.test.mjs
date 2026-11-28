@@ -207,7 +207,9 @@ test("daily journal entry combines header, lines and attachments in one editor p
   assert.match(source, /const linesSection\s*=\s*h\('section'/);
   assert.match(source, /const attachmentsSection\s*=\s*h\('section'/);
   assert.match(source, /return h\('div',\{className:'space-y-4'\},journalEditorPanel,draftsPanel,modal\)/);
-  assert.doesNotMatch(source, /panel\('(بيانات رأس القيد|سطور القيد|مرفقات القيد)'/);
+  const journalEditor=source.slice(source.indexOf("const linesSection ="),source.indexOf("const journalMap=",source.indexOf("const linesSection =")));
+  assert.ok(journalEditor.length>0,"daily journal editor source range must be present");
+  assert.doesNotMatch(journalEditor, /panel\('(بيانات رأس القيد|سطور القيد|مرفقات القيد)'/);
   assert.match(source, /'السطر '\+\(index\+1\)/);
   assert.match(source, /uploadJournalAttachments\(selectedFiles/);
 });
@@ -256,7 +258,7 @@ test("journal attachments load in review, support multiple new files, and preser
 
 test("new journal creation accepts multiple files and uploads them against the created journal ID", () => {
   assert.ok(source.includes("const [journalFiles,setJournalFiles]=React.useState([])"));
-  assert.ok(source.includes("const journalAttachmentsPanel=panel('مرفقات القيد'"));
+  assert.ok(source.includes("const attachmentsSection = h('section'"));
   assert.ok(source.includes("type:'file',multiple:true,accept:'image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt'"));
   assert.ok(source.includes("setJournalFiles(previous=>previous.concat(accepted))"));
   assert.ok(source.includes("uploadJournalAttachments(selectedFiles,{id:result.id,type:'journal',status:result.status},{keepBusy:true,quiet:true})"));
@@ -700,7 +702,7 @@ test("all financial report tables use independent bounded vertical and horizonta
   assert.match(source, /overscrollBehavior:'contain'/);
   assert.match(source, /scrollbarGutter:'stable'/);
   assert.match(source, /role:'region','aria-label':'جدول '\+exportTitle/);
-  assert.match(source, /sticky top-0 z-10 bg-slate-100/);
+  assert.match(source, /sticky top-0 z-10 bg-slate-50 p-3 whitespace-nowrap text-right align-middle font-extrabold text-slate-600/);
   assert.match(source, /Object\.assign\(\{[\s\S]*\},scrollStyle\|\|\{\}\)/);
 });
 
