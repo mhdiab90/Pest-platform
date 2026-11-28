@@ -881,8 +881,8 @@ test("balance sheet and income statement render as single continuous financial t
 });
 
 test("statement account drilldown and Excel export include full posted history", () => {
-  assert.match(source, /accountDetailMovements=accountDetailData\\?balanceFlat\\.filter/);
-  assert.match(source, /accountDetailHistoryNet=accountDetailMovements\\.reduce/);
+  assert.match(source, /accountDetailMovements=accountDetailData\?balanceFlat\.filter/);
+  assert.match(source, /accountDetailHistoryNet=accountDetailMovements\.reduce/);
   assert.match(source, /accountSheetByCode/);
   assert.match(source, /Target:"#'/);
   assert.match(source, /ACC_/);
