@@ -473,7 +473,14 @@ function FinanceModule(props){
  },[]);
  const [accountAnalysisCode,setAccountAnalysisCode]=React.useState(''),[accountAnalysisGroupKey,setAccountAnalysisGroupKey]=React.useState(''),[accountAnalysisSearch,setAccountAnalysisSearch]=React.useState('');
  const [accountReviewDecisions,setAccountReviewDecisions]=React.useState({}),[accountReviewSelectedCode,setAccountReviewSelectedCode]=React.useState(''),[accountReviewSelectedParty,setAccountReviewSelectedParty]=React.useState(''),[accountReviewSelectedPartyType,setAccountReviewSelectedPartyType]=React.useState(''),[accountReviewSearch,setAccountReviewSearch]=React.useState(''),[accountReviewFilter,setAccountReviewFilter]=React.useState('all'),[accountReviewNote,setAccountReviewNote]=React.useState('');
+ const [accountReviewSettings,setAccountReviewSettings]=React.useState({roundingThreshold:1,partyThreshold:10,roundingDebitAccountCode:'7902',roundingCreditAccountCode:'4302',supplierDebitOffsetAccount:'7901',supplierCreditOffsetAccount:'4301',customerDebitOffsetAccount:'7901',customerCreditOffsetAccount:'4301'});
  const [accountReviewFindingDecisions,setAccountReviewFindingDecisions]=React.useState({}),[accountReviewFindingFilter,setAccountReviewFindingFilter]=React.useState('open'),[accountReviewSelectedFinding,setAccountReviewSelectedFinding]=React.useState(''),[accountReviewFindingNote,setAccountReviewFindingNote]=React.useState('');
+ React.useEffect(()=>{
+  if(tab!=='review'||!canFinance('reports','view'))return;
+  let active=true;
+  api('?resource=accountReviewSettings').then(result=>{if(active&&result&&result.item)setAccountReviewSettings(previous=>Object.assign({},previous,result.item));}).catch(error=>{if(active)console.warn('Account review settings could not be loaded:',error);});
+  return ()=>{active=false;};
+ },[tab]);
  const [statementAttachmentIndex,setStatementAttachmentIndex]=React.useState({});
  const [statementAttachmentList,setStatementAttachmentList]=React.useState(null),[statementAttachmentPreview,setStatementAttachmentPreview]=React.useState(null);
  const statementAttachmentCacheRef=React.useRef(new Set());
@@ -1979,6 +1986,72 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
      const sheetName=(cleanSheetBase+(sheetSuffix?" "+(sheetSuffix+1):"")).slice(0,31);
      Excel.utils.book_append_sheet(workbook,sheet,sheetName);
     });
+    if(title==="القوائم المالية كاملة"){
+     const accountSheetByCode=new Map(),usedAccountNames=new Set();
+     const makeAccountSheetName=code=>{
+      const safe=("ACC_"+String(code||"ACCOUNT").replace(/[\\/?*:[\]]/g,"_")).slice(0,31);
+      let candidate=safe,index=2;
+      while(usedAccountNames.has(candidate)){const suffix="_"+index++;candidate=safe.slice(0,31-suffix.length)+suffix;}
+      usedAccountNames.add(candidate);return candidate;
+     };
+     const accountRows=statementAccountData.filter(row=>row&&row.account&&(
+      Math.abs(n(row.amount&&row.amount.debit))>0.0001||Math.abs(n(row.amount&&row.amount.credit))>0.0001||
+      Math.abs(n(row.activity&&row.activity.debit))>0.0001||Math.abs(n(row.activity&&row.activity.credit))>0.0001
+     ));
+     accountRows.forEach(row=>{
+      const account=row.account,code=String(account.code),sheetName=makeAccountSheetName(code);
+      accountSheetByCode.set(code,sheetName);
+      const codes=new Set((row.codes||[code]).map(String));
+      const movements=balanceFlat.filter(line=>codes.has(String(line.accountCode))&&String(line.date||"")<=String(period.to||"9999-12")+"-31").slice().sort((a,b)=>String(a.date||"").localeCompare(String(b.date||""))||String(a.journalId||"").localeCompare(String(b.journalId||""))||n(a.lineNo)-n(b.lineNo));
+      const movementNet=movements.reduce((sum,line)=>sum+n(line.debit)-n(line.credit),0);
+      const openingNet=n(row.amount.debit)-n(row.amount.credit)-movementNet;
+      let running=openingNet;
+      const rows=[
+       [code+" — "+String(account.name||"حساب غير مسجل")],
+       ["الرصيد غير المفسر قبل أول حركة",openingNet],
+       ["إجمالي مدين حتى نهاية الفترة",n(row.amount.debit),"إجمالي دائن حتى نهاية الفترة",n(row.amount.credit)],
+       [],
+       ["التاريخ","رقم القيد","نوع المصدر","رقم المستند / المرجع","البيان","الطرف التحليلي","مركز التكلفة","المشروع","مدين","دائن","الرصيد الجاري"]
+      ];
+      movements.forEach(line=>{
+       running+=n(line.debit)-n(line.credit);
+       const journal=statementJournalMap.get(String(line.journalId||""))||{},sourceId=String(line.sourceId||journal.sourceId||"");
+       const sourceDocument=documents.find(item=>String(item.id||"")===sourceId)||{};
+       const partyText=line.partyType&&line.partyId?accountAnalysisLabelForParty(line.partyType,line.partyId):"";
+       const center=centers.find(item=>String(item.code)===String(line.costCenterId||""));
+       const project=projects.find(item=>String(item.code||item.id)===String(line.projectCode||""));
+       rows.push([line.date||journal.date||"",line.journalNumber||journal.number||line.journalId||"",journalSourceLabel(journal),sourceDocument.number||sourceDocument.reference||line.reference||journal.reference||sourceId,line.description||journal.description||"",partyText,center&&center.name||line.costCenterId||"",project&&project.name||project&&project.projectName||line.projectCode||"",n(line.debit),n(line.credit),running]);
+      });
+      const sheet=Excel.utils.aoa_to_sheet(rows),lastColumn=rows.reduce((max,row)=>Math.max(max,row.length),0)-1;
+      sheet["!views"]=[{RTL:true,state:"frozen",ySplit:5,topLeftCell:"A6"}];
+      sheet["!cols"]=[{wch:14},{wch:26},{wch:24},{wch:30},{wch:44},{wch:26},{wch:22},{wch:22},{wch:15},{wch:15},{wch:18}];
+      sheet["!rows"]=[{hpt:28},{hpt:21},{hpt:21},{hpt:8},{hpt:28}];
+      sheet["!merges"]=[{s:{r:0,c:0},e:{r:0,c:lastColumn}}];
+      for(let column=0;column<=lastColumn;column++){
+       const top=sheet[Excel.utils.encode_cell({r:0,c:column})];
+       if(top)top.s={fill:{patternType:"solid",fgColor:{rgb:"17365D"}},font:{name:"Arial",sz:14,bold:true,color:{rgb:"FFFFFF"}},alignment:{horizontal:"center",vertical:"center"}};
+       const header=sheet[Excel.utils.encode_cell({r:4,c:column})];
+       if(header)header.s={fill:{patternType:"solid",fgColor:{rgb:"1F4E78"}},font:{name:"Arial",sz:10,bold:true,color:{rgb:"FFFFFF"}},alignment:{horizontal:"center",vertical:"center",wrapText:true}};
+      }
+      if(rows.length>5)sheet["!autofilter"]={ref:"A5:"+Excel.utils.encode_cell({r:rows.length-1,c:lastColumn})};
+      sheet["!pageSetup"]={orientation:"landscape",fitToWidth:1,fitToHeight:0};
+      Excel.utils.book_append_sheet(workbook,sheet,sheetName);
+     });
+     const uniqueNames=new Map();
+     accountRows.forEach(row=>{const name=String(row.account.name||"");if(!uniqueNames.has(name))uniqueNames.set(name,String(row.account.code));else uniqueNames.set(name,"");});
+     workbook.SheetNames.filter(name=>!usedAccountNames.has(name)).forEach(statementSheetName=>{
+      const statementSheet=workbook.Sheets[statementSheetName];
+      Object.keys(statementSheet||{}).filter(address=>/^[A-Z]+[0-9]+$/.test(address)).forEach(address=>{
+       const cell=statementSheet[address];if(!cell||cell.v===undefined||cell.v===null)return;
+       const value=String(cell.v).trim();
+       let code=accountSheetByCode.has(value)?value:"";
+       if(!code){const match=/^(.+?)\\s*[—–-]\\s*/.exec(value);if(match&&accountSheetByCode.has(match[1].trim()))code=match[1].trim();}
+       if(!code&&uniqueNames.get(value))code=uniqueNames.get(value);
+       const target=accountSheetByCode.get(code);
+       if(target)cell.l={Target:"#'"+target.replace(/'/g,"''")+"'!A1",Tooltip:"فتح كشف حساب "+code};
+      });
+     });
+    }
     Excel.writeFile(workbook,safeName(title)+"_"+new Date().toISOString().slice(0,10)+".xlsx");
     setNotice("تم تصدير "+title+" إلى Excel بنجاح.");
    }catch(error){setError("تعذر تصدير Excel: "+String(error.message||error));}
@@ -4225,7 +4298,12 @@ const renderReview=()=>panel('مركز المراجعة والفحص والاع�
   const codes=descendantCodes(account.code),amount=sumAccountBalances(balanceBalances,codes),activity=sumAccountBalances(balances,codes);
   const openingNet=(amount.debit-amount.credit)-(activity.debit-activity.credit),endingNet=amount.debit-amount.credit;
   return {account,codes,amount,activity,opening:{debit:Math.max(openingNet,0),credit:Math.max(-openingNet,0)},ending:{debit:Math.max(endingNet,0),credit:Math.max(-endingNet,0)}};
- });
+ }).concat(unmappedBalanceRows.map(row=>{
+  const account={code:String(row.code),name:'حساب غير موجود بدليل الحسابات',type:'unclassified',nature:'debit',isGroup:false,unmapped:true};
+  const amount={debit:n(row.debit),credit:n(row.credit)},activity=balances[String(row.code)]||{debit:0,credit:0};
+  const openingNet=(amount.debit-amount.credit)-(n(activity.debit)-n(activity.credit)),endingNet=amount.debit-amount.credit;
+  return {account,codes:[String(row.code)],amount,activity,opening:{debit:Math.max(openingNet,0),credit:Math.max(-openingNet,0)},ending:{debit:Math.max(endingNet,0),credit:Math.max(-endingNet,0)}};
+ }));
  const statementAccountByCode=new Map(statementAccountData.map(row=>[String(row.account.code),row]));
  const accountDepth=account=>{let depth=0,parent=String(account.parentCode||''),guard=0;while(parent&&guard++<20){depth++;const parentAccount=accounts.find(x=>String(x.code)===parent);parent=parentAccount?String(parentAccount.parentCode||''):'';}return depth;};
  const accountInBranch=(account,branchCode)=>{let parent=String(account.parentCode||''),guard=0;if(String(account.code)===String(branchCode))return true;while(parent&&guard++<20){if(parent===String(branchCode))return true;const parentAccount=accounts.find(x=>String(x.code)===parent);parent=parentAccount?String(parentAccount.parentCode||''):'';}return false;};
@@ -4233,8 +4311,9 @@ const renderReview=()=>panel('مركز المراجعة والفحص والاع�
  const openStatementAccount=code=>{if(statementAccountByCode.has(String(code)))setAccountDetailCode(String(code));};
  const openStatementJournal=journalId=>{if(journalId&&statementJournalMap.has(String(journalId)))setStatementJournalId(String(journalId));};
  const accountDetailData=accountDetailCode?statementAccountByCode.get(String(accountDetailCode)):null;
- const accountDetailMovements=accountDetailData?flat.filter(line=>accountDetailData.codes.includes(String(line.accountCode))).slice().sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))||String(a.journalId||'').localeCompare(String(b.journalId||''))||n(a.lineNo)-n(b.lineNo)):[];
- let accountRunningNet=accountDetailData?accountDetailData.opening.debit-accountDetailData.opening.credit:0;
+ const accountDetailMovements=accountDetailData?balanceFlat.filter(line=>accountDetailData.codes.includes(String(line.accountCode))&&String(line.date||'')<=String(period.to||'9999-12')+'-31').slice().sort((a,b)=>String(a.date||'').localeCompare(String(b.date||''))||String(a.journalId||'').localeCompare(String(b.journalId||''))||n(a.lineNo)-n(b.lineNo)):[];
+ const accountDetailHistoryNet=accountDetailMovements.reduce((sum,line)=>sum+n(line.debit)-n(line.credit),0);
+ let accountRunningNet=accountDetailData?(accountDetailData.amount.debit-accountDetailData.amount.credit)-accountDetailHistoryNet:0;
  const accountDetailMovementRows=accountDetailMovements.map(line=>{
   accountRunningNet+=n(line.debit)-n(line.credit);
   const account=accounts.find(item=>String(item.code)===String(line.accountCode));
@@ -4296,7 +4375,7 @@ const renderReview=()=>panel('مركز المراجعة والفحص والاع�
      metric('الرصيد الختامي دائن',fmt(accountDetailData.ending.credit)),
      metric('عدد الحركات',String(accountDetailMovements.length))
     ),
-    h('p',{className:'text-xs text-slate-500'},'اضغط رقم القيد لعرض القيد بالكامل. الرصيد الجاري يبدأ من الرصيد الافتتاحي ثم يتغير مع كل حركة.'),
+    h('p',{className:'text-xs text-slate-500'},'يعرض الكشف الحركات التاريخية الكاملة حتى نهاية الفترة، بما فيها الحركات التي كوّنت الرصيد الافتتاحي. يبدأ الرصيد الجاري من أي رصيد غير مفسر بحركة تفصيلية ثم يتغير مع كل قيد. اضغط رقم القيد لعرض القيد والمستند والمرفقات.'),
     h('div',{className:'overflow-auto border rounded-xl'},
      h('table',{className:'w-full min-w-[1050px] text-sm text-right'},
       h('thead',{className:'bg-slate-100'},h('tr',null,['التاريخ','رقم القيد','الحساب','البيان','الطرف / مركز التكلفة','مدين','دائن','الرصيد الجاري'].map(name=>h('th',{key:name,className:'p-2 whitespace-nowrap'},name)))),
@@ -4508,78 +4587,46 @@ const renderReview=()=>panel('مركز المراجعة والفحص والاع�
  const incomeVatOpening=balanceFlat.filter(line=>String(line.date||"")<(period.from||"0000-00")+"-01"&&["1410","2110"].includes(String(line.accountCode))).reduce((sum,line)=>sum+n(line.debit)-n(line.credit),0);
  const incomeVatClosing=balanceFlat.filter(line=>["1410","2110"].includes(String(line.accountCode))).reduce((sum,line)=>sum+n(line.debit)-n(line.credit),0);
  const incomeTaxMetric=(label,value,accountCode)=>h("button",{type:"button",className:"rounded-xl border bg-white p-3 text-start hover:border-blue-400 hover:bg-blue-50",onClick:()=>openStatementAccount(accountCode)},h("div",{className:"text-xs text-slate-500"},label),h("div",{className:"mt-1 text-base font-extrabold"},fmt(value)),h("div",{className:"mt-1 text-[10px] text-blue-700"},"فتح كشف الحساب "+accountCode));
- const incomeStatementContent=()=>h('div',{className:'space-y-3'},
-  h('div',{className:'grid grid-cols-2 md:grid-cols-4 gap-2'},
-   metric('إجمالي الإيرادات',fmt(revenue)),
-   metric('تكلفة المبيعات',fmt(costOfSales)),
-   metric('مجمل الربح',fmt(grossProfit)),
-   metric('صافي الربح / الخسارة',fmt(profit))
-  ),
-  partnerCurrentCorrectionCounts.needed||partnerCurrentCorrectionCounts.pending?h('div',{className:'rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900'},
-   h('div',{className:'font-bold'},'مراجعة سحوبات الشركاء قبل اعتماد نتيجة الفترة'),
-   partnerCurrentCorrectionCounts.needed?h('p',{className:'mt-1'},'يوجد '+partnerCurrentCorrectionCounts.needed+' حركة مصروف قديمة محولة إلى جاري الشريك لم يُرحّل لها قيد تصحيح بعد. ستظل آثار هذه الحركات ضمن المصروفات حتى اعتماد التصحيح.'):null,
-   partnerCurrentCorrectionCounts.pending?h('p',{className:'mt-1'},'يوجد '+partnerCurrentCorrectionCounts.pending+' قيد تصحيح بانتظار المراجعة والاعتماد. حدّث القوائم بعد ترحيله.'):null,
-   button('فتح جاري الشركاء لمعالجة الحركات',()=>setTab('partnerCurrent'),'muted')
-  ):null,
-  panel("موقف الضرائب — إيضاح مستقل داخل قائمة الدخل","إيضاح رقابي مفصل لحركة الضريبة من القيود المرحلة. هذه الأرصدة ضريبية/ميزانية ولا تُضاف إلى الإيرادات أو المصروفات ولا تغيّر صافي الربح.",h("div",{className:"space-y-3"},
-   h("div",{className:"grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2"},
-    incomeTaxMetric("ضريبة مدخلات المشتريات — 1410",incomeVatInputCurrent.debit,"1410"),
-    incomeTaxMetric("مردودات / تسويات المدخلات — 1410",incomeVatInputCurrent.credit,"1410"),
-    incomeTaxMetric("ضريبة مخرجات المبيعات — 2110",incomeVatOutputCurrent.credit,"2110"),
-    incomeTaxMetric("المسدد من القيمة المضافة — 2110",incomeVatOutputCurrent.debit,"2110"),
-    incomeTaxMetric("ضريبة الخصم والإضافة المستحقة — 2120",incomeWithholdingCurrent.credit,"2120"),
-    incomeTaxMetric("المسدّد من الخصم والإضافة — 2120",incomeWithholdingCurrent.debit,"2120"),
-    incomeTaxMetric("صافي موقف القيمة المضافة — 1410/2110",incomeVatClosing,"1410")
-   ),
-   h("div",{className:"rounded-lg border bg-slate-50 p-3 text-sm space-y-1"},
-    h("div",{className:"font-bold"},"رصيد بداية الفترة: "+fmt(incomeVatOpening)+(incomeVatOpening>=0?" مدين":" دائن")),
-    h("div",null,"صافي حركة الفترة: "+fmt(incomeVatClosing-incomeVatOpening)),
-    h("div",{className:"font-extrabold"},"رصيد الإقفال: "+fmt(Math.abs(incomeVatClosing))+(incomeVatClosing>=0?" مدين":" دائن"))
-   ),
-   h("p",{className:"text-xs text-slate-600"},"اضغط أي مؤشر لفتح كشف الحساب المرتبط. واضغط رقم القيد في الجدول لعرض مستند السداد أو الفاتورة والقيد بالكامل."),
-   table(["التاريخ","رقم القيد","نوع الحركة / الحساب","المستند المرجعي","البيان","مدين","دائن"],incomeVatTaxRows.length?incomeVatTaxRows:[h("tr",{key:"no-tax"},h("td",{colSpan:7,className:"p-4 text-center text-slate-400"},"لا توجد حركات ضريبية مرحّلة في الفترة المحددة."))
-   ])
-  )),
-  panel('فواتير مشتريات محمّلة على المخزون','بنود المشتريات المخزنية تُرحّل إلى حساب المخزون 1300 وتظهر ضمن الأصول، ولا تدخل المصروفات التشغيلية أو تكلفة المبيعات عند الشراء.',h('div',{className:'space-y-2'},
-   h('div',{className:'grid grid-cols-2 gap-2'},metric('عدد فواتير الشراء المخزني',String(inventoryPurchaseInvoiceCount)),metric('إجمالي الإضافة للمخزون',fmt(inventoryPurchaseTotal))),
-   table(['التاريخ','رقم القيد','رقم الفاتورة','الصنف / البيان','قيمة الإضافة للمخزون'],inventoryPurchaseRows)
-  )),
-  panel('الإيرادات','حسابات الإيرادات التفصيلية فقط. إجمالي المجموعة يظهر في المؤشر أعلى القائمة ولا يتكرر مع الحسابات التابعة.',table(['الحساب','إيرادات الفترة'],incomeRevenueRows)),
-  panel('تكلفة المبيعات','حسابات تكلفة المبيعات التفصيلية فقط؛ لا تُخلط مع المصروفات التشغيلية.',table(['الحساب','تكلفة الفترة'],incomeCogsRows)),
-  panel('المصروفات التشغيلية','الحسابات المصنفة تشغيليًا في دليل الحسابات فقط، دون عرض الحسابات التجميعية بجانب حساباتها التابعة.',h('div',{className:'space-y-2'},metric('إجمالي المصروفات التشغيلية',fmt(operatingExpenses)),table(['الحساب','مصروف الفترة'],incomeOperatingExpenseRows))),
-  panel('المصروفات الإدارية والعمومية','مصروفات الإدارة والخدمات العمومية المصنفة في دليل الحسابات.',h('div',{className:'space-y-2'},metric('إجمالي المصروفات الإدارية',fmt(administrativeExpenses)),table(['الحساب','مصروف الفترة'],incomeAdministrativeExpenseRows))),
-  panel('المصروفات التمويلية والبنكية','العمولات والمصاريف البنكية والتمويلية فقط.',h('div',{className:'space-y-2'},metric('إجمالي المصروفات التمويلية',fmt(financeExpenses)),table(['الحساب','مصروف الفترة'],incomeFinanceExpenseRows))),
-  panel('مصروفات غير مصنفة','الحسابات التي لم يتم تحديد مجموعة قائمة الدخل لها في دليل الحسابات. لا يتم افتراض أنها تشغيلية؛ راجع تصنيف الحساب.',h('div',{className:'space-y-2'},metric('إجمالي غير المصنف',fmt(unclassifiedExpenses)),table(['الحساب','مصروف الفترة'],incomeUnclassifiedExpenseRows))),
-  panel('مطابقة المصروفات مع القيود المصدرية','كل مبلغ مرتبط بسطر قيد مرحّل. حركة العهدة التي تم ترحيلها إلى 6100 لا تُعد تلقائيًا مصروف شركة إذا كانت سحبًا شخصيًا؛ تحويلها إلى جاري الشريك لا ينعكس على قائمة الدخل إلا بعد اعتماد قيد التصحيح. فواتير المشتريات المخزنية على 1300 معروضة في قسم مستقل ولا تدخل هذا الإجمالي. اضغط رقم القيد لمراجعة أطرافه.',h('div',{className:'space-y-3'},
-   h('div',{className:'grid grid-cols-2 md:grid-cols-7 gap-2'},
-    metric('مصروفات مرحّلة من العهد الشخصية',fmt(custodyExpenseTotal)),
-    metric('مصروفات ناتجة عن الفواتير',fmt(invoiceExpenseTotal)),
-    metric('مصروفات سندات الخزينة / البنك',fmt(voucherExpenseTotal)),
-    metric('مصروفات بقيود أخرى',fmt(manualExpenseTotal)),
-    metric('تخفيض مصروفات سحوبات الشركاء',fmt(Math.max(0,-partnerCurrentCorrectionTotal))),
-    metric('سحوبات قديمة تحتاج تصحيح',String(partnerCurrentCorrectionCounts.needed)),
-    metric('تصحيحات بانتظار الاعتماد',String(partnerCurrentCorrectionCounts.pending))
-   ),
-   h('div',{className:'rounded-lg border p-3 text-sm '+(Math.abs(expenseSourceDifference)>0.01||Math.abs(expenseCategoryDifference)>0.01?'border-rose-300 bg-rose-50':'border-emerald-300 bg-emerald-50')},
-    h('div',{className:'font-bold'},'مطابقة إجمالي المصروفات غير تكلفة المبيعات'),
-    h('div',null,'مصروفات قائمة الدخل: '+fmt(otherExpenses)+' ج.م'),
-    h('div',null,'مجموع سطور المصروفات في القيود: '+fmt(expenseSourceTotal)+' ج.م'),
-    h('div',{className:'font-extrabold mt-1'},'فرق المطابقة: '+fmt(expenseSourceDifference)+' ج.م'),
-    h('div',{className:'mt-1 text-xs'},'فرق تصنيف مجموعات المصروفات: '+fmt(expenseCategoryDifference)+' ج.م')
-   ),
-   table(['التاريخ','رقم القيد','الحساب','البيان','مصدر الحركة','المرجع','صافي المصروف'],expenseSourceRows)
-  )),
-  panel('نتيجة الفترة','الإيرادات ناقص تكلفة المبيعات ثم جميع المصروفات التشغيلية والإدارية والتمويلية وغير المصنفة.',table(['البيان','القيمة'],[
-   ['مجمل الربح',fmt(grossProfit)],
-   ['مصروفات تشغيلية',fmt(operatingExpenses)],
-   ['مصروفات إدارية وعمومية',fmt(administrativeExpenses)],
-   ['مصروفات تمويلية',fmt(financeExpenses)],
-   ['مصروفات غير مصنفة',fmt(unclassifiedExpenses)],
-   ['إجمالي المصروفات الأخرى',fmt(otherExpenses)],
-   ['صافي الربح / الخسارة',fmt(profit)]
-  ]))
- ); 
-
+ const incomeStatementContent=()=> {
+  const sectionRow=label=>h('tr',{className:'bg-slate-100 font-extrabold'},h('td',{colSpan:2,className:'p-2 border-t-2 border-slate-300'},label));
+  const summaryRow=(label,value,emphasis)=>h('tr',{className:(emphasis?'bg-slate-100 font-extrabold':'bg-slate-50 font-bold')+' border-t-2 border-slate-300'},h('td',{className:'p-2'},label),h('td',{className:'p-2 text-end'},fmt(value)));
+  const incomeRows=[
+   sectionRow('الإيرادات'),...incomeRevenueRows,summaryRow('إجمالي الإيرادات',revenue,true),
+   sectionRow('تكلفة المبيعات'),...incomeCogsRows,summaryRow('إجمالي تكلفة المبيعات',costOfSales,false),summaryRow('مجمل الربح',grossProfit,true),
+   sectionRow('المصروفات التشغيلية'),...incomeOperatingExpenseRows,summaryRow('إجمالي المصروفات التشغيلية',operatingExpenses,false),
+   sectionRow('المصروفات الإدارية والعمومية'),...incomeAdministrativeExpenseRows,summaryRow('إجمالي المصروفات الإدارية والعمومية',administrativeExpenses,false),
+   sectionRow('المصروفات التمويلية والبنكية'),...incomeFinanceExpenseRows,summaryRow('إجمالي المصروفات التمويلية',financeExpenses,false),
+   sectionRow('المصروفات غير المصنفة — للمراجعة'),...incomeUnclassifiedExpenseRows,summaryRow('إجمالي المصروفات غير المصنفة',unclassifiedExpenses,false),
+   summaryRow('إجمالي المصروفات بخلاف تكلفة المبيعات',otherExpenses,true),summaryRow('صافي الربح / الخسارة',profit,true)
+  ];
+  const partnerNotice=partnerCurrentCorrectionCounts.needed||partnerCurrentCorrectionCounts.pending
+   ?h('div',{className:'rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 space-y-1'},
+     h('div',{className:'font-bold'},'مراجعة سحوبات الشركاء قبل اعتماد نتيجة الفترة'),
+     partnerCurrentCorrectionCounts.needed?h('p',null,'يوجد '+partnerCurrentCorrectionCounts.needed+' حركة مصروف قديمة محولة إلى جاري الشريك لم يُرحّل لها قيد تصحيح بعد.'):null,
+     partnerCurrentCorrectionCounts.pending?h('p',null,'يوجد '+partnerCurrentCorrectionCounts.pending+' قيد تصحيح بانتظار المراجعة والاعتماد.'):null,
+     button('فتح جاري الشركاء لمعالجة الحركات',()=>setTab('partnerCurrent'),'muted')
+    ):null;
+  const taxExplanationRows=[
+   ['ضريبة مدخلات المشتريات — 1410',incomeVatInputCurrent.debit],['مردودات / تسويات المدخلات — 1410',incomeVatInputCurrent.credit],
+   ['ضريبة مخرجات المبيعات — 2110',incomeVatOutputCurrent.credit],['المسدد من القيمة المضافة — 2110',incomeVatOutputCurrent.debit],
+   ['ضريبة الخصم والإضافة المستحقة — 2120',incomeWithholdingCurrent.credit],['المسدد من الخصم والإضافة — 2120',incomeWithholdingCurrent.debit],
+   ['صافي موقف القيمة المضافة — 1410/2110',incomeVatClosing]
+  ].map((row,index)=>h('tr',{key:'tax-summary-'+index},h('td',{className:'p-2'},row[0]),h('td',{className:'p-2 text-end'},fmt(row[1]))));
+  return h('div',{className:'space-y-3'},
+   h('div',{className:'grid grid-cols-2 md:grid-cols-4 gap-2'},metric('إجمالي الإيرادات',fmt(revenue)),metric('تكلفة المبيعات',fmt(costOfSales)),metric('مجمل الربح',fmt(grossProfit)),metric('صافي الربح / الخسارة',fmt(profit))),
+   partnerNotice,
+   panel('قائمة الدخل — جدول موحد','جدول متصل يعرض الإيرادات وتكلفة المبيعات والمصروفات والنتيجة النهائية دون تفكيك القائمة إلى لوحات منفصلة.',table(['البيان / الحساب','القيمة'],incomeRows)),
+   panel('إيضاحات ومراجعة قائمة الدخل','هذه التفاصيل للتفسير والمطابقة ولا تكرر مبالغ القائمة ولا تغيّر نتيجة الأعمال.',h('div',{className:'space-y-3'},
+    h('div',{className:'rounded-lg border bg-slate-50 p-3 text-sm'},h('b',null,'موقف الضرائب'),h('p',{className:'mt-1'},'أرصدة الضرائب أرصدة ميزانية وليست إيرادات أو مصروفات. اضغط الحساب 1410 أو 2110 لفتح كشفه.'),h('p',null,'رصيد بداية الفترة: '+fmt(incomeVatOpening)+(incomeVatOpening>=0?' مدين':' دائن')+' · رصيد الإقفال: '+fmt(Math.abs(incomeVatClosing))+(incomeVatClosing>=0?' مدين':' دائن'))),
+    table(['مؤشر ضريبي','القيمة'],taxExplanationRows),
+    h('div',{className:'rounded-lg border bg-slate-50 p-3 text-sm'},h('b',null,'فواتير المشتريات المخزنية'),h('p',{className:'mt-1'},'الفواتير التي رُحّلت إلى حساب المخزون 1300 تظهر ضمن الأصول ولا تدخل تكلفة المبيعات أو المصروفات عند الشراء.'),h('p',null,'عدد الفواتير: '+inventoryPurchaseInvoiceCount+' · إجمالي الإضافة للمخزون: '+fmt(inventoryPurchaseTotal))),
+    table(['التاريخ','رقم القيد','رقم الفاتورة','الصنف / البيان','قيمة الإضافة للمخزون'],inventoryPurchaseRows),
+    h('div',{className:'rounded-lg border p-3 text-sm '+(Math.abs(expenseSourceDifference)>0.01||Math.abs(expenseCategoryDifference)>0.01?'border-rose-300 bg-rose-50':'border-emerald-200 bg-emerald-50')},h('b',null,'مطابقة مصروفات قائمة الدخل مع مصادر القيود'),h('p',{className:'mt-1'},'مصروفات قائمة الدخل: '+fmt(otherExpenses)+' · مجموع سطور المصروفات بالقيود: '+fmt(expenseSourceTotal)+' · الفرق: '+fmt(expenseSourceDifference)),h('p',null,'فرق تصنيف مجموعات المصروفات: '+fmt(expenseCategoryDifference))),
+    table(['التاريخ','رقم القيد','الحساب','البيان','مصدر الحركة','المرجع','صافي المصروف'],expenseSourceRows)
+   )),
+   h('p',{className:'text-xs text-slate-500'},'الحسابات غير المصنفة ظاهرة كقسم مستقل للمراجعة، ولا يتم افتراض تبعيتها للمصروفات التشغيلية أو الإدارية. اضغط أي حساب لفتح كشفه التاريخي.')
+  );
+ };
  const invoicePostingReconciliationPanel=()=>{
   const invoiceDocuments=documents.filter(doc=>doc&&doc.type==="invoice"&&!["deleted","cancelled"].includes(String(doc.status||"")));
   const journalById=new Map(),journalBySource=new Map();
@@ -4736,23 +4783,90 @@ const criticalAccountConfiguration=[
   )))
  ));
 
-  const balanceSheetContent=()=>h('div',{className:'space-y-3'},
-  h('div',{className:'grid grid-cols-2 md:grid-cols-4 gap-2'},
-   metric('إجمالي الأصول',fmt(assets)),
-   metric('إجمالي الالتزامات',fmt(liabilities)),
-   metric('إجمالي حقوق الملكية',fmt(equity)),
-   metric('فرق ميزان المراجعة',fmt(ledgerBalanceDifference))
-  ),
-  Math.abs(ledgerBalanceDifference)>0.01?h('div',{className:'rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900'},'تحذير: إجمالي المدين لا يساوي إجمالي الدائن في الأستاذ. المدين '+fmt(ledgerBalanceDebit)+'، الدائن '+fmt(ledgerBalanceCredit)+'، والفرق '+fmt(ledgerBalanceDifference)+'. لا تعتمد القوائم قبل معالجة الفرق.'):h('div',{className:'rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900'},'إجمالي ميزان المراجعة متوازن.'),
-  unmappedBalanceRows.length?panel('أرصدة غير مرتبطة بدليل الحسابات','هذه الأرصدة موجودة في الأستاذ ولكن كودها غير موجود بدليل الحسابات. يتم إظهارها منفصلة ولا يتم تجاهلها أو ضمها تلقائيًا إلى الأصول أو الالتزامات.',table(['كود الحساب','مدين','دائن','صافي مدين / (دائن)'],unmappedBalanceRows.map(row=>h('tr',{key:row.code,className:'border-t'},h('td',{className:'p-2 font-bold'},row.code),h('td',{className:'p-2 text-end'},fmt(row.debit)),h('td',{className:'p-2 text-end'},fmt(row.credit)),h('td',{className:'p-2 text-end font-bold'},fmt(row.net)))))):null,
-  invoicePostingReconciliationPanel(),
-  inventoryStatementReconciliationPanel(),
-  panel('الأصول','الرصيد التراكمي حتى نهاية الفترة، ويشمل الحسابات التجميعية والحسابات التابعة. اضغط على الحساب لعرض كشف الحساب.',table(['الحساب','مدين','دائن','الرصيد الطبيعي'],balanceAssetRows)),
-  panel('الالتزامات','الأرصدة الدائنة والمدينة لكل حساب التزام.',table(['الحساب','مدين','دائن','الرصيد الطبيعي'],balanceLiabilityRows)),
-  panel('حقوق الملكية','تظهر نتيجة الأعمال المتراكمة بشكل مستقل ضمن حقوق الملكية.',h('div',{className:'space-y-2'},table(['الحساب','مدين','دائن','الرصيد الطبيعي'],balanceEquityRows),table(['البيان','القيمة'],[['الأرباح المتراكمة منذ بداية الدفاتر',fmt(accumulatedProfit)],['إجمالي حقوق الملكية',fmt(equity)]]))),
-  h('div',{className:'rounded-xl border p-4 '+(Math.abs(assets-liabilities-equity)>0.01?'border-rose-300 bg-rose-50':'border-emerald-300 bg-emerald-50')},h('div',{className:'font-bold'},'مطابقة المركز المالي'),h('div',{className:'mt-1 text-sm'},'الأصول '+fmt(assets)+' = الالتزامات '+fmt(liabilities)+' + حقوق الملكية '+fmt(equity)),h('div',{className:'font-extrabold text-lg mt-1'},'فرق التوازن: '+fmt(assets-liabilities-equity)))
- );
-  const cashFlowCategoryRows=[
+  const balanceSheetClassifyAccount=account=>{
+  const compact=value=>normalizeMatch(String(value||'')).replace(/\s+/g,'').replace(/[_-]/g,'');
+  const explicit=compact(account.balanceSheetClass||account.balanceSheetClassification||account.currentNonCurrent||'');
+  if(['current','currentasset','currentliability','متداول','متداوله','اصولمتداوله','التزاماتمتداوله'].includes(explicit))return 'current';
+  if(['noncurrent','noncurrentasset','noncurrentliability','غيرمتداول','غيرمتداوله','اصولغيرمتداوله','التزاماتغيرمتداوله','fixedasset','longterm'].includes(explicit))return 'nonCurrent';
+  let cursor=account,guard=0;
+  while(cursor&&guard++<20){
+   const name=compact(cursor.name||cursor.label||'');
+   if(name.includes('غيرمتداول')||name.includes('طويلالاجل')||name.includes('اصولثابته')||name.includes('fixedasset')||name.includes('noncurrent'))return 'nonCurrent';
+   if(name.includes('متداول')||name.includes('currentasset')||name.includes('currentliabilit'))return 'current';
+   const parentCode=String(cursor.parentCode||'');
+   if(parentCode==='11'||parentCode==='21')return 'current';
+   if(parentCode==='12'||parentCode==='22')return 'nonCurrent';
+   cursor=accounts.find(item=>String(item.code)===parentCode)||null;
+  }
+  return 'unclassified';
+ };
+ const balanceSheetContent=()=>{
+  const balanceAccountRows=balanceTrial.filter(row=>{
+   const account=row.account;
+   return ['asset','liability','equity'].includes(account.type)&&(!account.isGroup||n(row.amount.debit)||n(row.amount.credit));
+  }).slice().sort((a,b)=>accountDepth(a.account)-accountDepth(b.account)||String(a.account.code).localeCompare(String(b.account.code),undefined,{numeric:true}));
+  const assetRows=balanceAccountRows.filter(row=>row.account.type==='asset'&&String(row.account.code)!=='1410');
+  const liabilityRows=balanceAccountRows.filter(row=>row.account.type==='liability'&&String(row.account.code)!=='2110');
+  const equityRows=balanceAccountRows.filter(row=>row.account.type==='equity');
+  const classifyRows=(rows,classification)=>rows.filter(row=>balanceSheetClassifyAccount(row.account)===classification);
+  const netOf=row=>n(row.amount.debit)-n(row.amount.credit);
+  const sumNet=rows=>rows.reduce((sum,row)=>sum+netOf(row),0);
+  const sectionRow=label=>h('tr',{className:'bg-slate-100 font-extrabold'},h('td',{colSpan:4,className:'p-3 border-t-2 border-slate-300'},label));
+  const accountRow=row=>{
+   const account=row.account,depth=accountDepth(account),directGroup=Boolean(account.isGroup);
+   return h('tr',{key:'bs-'+account.code,className:'border-t hover:bg-blue-50'},
+    h('td',{className:'p-2'},h('button',{type:'button',className:'text-blue-700 underline text-right font-semibold',style:{paddingRight:(depth*12)+'px'},onClick:()=>openStatementAccount(account.code)},String(account.code)+' — '+String(account.name||'حساب غير مسجل')+(directGroup?' · حركة مباشرة على حساب تجميعي':''))),
+    h('td',{className:'p-2 text-end'},fmt(row.amount.debit)),
+    h('td',{className:'p-2 text-end'},fmt(row.amount.credit)),
+    h('td',{className:'p-2 text-end font-bold'},fmt(Math.abs(netOf(row)))+(Math.abs(netOf(row))>0.004?(netOf(row)>=0?' مدين':' دائن'):'')) 
+   );
+  };
+  const totalRow=(label,net,emphasis)=>{
+   const debit=Math.max(Number(net)||0,0),credit=Math.max(-(Number(net)||0),0);
+   return h('tr',{className:(emphasis?'bg-slate-100 font-extrabold':'bg-slate-50 font-bold')+' border-t-2 border-slate-300'},
+    h('td',{className:'p-2'},label),h('td',{className:'p-2 text-end'},fmt(debit)),h('td',{className:'p-2 text-end'},fmt(credit)),
+    h('td',{className:'p-2 text-end font-extrabold'},fmt(Math.abs(Number(net)||0))+(Math.abs(Number(net)||0)>0.004?((Number(net)||0)>=0?' مدين':' دائن'):'')));
+  };
+  const currentAssets=classifyRows(assetRows,'current'),nonCurrentAssets=classifyRows(assetRows,'nonCurrent'),unclassifiedAssets=classifyRows(assetRows,'unclassified');
+  const currentLiabilities=classifyRows(liabilityRows,'current'),nonCurrentLiabilities=classifyRows(liabilityRows,'nonCurrent'),unclassifiedLiabilities=classifyRows(liabilityRows,'unclassified');
+  const currentAssetsNet=sumNet(currentAssets)+vatNetReceivable,nonCurrentAssetsNet=sumNet(nonCurrentAssets),unclassifiedAssetsNet=sumNet(unclassifiedAssets);
+  const currentLiabilitiesNet=-sumNet(currentLiabilities)+vatNetPayable,nonCurrentLiabilitiesNet=-sumNet(nonCurrentLiabilities),unclassifiedLiabilitiesNet=-sumNet(unclassifiedLiabilities);
+  const equityAccountsNet=equityRows.reduce((sum,row)=>sum-n(row.amount.debit)+n(row.amount.credit),0),equityResultNet=equityAccountsNet+accumulatedProfit;
+  const tableRows=[
+   sectionRow('الأصول'),sectionRow('الأصول المتداولة'),...currentAssets.map(accountRow),
+   ...(vatNetReceivable>0.005?[h('tr',{key:'vat-current-net',className:'border-t'},h('td',{className:'p-2'},h('span',null,'صافي ضريبة القيمة المضافة — '),h('button',{type:'button',className:'text-blue-700 underline',onClick:()=>openStatementAccount('1410')},'1410'),h('span',null,' / '),h('button',{type:'button',className:'text-blue-700 underline',onClick:()=>openStatementAccount('2110')},'2110')),h('td',{className:'p-2 text-end'},fmt(vatNetReceivable)),h('td',{className:'p-2 text-end'},fmt(0)),h('td',{className:'p-2 text-end font-bold'},fmt(vatNetReceivable)+' مدين'))]:[]),
+   totalRow('إجمالي الأصول المتداولة',currentAssetsNet,true),
+   sectionRow('الأصول غير المتداولة'),...nonCurrentAssets.map(accountRow),totalRow('إجمالي الأصول غير المتداولة',nonCurrentAssetsNet,true),
+   ...(unclassifiedAssets.length?[sectionRow('أصول — تصنيف الحركة غير محدد'),...unclassifiedAssets.map(accountRow),totalRow('إجمالي الأصول غير المصنفة',unclassifiedAssetsNet,false)]:[]),
+   totalRow('إجمالي الأصول',assets,true),
+   sectionRow('الالتزامات'),sectionRow('الالتزامات المتداولة'),...currentLiabilities.map(accountRow),
+   ...(vatNetPayable>0.005?[h('tr',{key:'vat-current-liability-net',className:'border-t'},h('td',{className:'p-2'},h('span',null,'صافي ضريبة القيمة المضافة — '),h('button',{type:'button',className:'text-blue-700 underline',onClick:()=>openStatementAccount('1410')},'1410'),h('span',null,' / '),h('button',{type:'button',className:'text-blue-700 underline',onClick:()=>openStatementAccount('2110')},'2110')),h('td',{className:'p-2 text-end'},fmt(0)),h('td',{className:'p-2 text-end'},fmt(vatNetPayable)),h('td',{className:'p-2 text-end font-bold'},fmt(vatNetPayable)+' دائن'))]:[]),
+   totalRow('إجمالي الالتزامات المتداولة',currentLiabilitiesNet,true),
+   sectionRow('الالتزامات غير المتداولة'),...nonCurrentLiabilities.map(accountRow),totalRow('إجمالي الالتزامات غير المتداولة',nonCurrentLiabilitiesNet,true),
+   ...(unclassifiedLiabilities.length?[sectionRow('التزامات — تصنيف الحركة غير محدد'),...unclassifiedLiabilities.map(accountRow),totalRow('إجمالي الالتزامات غير المصنفة',unclassifiedLiabilitiesNet,false)]:[]),
+   totalRow('إجمالي الالتزامات',liabilities,true),
+   sectionRow('حقوق الملكية'),...equityRows.map(accountRow),
+   h('tr',{key:'accumulated-profit',className:'border-t'},h('td',{className:'p-2'},'الأرباح / الخسائر المتراكمة منذ بداية الدفاتر'),h('td',{className:'p-2 text-end'},fmt(Math.max(-accumulatedProfit,0))),h('td',{className:'p-2 text-end'},fmt(Math.max(accumulatedProfit,0))),h('td',{className:'p-2 text-end font-bold'},fmt(Math.abs(accumulatedProfit))+(accumulatedProfit>=0?' دائن':' مدين'))),
+   totalRow('إجمالي حقوق الملكية',equity,true),totalRow('إجمالي الالتزامات وحقوق الملكية',liabilities+equity,true),
+   totalRow('فرق المركز المالي (الأصول − الالتزامات − حقوق الملكية)',assets-liabilities-equity,true)
+  ];
+  const unmappedRows=unmappedBalanceRows.map(row=>h('tr',{key:'unmapped-'+row.code,className:'border-t'},
+   h('td',{className:'p-2'},h('button',{type:'button',className:'text-blue-700 underline font-bold',onClick:()=>openStatementAccount(row.code)},row.code+' — غير موجود بدليل الحسابات')),
+   h('td',{className:'p-2 text-end'},fmt(row.debit)),h('td',{className:'p-2 text-end'},fmt(row.credit)),
+   h('td',{className:'p-2 text-end font-bold'},fmt(Math.abs(row.net))+(row.net>=0?' مدين':' دائن'))
+  ));
+  return h('div',{className:'space-y-3'},
+   h('div',{className:'grid grid-cols-2 md:grid-cols-4 gap-2'},metric('إجمالي الأصول',fmt(assets)),metric('إجمالي الالتزامات',fmt(liabilities)),metric('إجمالي حقوق الملكية',fmt(equity)),metric('فرق المركز المالي',fmt(assets-liabilities-equity))),
+   Math.abs(ledgerBalanceDifference)>0.01?h('div',{className:'rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900'},'تحذير: ميزان المراجعة غير متوازن. المدين '+fmt(ledgerBalanceDebit)+'، الدائن '+fmt(ledgerBalanceCredit)+'، الفرق '+fmt(ledgerBalanceDifference)+'.'):h('div',{className:'rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900'},'إجمالي ميزان المراجعة متوازن.'),
+   panel('قائمة المركز المالي — جدول موحد','يتم عرض كل الأصول والالتزامات وحقوق الملكية في جدول واحد. التصنيف حسب الحقل المحدد بالحساب أو مجموعة الحسابات، وتبقى الحسابات غير المصنفة ظاهرة للمراجعة.',table(['الحساب / البند','مدين','دائن','الرصيد الطبيعي'],tableRows)),
+   panel('إيضاحات ومراجعة القوائم','هذه المطابقات الرقابية لا يتم دمج فروقها أو تغيير الأرصدة تلقائيًا. اضغط الحساب غير المرتبط لعرض حركات الأستاذ المتاحة.',h('div',{className:'space-y-3'},
+    unmappedBalanceRows.length?table(['حسابات غير مرتبطة بالدليل','مدين','دائن','الرصيد'],unmappedRows):h('p',{className:'text-sm text-slate-500'},'جميع أرصدة الأستاذ مرتبطة بحسابات موجودة في الدليل.'),
+    invoicePostingReconciliationPanel(),inventoryStatementReconciliationPanel()
+   )),
+   h('p',{className:'text-xs text-slate-500'},'أرصدة الحسابات التفصيلية تظل بالدقة الأصلية، والتقريب للعرض لا يغيّر الأستاذ. لا يُعتمد أي قيد تسوية إلا بعد مراجعته وترحيله.')
+  );
+ };
+ const cashFlowCategoryRows=[
   ['الأنشطة التشغيلية',cashFlowSummary.operatingIn,cashFlowSummary.operatingOut,cashFlowSummary.operatingIn-cashFlowSummary.operatingOut],
   ['الأنشطة الاستثمارية',cashFlowSummary.investingIn,cashFlowSummary.investingOut,cashFlowSummary.investingIn-cashFlowSummary.investingOut],
   ['الأنشطة التمويلية',cashFlowSummary.financingIn,cashFlowSummary.financingOut,cashFlowSummary.financingIn-cashFlowSummary.financingOut],
@@ -4984,6 +5098,44 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
  const accountReviewDecisionFor=(accountCode,partyType,partyId)=>{
   const periodKey=String(period.to||'');
   return Object.values(accountReviewDecisions||{}).find(item=>item&&String(item.period||'')===periodKey&&String(item.accountCode||'')===String(accountCode||'')&&String(item.partyType||'')===String(partyType||'')&&String(item.partyId||'')===String(partyId||''))||null;
+ };
+ const saveAccountReviewSettings=async()=>{
+  if(!canFinance('reports','edit')){setError('ليس لديك صلاحية تعديل إعدادات التسويات.');return;}
+  setBusy(true);setError('');
+  try{
+   const result=await api('','POST',Object.assign({action:'saveAccountReviewSettings'},accountReviewSettings));
+   if(result&&result.item)setAccountReviewSettings(previous=>Object.assign({},previous,result.item));
+   setNotice('تم حفظ حدود التسويات والحسابات المقابلة بنجاح.');
+  }catch(error){setError(error.message||String(error));}
+  finally{setBusy(false);}
+ };
+ const prepareSmallBalanceAdjustment=candidate=>{
+  if(!candidate||!canFinance('journal','add')){setError('ليس لديك صلاحية إنشاء قيد تسوية.');return;}
+  const net=Number(candidate.net)||0,amount=Math.round((Math.abs(net)+Number.EPSILON)*100)/100;
+  if(!amount){setError('الرصيد أصبح صفرًا بعد التقريب إلى قرشين.');return;}
+  const settings=accountReviewSettings||{};
+  let offsetCode='';
+  if(candidate.kind==='rounding')offsetCode=(net>0?settings.roundingDebitAccountCode:settings.roundingCreditAccountCode)||'';
+  else if(candidate.partyType==='vendor')offsetCode=(net>0?settings.supplierDebitOffsetAccount:settings.supplierCreditOffsetAccount)||'';
+  else if(candidate.partyType==='customer')offsetCode=(net>0?settings.customerDebitOffsetAccount:settings.customerCreditOffsetAccount)||'';
+  const targetAccount=accounts.find(item=>String(item.code)===String(candidate.accountCode));
+  const offsetAccount=accounts.find(item=>String(item.code)===String(offsetCode));
+  if(!targetAccount||!offsetAccount){setError('حدد الحساب المقابل المناسب في إعدادات التسويات أولاً، وتأكد من وجوده كحساب تفصيلي نشط.');return;}
+  const closesDebit=net<0,offsetDebit=net>0;
+  const description=candidate.kind==='rounding'?'تسوية فرق تقريب للحساب '+candidate.accountCode+' — '+candidate.accountName:'تسوية رصيد صغير '+(candidate.partyType==='vendor'?'للمورد ':'للعميل ')+candidate.partyName+' — '+candidate.accountCode;
+  setJournal({
+   id:'',date:today(),description,reference:'SMALL-BALANCE-'+String(candidate.accountCode)+'-'+String(candidate.partyId||'GL'),
+   checkNumber:'',invoiceNumber:'',documentNumber:'',currency:'EGP',
+   lines:[
+    {accountCode:String(offsetCode),description:'الحساب المقابل لتسوية '+(candidate.kind==='rounding'?'فرق التقريب':'الرصيد الصغير'),debit:offsetDebit?String(amount):'',credit:offsetDebit?'':String(amount),costCenterId:'',partyType:'',partyId:''},
+    {accountCode:String(candidate.accountCode),description,debit:closesDebit?String(amount):'',credit:closesDebit?'':String(amount),costCenterId:'',partyType:candidate.partyType||'',partyId:candidate.partyId||''}
+   ]
+  });
+  setJournalFiles([]);
+  setAccountDetailCode('');
+  setStatementJournalId('');
+  setTab('journal');
+  setNotice('تم تجهيز مسودة قيد التسوية. راجع الحساب والطرف والمستندات ثم أرسل القيد للمراجعة والاعتماد؛ لم يتم ترحيل أي مبلغ تلقائيًا.');
  };
  const saveAccountReviewMark=async(accountCode,partyType,partyId,decision)=>{
   if(!canFinance('reports','edit')){setError('ليس لديك صلاحية تسجيل قرارات المراجعة الشاملة.');return;}
@@ -5231,6 +5383,49 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   const decisionLabel=value=>({matched:'تمت المطابقة',follow_up:'يحتاج متابعة',requires_adjustment:'تسوية / قيد تصحيح مطلوب'}[value]||'لم تتم المراجعة');
   const decisionTone=value=>value==='matched'?'text-emerald-700':value==='follow_up'||value==='requires_adjustment'?'text-amber-700':'text-slate-500';
   const displayParty=party=>String(party&&(party.name||party.companyName||party.partyName||party.code||party.id)||'طرف بدون اسم');
+  const money=value=>Math.round((Number(value||0)+Number.EPSILON)*100)/100;
+  const roundingLimit=Math.max(0,Number(accountReviewSettings.roundingThreshold)||0),partyLimit=Math.max(0,Number(accountReviewSettings.partyThreshold)||0);
+  const protectedAdjustmentCodes=new Set(['1110','1120','1150','1160','1190','1201','1202','1210','1220','1230','1240','1300','1410','2110','2120','2130','2140','2150','281']);
+  const roundingCandidates=rowsForAccounts.filter(row=>{
+   const account=row.account,name=normalizeMatch(account.name||'').replace(/\s+/g,'');
+   if(account.isGroup||account.isControl||account.subledgerType||account.unmapped||!['asset','liability','equity'].includes(account.type)||protectedAdjustmentCodes.has(String(account.code)))return false;
+   if(/ضريبه|رسومضريبيه|تامين|عهد|سلف|خزينه|بنك|مخزون|اصولثابته|معدات|اثاث|deposit|tax|bank|cash|inventory|fixedasset/.test(name))return false;
+   const net=money(row.debit-row.credit);
+   return Math.abs(net)>0&&Math.abs(net)<=roundingLimit;
+  }).map(row=>({kind:'rounding',accountCode:String(row.account.code),accountName:row.account.name,net:money(row.debit-row.credit),partyId:'',partyName:'',partyType:''}));
+  const smallPartyCandidates=[];
+  accounts.filter(account=>!account.isGroup&&['vendor','customer'].includes(String(account.subledgerType||''))).forEach(account=>{
+   const partyType=String(account.subledgerType),grouped=new Map();
+   balanceFlat.filter(line=>String(line.accountCode)===String(account.code)&&String(line.partyType||'')===partyType&&String(line.partyId||'')).forEach(line=>{
+    const partyId=String(line.partyId),entry=grouped.get(partyId)||{debit:0,credit:0};
+    entry.debit+=n(line.debit);entry.credit+=n(line.credit);grouped.set(partyId,entry);
+   });
+   grouped.forEach((entry,partyId)=>{
+    const net=money(entry.debit-entry.credit);
+    if(!net||Math.abs(net)>partyLimit)return;
+    const directory=partyType==='vendor'?allVendors:allClients,party=directory.find(item=>String(item.code||item.id)===partyId);
+    smallPartyCandidates.push({kind:'party',accountCode:String(account.code),accountName:account.name,partyType,partyId,partyName:party?displayParty(party):partyId,net});
+   });
+  });
+  const offsetForCandidate=candidate=>{
+   const settings=accountReviewSettings||{},net=Number(candidate.net)||0;
+   if(candidate.kind==='rounding')return String((net>0?settings.roundingDebitAccountCode:settings.roundingCreditAccountCode)||'');
+   if(candidate.partyType==='vendor')return String((net>0?settings.supplierDebitOffsetAccount:settings.supplierCreditOffsetAccount)||'');
+   return String((net>0?settings.customerDebitOffsetAccount:settings.customerCreditOffsetAccount)||'');
+  };
+  const offsetReady=candidate=>{
+   const code=offsetForCandidate(candidate),account=accounts.find(item=>String(item.code)===code);
+   return Boolean(account&&!account.isGroup&&account.active!==false&&!account.isControl&&!account.subledgerType&&account.type===(candidate.net>0?'expense':'revenue'));
+  };
+  const adjustmentRow=candidate=>h('tr',{key:[candidate.kind,candidate.accountCode,candidate.partyType,candidate.partyId].join('|'),className:'border-t'},
+   h('td',{className:'p-2'},h('button',{type:'button',className:'text-blue-700 underline font-bold text-start',onClick:()=>openStatementAccount(candidate.accountCode)},candidate.accountCode+' — '+candidate.accountName)),
+   h('td',{className:'p-2'},candidate.kind==='rounding'?'فرق تقريب':candidate.partyType==='vendor'?'مورد':'عميل'),
+   h('td',{className:'p-2'},candidate.partyName||'—'),
+   h('td',{className:'p-2 text-end font-bold'},fmt(Math.abs(candidate.net))+(candidate.net>0?' مدين':' دائن')),
+   h('td',{className:'p-2'},offsetForCandidate(candidate)||'لم يحدد'),
+   h('td',{className:'p-2'},button('إعداد مسودة قيد',()=>prepareSmallBalanceAdjustment(candidate),'primary',busy||!canFinance('journal','add')||!offsetReady(candidate)))
+  );
+  const adjustmentAccountOptions=type=>[{value:'',label:'حدد الحساب المقابل'}].concat(accounts.filter(account=>!account.isGroup&&account.active!==false&&account.type===type&&!account.isControl&&!account.subledgerType).map(account=>({value:String(account.code),label:String(account.code)+' — '+String(account.name)})));
   const accountRows=visibleRows.map(row=>h('tr',{key:row.account.code,className:'border-t hover:bg-blue-50'},
    h('td',{className:'p-2 font-bold'},h('button',{type:'button',className:'text-blue-700 underline text-start',onClick:()=>{
     setAccountReviewSelectedCode(String(row.account.code));setAccountReviewSelectedParty('');setAccountReviewSelectedPartyType('');
@@ -5333,6 +5528,22 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
     metric('حسابات تمت مراجعتها',String(rowsForAccounts.filter(row=>row.decision&&row.decision.status==='matched').length)),
     metric('حسابات تحتاج متابعة',String(rowsForAccounts.filter(row=>row.decision&&row.decision.status!=='matched').length))
    ),
+   panel('مراجعة فروق التقريب والأرصدة الصغيرة','اقتراحات قابلة للتعديل فقط. لا يتم قفل طرف أو ترحيل قيد آليًا؛ يجب مراجعة الفواتير والدفعات والمستندات قبل إرسال المسودة للاعتماد.',h('div',{className:'space-y-3'},
+    h('div',{className:'grid grid-cols-1 md:grid-cols-2 gap-2'},
+     field('حد فرق التقريب بالجنيه',String(accountReviewSettings.roundingThreshold??1),value=>setAccountReviewSettings(previous=>Object.assign({},previous,{roundingThreshold:value})),'number'),
+     field('حد الرصيد الصغير للمورد / العميل بالجنيه',String(accountReviewSettings.partyThreshold??10),value=>setAccountReviewSettings(previous=>Object.assign({},previous,{partyThreshold:value})),'number')
+    ),
+    h('div',{className:'grid grid-cols-1 md:grid-cols-2 gap-2'},
+     select('حساب مدين مقابل فرق تقريب مدين',String(accountReviewSettings.roundingDebitAccountCode||''),value=>setAccountReviewSettings(previous=>Object.assign({},previous,{roundingDebitAccountCode:value})),adjustmentAccountOptions('expense')),
+     select('حساب دائن مقابل فرق تقريب دائن',String(accountReviewSettings.roundingCreditAccountCode||''),value=>setAccountReviewSettings(previous=>Object.assign({},previous,{roundingCreditAccountCode:value})),adjustmentAccountOptions('revenue')),
+     select('حساب مدين مقابل رصيد مورد / عميل مدين',String(accountReviewSettings.supplierDebitOffsetAccount||''),value=>setAccountReviewSettings(previous=>Object.assign({},previous,{supplierDebitOffsetAccount:value,customerDebitOffsetAccount:value})),adjustmentAccountOptions('expense')),
+     select('حساب دائن مقابل رصيد مورد / عميل دائن',String(accountReviewSettings.supplierCreditOffsetAccount||''),value=>setAccountReviewSettings(previous=>Object.assign({},previous,{supplierCreditOffsetAccount:value,customerCreditOffsetAccount:value})),adjustmentAccountOptions('revenue'))
+    ),
+    h('div',{className:'flex flex-wrap gap-2 items-center'},button('حفظ إعدادات وحدود التسوية',()=>void saveAccountReviewSettings(),'primary',busy||!canFinance('reports','edit')),h('span',{className:'text-xs text-slate-500'},'الحسابات الافتراضية: 7901/7902 للمصروفات، و4301/4302 للمكاسب وفروق التقريب الدائنة. يمكنك تغييرها.')),
+    h('div',{className:'rounded-lg border bg-slate-50 p-3 text-xs text-slate-600'},'تظهر فروق التقريب فقط للحسابات البسيطة غير الرقابية. يتم استبعاد الضرائب والتأمينات والعهد والسلف والبنوك والخزينة والمخزون والأصول الثابتة والعملاء والموردين. تسويات الأطراف منفصلة لكل مورد أو عميل ولكل حساب تحليلي، ولا تتم المقاصة بين مورد وعميل.'),
+    panel('فروق التقريب في الحسابات المؤهلة','لا تشمل الحسابات المحمية أو الرقابية. لا يقترح النظام فرقًا يساوي صفرًا بعد التقريب لقرشين.',roundingCandidates.length?table(['الحساب','نوع التسوية','الطرف','الرصيد','الحساب المقابل','الإجراء'],roundingCandidates.map(adjustmentRow)):h('p',{className:'p-3 text-sm text-slate-500'},'لا توجد فروق تقريب ضمن الحد المحدد للحسابات المؤهلة.')),
+    panel('الأرصدة الصغيرة للموردين والعملاء','كل سطر يخص طرفًا واحدًا وحسابًا تحليليًا واحدًا. راجع فواتير مفتوحة أو دفعات غير مخصصة قبل إنشاء القيد.',smallPartyCandidates.length?table(['الحساب','نوع التسوية','المورد / العميل','الرصيد','الحساب المقابل','الإجراء'],smallPartyCandidates.map(adjustmentRow)):h('p',{className:'p-3 text-sm text-slate-500'},'لا توجد أرصدة موردين أو عملاء داخل الحد المحدد أو لا توجد أطراف تحليلية مكتملة.'))
+   )),
    panel('فاحص المراجع الذكي','يفحص القيود المرحلة بمنطق محاسبي قابل للتفسير: سلامة القيد، الحسابات، الأستاذ المساعد، تطابق المورد/العميل، ضريبة الخصم والاستقطاع، الفواتير والضريبة، التكرار، القيم الاستثنائية، وطبيعة الأرصدة. هذه تنبيهات للمراجع وليست أحكامًا آلية؛ لا يتم تعديل أو ترحيل أي قيد تلقائيًا.',h('div',{className:'space-y-3'},
     h('div',{className:'grid grid-cols-2 md:grid-cols-4 gap-2'},
      metric('ملاحظات مفتوحة',String(openFindings.length)),
@@ -5698,5 +5909,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261125-finance-attachment-manager-filter-fix-v25";
+ window.PEST_FINANCE_MODULE_VERSION="20261128-unified-statements-rounding-review-v26";
 })();
