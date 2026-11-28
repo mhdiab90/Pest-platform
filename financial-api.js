@@ -832,7 +832,21 @@ export async function handleFinancialRequest(ctx){
   if(res==="accountReviews"){requireFinanceArea("reports","view");return {items:(await adminRead("accountReviewDecisions"))||{}};}
   if(res==="accountReviewSettings"){
    requireFinanceArea("reports","view");
-   const item=(await adminRead("settings/accountReviewSmallBalances"))||{roundingThreshold:1,partyThreshold:10,roundingDebitAccountCode:"7902",roundingCreditAccountCode:"4302",supplierDebitOffsetAccount:"7901",supplierCreditOffsetAccount:"4301",customerDebitOffsetAccount:"7901",customerCreditOffsetAccount:"4301"};
+   const chart=(await adminRead("chartOfAccounts"))||{};
+   const configured=(await adminRead("settings/accountReviewSmallBalances"))||{roundingThreshold:1,partyThreshold:10,roundingDebitAccountCode:"7902",roundingCreditAccountCode:"4302",supplierDebitOffsetAccount:"7901",supplierCreditOffsetAccount:"4301",customerDebitOffsetAccount:"7901",customerCreditOffsetAccount:"4301"};
+   const validOffset=(code,type)=>{
+    const account=chart[String(code||"")];
+    return Boolean(account&&!account.isGroup&&account.active!==false&&!account.isControl&&!account.subledgerType&&account.type===type);
+   };
+   const item={
+    ...configured,
+    roundingDebitAccountCode:validOffset(configured.roundingDebitAccountCode,"expense")?String(configured.roundingDebitAccountCode):"",
+    roundingCreditAccountCode:validOffset(configured.roundingCreditAccountCode,"revenue")?String(configured.roundingCreditAccountCode):"",
+    supplierDebitOffsetAccount:validOffset(configured.supplierDebitOffsetAccount,"expense")?String(configured.supplierDebitOffsetAccount):"",
+    supplierCreditOffsetAccount:validOffset(configured.supplierCreditOffsetAccount,"revenue")?String(configured.supplierCreditOffsetAccount):"",
+    customerDebitOffsetAccount:validOffset(configured.customerDebitOffsetAccount,"expense")?String(configured.customerDebitOffsetAccount):"",
+    customerCreditOffsetAccount:validOffset(configured.customerCreditOffsetAccount,"revenue")?String(configured.customerCreditOffsetAccount):""
+   };
    return {item};
   }
   if(res==="accountReviewFindingDecisions"){requireFinanceArea("reports","view");return {items:(await adminRead("accountReviewFindingDecisions"))||{}};}
