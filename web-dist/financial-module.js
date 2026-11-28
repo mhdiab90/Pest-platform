@@ -2333,7 +2333,7 @@ const analyticPartyLabel=type=>({customer:"العميل",vendor:"المورد",e
    )
   );
   const reviewLinesSection=h("section",{className:"pest-journal-subsection"},
-   h("div",{className:"pest-journal-subsection-heading"},h("div",null,h("h4",null,"سطور القيد المحاسبي"),h("p",null,"راجع الحساب والبيان والطرف التحليلي ومركز التكلفة وقيم المدين والدائن.")),button("إضافة سطر جديد",()=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).concat([{accountCode:"6100",description:"",debit:0,credit:0,costCenterId:draft.projectCode||"",projectCode:draft.projectCode||"",partyType:"",partyId:""}])}),"primary",!editable||lines.length>=(draft.sourceType==="legacyImport"?500:draft.openingBalance?2000:100))),
+   h("div",{className:"pest-journal-subsection-heading"},h("div",null,h("h4",null,"سطور القيد المحاسبي"),h("p",null,"راجع الحساب والبيان والطرف التحليلي ومركز التكلفة وقيم المدين والدائن.")),button("إضافة سطر جديد",()=>setJournalModalDraft(old=>Object.assign({},old,{lines:(old.lines||[]).concat([{accountCode:"6100",description:"",debit:0,credit:0,costCenterId:draft.projectCode||"",projectCode:draft.projectCode||"",partyType:"",partyId:""}])})),"primary",!editable||lines.length>=(draft.sourceType==="legacyImport"?500:draft.openingBalance?2000:100))),
    h("div",{className:"space-y-2"},lineCards.length?lineCards:h("p",{className:"text-sm text-rose-700"},"القيد لا يحتوي على سطور. أضف سطرين على الأقل.")),
    h("div",{className:"grid grid-cols-1 sm:grid-cols-3 gap-2 border-t bg-slate-50 p-3 text-sm rounded-lg"},
     h("b",null,"إجمالي المدين: "+fmt(debit)),h("b",null,"إجمالي الدائن: "+fmt(credit)),
