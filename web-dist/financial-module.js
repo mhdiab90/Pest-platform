@@ -444,7 +444,7 @@ function FinanceModule(props){
  const [invoiceFile,setInvoiceFile]=React.useState(null),[invoicePartySearch,setInvoicePartySearch]=React.useState(''),[cashPartySearch,setCashPartySearch]=React.useState(''),[statementPartySearch,setStatementPartySearch]=React.useState(''),[ocrSuggestions,setOcrSuggestions]=React.useState({party:null,items:[]}),[cash,setCash]=React.useState({movementType:'customer_receipt',date:today(),amount:'',description:'',reference:'',partyType:'customer',partyId:'',partyName:'',employeeUid:'',employeeName:'',cashAccountCode:'1110',bankAccountCode:'1120',offsetAccountCode:'6100',taxAccountCode:'2110',projectCode:'',currency:'EGP'});
  const [cashHistorySearch,setCashHistorySearch]=React.useState(''),[masterViewKind,setMasterViewKind]=React.useState('chartOfAccounts');
  const [bankFile,setBankFile]=React.useState(null),[bankRows,setBankRows]=React.useState([]),[bankAccount,setBankAccount]=React.useState('1120');
- const [search,setSearch]=React.useState(''),[masterPartySearch,setMasterPartySearch]=React.useState(''),[screenTableSearch,setScreenTableSearch]=React.useState('');
+ const [search,setSearch]=React.useState(''),[masterPartySearch,setMasterPartySearch]=React.useState(''),[journalAccountSearch,setJournalAccountSearch]=React.useState(''),[screenTableSearch,setScreenTableSearch]=React.useState('');
  const [screenAccountFilter,setScreenAccountFilter]=React.useState(''),[screenCostCenterFilter,setScreenCostCenterFilter]=React.useState('');
  const [masterImportKind,setMasterImportKind]=React.useState('customers'),[masterImportRows,setMasterImportRows]=React.useState([]),[masterImportName,setMasterImportName]=React.useState('');
  const [legacyImportPackage,setLegacyImportPackage]=React.useState(null),[legacyImportFileName,setLegacyImportFileName]=React.useState(""),[legacyImportProgress,setLegacyImportProgress]=React.useState(null);
@@ -2996,7 +2996,23 @@ const renderJournal = function() {
    documents.filter(function(x){return x.type==='journal';}).forEach(x=>journalMap.set(String(x.id),x));
    journalRecords.forEach(x=>journalMap.set(String(x.id),x));
    const allJournalRows=Array.from(journalMap.values()).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||n(b.postedAt||b.createdAt)-n(a.postedAt||a.createdAt));
-   const draftRows=allJournalRows.map(function(x){
+   const normalizeJournalAccountFilter=value=>normalizeMatch(String(value||'').replace(/[٠-٩]/g,d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/[۰-۹]/g,d=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))));
+   const journalAccountNeedle=normalizeJournalAccountFilter(journalAccountSearch);
+   const accountFilteredJournalRows=allJournalRows.filter(function(entry){
+    if(!journalAccountNeedle)return true;
+    return (Array.isArray(entry.lines)?entry.lines:[]).some(function(line){
+     const accountCode=String(line.accountCode||line.account_code||'');
+     const account=accounts.find(function(item){return String(item.code)===accountCode;})||{};
+     const accountName=String(line.accountName||line.account_name||account.name||'');
+     return normalizeJournalAccountFilter(accountCode+' '+accountName).includes(journalAccountNeedle);
+    });
+   });
+   const accountFilterPanel=h('div',{className:'flex flex-col sm:flex-row sm:items-end gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm'},
+    h('div',{className:'flex-1 min-w-0'},field(t('البحث عن حساب برقم الحساب أو اسمه','Find account by code or name'),journalAccountSearch,setJournalAccountSearch)),
+    button(t('مسح بحث الحساب','Clear account search'),()=>setJournalAccountSearch(''),'muted',!journalAccountSearch),
+    h('div',{className:'text-xs font-bold text-slate-500 pb-2'},t('عدد القيود التي تحتوي الحساب: ','Entries containing account: ')+accountFilteredJournalRows.length+' / '+allJournalRows.length)
+   );
+   const draftRows=accountFilteredJournalRows.map(function(x){
     const manual=!(x.sourceType&&x.sourceType!=='manual'),posted=x.status==='posted'||journalRecords.some(j=>j.id===x.id&&j.status==='posted');
     const debit=(x.lines||[]).reduce((sum,line)=>sum+n(line.debit),0),credit=(x.lines||[]).reduce((sum,line)=>sum+n(line.credit),0);
     return h('tr',{key:x.id,className:'border-t hover:bg-slate-50 cursor-pointer',onClick:()=>openJournalModal(x)},
@@ -3056,7 +3072,7 @@ const renderJournal = function() {
      )
     );
    })():null;
-  return h('div',{className:'space-y-4'},journalEditorPanel,draftsPanel,modal);
+  return h('div',{className:'space-y-4'},journalEditorPanel,accountFilterPanel,draftsPanel,modal);
  };
  const renderInvoices = function() {
   const headFields = h('div',{className:'grid md:grid-cols-3 gap-3'},
@@ -5937,5 +5953,5 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   h('p',{className:'text-xs text-slate-400'},'الأرصدة القديمة في متابعة المشروعات والعهد لا تُنقل تلقائيًا إلى الحسابات. يلزم إعداد واعتماد الأرصدة الافتتاحية.'))
 }
 window.PEST_FINANCE_MODULE=FinanceModule;
- window.PEST_FINANCE_MODULE_VERSION="20261128-review-journal-single-panel-v28";
+ window.PEST_FINANCE_MODULE_VERSION="20261128-journal-account-filter-v29";
 })();
