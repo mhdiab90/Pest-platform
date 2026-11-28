@@ -908,10 +908,11 @@ test("journal register filters entries by account code or account name across al
   const end = source.indexOf("const renderInvoices = function()", start);
   const journal = source.slice(start, end);
   assert.ok(start >= 0 && end > start, "journal register renderer must exist");
+  assert.ok(journal.includes("const journalAccountNames=new Map(accounts.filter(function(item){return item&&item.code;})"));
   assert.ok(journal.includes("const accountFilteredJournalRows=allJournalRows.filter(function(entry){"));
   assert.ok(journal.includes("(Array.isArray(entry.lines)?entry.lines:[]).some(function(line){"));
   assert.ok(journal.includes("line.accountCode||line.account_code"));
-  assert.ok(journal.includes("line.accountName||line.account_name||account.name"));
+  assert.ok(journal.includes("line.accountName||line.account_name||journalAccountNames.get(accountCode)"));
   assert.ok(journal.includes("normalizeJournalAccountFilter(accountCode+' '+accountName).includes(journalAccountNeedle)"));
   assert.ok(journal.includes("البحث عن حساب برقم الحساب أو اسمه"));
   assert.ok(journal.includes("setJournalAccountSearch('')"));
