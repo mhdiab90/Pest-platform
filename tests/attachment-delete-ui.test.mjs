@@ -48,7 +48,8 @@ test("financial attachment manager supports finance view grants and metadata-awa
   assert.match(app, /function canViewRecordAttachment\(entityType,entityId\)/);
   assert.match(app, /financialScreenPermissionModule\(entityType,entityId\)/);
   assert.match(app, /screenAttachmentContext\.onDelete/);
-  assert.match(app, /onManageRecordAttachments=\{\(entityType,entityId,label,onDelete\)=>setScreenAttachmentContext\(\{entityType,entityId,label,onDelete\}\)\}/);
+  assert.match(app, /onManageRecordAttachments=\{\(entityType,entityId,label,onDelete\)=>\{/);
+  assert.match(app, /setScreenAttachmentContext\(\{entityType,entityId,label,onDelete\}\)/);
   assert.match(app, /typeof onDelete==='function'\?await onDelete\(item\):await removeRecordAttachment\(entityType,entityId,item\)/);
   assert.doesNotMatch(app, /remove duplicate custody add control/);
 });
