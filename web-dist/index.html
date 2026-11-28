@@ -1,6 +1,20 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+  <script id="pest-pages-optimized-entry">
+    (() => {
+      const host = String(window.location.hostname || "").toLowerCase();
+      const rawPath = String(window.location.pathname || "");
+      const path = rawPath.endsWith("/") ? rawPath.slice(0, -1) : rawPath;
+      if (host === "mhdiab90.github.io" &&
+          (path === "/Pest-platform" || path === "/Pest-platform/index.html")) {
+        window.location.replace(
+          window.location.origin + "/Pest-platform/web-dist/" +
+          window.location.search + window.location.hash
+        );
+      }
+    })();
+  </script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PEST Platform | When Performance Matters</title>
