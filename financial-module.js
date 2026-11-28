@@ -5388,7 +5388,7 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   const protectedAdjustmentCodes=new Set(['1110','1120','1150','1160','1190','1201','1202','1210','1220','1230','1240','1300','1410','2110','2120','2130','2140','2150','281']);
   const roundingCandidates=rowsForAccounts.filter(row=>{
    const account=row.account,name=normalizeMatch(account.name||'').replace(/\s+/g,'');
-   if(account.isGroup||account.isControl||account.subledgerType||account.unmapped||!['asset','liability','equity'].includes(account.type)||protectedAdjustmentCodes.has(String(account.code)))return false;
+   if(account.isGroup||account.isControl||account.subledgerType||account.unmapped||!['asset','liability','revenue','expense'].includes(account.type)||protectedAdjustmentCodes.has(String(account.code)))return false;
    if(/ضريبه|رسومضريبيه|تامين|عهد|سلف|خزينه|بنك|مخزون|اصولثابته|معدات|اثاث|deposit|tax|bank|cash|inventory|fixedasset/.test(name))return false;
    const net=money(row.debit-row.credit);
    return Math.abs(net)>0&&Math.abs(net)<=roundingLimit;
@@ -5404,7 +5404,7 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
     const net=money(entry.debit-entry.credit);
     if(!net||Math.abs(net)>partyLimit)return;
     const directory=partyType==='vendor'?allVendors:allClients,party=directory.find(item=>String(item.code||item.id)===partyId);
-    smallPartyCandidates.push({kind:'party',accountCode:String(account.code),accountName:account.name,partyType,partyId,partyName:party?displayParty(party):partyId,net});
+    smallPartyCandidates.push({kind:'party',accountCode:String(account.code),accountName:account.name,partyType,partyId,partyName:party?displayParty(party):partyId,partyExists:Boolean(party),net});
    });
   });
   const offsetForCandidate=candidate=>{
@@ -5415,7 +5415,7 @@ const renderReports=()=>panel('القوائم والتقارير المالية'
   };
   const offsetReady=candidate=>{
    const code=offsetForCandidate(candidate),account=accounts.find(item=>String(item.code)===code);
-   return Boolean(account&&!account.isGroup&&account.active!==false&&!account.isControl&&!account.subledgerType&&account.type===(candidate.net>0?'expense':'revenue'));
+   return Boolean(account&&!account.isGroup&&account.active!==false&&!account.isControl&&!account.subledgerType&&account.type===(candidate.net>0?'expense':'revenue')&&(candidate.kind!=='party'||candidate.partyExists));
   };
   const adjustmentRow=candidate=>h('tr',{key:[candidate.kind,candidate.accountCode,candidate.partyType,candidate.partyId].join('|'),className:'border-t'},
    h('td',{className:'p-2'},h('button',{type:'button',className:'text-blue-700 underline font-bold text-start',onClick:()=>openStatementAccount(candidate.accountCode)},candidate.accountCode+' — '+candidate.accountName)),
