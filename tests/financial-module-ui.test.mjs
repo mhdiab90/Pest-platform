@@ -214,6 +214,34 @@ test("daily journal entry combines header, lines and attachments in one editor p
   assert.match(source, /uploadJournalAttachments\(selectedFiles/);
 });
 
+test("review journal details group header, source, lines and attachments in one collapsible panel", () => {
+  const start=source.indexOf("const renderReviewJournalDetails=()=>{");
+  const end=source.indexOf("const renderIntegrityFindingModal=",start);
+  const details=source.slice(start,end);
+  assert.match(details, /panel\(t\('بيانات القيد ومرفقاته','Journal Entry & Attachments'/);
+  assert.match(details, /const headerSection=h\('section'/);
+  assert.match(details, /const linesSection=h\('section'/);
+  assert.match(details, /const attachmentsSection=h\('section'/);
+  assert.match(details, /statementAttachmentAction\(selected\)/);
+  assert.match(details, /journalAttachmentUploadControl\(selected\)/);
+  assert.doesNotMatch(details, /panel\(t\('بيانات رأس القيد'/);
+  assert.doesNotMatch(details, /panel\(t\('سطور القيد المحاسبي'/);
+  assert.doesNotMatch(source, /selected\.type==='journal'\?h\('div',\{className:'flex flex-wrap items-center gap-3 rounded-xl border border-blue-200/);
+});
+
+test("editable review journal modal combines header, lines and attachments in one panel", () => {
+  const start=source.indexOf("const renderReviewJournalEditor=()=>{");
+  const end=source.indexOf("const startJournalRevision=",start);
+  const editor=source.slice(start,end);
+  assert.match(editor, /panel\("بيانات القيد ومرفقاته"/);
+  assert.match(editor, /reviewHeaderSection/);
+  assert.match(editor, /reviewLinesSection/);
+  assert.match(editor, /reviewAttachmentsSection/);
+  assert.match(editor, /journalAttachmentUploadControl\(draft\)/);
+  assert.match(editor, /statementAttachmentAction\(draft\)/);
+  assert.doesNotMatch(editor, /panel\("بيانات رأس القيد"/);
+});
+
 test("searchable financial dropdowns close when clicking outside their picker", () => {
   assert.match(source, /document\.addEventListener\('pointerdown',closeFinancePickers,true\)/);
   assert.match(source, /data-finance-picker-root':'true'/);
@@ -774,7 +802,7 @@ test("refundable third-party deposits have a separate analytic registry, picker,
   assert.match(source, /value:"securityDepositParty",label:"تأمينات مستردة لدى الغير"/);
   assert.match(source, /securityDepositParty:"كشف حساب تأمينات مستردة لدى الغير"/);
   assert.match(source, /securityDepositParties:\{\}/);
-  assert.match(indexHtml, /20261128-journal-single-panel-statement-ui-v27/);
+  assert.match(indexHtml, /20261128-review-journal-single-panel-v28/);
 });
 
 test("refundable deposit quick coding works in journal entry, review editing, and legacy archive correction", () => {
