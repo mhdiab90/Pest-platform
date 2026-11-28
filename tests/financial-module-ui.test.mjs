@@ -42,8 +42,8 @@ test("financial tables align RTL amounts below matching headers", () => {
   assert.match(source, /className:'pest-finance-workspace p-2 md:p-3 space-y-2'/);
   assert.match(source, /\.pest-finance-workspace\[dir="rtl"\] table\{direction:rtl!important;text-align:right!important;\}/);
   assert.match(source, /table td\[class~="text-end"\]\{direction:ltr!important;text-align:right!important;white-space:nowrap;font-variant-numeric:tabular-nums;\}/);
-  assert.match(source, /className:'sticky top-0 z-10 bg-slate-100 p-3 whitespace-nowrap text-right align-middle'/);
-  assert.match(source, /dir:rtl\?'rtl':'ltr',className:'w-full text-sm text-right'/);
+  assert.match(source, /className:'sticky top-0 z-10 bg-slate-50 p-3 whitespace-nowrap text-right align-middle font-extrabold text-slate-600 border-b border-slate-200'/);
+  assert.match(source, /dir:rtl\?'rtl':'ltr',className:'w-full text-sm text-right pest-finance-table'/);
 });
 
 test("all shared financial sections have individual collapse and expand buttons", () => {
