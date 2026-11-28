@@ -251,10 +251,13 @@ test("review journal header fits all six fields into two compact rows", () => {
   assert.match(source, /const headerField=\(label,value,onChange,type\)=>h\("label"/);
   assert.match(source, /grid grid-cols-3 gap-x-2 gap-y-1\.5 min-w-0/);
   assert.match(source, /h-8 w-full min-w-0 rounded-md border/);
-  const headerBlock = source.slice(source.indexOf('panel("بيانات رأس القيد"'), source.indexOf('h("div",{className:"flex flex-wrap gap-2 text-xs"}', source.indexOf('panel("بيانات رأس القيد"')));
-  assert.equal((headerBlock.match(/headerField\("/g)||[]).length, 6);
-  assert.match(headerBlock, /headerField\("تاريخ القيد"/);
-  assert.match(headerBlock, /headerField\("بيان القيد"/);
+  const headerStart=source.indexOf("const reviewHeaderSection=");
+  const headerEnd=source.indexOf("const reviewLinesSection=",headerStart);
+  const headerBlock=source.slice(headerStart,headerEnd);
+  assert.ok(headerStart>=0&&headerEnd>headerStart,"unified review header section must exist");
+  assert.equal((headerBlock.match(/headerField\("/g)||[]).length,6);
+  assert.match(headerBlock,/headerField\("تاريخ القيد"/);
+  assert.match(headerBlock,/headerField\("بيان القيد"/);
 });
 
 test("journal review editors expose and save check, invoice and document numbers in the header", () => {
