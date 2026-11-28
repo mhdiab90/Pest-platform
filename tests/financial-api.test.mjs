@@ -2641,5 +2641,9 @@ test("small-balance settings validate thresholds and dedicated offset accounts",
   assert.equal(result.item.roundingThreshold,1);
   assert.equal(result.item.partyThreshold,10);
   assert.equal(read("settings/accountReviewSmallBalances/roundingDebitAccountCode"),"7902");
+  database.chartOfAccounts["7902"].type="asset";
+  const configured=await invoke("GET","?resource=accountReviewSettings");
+  assert.equal(configured.item.roundingDebitAccountCode,"","an offset code already used by another account type must not be suggested");
+  database.chartOfAccounts["7902"].type="expense";
   await assert.rejects(invoke("POST","",{action:"saveAccountReviewSettings",roundingDebitAccountCode:"1110"}),/ليس حسابًا تفصيليًا نشطًا وغير رقابي/);
 });
