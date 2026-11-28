@@ -903,21 +903,21 @@ test("all financial tables expose searchable account and cost-center filters", (
   assert.match(source, /centerNeedles=\[centerOption\.value/);
 });
 test("journal register filters entries by account code or account name across all journal lines", () => {
-  assert.match(source, /journalAccountSearch,setJournalAccountSearch/);
+  assert.ok(source.includes("journalAccountSearch,setJournalAccountSearch"));
   const start = source.indexOf("const renderJournal = function()");
   const end = source.indexOf("const renderInvoices = function()", start);
   const journal = source.slice(start, end);
   assert.ok(start >= 0 && end > start, "journal register renderer must exist");
-  assert.match(journal, /const accountFilteredJournalRows=allJournalRows\\.filter/);
-  assert.match(journal, /\\(Array\\.isArray\\(entry\\.lines\\)\\?entry\\.lines:\\[\\]\\)\\.some/);
-  assert.match(journal, /line\\.accountCode\\|\\|line\\.account_code/);
-  assert.match(journal, /line\\.accountName\\|\\|line\\.account_name\\|\\|account\\.name/);
-  assert.match(journal, /normalizeJournalAccountFilter\\(accountCode\\+' '\\+accountName\\)\\.includes\\(journalAccountNeedle\\)/);
-  assert.match(journal, /البحث عن حساب برقم الحساب أو اسمه/);
-  assert.match(journal, /setJournalAccountSearch\\(''\\)/);
-  assert.match(journal, /accountFilteredJournalRows\\.length/);
-  assert.match(journal, /accountFilteredJournalRows\\.map/);
-  assert.match(indexHtml, /20261128-journal-account-filter-v29/);
+  assert.ok(journal.includes("const accountFilteredJournalRows=allJournalRows.filter(function(entry){"));
+  assert.ok(journal.includes("(Array.isArray(entry.lines)?entry.lines:[]).some(function(line){"));
+  assert.ok(journal.includes("line.accountCode||line.account_code"));
+  assert.ok(journal.includes("line.accountName||line.account_name||account.name"));
+  assert.ok(journal.includes("normalizeJournalAccountFilter(accountCode+' '+accountName).includes(journalAccountNeedle)"));
+  assert.ok(journal.includes("البحث عن حساب برقم الحساب أو اسمه"));
+  assert.ok(journal.includes("setJournalAccountSearch('')"));
+  assert.ok(journal.includes("accountFilteredJournalRows.length"));
+  assert.ok(journal.includes("accountFilteredJournalRows.map"));
+  assert.ok(indexHtml.includes("20261128-journal-account-filter-v29"));
 });
 
 test("financial attachment manager uses the financial API to unlink invoice metadata", () => {
