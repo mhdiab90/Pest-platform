@@ -2997,13 +2997,13 @@ const renderJournal = function() {
    journalRecords.forEach(x=>journalMap.set(String(x.id),x));
    const allJournalRows=Array.from(journalMap.values()).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||n(b.postedAt||b.createdAt)-n(a.postedAt||a.createdAt));
    const normalizeJournalAccountFilter=value=>normalizeMatch(String(value||'').replace(/[٠-٩]/g,d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/[۰-۹]/g,d=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))));
+   const journalAccountNames=new Map(accounts.filter(function(item){return item&&item.code;}).map(function(item){return [String(item.code),String(item.name||'')];}));
    const journalAccountNeedle=normalizeJournalAccountFilter(journalAccountSearch);
    const accountFilteredJournalRows=allJournalRows.filter(function(entry){
     if(!journalAccountNeedle)return true;
     return (Array.isArray(entry.lines)?entry.lines:[]).some(function(line){
      const accountCode=String(line.accountCode||line.account_code||'');
-     const account=accounts.find(function(item){return String(item.code)===accountCode;})||{};
-     const accountName=String(line.accountName||line.account_name||account.name||'');
+     const accountName=String(line.accountName||line.account_name||journalAccountNames.get(accountCode)||'');
      return normalizeJournalAccountFilter(accountCode+' '+accountName).includes(journalAccountNeedle);
     });
    });
