@@ -960,6 +960,50 @@
       .app-root-shell.app-mobile-header-compact .app-shell-brand>.app-product-logo{width:102px!important;height:38px!important;flex-basis:102px!important}
     }
   </style>
+<style id="pest-finance-ui-refresh">
+.app-workspace .pest-finance-table-wrap{border-color:#d9e2ed!important;border-radius:14px!important;box-shadow:0 5px 18px rgba(15,35,60,.055);background:#fff}
+.app-workspace .pest-finance-table{border-collapse:separate;border-spacing:0;min-width:680px}
+.app-workspace .pest-finance-table thead th{padding:12px 14px!important;color:#475569!important;background:#f1f5f9!important;font-size:11px;font-weight:900;letter-spacing:.01em;border-bottom:1px solid #dbe3ec!important}
+.app-workspace .pest-finance-table tbody td{padding:9px 14px!important;border-bottom:1px solid #edf1f6;line-height:1.55;vertical-align:middle}
+.app-workspace .pest-finance-table tbody tr:last-child td{border-bottom:0}
+.app-workspace .pest-finance-table tbody tr:not(.pest-statement-section):not(.pest-statement-section-main):not(.pest-statement-total):not(.pest-statement-subtotal):not(.pest-statement-final-total):not(.pest-statement-difference-ok):not(.pest-statement-difference-warning):hover>td{background:#f5f9ff!important}
+.app-workspace .pest-finance-table .pest-statement-section-main>td{background:#183451!important;color:#fff!important;border-top:1px solid #183451!important;border-bottom:1px solid #183451!important;padding:12px 14px!important}
+.app-workspace .pest-finance-table .pest-statement-section>td{background:#eaf1f8!important;color:#27435f!important;border-top:1px solid #d7e2ed!important;border-bottom:1px solid #d7e2ed!important;padding:10px 14px!important}
+.app-workspace .pest-statement-section-label{display:flex;align-items:center;gap:9px;font-weight:900}
+.app-workspace .pest-statement-section-label:before{content:"";display:inline-block;width:4px;height:17px;border-radius:4px;background:currentColor;opacity:.8}
+.app-workspace .pest-finance-table .pest-statement-account-row.is-group>td{background:#f8fafc;font-weight:800}
+.app-workspace .pest-statement-account-name{display:flex;align-items:center;gap:9px;min-width:0;flex-wrap:wrap}
+.app-workspace .pest-statement-account-code{display:inline-flex;align-items:center;justify-content:center;min-width:48px;padding:3px 7px;border-radius:6px;background:#eef3f8;color:#52657a;font-size:10px;font-weight:900;direction:ltr;font-variant-numeric:tabular-nums}
+.app-workspace .pest-statement-account-link{padding:0;border:0;background:transparent;color:#1e4e79;font-weight:700;text-align:start;text-decoration:none;cursor:pointer}
+.app-workspace .pest-statement-account-link:hover{text-decoration:underline}
+.app-workspace .pest-statement-direct-badge{display:inline-flex;padding:2px 7px;border-radius:999px;background:#fff4df;color:#946018;font-size:9px;font-weight:800}
+.app-workspace .pest-finance-table .pest-statement-subtotal>td{background:#f8fafc!important;color:#334155!important;font-weight:800;border-top:1px solid #e2e8f0!important}
+.app-workspace .pest-finance-table .pest-statement-total>td{background:#eaf2fb!important;color:#173b5e!important;font-weight:900;border-top:1px solid #cbdced!important;border-bottom:1px solid #cbdced!important}
+.app-workspace .pest-finance-table .pest-statement-final-total>td{background:#183451!important;color:#fff!important;font-weight:900;border-top:2px solid #183451!important;border-bottom:2px solid #183451!important;padding-top:12px!important;padding-bottom:12px!important}
+.app-workspace .pest-finance-table .pest-statement-difference-ok>td{background:#eaf7ef!important;color:#17633a!important;font-weight:900;border-top:1px solid #c1e5ce!important}
+.app-workspace .pest-finance-table .pest-statement-difference-warning>td{background:#fff0f0!important;color:#a12a2a!important;font-weight:900;border-top:1px solid #f4caca!important}
+.app-workspace .pest-statement-kpis>div{position:relative;overflow:hidden;border-color:#dbe4ef;background:linear-gradient(135deg,#fff 0%,#f7faff 100%);box-shadow:0 4px 14px rgba(15,35,60,.045);padding:13px!important}
+.app-workspace .pest-statement-kpis>div:before{content:"";position:absolute;inset-block:0;inset-inline-start:0;width:3px;background:#3a6b96}
+.app-workspace .pest-statement-kpis>div>div{font-size:10px;font-weight:800;color:#64748b}
+.app-workspace .pest-statement-kpis>div>strong{font-size:clamp(15px,1.5vw,20px);font-variant-numeric:tabular-nums;color:#183451}
+.app-workspace .pest-journal-subsection{display:flex;flex-direction:column;gap:12px;min-width:0}
+.app-workspace .pest-journal-subsection-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
+.app-workspace .pest-journal-subsection-heading h4{margin:0;color:#183451;font-size:13px;font-weight:900}
+.app-workspace .pest-journal-subsection-heading p{margin:3px 0 0;color:#718096;font-size:10px;line-height:1.6}
+.app-workspace .pest-journal-section-divider{height:1px;background:linear-gradient(90deg,transparent,#d9e2ed 12%,#d9e2ed 88%,transparent)}
+.app-workspace .pest-journal-form{padding:2px 0}
+.app-workspace .pest-journal-form .pest-journal-subsection:first-child{padding:13px;border:1px solid #e1e8f0;border-radius:12px;background:#f8fafc}
+.app-workspace .pest-journal-form .pest-journal-subsection:nth-of-type(2) .pest-journal-subsection-heading{padding:0 2px}
+.app-workspace .pest-journal-form .pest-journal-subsection:nth-of-type(3){padding:12px;border:1px dashed #cbd8e5;border-radius:12px;background:#fbfdff}
+.app-workspace .pest-journal-form .pest-journal-totals-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px;border:1px solid #d9e3ee;border-radius:12px;background:#f3f7fb}
+.app-workspace .pest-journal-total-value{display:flex;align-items:center;gap:8px;padding:7px 11px;border-radius:9px;background:#fff;border:1px solid #e1e8f0}
+.app-workspace .pest-journal-total-value span{font-size:10px;color:#64748b;font-weight:700}
+.app-workspace .pest-journal-total-value strong{font-size:13px;font-variant-numeric:tabular-nums;color:#183451}
+.app-workspace .pest-journal-total-value.is-balanced strong{color:#15803d}
+.app-workspace .pest-journal-total-value.is-unbalanced strong{color:#b91c1c}
+.app-workspace .pest-journal-totals-bar>button{margin-inline-start:auto}
+@media(max-width:640px){.app-workspace .pest-finance-table{min-width:640px}.app-workspace .pest-finance-table thead th{padding:10px 9px!important}.app-workspace .pest-finance-table tbody td{padding:8px 9px!important}.app-workspace .pest-journal-subsection-heading{align-items:flex-start;flex-direction:column}.app-workspace .pest-journal-totals-bar>button{width:100%;margin-inline-start:0}.app-workspace .pest-journal-total-value{flex:1;justify-content:space-between}}
+</style>
 </head>
 <body class="bg-gray-100 min-h-screen">
   <div id="root"><div class="min-h-screen grid place-items-center text-slate-600">Loading…</div></div>
@@ -968,7 +1012,7 @@
 <script src="./capacitor-bridge.js" defer></script>
 <script>
 (() => {
-  const bundleUrl = "./app.3a7a258367323907.js";
+  const bundleUrl = "./app.75c7981d13853c0c.js";
   const root = () => document.getElementById("root");
   let lastStartupError = "";
   let finished = false;
