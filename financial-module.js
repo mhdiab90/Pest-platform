@@ -2045,7 +2045,7 @@ const panelNode=tableNode&&tableNode.closest("section[data-pest-export-scope='pa
        const cell=statementSheet[address];if(!cell||cell.v===undefined||cell.v===null)return;
        const value=String(cell.v).trim();
        let code=accountSheetByCode.has(value)?value:"";
-       if(!code){const match=/^(.+?)\\s*[—–-]\\s*/.exec(value);if(match&&accountSheetByCode.has(match[1].trim()))code=match[1].trim();}
+       if(!code){const match=/^(.+?)\s*[—–-]\s*/.exec(value);if(match&&accountSheetByCode.has(match[1].trim()))code=match[1].trim();}
        if(!code&&uniqueNames.get(value))code=uniqueNames.get(value);
        const target=accountSheetByCode.get(code);
        if(target)cell.l={Target:"#'"+target.replace(/'/g,"''")+"'!A1",Tooltip:"فتح كشف حساب "+code};
