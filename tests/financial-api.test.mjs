@@ -2621,3 +2621,25 @@ test("refundable deposits with third parties use a dedicated analytic subledger 
   assert.equal(read("securityDepositParties/DEP-UTIL-01").active,false);
   assert.ok(deleted.references.some(reference=>reference.includes("الأستاذ المساعد للتأمينات المستردة")));
 });
+
+
+test("small-balance settings validate thresholds and dedicated offset accounts", async () => {
+  database.chartOfAccounts = {
+    "7901": {code:"7901",name:"مصروفات التسويات",type:"expense",isGroup:false,active:true},
+    "7902": {code:"7902",name:"فروق تقريب مدينة",type:"expense",isGroup:false,active:true},
+    "4301": {code:"4301",name:"مكاسب التسويات",type:"revenue",isGroup:false,active:true},
+    "4302": {code:"4302",name:"فروق تقريب دائنة",type:"revenue",isGroup:false,active:true},
+    "1110": {code:"1110",name:"الخزينة",type:"asset",isGroup:false,active:true,isControl:true}
+  };
+  const result = await invoke("POST","",{
+    action:"saveAccountReviewSettings",roundingThreshold:1,partyThreshold:10,
+    roundingDebitAccountCode:"7902",roundingCreditAccountCode:"4302",
+    supplierDebitOffsetAccount:"7901",supplierCreditOffsetAccount:"4301",
+    customerDebitOffsetAccount:"7901",customerCreditOffsetAccount:"4301"
+  });
+  assert.equal(result.success,true);
+  assert.equal(result.item.roundingThreshold,1);
+  assert.equal(result.item.partyThreshold,10);
+  assert.equal(read("settings/accountReviewSmallBalances/roundingDebitAccountCode"),"7902");
+  await assert.rejects(invoke("POST","",{action:"saveAccountReviewSettings",roundingDebitAccountCode:"1110"}),/ليس حسابًا تفصيليًا نشطًا وغير رقابي/);
+});
